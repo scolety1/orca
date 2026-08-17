@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "TSF_PROVIDER_CAPABILITIES_V1",
+  "authority": "ADVISORY_ONLY",
+  "observedAt": "2026-08-17",
+  "providers": [
+    {
+      "providerId": "openai",
+      "agentId": "codex",
+      "availability": "AVAILABLE",
+      "observedVersion": "codex-cli 0.144.1",
+      "subscriptionBacked": true,
+      "roles": ["PLANNER_BALANCED", "WORKER_CHEAP", "WORKER_BALANCED", "WORKER_DEEP", "VERIFIER_INDEPENDENT"],
+      "usageTelemetry": "PARTIAL",
+      "cacheTelemetry": "UNKNOWN",
+      "persistentSession": "SUPPORTED",
+      "compactResult": "SUPPORTED",
+      "browserTools": "HOST_DEPENDENT",
+      "sandboxControl": "SUPPORTED",
+      "networkControl": "SUPPORTED_BY_CODEX_SANDBOX_CONFIG"
+    },
+    {
+      "providerId": "anthropic",
+      "agentId": "claude-code",
+      "availability": "UNAVAILABLE_ON_VALIDATION_HOST",
+      "observedVersion": "UNKNOWN",
+      "subscriptionBacked": "UNKNOWN",
+      "roles": ["PLANNER_DEEP", "PLANNER_BALANCED", "WORKER_DEEP", "VERIFIER_INDEPENDENT"],
+      "usageTelemetry": "UNKNOWN",
+      "cacheTelemetry": "UNKNOWN",
+      "persistentSession": "EXPECTED_NOT_PROVEN",
+      "compactResult": "EXPECTED_NOT_PROVEN",
+      "browserTools": "UNKNOWN",
+      "sandboxControl": "HOST_ENFORCEMENT_REQUIRED",
+      "networkControl": "HOST_ENFORCEMENT_REQUIRED"
+    }
+  ]
+}

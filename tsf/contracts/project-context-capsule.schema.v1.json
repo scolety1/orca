@@ -1,0 +1,94 @@
+﻿{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "title":  "TSF Project Context Capsule V1",
+    "type":  "object",
+    "additionalProperties":  false,
+    "required":  [
+                     "capsule_id",
+                     "project_id",
+                     "project_goal",
+                     "current_branch",
+                     "current_lane",
+                     "completed_missions",
+                     "active_blockers",
+                     "approvals",
+                     "known_risks",
+                     "do_not_repeat_lessons",
+                     "next_recommended_action",
+                     "hq_escalation_history",
+                     "updated_at"
+                 ],
+    "properties":  {
+                       "capsule_id":  {
+                                          "minLength":  1,
+                                          "type":  "string"
+                                      },
+                       "project_id":  {
+                                          "minLength":  1,
+                                          "type":  "string"
+                                      },
+                       "project_goal":  {
+                                            "type":  "string"
+                                        },
+                       "current_branch":  {
+                                              "type":  "string"
+                                          },
+                       "current_lane":  {
+                                            "type":  "string"
+                                        },
+                       "completed_missions":  {
+                                                  "items":  {
+                                                                "type":  "string"
+                                                            },
+                                                  "type":  "array"
+                                              },
+                       "active_blockers":  {
+                                               "items":  {
+                                                             "type":  "string"
+                                                         },
+                                               "type":  "array"
+                                           },
+                       "approvals":  {
+                                         "items":  {
+                                                       "type":  "string"
+                                                   },
+                                         "type":  "array"
+                                     },
+                       "known_risks":  {
+                                           "items":  {
+                                                         "type":  "string"
+                                                     },
+                                           "type":  "array"
+                                       },
+                       "do_not_repeat_lessons":  {
+                                                     "items":  {
+                                                                   "type":  "string"
+                                                               },
+                                                     "type":  "array"
+                                                 },
+                       "next_recommended_action":  {
+                                                       "type":  "string"
+                                                   },
+                       "hq_escalation_history":  {
+                                                     "items":  {
+                                                                   "type":  "string"
+                                                               },
+                                                     "type":  "array"
+                                                 },
+                       "artifacts_created":  {
+                                                 "items":  {
+                                                               "type":  "string"
+                                                           },
+                                                 "type":  "array"
+                                             },
+                       "last_worker_role":  {
+                                                "type":  "string"
+                                            },
+                       "last_mission_result":  {
+                                                   "type":  "string"
+                                               },
+                       "updated_at":  {
+                                          "type":  "string"
+                                      }
+                   }
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tsf.local/contracts/plan-capsule.schema.v1.json",
+  "title": "TSF Plan Capsule V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "missionId",
+    "projectId",
+    "objective",
+    "decisions",
+    "repository",
+    "allowedScope",
+    "constraints",
+    "prohibitedActions",
+    "relevantComponents",
+    "acceptanceCriteria",
+    "requiredTests",
+    "stopConditions",
+    "expectedResultFormat"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "TSF_PLAN_CAPSULE_V1" },
+    "missionId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "projectId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "objective": { "type": "string", "minLength": 1, "maxLength": 8192 },
+    "decisions": { "type": "array", "items": { "type": "string", "maxLength": 4096 }, "maxItems": 64 },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "worktree", "branch", "head", "tree"],
+      "properties": {
+        "root": { "type": "string", "minLength": 1 },
+        "worktree": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "allowedScope": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 256 },
+    "constraints": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
+    "prohibitedActions": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 256 },
+    "relevantComponents": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
+    "acceptanceCriteria": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 256 },
+    "requiredTests": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
+    "stopConditions": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 256 },
+    "expectedResultFormat": { "const": "TSF_RESULT_CAPSULE_V1" }
+  }
+}

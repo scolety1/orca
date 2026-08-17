@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "TSF_PROVIDER_LAUNCH_PROFILES_V1",
+  "profiles": {
+    "CODEX_SAFE": {
+      "providerId": "openai",
+      "agentId": "codex",
+      "orcaLaunchMode": "CUSTOM_TERMINAL_COMMAND",
+      "command": "node tsf/providers/safe-provider-launch.mjs --provider codex --workspace {isolatedWorktree} -- {providerArguments}",
+      "requiresIsolatedLinkedWorktree": true,
+      "sandbox": "workspace-write",
+      "approvalPolicy": "on-request",
+      "network": "disabled",
+      "defaultBranchWrite": "denied",
+      "remoteActions": "denied_by_mission_policy",
+      "codexHomePolicy": "TSF_CODEX_HOME_OR_USER_DEFAULT",
+      "blanketBypass": false,
+      "status": "VALIDATED_WINDOWS_FIXTURE"
+    },
+    "CLAUDE_SAFE": {
+      "providerId": "anthropic",
+      "agentId": "claude-code",
+      "orcaLaunchMode": "CUSTOM_TERMINAL_COMMAND",
+      "command": "node tsf/providers/safe-provider-launch.mjs --provider claude --workspace {isolatedWorktree} -- {providerArguments}",
+      "requiresIsolatedLinkedWorktree": true,
+      "permissionMode": "default",
+      "network": "host_enforcement_required",
+      "defaultBranchWrite": "denied",
+      "remoteActions": "denied_by_mission_policy",
+      "blanketBypass": false,
+      "status": "CONFIGURED_RUNTIME_UNAVAILABLE"
+    }
+  }
+}

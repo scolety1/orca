@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { margin: 0; padding: 14px; font: 13px/1.45 system-ui, sans-serif; color: var(--foreground, #ddd); background: var(--background, transparent); }
+      h1 { font-size: 15px; margin: 0 0 4px; }
+      h2 { font-size: 12px; margin: 18px 0 6px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted-foreground, #999); }
+      .tag { display: inline-block; padding: 2px 7px; border: 1px solid var(--border, #555); border-radius: 999px; }
+      dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; }
+      dt { color: var(--muted-foreground, #999); }
+      dd { margin: 0; overflow-wrap: anywhere; }
+      button { padding: 6px 9px; border: 1px solid var(--border, #555); border-radius: 6px; background: var(--secondary, #2a2a2a); color: inherit; cursor: pointer; }
+      #status { min-height: 1.4em; color: var(--muted-foreground, #999); white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Thousand Sunny Fleet</h1>
+    <div class="tag">Orca Foundation · Wave 4</div>
+    <h2>Ownership</h2>
+    <dl>
+      <dt>Orca</dt><dd>agents, terminals, sessions, worktrees, runtime recovery</dd>
+      <dt>TSF</dt><dd>portfolio, missions, routing, adoption, releases, evidence, Health</dd>
+    </dl>
+    <h2>Focused workspace</h2>
+    <button id="refresh">Refresh Orca context</button>
+    <p id="status">No context requested.</p>
+    <script>
+      'use strict'
+      var seq = 0
+      var pending = {}
+      function call(action, params) {
+        return new Promise(function (resolve) {
+          var requestId = 'tsf-' + ++seq
+          pending[requestId] = resolve
+          window.parent.postMessage({ type: 'orca-panel-action', requestId: requestId, action: action, params: params }, '*')
+        })
+      }
+      window.addEventListener('message', function (event) {
+        var data = event.data
+        if (!data || data.type !== 'orca-panel-action-result' || !pending[data.requestId]) return
+        var resolve = pending[data.requestId]
+        delete pending[data.requestId]
+        resolve(data)
+      })
+      document.getElementById('refresh').addEventListener('click', function () {
+        call('workspace.readContext', {}).then(function (result) {
+          var status = document.getElementById('status')
+          if (!result.ok) status.textContent = 'Context unavailable: ' + (result.error || result.errorCode)
+          else if (!result.value) status.textContent = 'No focused Orca worktree.'
+          else status.textContent = result.value.displayName + '\nBranch: ' + result.value.branch + '\nTerminals: ' + result.value.terminals.length
+        })
+      })
+    </script>
+  </body>
+</html>

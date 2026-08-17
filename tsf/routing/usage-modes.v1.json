@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "TSF_USAGE_MODES_V1",
+  "modes": {
+    "TEST_MINIMAL": {
+      "plannerTier": "PLANNER_BALANCED",
+      "workerTier": "WORKER_CHEAP",
+      "verifierDepth": "MINIMAL",
+      "parallelism": 1,
+      "retryBudget": 0,
+      "autonomy": "BOUNDED_SINGLE_STEP",
+      "trustMode": "STANDARD_AUTONOMOUS",
+      "researchDepth": "NONE",
+      "browserTesting": "OFF_UNLESS_REQUIRED",
+      "highAssuranceChecks": false
+    },
+    "ECONOMY": {
+      "plannerTier": "PLANNER_BALANCED",
+      "workerTier": "WORKER_CHEAP",
+      "verifierDepth": "FOCUSED",
+      "parallelism": 1,
+      "retryBudget": 1,
+      "autonomy": "BOUNDED_CONTINUATION",
+      "trustMode": "STANDARD_AUTONOMOUS",
+      "researchDepth": "BOUNDED",
+      "browserTesting": "TARGETED",
+      "highAssuranceChecks": false
+    },
+    "BALANCED": {
+      "plannerTier": "PLANNER_BALANCED",
+      "workerTier": "WORKER_BALANCED",
+      "verifierDepth": "STANDARD",
+      "parallelism": 2,
+      "retryBudget": 2,
+      "autonomy": "CHECKPOINTED_MULTI_STEP",
+      "trustMode": "MAXIMUM_AUTONOMOUS",
+      "researchDepth": "STANDARD",
+      "browserTesting": "WHEN_RELEVANT",
+      "highAssuranceChecks": false
+    },
+    "MAXIMUM": {
+      "plannerTier": "PLANNER_DEEP",
+      "workerTier": "WORKER_DEEP",
+      "verifierDepth": "INDEPENDENT_DEEP",
+      "parallelism": 3,
+      "retryBudget": 3,
+      "autonomy": "CHECKPOINTED_LONG_RUN",
+      "trustMode": "MAXIMUM_AUTONOMOUS",
+      "researchDepth": "DEEP",
+      "browserTesting": "FULL_WHEN_RELEVANT",
+      "highAssuranceChecks": false
+    }
+  },
+  "authorityNote": "A usage mode controls routing and budgets only. It grants no repository, remote, release, or production authority."
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "TSF_SESSION_AFFINITY_V1",
+  "planner": {
+    "scope": "PLANNING_EPISODE",
+    "retain": ["providerId", "agentId", "modelClass", "orcaSessionId", "providerConversationId"],
+    "switchAt": ["MISSION_BOUNDARY", "EXPLICIT_ESCALATION", "PROVIDER_FAILURE", "SAFETY_RECOVERY"]
+  },
+  "worker": {
+    "scope": "IMPLEMENTATION_MISSION",
+    "retain": ["providerId", "agentId", "modelClass", "orcaSessionId", "providerConversationId", "worktreeId"],
+    "switchAt": ["MISSION_BOUNDARY", "RECOVERY_CHECKPOINT", "PROVIDER_FAILURE", "EXPLICIT_ESCALATION"]
+  },
+  "replacementReceiptRequired": ["oldIdentity", "newIdentity", "boundary", "reason", "checkpointRef", "unresolvedWork"],
+  "routingPrinciple": "CHANGE_AT_BOUNDARIES_NOT_PER_TURN",
+  "telemetryRule": "UNKNOWN_REMAINS_UNKNOWN"
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "TSF_UPSTREAM_DELTA_V1",
+  "upstream": {
+    "repository": "https://github.com/stablyai/orca",
+    "version": "v1.4.184",
+    "commit": "2307f2ebbe1c1e737c0b12d920bb0a208332db2c",
+    "tree": "e17d0166e40efc2720c8614496c9694456a956ea"
+  },
+  "overlayRoots": ["tsf/", "docs/tsf/"],
+  "coreChanges": [],
+  "coreModificationCount": 0,
+  "extensionSeam": {
+    "kind": "ORCA_PLUGIN_API_V1_AND_SEPARABLE_TSF_MODULES",
+    "status": "CONTRACT_TESTED_EXPERIMENTAL",
+    "hostCapabilitiesUsed": ["workspace:read", "storage", "events:subscribe"],
+    "knownLimit": "Plugin API v1 does not expose full Run/task/dispatch facts to panels or workers; TSF orchestration adapters remain explicit and no core patch was introduced."
+  },
+  "removalPath": "Delete tsf/ and docs/tsf/; no Orca core file requires reversal.",
+  "maximumCoreFilesWithoutTimDecision": 12
+}

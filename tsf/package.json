@@ -1,0 +1,15 @@
+{
+  "name": "@thousand-sunny-fleet/orca-overlay",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider-neutral TSF governance and orchestration overlay for Orca.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "health": "node health/foundation-health.mjs",
+    "dogfood": "node fixtures/run-dogfood.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

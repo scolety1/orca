@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "TSF_PROVIDER_ROLE_MAPPINGS_V1",
+  "architectureRule": "ROLE_ALIASES_ARE_STABLE_PROVIDER_AND_MODEL_MAPPINGS_ARE_REPLACEABLE",
+  "roles": {
+    "PLANNER_DEEP": {
+      "preferredProfile": "CLAUDE_SAFE",
+      "fallbackProfile": "CODEX_SAFE",
+      "modelClass": "DEEP_REASONING",
+      "effortClass": "HIGH"
+    },
+    "PLANNER_BALANCED": {
+      "preferredProfile": "CODEX_SAFE",
+      "fallbackProfile": "CLAUDE_SAFE",
+      "modelClass": "BALANCED_REASONING",
+      "effortClass": "MEDIUM"
+    },
+    "WORKER_CHEAP": {
+      "preferredProfile": "CODEX_SAFE",
+      "fallbackProfile": null,
+      "modelClass": "ECONOMY_IMPLEMENTATION",
+      "effortClass": "LOW"
+    },
+    "WORKER_BALANCED": {
+      "preferredProfile": "CODEX_SAFE",
+      "fallbackProfile": "CLAUDE_SAFE",
+      "modelClass": "BALANCED_IMPLEMENTATION",
+      "effortClass": "MEDIUM"
+    },
+    "WORKER_DEEP": {
+      "preferredProfile": "CODEX_SAFE",
+      "fallbackProfile": "CLAUDE_SAFE",
+      "modelClass": "DEEP_IMPLEMENTATION",
+      "effortClass": "HIGH"
+    },
+    "VERIFIER_INDEPENDENT": {
+      "preferredProfile": "CLAUDE_SAFE",
+      "fallbackProfile": "CODEX_SAFE",
+      "modelClass": "INDEPENDENT_VERIFICATION",
+      "effortClass": "HIGH",
+      "mustDifferFromWorkerWhenAvailable": true
+    }
+  },
+  "experimentalHypothesis": {
+    "plannerDeep": "Claude Code / Opus or Fable class",
+    "workerBalanced": "Codex / GPT-5.6 class",
+    "contractual": false
+  }
+}

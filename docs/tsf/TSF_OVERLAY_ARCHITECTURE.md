@@ -1,0 +1,36 @@
+# TSF Overlay Architecture
+
+## Shape
+
+```text
+Orca v1.4.184
+├── native projects, worktrees, terminals, agents and sessions
+├── native provider launch, browser, diffs, runtime recovery and orchestration facts
+├── plugin API v1
+└── tsf/
+    ├── adapters/       Orca-fact and dispatch boundary
+    ├── contracts/      compact handoffs, context and session affinity
+    ├── domain/         mission, portfolio, routing, adoption, release, receipts, Health
+    ├── providers/      safe provider profiles (configuration)
+    ├── routing/        roles and Usage Modes (configuration)
+    ├── migration/      111-capability and upstream-delta records
+    ├── fixtures/       synthetic dogfood only
+    ├── test/           overlay and plugin contract tests
+    ├── main.mjs        Orca plugin worker entry
+    └── panel.html      smallest read-only TSF operator surface
+```
+
+## Rules
+
+1. Orca runtime/session/worktree facts are never duplicated as TSF process truth.
+2. TSF maps Orca facts into high-level mission and Health states.
+3. Provider/model names are replaceable configuration below stable TSF roles.
+4. Planner, worker, and verifier identities remain distinct.
+5. Worker completion is evidence. It is not adoption, release promotion, commit, or publication authority.
+6. Stable and Published remain unchanged while Upgrade and Testing candidates are worked.
+7. Consequential actions use exact bindings and idempotent request identities.
+8. Plugin API v1 is experimental; all host coupling stays behind `tsf/adapters/` and contract tests.
+
+## Extension-seam result
+
+The official Orca plugin seam supports a sandboxed panel, commands, private storage, and bounded worktree/agent events. It does not yet expose the complete Run/task/dispatch graph through the public plugin API. The successor therefore uses the plugin for bounded operator integration and keeps orchestration adapters explicit. No Orca core patch was introduced to hide this gap.

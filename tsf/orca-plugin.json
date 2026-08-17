@@ -1,0 +1,51 @@
+{
+  "manifestVersion": 1,
+  "id": "foundation",
+  "publisher": "thousand-sunny-fleet",
+  "name": "Thousand Sunny Fleet Foundation",
+  "version": "0.2.0",
+  "description": "Provider-neutral TSF governance and orchestration overlay for the Orca-based successor.",
+  "author": {
+    "name": "Thousand Sunny Fleet"
+  },
+  "repository": "LOCAL_ORIGIN_PENDING_TIM_AUTHORIZATION",
+  "engines": {
+    "orca": ">=1.4.184"
+  },
+  "pluginApi": 1,
+  "main": "main.mjs",
+  "contributes": {
+    "panels": [
+      {
+        "id": "foundation",
+        "title": "TSF Foundation",
+        "icon": "ship-wheel",
+        "entry": "panel.html"
+      }
+    ],
+    "commands": [
+      {
+        "id": "tsf-foundation-health",
+        "title": "TSF: Foundation Health"
+      },
+      {
+        "id": "tsf-status",
+        "title": "TSF: Status"
+      },
+      {
+        "id": "tsf-set-usage-mode",
+        "title": "TSF: Set Usage Mode"
+      }
+    ],
+    "events": [
+      { "on": "worktree.created" },
+      { "on": "worktree.removed" },
+      { "on": "agent.status.changed" }
+    ]
+  },
+  "capabilities": [
+    { "kind": "workspace:read" },
+    { "kind": "storage" },
+    { "kind": "events:subscribe" }
+  ]
+}
