@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "TSF_SECOND_REAL_PROJECT_VERIFIER_RESULT_V1",
+  "projectId": "weird-talent-marketplace",
+  "missionId": "mission-5-local-talent-card-loop",
+  "verifier": {
+    "role": "VERIFIER_INDEPENDENT",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelObserved": "gpt-5.6-sol",
+    "effortObserved": "high",
+    "taskId": "task_a8f0468b41fc",
+    "dispatchId": "ctx_126f78f7c5b1",
+    "messageId": "msg_47daa3cf8434",
+    "orcaSessionId": "term_f15ad309-0593-4fd1-bb2e-2c01239f4d51",
+    "worktree": "C:/Users/codex-agent/orca/workspaces/weird-talent-marketplace/tsf-pilot-2-verifier"
+  },
+  "candidate": {
+    "head": "148ef43730fd876c90adbeaf82f93e0b3c8a3e86",
+    "tree": "600f5d57b6f3511354bc4b562457ac2251333cf9",
+    "bindingMatch": true,
+    "worktreeClean": true,
+    "filesModified": []
+  },
+  "checks": {
+    "focusedTests": "42/42 PASS",
+    "lint": "PASS",
+    "typechecks": "PASS",
+    "tempDirectoryBuild": "PASS",
+    "candidateDiffCheck": "PASS",
+    "evidenceDiffCheck": "PASS",
+    "holdoutNormalizedFixtureEqualsGitBlob": true,
+    "localTalentConceptScore": 0,
+    "lexicalCapabilityCap": 45,
+    "strongCapabilityThreshold": 55,
+    "exactAnnouncerControlCapability": 22,
+    "exactAnnouncerControlFinalScore": 38,
+    "exactAnnouncerControlTier": "Weak"
+  },
+  "finding": "The user-visible promise requires a Strong/Excellent preview for a locally authored exact capability, but the unchanged matcher cannot grant concept membership to opaque local Talent IDs. Repair requires matcher/product architecture outside the authorized capsule scope.",
+  "verdict": "BLOCKED_ARCHITECTURAL_CONFLICT",
+  "recommendedState": "REJECT_CURRENT_CANDIDATE",
+  "readyForBrowserQa": false,
+  "readyForAdoption": false,
+  "phase2Allowed": false
+}

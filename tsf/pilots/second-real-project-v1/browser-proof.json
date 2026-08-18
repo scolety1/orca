@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "TSF_SECOND_REAL_PROJECT_BROWSER_PROOF_V1",
+  "projectId": "weird-talent-marketplace",
+  "missionId": "mission-5-local-talent-card-loop",
+  "candidateHead": "148ef43730fd876c90adbeaf82f93e0b3c8a3e86",
+  "candidateTree": "600f5d57b6f3511354bc4b562457ac2251333cf9",
+  "result": "NOT_RUN_STOP_CONDITION",
+  "reason": "The test-only worker and independent verifier proved a non-browser architectural invariant failure. Browser acceptance could not make this candidate READY_FOR_ADOPTION and would have violated the instruction to stop on a genuine architectural conflict.",
+  "acceptedWorkerBrowserEvidence": false,
+  "workerFriction": "The UI worker briefly started a loopback Vite server and Codex browser before correction. The server and browser processes were stopped; no evidence from that attempt was accepted."
+}

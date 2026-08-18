@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "TSF_SECOND_REAL_PROJECT_PILOT_STATE_V1",
+  "projectId": "weird-talent-marketplace",
+  "missionId": "mission-5-local-talent-card-loop",
+  "missionState": "BLOCKED",
+  "phase1Verdict": "YELLOW_TSF_ORCA_SECOND_REAL_PROJECT_PILOT_PARTIAL",
+  "phase2Ran": false,
+  "stable": {
+    "branch": "codex/semantic-challenger-shootout-20260812",
+    "head": "ef0e232888b0fe1689ab7433e3f1333807d3b00d",
+    "tree": "669dc8c4492bee2b264f9a8f90952e3bf05c7f99",
+    "changed": false
+  },
+  "upgrade": {
+    "branch": "tsf-pilot-2-integration",
+    "head": "148ef43730fd876c90adbeaf82f93e0b3c8a3e86",
+    "tree": "600f5d57b6f3511354bc4b562457ac2251333cf9",
+    "worktree": "C:/Users/codex-agent/orca/workspaces/weird-talent-marketplace/tsf-pilot-2-integration",
+    "clean": true,
+    "adopted": false,
+    "disposition": "REJECT_CURRENT_CANDIDATE"
+  },
+  "testEvidence": {
+    "head": "96a18f2e6b97aedda07935aa38b1de945583611b",
+    "tree": "89a2cad6a6aef63c9da48b97c28155743bdcfb95",
+    "integrated": false
+  },
+  "testing": {
+    "status": "BLOCKED_ARCHITECTURAL_CONFLICT",
+    "independentVerifier": "BLOCKED_ARCHITECTURAL_CONFLICT",
+    "browser": "NOT_RUN_STOP_CONDITION"
+  },
+  "published": {
+    "changed": false
+  },
+  "adoption": {
+    "status": "NOT_READY",
+    "automatic": false,
+    "gateOpened": false,
+    "pushPerformed": false,
+    "mergePerformed": false,
+    "deployPerformed": false,
+    "publishPerformed": false
+  },
+  "metrics": {
+    "runStartedAt": "2026-08-18T06:26:28.000Z",
+    "verifierCompletedAt": "2026-08-18T07:19:54.921Z",
+    "wallClockMinutesToStop": 53.45,
+    "timInterruptions": 0,
+    "plannerEpisodes": 1,
+    "implementationWorkers": 3,
+    "implementationWorkerRetries": 0,
+    "verifierFindings": 1,
+    "verifierCorrectionCycles": 0,
+    "browserQa": "NOT_RUN",
+    "manualHumanCopyPaste": 0,
+    "runtimeRecoveryEvents": 0,
+    "providerUsageTelemetry": "NOT_EXPOSED",
+    "usageMode": "BALANCED",
+    "orcaCoreFilesModified": 0
+  }
+}

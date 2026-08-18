@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "TSF_SECOND_REAL_PROJECT_PLANNER_EVIDENCE_V1",
+  "projectId": "weird-talent-marketplace",
+  "missionId": "mission-5-local-talent-card-loop",
+  "usageMode": "BALANCED",
+  "planner": {
+    "role": "PLANNER_BALANCED",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelObserved": "gpt-5.6-sol",
+    "effortObserved": "medium",
+    "orcaRunId": "run_7e8a8de60da9",
+    "taskId": "task_2a4feb579d08",
+    "dispatchId": "ctx_76c31474f86d",
+    "sessionId": "term_d815122f-dfdc-4709-abc5-daa2b1c55da2",
+    "worktree": "C:/Users/codex-agent/orca/workspaces/weird-talent-marketplace/tsf-pilot-2-planner"
+  },
+  "baseline": {
+    "head": "ef0e232888b0fe1689ab7433e3f1333807d3b00d",
+    "tree": "669dc8c4492bee2b264f9a8f90952e3bf05c7f99",
+    "clean": true
+  },
+  "artifact": {
+    "path": ".tsf/TSF_PILOT_2_PLANNER_OUTPUT_V1.json",
+    "commit": "93cdb0fe973bae24f398af443ef19e9f2479b772",
+    "tree": "68c6397e6bacabb15cbc5112b13dbbffd6496b62",
+    "sha256": "cb4a6f81f15311bf4bbdbea7d1cfeaeabb784dd8f14d2739884f6d8631215388",
+    "planCapsules": 3,
+    "allSchemaValid": true
+  },
+  "selectedMission": "Local Synthetic Talent Card Authoring and Deterministic Request Preview",
+  "executionOrder": [
+    "local-talent-foundation",
+    "talent-authoring-and-preview-ui",
+    "talent-loop-flow-verification"
+  ],
+  "exclusions": [
+    "Matcher or moderation changes",
+    "Semantic challenger activation or model downloads",
+    "Real users, identities, data, accounts, backend, contact, booking, payments, deployment, publication, or adoption"
+  ],
+  "operatorFriction": "The planner briefly traversed outside the target during discovery and encountered NWR access denial before correction; no external repository was modified."
+}

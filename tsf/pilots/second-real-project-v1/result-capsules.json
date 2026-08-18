@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "TSF_SECOND_REAL_PROJECT_RESULT_CAPSULES_V1",
+  "projectId": "weird-talent-marketplace",
+  "missionId": "mission-5-local-talent-card-loop",
+  "results": [
+    {
+      "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+      "workItemId": "local-talent-foundation",
+      "status": "COMPLETED",
+      "taskId": "task_d468ef7ecb73",
+      "dispatchId": "ctx_055c5efbcf00",
+      "sessionId": "term_f5f8c85d-0e79-4012-952b-1533d3a02777",
+      "commit": "eb26db1ea2a03a0ea499e07b5bc95c821a66c7da",
+      "tree": "d0a3c2e5fe95098778de1cf878c2077542b59913",
+      "integratedAs": "7a41e11cfa3ac4b103d1172ad54ac0c6e178f723",
+      "tests": ["18 focused repository tests", "lint", "typecheck", "73 full tests", "build", "prettier", "git diff --check", "seed counts 30/50/30"]
+    },
+    {
+      "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+      "workItemId": "talent-authoring-and-preview-ui",
+      "status": "COMPLETED",
+      "taskId": "task_1fbb8d5281a2",
+      "dispatchId": "ctx_22eca1cded20",
+      "sessionId": "term_df5d2950-238f-4040-9b11-fbb73a3526f1",
+      "commit": "f7ebf9c79eaf444076a3b6158fe4a0a9f1ce1ae3",
+      "tree": "600f5d57b6f3511354bc4b562457ac2251333cf9",
+      "integratedAs": "148ef43730fd876c90adbeaf82f93e0b3c8a3e86",
+      "tests": ["prettier", "lint", "typecheck", "73 full tests", "eval:matching", "build", "git diff --check"],
+      "holdoutNote": "The worker-observed holdout failure was a Windows CRLF byte comparison false-positive; normalized frozen fixture content exactly matches the Git blob.",
+      "browserEvidenceAccepted": false
+    },
+    {
+      "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+      "workItemId": "talent-loop-flow-verification",
+      "status": "FAILED_WITH_SPECIFIC_FINDING",
+      "taskId": "task_b012fe267698",
+      "dispatchId": "ctx_30f7f2d477d0",
+      "sessionId": "term_2dcba5bd-08a4-4a72-b67a-909f5b28b25d",
+      "commit": "96a18f2e6b97aedda07935aa38b1de945583611b",
+      "tree": "89a2cad6a6aef63c9da48b97c28155743bdcfb95",
+      "integrated": false,
+      "tests": ["prettier", "lint", "typecheck", "one intentionally preserved failing invariant"],
+      "finding": "Opaque local Talent IDs receive no concept score; lexical capability is capped at 45 while Strong requires capability >=55."
+    }
+  ],
+  "candidate": {
+    "branch": "tsf-pilot-2-integration",
+    "head": "148ef43730fd876c90adbeaf82f93e0b3c8a3e86",
+    "tree": "600f5d57b6f3511354bc4b562457ac2251333cf9",
+    "clean": true,
+    "readyForAdoption": false
+  }
+}

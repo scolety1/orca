@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_REGISTRATION_V1",
+  "projectId": "weird-talent-marketplace",
+  "displayName": "Weird Talent Marketplace",
+  "repository": {
+    "path": "C:/Users/codex-agent/Documents/ChatGPT/Idea Incubator/weird-talent-marketplace",
+    "branch": "codex/semantic-challenger-shootout-20260812",
+    "head": "ef0e232888b0fe1689ab7433e3f1333807d3b00d",
+    "tree": "669dc8c4492bee2b264f9a8f90952e3bf05c7f99",
+    "statusAtRegistration": "CLEAN"
+  },
+  "purpose": "Synthetic, local-only marketplace demonstration with deterministic matching, moderation boundaries, and explicit non-bookable behavior.",
+  "lifecycle": "IDEA_INCUBATOR_LOCAL",
+  "sourceProvenance": "REAL_LOCAL_REPOSITORY",
+  "health": {
+    "status": "YELLOW_MISSION_BLOCKED",
+    "repositoryAvailable": true,
+    "baselineTests": "58/58",
+    "baselineLint": "PASS",
+    "baselineTypecheck": "PASS",
+    "baselineBuild": "PASS",
+    "activeGitOperation": false,
+    "activeExternalWorker": false,
+    "blockedReason": "Locally authored opaque Talent IDs cannot receive matcher concept scores; the intended Strong/Excellent preview cannot satisfy the accepted matcher threshold."
+  },
+  "workState": {
+    "knownProject": true,
+    "activeFleet": true,
+    "workSet": true,
+    "onlyRealProjectInPilotWorkSet": true,
+    "missionId": "mission-5-local-talent-card-loop",
+    "missionState": "BLOCKED"
+  },
+  "release": {
+    "stableHead": "ef0e232888b0fe1689ab7433e3f1333807d3b00d",
+    "stableTree": "669dc8c4492bee2b264f9a8f90952e3bf05c7f99",
+    "upgradeHead": "148ef43730fd876c90adbeaf82f93e0b3c8a3e86",
+    "upgradeTree": "600f5d57b6f3511354bc4b562457ac2251333cf9",
+    "testing": "BLOCKED_ARCHITECTURAL_CONFLICT",
+    "adoption": "NOT_READY_NOT_ADOPTED",
+    "published": "UNCHANGED_NO_PUBLICATION_ACTION"
+  },
+  "restrictions": [
+    "No push, pull request, merge, deploy, publish, contact, booking, payment, or production mutation.",
+    "No real users or data; synthetic local fixtures only.",
+    "The source checkout must remain unchanged unless Tim later authorizes an exact candidate adoption.",
+    "Legacy TSF and every other real project are out of scope for mutation."
+  ],
+  "registeredAt": "2026-08-18T06:26:28.000Z"
+}
