@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_ADOPTION_EVIDENCE_V1",
+  "projectId": "shopify-catalog-qa",
+  "missionId": "mission-5-audit-coverage-uncertainty-review",
+  "authority": {
+    "authorizedBy": "TIM",
+    "scope": "LOCAL_ADOPTION_ONLY",
+    "approvedBranch": "tsf-shopify-pilot-m5-candidate",
+    "approvedHead": "0a8133bfc103c302e72fdf70dd47aef9fa7b41a6",
+    "approvedTree": "c406f512f734c39a5824201016ee586fd9e04b3c"
+  },
+  "bindingRevalidation": {
+    "candidateWorktreeClean": true,
+    "candidateBranchRefMatched": true,
+    "candidateHeadMatched": true,
+    "candidateTreeMatched": true,
+    "stableCleanBeforeAdoption": true,
+    "stableWasAncestorOfCandidate": true
+  },
+  "integration": {
+    "mode": "FAST_FORWARD_ONLY",
+    "command": "git merge --ff-only refs/heads/tsf-shopify-pilot-m5-candidate",
+    "previousStableHead": "d3b7819aaceea8ef01b06be2ac10a59a863f8200",
+    "previousStableTree": "143447a37b3369de8df386e045a13f2d7a2825fa",
+    "adoptedStableHead": "0a8133bfc103c302e72fdf70dd47aef9fa7b41a6",
+    "adoptedStableTree": "c406f512f734c39a5824201016ee586fd9e04b3c",
+    "mergeCommitCreated": false,
+    "candidateAmended": false
+  },
+  "postAdoptionVerification": {
+    "tests": { "passed": 79, "failed": 0 },
+    "adversarialEvaluation": { "passed": 124, "failed": 0, "truePositives": 58, "falsePositives": 0, "falseNegatives": 0 },
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS",
+    "diffCheck": "PASS",
+    "stableClean": true
+  },
+  "remoteEffects": {
+    "pushPerformed": false,
+    "pullRequestOpened": false,
+    "deployPerformed": false,
+    "publishPerformed": false
+  },
+  "cleanup": {
+    "removedProvenSettledWorktrees": [
+      "C:/Users/codex-agent/orca/workspaces/shopify-catalog-qa/tsf-shopify-pilot-planner",
+      "C:/Users/codex-agent/orca/workspaces/shopify-catalog-qa/tsf-shopify-pilot-m5-candidate",
+      "C:/Users/codex-agent/orca/workspaces/shopify-catalog-qa/tsf-shopify-pilot-m5-revision-verifier"
+    ],
+    "retainedWithoutMutation": [
+      {
+        "path": "C:/Users/codex-agent/orca/workspaces/shopify-catalog-qa/tsf-shopify-pilot-m5-verifier",
+        "reason": "Git still reported a dirty Windows line-ending/stat marker; filtered working and HEAD blobs matched, but cleanup was not forced."
+      },
+      {
+        "scope": "Other pre-existing Shopify worktrees and Orca sessions",
+        "reason": "They were not proven to belong to this settled pilot cleanup and were left untouched."
+      }
+    ],
+    "previewPort4173Listeners": 0,
+    "settledPilotWorkerProcessesRemaining": 0,
+    "sharedOrcaRuntimeStopped": false,
+    "sharedOrcaRuntimeRetentionReason": "Other pre-existing Orca terminals were attached; stopping shared runtime would broaden cleanup."
+  },
+  "adoptedAt": "2026-08-18T18:16:43.261Z",
+  "receiptHash": "34485e298033c4940497db3d1389d8c1a1e9345b77dfca263aa909f98d10e9c2"
+}

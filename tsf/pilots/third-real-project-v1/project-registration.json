@@ -19,21 +19,23 @@
     "workSet": true,
     "onlyRealProjectInPilotWorkSet": true,
     "missionId": "mission-5-audit-coverage-uncertainty-review",
-    "missionState": "READY_FOR_ADOPTION"
+    "missionState": "ADOPTED"
   },
   "release": {
-    "stableHead": "d3b7819aaceea8ef01b06be2ac10a59a863f8200",
-    "stableTree": "143447a37b3369de8df386e045a13f2d7a2825fa",
+    "stableHead": "0a8133bfc103c302e72fdf70dd47aef9fa7b41a6",
+    "stableTree": "c406f512f734c39a5824201016ee586fd9e04b3c",
+    "previousStableHead": "d3b7819aaceea8ef01b06be2ac10a59a863f8200",
+    "previousStableTree": "143447a37b3369de8df386e045a13f2d7a2825fa",
     "upgradeHead": "0a8133bfc103c302e72fdf70dd47aef9fa7b41a6",
     "upgradeTree": "c406f512f734c39a5824201016ee586fd9e04b3c",
     "testing": "GREEN",
-    "adoption": "PENDING_TIM",
+    "adoption": "ADOPTED_LOCAL_ONLY_FAST_FORWARD",
     "published": "UNCHANGED_NO_PUBLICATION_ACTION"
   },
   "restrictions": [
     "No push, pull request, merge, deploy, publish, or production mutation.",
     "Synthetic checked-in fixtures only; no Shopify account, credential, or live store access.",
-    "Stable remains unchanged until an explicit exact-candidate adoption decision.",
+    "Stable advanced only through Tim's exact local-only fast-forward adoption.",
     "Legacy TSF and all other real project repositories remain out of scope."
   ],
   "registeredAt": "2026-08-18T08:38:37.000Z"

@@ -2,12 +2,15 @@
   "schemaVersion": "TSF_REAL_PROJECT_PILOT_STATE_V1",
   "projectId": "shopify-catalog-qa",
   "missionId": "mission-5-audit-coverage-uncertainty-review",
-  "missionState": "READY_FOR_ADOPTION",
+  "missionState": "ADOPTED",
   "stable": {
     "branch": "main",
-    "head": "d3b7819aaceea8ef01b06be2ac10a59a863f8200",
-    "tree": "143447a37b3369de8df386e045a13f2d7a2825fa",
-    "advanced": false
+    "head": "0a8133bfc103c302e72fdf70dd47aef9fa7b41a6",
+    "tree": "c406f512f734c39a5824201016ee586fd9e04b3c",
+    "previousHead": "d3b7819aaceea8ef01b06be2ac10a59a863f8200",
+    "previousTree": "143447a37b3369de8df386e045a13f2d7a2825fa",
+    "advanced": true,
+    "advancedByAuthorizedAdoption": true
   },
   "upgrade": {
     "branch": "tsf-shopify-pilot-m5-candidate",
@@ -16,7 +19,7 @@
     "sourceTree": "7de46042a99748e97bf0b57c605f7834828d0909",
     "worktree": "C:/Users/codex-agent/orca/workspaces/shopify-catalog-qa/tsf-shopify-pilot-m5-candidate",
     "clean": true,
-    "adopted": false
+    "adopted": true
   },
   "testing": {
     "status": "GREEN",
@@ -25,9 +28,14 @@
   },
   "published": { "changed": false },
   "adoption": {
-    "status": "PENDING_TIM",
+    "status": "ADOPTED",
     "automatic": false,
-    "mergePerformed": false,
+    "authorizedBy": "TIM",
+    "authorizationScope": "LOCAL_ADOPTION_ONLY",
+    "integrationMode": "FAST_FORWARD_ONLY",
+    "mergePerformed": true,
+    "adoptedAt": "2026-08-18T18:16:43.261Z",
+    "receiptHash": "34485e298033c4940497db3d1389d8c1a1e9345b77dfca263aa909f98d10e9c2",
     "pushPerformed": false,
     "deployPerformed": false,
     "publishPerformed": false

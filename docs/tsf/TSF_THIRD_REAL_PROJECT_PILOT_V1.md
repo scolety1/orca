@@ -2,9 +2,9 @@
 
 ## Verdict
 
-`GREEN_TSF_ORCA_THIRD_REAL_PROJECT_READY_FOR_ADOPTION`
+`GREEN_TSF_ORCA_THIRD_REAL_PROJECT_ADOPTED_LOCAL`
 
-The Orca-based TSF safely understood Shopify Catalog QA, selected a bounded mission from current repository truth, implemented it in an isolated candidate, admitted two verifier/browser-driven corrections, independently reverified the exact final candidate, and completed Orca-native product QA. Stable remains unchanged. The mission is stopped at Tim's adoption gate; no push, PR, merge, deployment, publication, Shopify access, or other real-project work occurred.
+The Orca-based TSF safely understood Shopify Catalog QA, selected a bounded mission from current repository truth, implemented it in an isolated candidate, admitted two verifier/browser-driven corrections, independently reverified the exact final candidate, and completed Orca-native product QA. It stopped at Tim's adoption gate; Tim then authorized local-only adoption of the exact HEAD/tree. Stable advanced by fast-forward to that unchanged candidate, post-adoption verification passed, and no push, PR, deployment, publication, Shopify access, or other real-project work occurred.
 
 ## Project truth and selected mission
 
@@ -66,13 +66,18 @@ Orca's CDP screenshot timed out because the headless-served desktop window did n
 
 ## Release and authority state
 
-- Stable: unchanged at `d3b7819a...`, tree `143447a3...`
+- Previous Stable: `d3b7819a...`, tree `143447a3...`
+- Adopted Stable: `0a8133bf...`, tree `c406f512...`
 - Upgrade: exact candidate `0a8133bf...`, tree `c406f512...`
 - Testing: GREEN
 - Published: unchanged
-- Mission: `READY_FOR_ADOPTION`
-- Adoption: pending Tim; no merge performed
-- Receipt chain tip: `f8f7a6ea5c5a52d3df2b536a2af850372ec10228f0d0a2bde961f0d7360e300f`
+- Mission: `ADOPTED`
+- Adoption: `ADOPTED_LOCAL_ONLY` by Tim through `git merge --ff-only`
+- Receipt chain tip: `34485e298033c4940497db3d1389d8c1a1e9345b77dfca263aa909f98d10e9c2`
+
+Worker completion, verification, and browser completion did not modify Stable. Only Tim's explicit adoption advanced the clean `main` branch, without a merge commit, amendment, or history rewrite. Post-adoption regression from Stable passed 79/79 tests, the frozen 124/124 adversarial evaluation with 58 TP / 0 FP / 0 FN, typecheck, lint, production build, and `git diff --check`.
+
+Orca removed the proven-clean planner, exact candidate, and final verifier worktrees after adoption. An older verifier retained a Windows dirty marker despite identical filtered working/HEAD blobs, so it was not force-removed. Other pre-existing Shopify worktrees and attached Orca sessions were outside this cleanup proof and remained untouched; the shared runtime was therefore retained. No preview listener remained on port 4173.
 
 ## Capability feedback
 
@@ -80,4 +85,4 @@ This third, materially different repository reconfirmed bounded project registra
 
 ## Recommendation
 
-The exact candidate is ready for Tim's adoption decision. If adopted later, revalidate the exact HEAD/tree and use the repository's normal safe local integration path. Do not push, publish, deploy, or begin another real-project mission under this pilot authorization.
+The exact candidate was adopted locally after Tim's explicit approval. Preserve Stable at the adopted identity until separately authorized work begins. Do not push, publish, deploy, or begin another real-project mission under this pilot authorization.
