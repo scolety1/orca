@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "TSF_PLANNER_CONTINUATION_V1",
+  "checkpointId": "continuation-1",
+  "plannerTerminalIdentity": {
+    "continuity": "SAME_SESSION",
+    "identity": "persistent-tsf-planner-deep",
+    "role": "PLANNER_DEEP",
+    "missionId": "tsf-orca-long-run-mission-board",
+    "projectId": "fixture:tsf-orca-long-run",
+    "branch": "tsf-longrun-planner",
+    "plannerHead": "3043bd37312f843084aae4ad75124a56c78b0ae7"
+  },
+  "verifiedCommitSet": [
+    {
+      "workItemId": "work-item-1-normalization",
+      "commit": "4a92b9970860cea52b623b43e5c19cd62471f24f",
+      "baseHead": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+      "exactPaths": [
+        "src/normalize-tasks.mjs",
+        "test/normalize-tasks.test.mjs"
+      ],
+      "verification": {
+        "independent": true,
+        "command": "npm test",
+        "result": "GREEN",
+        "passed": 6,
+        "total": 6
+      }
+    },
+    {
+      "workItemId": "work-item-2-filtering",
+      "commit": "0f5512e2e2bfbffdf9e8e2644a50efcee589b3d5",
+      "baseHead": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+      "exactPaths": [
+        "src/filter-tasks.mjs",
+        "test/filter-tasks.test.mjs"
+      ],
+      "verification": {
+        "independent": true,
+        "command": "npm test",
+        "result": "GREEN",
+        "passed": 6,
+        "total": 6
+      }
+    },
+    {
+      "workItemId": "work-item-3-health-summary",
+      "commit": "fc13ae8f66c0c4b096f198019232279e23d8c1f6",
+      "baseHead": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+      "exactPaths": [
+        "src/summarize-health.mjs",
+        "test/summarize-health.test.mjs"
+      ],
+      "verification": {
+        "independent": true,
+        "command": "npm test",
+        "result": "GREEN",
+        "passed": 6,
+        "total": 6
+      }
+    }
+  ],
+  "interruptionAndRevisionFacts": [
+    {
+      "workItemId": "work-item-2-filtering",
+      "type": "BOUNDED_REVISION",
+      "fact": "Verification succeeded after one bounded same-owner commit correction; the final verified commit and exact source/test scope supersede the pre-correction result."
+    },
+    {
+      "workItemId": "work-item-3-health-summary",
+      "type": "INTERRUPTION_RECOVERY",
+      "fact": "An intentional interruption occurred and the same planner session recovered the work item before independent verification completed GREEN."
+    },
+    {
+      "type": "WORK_SET_GATE_RECOVERY",
+      "fact": "Work Set removal blocked new dispatch while existing workers settled; the project was explicitly re-entered before this continuation decision."
+    }
+  ],
+  "decision": "CONTINUE_TO_INTEGRATION",
+  "integrationWorkItemId": "work-item-4-offline-board-integration",
+  "usageMode": "MAXIMUM",
+  "role": "WORKER_DEEP",
+  "integrationGate": {
+    "status": "OPEN",
+    "basis": "All three dependency commits have exact-path inspection and independent 6/6 GREEN npm test verification.",
+    "requiredCommitSet": [
+      "4a92b9970860cea52b623b43e5c19cd62471f24f",
+      "0f5512e2e2bfbffdf9e8e2644a50efcee589b3d5",
+      "fc13ae8f66c0c4b096f198019232279e23d8c1f6"
+    ]
+  },
+  "stableHead": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+  "publishedHead": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+  "releaseMovement": "MANUAL_ONLY"
+}

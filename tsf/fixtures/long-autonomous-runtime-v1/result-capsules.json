@@ -1,0 +1,234 @@
+[
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "tsf-orca-long-run-normalization",
+    "workerIdentity": {
+      "role": "WORKER_CHEAP",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_73b1d795-50b8-4bdb-add2-95559b70b9a4",
+      "providerConversationId": null,
+      "worktreeId": "e77139ae-891a-49ed-b1e2-d50b673d2285::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_LONG_RUN_FIXTURE/tsf-longrun-normalization"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "4a92b9970860cea52b623b43e5c19cd62471f24f",
+      "tree": "983acad65e0c27219c6d3e68be6370025d0fe711"
+    },
+    "filesChanged": [
+      "src/normalize-tasks.mjs",
+      "test/normalize-tasks.test.mjs"
+    ],
+    "testsRun": [
+      {
+        "command": "npm test",
+        "exitCode": 0,
+        "passed": 6,
+        "failed": 0
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "ORCA_DISPATCH",
+        "runId": "run_e1297c4e9d73",
+        "dispatchId": "ctx_616de647afab",
+        "status": "completed"
+      },
+      {
+        "kind": "GIT",
+        "clean": true,
+        "exactCommit": "4a92b9970860cea52b623b43e5c19cd62471f24f",
+        "exactTree": "983acad65e0c27219c6d3e68be6370025d0fe711"
+      },
+      {
+        "kind": "USAGE_MODE",
+        "mode": "ECONOMY"
+      },
+      {
+        "kind": "BOUNDED_REVISION",
+        "detail": "same-owner commit correction"
+      }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Completed tsf-orca-long-run-normalization in its isolated Orca worktree.",
+    "recommendedNextStep": "Admit independent verification and continue only through the planner gate."
+  },
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "tsf-orca-long-run-filtering",
+    "workerIdentity": {
+      "role": "WORKER_BALANCED",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_0402ec03-258d-462a-b153-ef3e93d97cbc",
+      "providerConversationId": null,
+      "worktreeId": "e77139ae-891a-49ed-b1e2-d50b673d2285::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_LONG_RUN_FIXTURE/tsf-longrun-filtering"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "0f5512e2e2bfbffdf9e8e2644a50efcee589b3d5",
+      "tree": "2be156a573d0d24cf3787d4451157177bbb696a1"
+    },
+    "filesChanged": [
+      "src/filter-tasks.mjs",
+      "test/filter-tasks.test.mjs"
+    ],
+    "testsRun": [
+      {
+        "command": "npm test",
+        "exitCode": 0,
+        "passed": 6,
+        "failed": 0
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "ORCA_DISPATCH",
+        "runId": "run_e1297c4e9d73",
+        "dispatchId": "ctx_e9d124ac4c48",
+        "status": "completed"
+      },
+      {
+        "kind": "GIT",
+        "clean": true,
+        "exactCommit": "0f5512e2e2bfbffdf9e8e2644a50efcee589b3d5",
+        "exactTree": "2be156a573d0d24cf3787d4451157177bbb696a1"
+      },
+      {
+        "kind": "USAGE_MODE",
+        "mode": "BALANCED"
+      },
+      {
+        "kind": "BOUNDED_REVISION",
+        "detail": "same-owner commit correction"
+      }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Completed tsf-orca-long-run-filtering in its isolated Orca worktree.",
+    "recommendedNextStep": "Admit independent verification and continue only through the planner gate."
+  },
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "tsf-orca-long-run-health-summary",
+    "workerIdentity": {
+      "role": "WORKER_BALANCED",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_057b7d55-39f4-48f5-a09e-9cffc9254f1a",
+      "providerConversationId": null,
+      "worktreeId": "e77139ae-891a-49ed-b1e2-d50b673d2285::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_LONG_RUN_FIXTURE/tsf-longrun-health"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "fc13ae8f66c0c4b096f198019232279e23d8c1f6",
+      "tree": "ebced3be5cffc3fd3daa773bed7754112e368df3"
+    },
+    "filesChanged": [
+      "src/summarize-health.mjs",
+      "test/summarize-health.test.mjs"
+    ],
+    "testsRun": [
+      {
+        "command": "npm test",
+        "exitCode": 0,
+        "passed": 6,
+        "failed": 0
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "ORCA_DISPATCH",
+        "runId": "run_e1297c4e9d73",
+        "dispatchId": "ctx_8ec4fc858e2e",
+        "status": "completed"
+      },
+      {
+        "kind": "GIT",
+        "clean": true,
+        "exactCommit": "fc13ae8f66c0c4b096f198019232279e23d8c1f6",
+        "exactTree": "ebced3be5cffc3fd3daa773bed7754112e368df3"
+      },
+      {
+        "kind": "USAGE_MODE",
+        "mode": "BALANCED"
+      },
+      {
+        "kind": "RECOVERY",
+        "detail": "intentional interrupt; same terminal and conversation resumed from clean HEAD"
+      }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Completed tsf-orca-long-run-health-summary in its isolated Orca worktree.",
+    "recommendedNextStep": "Admit independent verification and continue only through the planner gate."
+  },
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "tsf-orca-long-run-offline-board-integration",
+    "workerIdentity": {
+      "role": "WORKER_DEEP",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_3fb32c86-cc0c-42d4-9e50-0b95500fddbe",
+      "providerConversationId": null,
+      "worktreeId": "e77139ae-891a-49ed-b1e2-d50b673d2285::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_LONG_RUN_FIXTURE/tsf-longrun-integration"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "98affbde5c59f9758e204dd7cd0a3dca9264f0e4",
+      "tree": "e8c2ba1c7a211c632ada460e2805a8cf53a3691b"
+    },
+    "filesChanged": [
+      "public/app.js",
+      "public/index.html",
+      "public/styles.css",
+      "src/mission-board.mjs",
+      "src/server.mjs",
+      "test/integration/mission-board.test.mjs"
+    ],
+    "testsRun": [
+      {
+        "command": "npm test",
+        "exitCode": 0,
+        "passed": 22,
+        "failed": 0
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "ORCA_DISPATCH",
+        "runId": "run_e1297c4e9d73",
+        "dispatchId": "ctx_7642c9ec777c",
+        "status": "completed"
+      },
+      {
+        "kind": "GIT",
+        "clean": true,
+        "exactCommit": "98affbde5c59f9758e204dd7cd0a3dca9264f0e4",
+        "exactTree": "e8c2ba1c7a211c632ada460e2805a8cf53a3691b"
+      },
+      {
+        "kind": "USAGE_MODE",
+        "mode": "MAXIMUM"
+      },
+      {
+        "kind": "RECOVERY",
+        "detail": "canonical ORCA_USER_DATA_PATH restored completion attachment"
+      },
+      {
+        "kind": "BOUNDED_REVISION",
+        "detail": "same-owner commit and completion correction"
+      }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Completed tsf-orca-long-run-offline-board-integration in its isolated Orca worktree.",
+    "recommendedNextStep": "Admit independent verifier and prepare explicit fixture adoption."
+  }
+]

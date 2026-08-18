@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "TSF_UPSTREAM_READINESS_V1",
+  "pinnedVersion": "v1.4.184",
+  "pinnedCommit": "2307f2ebbe1c1e737c0b12d920bb0a208332db2c",
+  "upstreamAncestorPreserved": true,
+  "orcaCoreFilesModified": 0,
+  "overlayCompatibility": "GREEN",
+  "updateAttempted": false,
+  "nextStep": "Run a separate bounded upstream compatibility mission before adopting any newer Orca baseline."
+}

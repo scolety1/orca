@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "TSF_CAPACITY_OBSERVATIONS_V1",
+  "peakParallelImplementationWorkers": 3,
+  "sequentialHeavyOperations": true,
+  "plannerSticky": true,
+  "workerStickyWithinTask": true,
+  "providers": {
+    "claude": "UNAVAILABLE",
+    "codex": "AVAILABLE",
+    "substitution": "PLANNER_DEEP and VERIFIER_INDEPENDENT used CODEX_SAFE fallback"
+  },
+  "telemetryLimit": "No speculative token/cache accounting; provider telemetry was not exposed through this run."
+}

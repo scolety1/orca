@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "TSF_ORCA_BROWSER_PROOF_V1",
+  "browserPageId": "a9151cba-7ef4-46b1-9a08-f2200fd2c6c1",
+  "url": "http://127.0.0.1:43128/",
+  "title": "Mission Control",
+  "loadError": null,
+  "initial": {
+    "missions": [
+      "M-1",
+      "M-2",
+      "M-3",
+      "M-4"
+    ],
+    "health": {
+      "total": 4,
+      "actionable": 3,
+      "staleActionable": 1,
+      "done": 1
+    },
+    "externalAssets": []
+  },
+  "filtered": {
+    "criteria": {
+      "owner": "navigator",
+      "state": "active",
+      "priority": "high"
+    },
+    "missions": [
+      "M-1"
+    ],
+    "health": {
+      "total": 1,
+      "actionable": 1,
+      "staleActionable": 0,
+      "done": 0
+    }
+  },
+  "transientObservation": "First snapshot RPC disconnected before response; runtime stayed ready and subsequent snapshot succeeded."
+}

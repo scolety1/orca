@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "TSF_WORK_SET_GATE_PROOF_V1",
+  "admission": {
+    "allowed": true,
+    "projectId": "fixture:tsf-orca-long-run",
+    "portfolioRevision": 3,
+    "workSetFingerprint": "8b91f7399769cbbd2d7caf9c657ccf3067071ecb754f50e3cd3b4f1654518bd5"
+  },
+  "removal": {
+    "newDispatchBlocked": "new dispatch blocked outside Work Set: fixture:tsf-orca-long-run",
+    "activeFleetPreserved": [
+      "fixture:tsf-orca-long-run"
+    ],
+    "existingWorkerSettlement": "THREE_PREEXISTING_DISPATCHES_COMPLETED"
+  },
+  "readmission": {
+    "allowed": true,
+    "projectId": "fixture:tsf-orca-long-run",
+    "portfolioRevision": 5,
+    "workSetFingerprint": "363a1f073e74ecf785d3334743cc6dea83ec2a8e3821663f6d703fad291022d3"
+  }
+}

@@ -1,0 +1,342 @@
+{
+  "schemaVersion": "TSF_PLANNER_OUTPUT_V1",
+  "missionId": "tsf-orca-long-run-mission-board",
+  "projectId": "fixture:tsf-orca-long-run",
+  "plannerAuthority": {
+    "role": "PLANNER_DEEP",
+    "scope": "Decompose, gate, and verify the synthetic fixture mission only.",
+    "separation": "The planner does not implement worker deliverables; workers may change only the paths and satisfy only the objectives authorized by their plan capsules."
+  },
+  "goalDecisions": [
+    {
+      "decision": "Normalization contract",
+      "resolution": "Normalize an iterable of raw mission records into a new, deterministic array in input order. Each output record has exactly id, title, owner, state, priority, and staleMinutes; string fields are trimmed, state and priority are lowercase, staleMinutes is a finite non-negative number, and malformed records fail with a clear error without mutating the input."
+    },
+    {
+      "decision": "Filtering contract",
+      "resolution": "Provide a pure filter over normalized records with optional owner, state, and priority criteria. Omitted criteria are no-ops, supplied criteria combine with AND semantics, input order is preserved, and no-match queries return an empty array without mutating inputs."
+    },
+    {
+      "decision": "Actionable health contract",
+      "resolution": "A mission is actionable when state is not done. An actionable mission is stale when staleMinutes is at least 10. Summaries report total, actionable, staleActionable, done, and counts by state from normalized records, without counting completed work as actionable or stale-actionable."
+    },
+    {
+      "decision": "Offline board contract",
+      "resolution": "Compose the three verified modules behind a dependency-free Node server bound to loopback. Serve a deterministic browser board using only repository-local HTML, CSS, and JavaScript, show filter controls and the agreed health summary, preserve fixture order, and require no network service or external asset."
+    }
+  ],
+  "workItems": [
+    {
+      "id": "work-item-1-normalization",
+      "title": "Normalize synthetic mission records",
+      "role": "WORKER_CHEAP",
+      "usageMode": "ECONOMY",
+      "dependencies": [],
+      "completionCriteria": [
+        "Valid fixture-shaped records normalize to the exact canonical fields and preserve order.",
+        "Whitespace, enum casing, numeric validation, malformed input, and immutability are covered by unit tests.",
+        "npm test passes.",
+        "Exactly the allowed source and test paths are committed in one worker commit."
+      ],
+      "planCapsule": {
+        "schemaVersion": "TSF_PLAN_CAPSULE_V1",
+        "missionId": "tsf-orca-long-run-normalization",
+        "projectId": "fixture:tsf-orca-long-run",
+        "objective": "Implement and unit-test the normalization contract for synthetic mission records as a dependency-free, deterministic pure transformation.",
+        "decisions": [
+          "Normalize an iterable into a new array while preserving input order.",
+          "Emit exactly id, title, owner, state, priority, and staleMinutes.",
+          "Trim strings, lowercase state and priority, require finite non-negative staleMinutes, reject malformed records clearly, and never mutate input."
+        ],
+        "repository": {
+          "root": "C:/TSF_ORCA_LONG_RUN_FIXTURE",
+          "worktree": "{ORCA_WORKTREE_PATH}",
+          "branch": "{ORCA_BRANCH}",
+          "head": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+          "tree": "865b4bf06ff673b976027f324647c21360cd59f6"
+        },
+        "allowedScope": [
+          "src/normalize-tasks.mjs",
+          "test/normalize-tasks.test.mjs"
+        ],
+        "constraints": [
+          "Use only Node built-ins and existing repository files.",
+          "Preserve input order and do not mutate inputs.",
+          "Keep the public contract limited to normalization; do not add filtering, summaries, servers, or browser UI."
+        ],
+        "prohibitedActions": [
+          "No dependency changes.",
+          "No network access or remote Git actions.",
+          "No edits outside allowedScope.",
+          "No product-repository access.",
+          "Do not implement filtering, health summary, server, or browser board behavior."
+        ],
+        "relevantComponents": [
+          "src/fixture-data.mjs",
+          "src/normalize-tasks.mjs",
+          "test/baseline.test.mjs",
+          "test/normalize-tasks.test.mjs"
+        ],
+        "acceptanceCriteria": [
+          "Valid fixture-shaped records normalize to the exact canonical fields and preserve order.",
+          "Whitespace, enum casing, numeric validation, malformed input, and immutability are covered by unit tests."
+        ],
+        "requiredTests": [
+          "npm test"
+        ],
+        "stopConditions": [
+          "A required change would touch a path outside allowedScope.",
+          "The contract cannot be satisfied without a dependency, network access, or product-repository access.",
+          "The authorized head or repository identity does not match the capsule."
+        ],
+        "expectedResultFormat": "TSF_RESULT_CAPSULE_V1"
+      }
+    },
+    {
+      "id": "work-item-2-filtering",
+      "title": "Filter normalized mission records",
+      "role": "WORKER_BALANCED",
+      "usageMode": "BALANCED",
+      "dependencies": [],
+      "completionCriteria": [
+        "Owner, state, and priority filters work alone and in combination.",
+        "Omitted criteria, no-match results, stable ordering, and input immutability are covered by unit tests.",
+        "npm test passes.",
+        "Exactly the allowed source and test paths are committed in one worker commit."
+      ],
+      "planCapsule": {
+        "schemaVersion": "TSF_PLAN_CAPSULE_V1",
+        "missionId": "tsf-orca-long-run-filtering",
+        "projectId": "fixture:tsf-orca-long-run",
+        "objective": "Implement and unit-test pure, composable filtering for normalized mission records by owner, state, and priority.",
+        "decisions": [
+          "Support optional owner, state, and priority criteria.",
+          "Treat omitted criteria as no-ops and combine supplied criteria with AND semantics.",
+          "Preserve input order, return an empty array for no matches, and never mutate input."
+        ],
+        "repository": {
+          "root": "C:/TSF_ORCA_LONG_RUN_FIXTURE",
+          "worktree": "{ORCA_WORKTREE_PATH}",
+          "branch": "{ORCA_BRANCH}",
+          "head": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+          "tree": "865b4bf06ff673b976027f324647c21360cd59f6"
+        },
+        "allowedScope": [
+          "src/filter-tasks.mjs",
+          "test/filter-tasks.test.mjs"
+        ],
+        "constraints": [
+          "Use only Node built-ins and existing repository files.",
+          "Combine supplied criteria with AND semantics and preserve input order.",
+          "Keep the public contract limited to filtering; tests may use local normalized-shaped fixtures without depending on work item 1."
+        ],
+        "prohibitedActions": [
+          "No dependency changes.",
+          "No network access or remote Git actions.",
+          "No edits outside allowedScope.",
+          "No product-repository access.",
+          "Do not implement normalization, health summary, server, or browser board behavior."
+        ],
+        "relevantComponents": [
+          "src/fixture-data.mjs",
+          "src/filter-tasks.mjs",
+          "test/baseline.test.mjs",
+          "test/filter-tasks.test.mjs"
+        ],
+        "acceptanceCriteria": [
+          "Owner, state, and priority filters work alone and in combination.",
+          "Omitted criteria, no-match results, stable ordering, and input immutability are covered by unit tests."
+        ],
+        "requiredTests": [
+          "npm test"
+        ],
+        "stopConditions": [
+          "A required change would touch a path outside allowedScope.",
+          "The contract cannot be satisfied without a dependency, network access, or product-repository access.",
+          "The authorized head or repository identity does not match the capsule."
+        ],
+        "expectedResultFormat": "TSF_RESULT_CAPSULE_V1"
+      }
+    },
+    {
+      "id": "work-item-3-health-summary",
+      "title": "Summarize actionable mission health",
+      "role": "WORKER_BALANCED",
+      "usageMode": "BALANCED",
+      "dependencies": [],
+      "completionCriteria": [
+        "Summary returns total, actionable, staleActionable, done, and deterministic counts by state.",
+        "The 10-minute boundary, completed stale records, empty input, state counts, and input immutability are covered by unit tests.",
+        "npm test passes.",
+        "Exactly the allowed source and test paths are committed in one worker commit."
+      ],
+      "planCapsule": {
+        "schemaVersion": "TSF_PLAN_CAPSULE_V1",
+        "missionId": "tsf-orca-long-run-health-summary",
+        "projectId": "fixture:tsf-orca-long-run",
+        "objective": "Implement and unit-test the deterministic actionable health summary for normalized mission records.",
+        "decisions": [
+          "Treat every mission whose state is not done as actionable.",
+          "Treat an actionable mission with staleMinutes at least 10 as stale-actionable.",
+          "Report total, actionable, staleActionable, done, and deterministic counts by state without mutating input."
+        ],
+        "repository": {
+          "root": "C:/TSF_ORCA_LONG_RUN_FIXTURE",
+          "worktree": "{ORCA_WORKTREE_PATH}",
+          "branch": "{ORCA_BRANCH}",
+          "head": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+          "tree": "865b4bf06ff673b976027f324647c21360cd59f6"
+        },
+        "allowedScope": [
+          "src/summarize-health.mjs",
+          "test/summarize-health.test.mjs"
+        ],
+        "constraints": [
+          "Use only Node built-ins and existing repository files.",
+          "Treat non-done missions as actionable and actionable missions at or above 10 stale minutes as stale-actionable.",
+          "Keep the public contract limited to summary calculation; tests may use local normalized-shaped fixtures without depending on work item 1."
+        ],
+        "prohibitedActions": [
+          "No dependency changes.",
+          "No network access or remote Git actions.",
+          "No edits outside allowedScope.",
+          "No product-repository access.",
+          "Do not implement normalization, filtering, server, or browser board behavior."
+        ],
+        "relevantComponents": [
+          "src/fixture-data.mjs",
+          "src/summarize-health.mjs",
+          "test/baseline.test.mjs",
+          "test/summarize-health.test.mjs"
+        ],
+        "acceptanceCriteria": [
+          "Summary returns total, actionable, staleActionable, done, and deterministic counts by state.",
+          "The 10-minute boundary, completed stale records, empty input, state counts, and input immutability are covered by unit tests."
+        ],
+        "requiredTests": [
+          "npm test"
+        ],
+        "stopConditions": [
+          "A required change would touch a path outside allowedScope.",
+          "The contract cannot be satisfied without a dependency, network access, or product-repository access.",
+          "The authorized head or repository identity does not match the capsule."
+        ],
+        "expectedResultFormat": "TSF_RESULT_CAPSULE_V1"
+      }
+    },
+    {
+      "id": "work-item-4-offline-board-integration",
+      "title": "Integrate an offline browser-ready mission board",
+      "role": "WORKER_DEEP",
+      "usageMode": "MAXIMUM",
+      "dependencies": [
+        "work-item-1-normalization",
+        "work-item-2-filtering",
+        "work-item-3-health-summary"
+      ],
+      "completionCriteria": [
+        "The work set includes the exact verifier-approved commits for work items 1 through 3 before integration begins.",
+        "npm start serves a browser-ready board from loopback using only repository-local resources.",
+        "The board displays all fixture missions, deterministic health values, and working owner, state, and priority filters using the verified modules.",
+        "Integration tests exercise the server response, local assets, serialized mission data, filtering composition, and health summary.",
+        "npm test passes with unit and integration coverage.",
+        "Exactly the allowed integration source, public, and test paths are committed in one worker commit."
+      ],
+      "planCapsule": {
+        "schemaVersion": "TSF_PLAN_CAPSULE_V1",
+        "missionId": "tsf-orca-long-run-offline-board-integration",
+        "projectId": "fixture:tsf-orca-long-run",
+        "objective": "Integrate the three independently verified worker commits into a dependency-free, loopback-only Node server and deterministic offline browser mission board with end-to-end integration coverage.",
+        "decisions": [
+          "Begin only from a work set containing the exact verifier-approved commits for normalization, filtering, and health summary.",
+          "Serve repository-local HTML, CSS, and JavaScript from a dependency-free Node server bound to loopback.",
+          "Display fixture missions in source order with filter controls and the agreed health summary by composing, not rewriting, the verified modules."
+        ],
+        "repository": {
+          "root": "C:/TSF_ORCA_LONG_RUN_FIXTURE",
+          "worktree": "{ORCA_WORKTREE_PATH}",
+          "branch": "{ORCA_BRANCH}",
+          "head": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+          "tree": "865b4bf06ff673b976027f324647c21360cd59f6"
+        },
+        "allowedScope": [
+          "src/server.mjs",
+          "src/mission-board.mjs",
+          "public/**",
+          "test/integration/**"
+        ],
+        "constraints": [
+          "Begin only from a work set containing the exact three verifier-approved commits from work items 1 through 3.",
+          "Use only Node built-ins and repository-local assets; npm start must remain the launch command.",
+          "Bind the server to loopback and make test ports configurable or ephemeral.",
+          "Compose the verified normalization, filtering, and health modules without rewriting their contracts."
+        ],
+        "prohibitedActions": [
+          "No dependency changes.",
+          "No external assets, CDNs, network services, or remote Git actions.",
+          "No edits outside allowedScope.",
+          "No product-repository access.",
+          "Do not modify the verified source or unit-test paths owned by work items 1 through 3."
+        ],
+        "relevantComponents": [
+          "src/fixture-data.mjs",
+          "src/normalize-tasks.mjs",
+          "src/filter-tasks.mjs",
+          "src/summarize-health.mjs",
+          "src/server.mjs",
+          "src/mission-board.mjs",
+          "public/**",
+          "test/integration/**"
+        ],
+        "acceptanceCriteria": [
+          "The work set includes the exact verifier-approved commits for work items 1 through 3 before integration begins.",
+          "npm start serves a browser-ready board from loopback using only repository-local resources.",
+          "The board displays all fixture missions, deterministic health values, and working owner, state, and priority filters using the verified modules.",
+          "Integration tests exercise the server response, local assets, serialized mission data, filtering composition, and health summary."
+        ],
+        "requiredTests": [
+          "npm test"
+        ],
+        "stopConditions": [
+          "Any dependency work item lacks an exact independently verified commit in the integration work set.",
+          "A required change would touch a path outside allowedScope or alter a verified dependency path.",
+          "The board cannot remain dependency-free, loopback-only, and fully repository-local.",
+          "The authorized head or repository identity does not match the capsule."
+        ],
+        "expectedResultFormat": "TSF_RESULT_CAPSULE_V1"
+      }
+    }
+  ],
+  "continuationPolicy": {
+    "rule": "Workers may continue autonomously only while their current capsule remains valid, their changes stay within allowedPaths, and required tests can still be run.",
+    "onDeviation": "Stop the worker and return evidence to PLANNER_DEEP for an explicit re-plan; workers cannot broaden their own scope."
+  },
+  "verifierPolicy": {
+    "independence": "Verification authority is separate from planner and worker authority.",
+    "requirements": [
+      "Verify the commit is based on the authorized base or gated dependency work set.",
+      "Verify the diff touches only allowedPaths and contains no dependency or network additions.",
+      "Run npm test and inspect objective-specific completion evidence.",
+      "Record the exact approved commit hash; a passing worker self-report is not verification."
+    ]
+  },
+  "interruptionRecoveryPolicy": {
+    "rule": "After interruption, inspect HEAD, status, diff, existing test output, and verifier receipts before resuming.",
+    "recovery": "Resume only the same capsule from a known committed point; quarantine ambiguous or out-of-scope changes and request planner direction rather than guessing or duplicating work."
+  },
+  "workSetGatePolicy": {
+    "parallelWorkSet": [
+      "work-item-1-normalization",
+      "work-item-2-filtering",
+      "work-item-3-health-summary"
+    ],
+    "integrationGate": "work-item-4-offline-board-integration remains blocked until independent verification records exact passing commit hashes for all three separable work items and the integration work set contains those commits.",
+    "failureRule": "A failed or superseded dependency commit closes the integration gate until the replacement commit is independently verified."
+  },
+  "releasePolicy": {
+    "rule": "Completion and verification produce candidate commits only.",
+    "stable": "Stable does not move automatically; explicit release authority must promote a fully verified integration commit.",
+    "published": "Published does not move automatically; explicit release authority must separately approve any publication after Stable.",
+    "remoteActions": "This fixture plan authorizes no remote Git action or deployment."
+  }
+}

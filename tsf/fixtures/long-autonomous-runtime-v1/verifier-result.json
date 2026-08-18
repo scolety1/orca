@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "TSF_VERIFIER_RESULT_V1",
+  "verdict": "GREEN",
+  "verifierIdentity": {
+    "role": "VERIFIER_INDEPENDENT",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelObserved": "gpt-5.6-sol",
+    "orcaSessionId": "term_9a56c7f4-aa55-414d-94b9-a36b66025c38",
+    "worktreeId": "e77139ae-891a-49ed-b1e2-d50b673d2285::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_LONG_RUN_FIXTURE/tsf-longrun-final-verifier"
+  },
+  "verifiedCandidate": {
+    "head": "98affbde5c59f9758e204dd7cd0a3dca9264f0e4",
+    "tree": "e8c2ba1c7a211c632ada460e2805a8cf53a3691b"
+  },
+  "dispatchId": "ctx_ea81ed4a3b07",
+  "evidence": [
+    {
+      "check": "INDEPENDENT_WORKTREE_CLEAN",
+      "pass": true
+    },
+    {
+      "check": "EXACT_SIX_INTEGRATION_PATHS",
+      "pass": true,
+      "paths": [
+        "public/app.js",
+        "public/index.html",
+        "public/styles.css",
+        "src/mission-board.mjs",
+        "src/server.mjs",
+        "test/integration/mission-board.test.mjs"
+      ]
+    },
+    {
+      "check": "DEPENDENCY_BLOBS_RETAINED",
+      "pass": true
+    },
+    {
+      "check": "LOOPBACK_AND_LOCAL_ASSETS",
+      "pass": true
+    },
+    {
+      "check": "INDEPENDENT_TESTS",
+      "pass": true,
+      "passed": 22,
+      "failed": 0
+    }
+  ],
+  "blockers": [],
+  "verifiedAt": "2026-08-18T02:14:08.752Z"
+}

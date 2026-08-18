@@ -1,0 +1,140 @@
+{
+  "schemaVersion": "TSF_FINAL_SYNTHESIS_V1",
+  "plannerTerminalIdentity": {
+    "continuity": "SAME_SESSION",
+    "identity": "persistent-tsf-planner-deep",
+    "role": "PLANNER_DEEP",
+    "missionId": "tsf-orca-long-run-mission-board",
+    "projectId": "fixture:tsf-orca-long-run",
+    "branch": "tsf-longrun-planner",
+    "plannerHead": "22454672d3d9241ae4ca667901c192c78fc65fb4"
+  },
+  "candidate": {
+    "commit": "98affbde5c59f9758e204dd7cd0a3dca9264f0e4",
+    "tree": "e8c2ba1c7a211c632ada460e2805a8cf53a3691b",
+    "parent": "a4155228e8546dff613b6b0776cb06af0c25c146",
+    "baseHead": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+    "baseIsAncestor": true,
+    "integratedAncestry": [
+      "42f2216407382eb6cdfb95a967aadc4c12a7e03a",
+      "53c8e59f49e82dfc7b57ef93912baf0a8c9ec5b0",
+      "a4155228e8546dff613b6b0776cb06af0c25c146",
+      "98affbde5c59f9758e204dd7cd0a3dca9264f0e4"
+    ],
+    "cleanIntegrationDiffPaths": [
+      "public/app.js",
+      "public/index.html",
+      "public/styles.css",
+      "src/mission-board.mjs",
+      "src/server.mjs",
+      "test/integration/mission-board.test.mjs"
+    ]
+  },
+  "workerEvidence": [
+    {
+      "workItemId": "work-item-1-normalization",
+      "verifiedCommit": "4a92b9970860cea52b623b43e5c19cd62471f24f",
+      "integratedCommit": "42f2216407382eb6cdfb95a967aadc4c12a7e03a",
+      "exactPaths": [
+        "src/normalize-tasks.mjs",
+        "test/normalize-tasks.test.mjs"
+      ],
+      "dependencyBlobsRetained": true,
+      "independentTests": "6/6 GREEN"
+    },
+    {
+      "workItemId": "work-item-2-filtering",
+      "verifiedCommit": "0f5512e2e2bfbffdf9e8e2644a50efcee589b3d5",
+      "integratedCommit": "53c8e59f49e82dfc7b57ef93912baf0a8c9ec5b0",
+      "exactPaths": [
+        "src/filter-tasks.mjs",
+        "test/filter-tasks.test.mjs"
+      ],
+      "dependencyBlobsRetained": true,
+      "independentTests": "6/6 GREEN",
+      "revisionFact": "Verification followed one bounded same-owner commit correction."
+    },
+    {
+      "workItemId": "work-item-3-health-summary",
+      "verifiedCommit": "fc13ae8f66c0c4b096f198019232279e23d8c1f6",
+      "integratedCommit": "a4155228e8546dff613b6b0776cb06af0c25c146",
+      "exactPaths": [
+        "src/summarize-health.mjs",
+        "test/summarize-health.test.mjs"
+      ],
+      "dependencyBlobsRetained": true,
+      "independentTests": "6/6 GREEN",
+      "interruptionFact": "The intentional interruption was recovered in the same planner session before verification."
+    },
+    {
+      "workItemId": "work-item-4-offline-board-integration",
+      "dispatchId": "ctx_7642c9ec777c",
+      "commit": "98affbde5c59f9758e204dd7cd0a3dca9264f0e4",
+      "tree": "e8c2ba1c7a211c632ada460e2805a8cf53a3691b",
+      "settled": true,
+      "tests": "22/22 GREEN",
+      "cleanDiffPathCount": 6
+    }
+  ],
+  "verifierEvidence": {
+    "dispatchId": "ctx_ea81ed4a3b07",
+    "separateWorktree": true,
+    "separateSession": true,
+    "editsMade": false,
+    "result": "GREEN",
+    "checks": {
+      "exactCommit": true,
+      "exactTree": true,
+      "ancestry": true,
+      "dependencyBlobsRetained": true,
+      "loopbackOnlyServer": true,
+      "localOnlyAssets": true,
+      "independentTests": "22/22 GREEN"
+    }
+  },
+  "browserEvidence": {
+    "surface": "Orca native browser",
+    "pageTitle": "Mission Control",
+    "loaded": true,
+    "sourceOrderMissionIds": [
+      "M-1",
+      "M-2",
+      "M-3",
+      "M-4"
+    ],
+    "unfilteredHealth": {
+      "total": 4,
+      "actionable": 3,
+      "staleActionable": 1,
+      "done": 1
+    },
+    "filterProof": {
+      "criteria": {
+        "owner": "navigator",
+        "state": "active",
+        "priority": "high"
+      },
+      "missionIds": [
+        "M-1"
+      ],
+      "health": {
+        "total": 1,
+        "actionable": 1,
+        "staleActionable": 0,
+        "done": 0
+      }
+    }
+  },
+  "decision": "READY_FOR_ADOPTION",
+  "unresolvedIssues": [],
+  "adoption": {
+    "required": "EXPLICIT_FIXTURE_ADOPTION",
+    "explicitFixtureAdoptionRequired": true,
+    "status": "NOT_ADOPTED",
+    "automatic": false,
+    "scope": "Disposable synthetic fixture only"
+  },
+  "stableHead": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+  "publishedHead": "d1420fee6034e8ba3e1f3ab8fb64749ddb1802cf",
+  "releaseMovement": "MANUAL_ONLY"
+}
