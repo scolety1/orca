@@ -1,0 +1,35 @@
+// Tiny local JSON persistence for operator-set state (Usage Mode, Work Set,
+// the fixture candidate's decision). Not synced anywhere, not a database —
+// one file, read on demand, written atomically. Gitignored.
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const STATE_DIR = path.join(HERE, '.local-state')
+const STATE_FILE = path.join(STATE_DIR, 'operator-state.json')
+
+const DEFAULTS = {
+  schemaVersion: 'TSF_UI_OPERATOR_LOCAL_STATE_V1',
+  usageMode: 'BALANCED',
+  workSet: ['colety-labs-sales-engine', 'weird-talent-marketplace', 'shopify-catalog-qa', 'tsf-ui-capability-check'],
+  fixtureCandidateDecision: null, // { decision, requestId, reason, at, receiptHash }
+  fixtureReceipts: [],
+  chatThreads: {} // projectId -> [{ role, content, at, decisionClass, intent }]
+}
+
+export function loadState() {
+  if (!existsSync(STATE_FILE)) return structuredClone(DEFAULTS)
+  try {
+    return { ...structuredClone(DEFAULTS), ...JSON.parse(readFileSync(STATE_FILE, 'utf8')) }
+  } catch {
+    return structuredClone(DEFAULTS)
+  }
+}
+
+export function saveState(state) {
+  mkdirSync(STATE_DIR, { recursive: true })
+  const tmp = STATE_FILE + '.tmp'
+  writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8')
+  renameSync(tmp, STATE_FILE)
+}

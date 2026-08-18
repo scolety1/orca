@@ -1,0 +1,124 @@
+@import 'tailwindcss';
+
+/*
+ * TSF operator UI palette. Deliberately distinct from Orca's own monochrome
+ * chrome (docs/STYLEGUIDE.md) — this is a separate product surface and Tim
+ * asked for a dark/purple/control-room direction. The *technique* still
+ * follows STYLEGUIDE conventions: paired surface/foreground tokens, a single
+ * radius scale, three elevation tiers, `color-mix` for tints instead of new
+ * hex values. Single dark theme by design — no light mode was requested.
+ */
+:root {
+  --background: #09090f;
+  --foreground: #e9e7f2;
+  --card: #121019;
+  --card-foreground: #e9e7f2;
+  --popover: #16141f;
+  --popover-foreground: #e9e7f2;
+  --primary: #9161f9;
+  --primary-foreground: #0a0714;
+  --secondary: #241f33;
+  --secondary-foreground: #d8d2ec;
+  --muted: #171522;
+  --muted-foreground: #938ea6;
+  --accent: #221c33;
+  --accent-foreground: #c9b8fb;
+  --destructive: #f0506e;
+  --destructive-foreground: #fdeef1;
+  --border: #262233;
+  --input: #1b1826;
+  --ring: #a684fc;
+
+  --status-healthy: #3ddc9a;
+  --status-degraded: #f5b942;
+  --status-blocked: #f0506e;
+  --status-unknown: #938ea6;
+
+  --decision-auto: #938ea6;
+  --decision-recommend: #a684fc;
+  --decision-tim: #f5b942;
+
+  --glow: #9161f9;
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-status-healthy: var(--status-healthy);
+  --color-status-degraded: var(--status-degraded);
+  --color-status-blocked: var(--status-blocked);
+  --color-status-unknown: var(--status-unknown);
+  --color-decision-auto: var(--decision-auto);
+  --color-decision-recommend: var(--decision-recommend);
+  --color-decision-tim: var(--decision-tim);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Restrained ambient glow — a faint radial wash behind the app shell, never
+   under interactive content. Kept as a fixed background layer, not per-card
+   decoration, so it reads as atmosphere rather than noise. */
+.tsf-ambient-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(680px circle at 12% -10%, color-mix(in srgb, var(--glow) 14%, transparent), transparent 60%),
+    radial-gradient(520px circle at 100% 0%, color-mix(in srgb, var(--glow) 8%, transparent), transparent 55%);
+}
+
+.tsf-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.tsf-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.tsf-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+.tsf-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

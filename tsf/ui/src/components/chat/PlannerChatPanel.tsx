@@ -1,0 +1,155 @@
+import { useEffect, useRef, useState } from 'react'
+import Markdown from 'react-markdown'
+import { Paperclip, SendHorizontal, Sparkles, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { DecisionBadge } from '@/components/DecisionBadge'
+import { api, ApiError } from '@/lib/api'
+import { cn } from '@/lib/cn'
+import type { ChatMessage } from '@/lib/types'
+
+interface Attachment {
+  name: string
+  size: number
+  dataUrl: string
+}
+
+// Hand-rolled on our own primitives rather than a pulled-in chat library.
+// We evaluated @assistant-ui/react (MIT, active, shadcn-themeable) — it's a
+// reasonable future upgrade if Planner Chat grows streaming/tool-call needs,
+// but V1's surface (message list + composer + attachments) didn't need its
+// weight, and hand-rolling keeps zero risk of an unverified API mismatch.
+// The backend contract (POST /api/chat) is what keeps this vendor-neutral —
+// swapping the responder for a real PLANNER_DEEP call changes no UI code.
+export function PlannerChatPanel({ projectId, projectName }: { projectId: string | null; projectName: string | null }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [draft, setDraft] = useState('')
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [providerLabel, setProviderLabel] = useState<string | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setMessages([])
+    setError(null)
+    if (!projectId) return
+    api
+      .chatHistory(projectId)
+      .then(setMessages)
+      .catch(() => undefined)
+  }, [projectId])
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages, sending])
+
+  async function send() {
+    const text = draft.trim()
+    if (!text || !projectId || sending) return
+    const attachmentNote = attachments.length ? `\n[Attached: ${attachments.map((a) => a.name).join(', ')}]` : ''
+    setSending(true)
+    setError(null)
+    setMessages((prev) => [...prev, { role: 'user', content: text + attachmentNote, at: new Date().toISOString() }])
+    setDraft('')
+    setAttachments([])
+    try {
+      const result = await api.chat(projectId, text + attachmentNote)
+      setProviderLabel(result.providerLabel)
+      setMessages((prev) => [...prev, { role: 'assistant', content: result.text, at: new Date().toISOString(), decisionClass: result.decisionClass, intent: result.intent }])
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reach the planner right now.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  function onFiles(fileList: FileList | null) {
+    if (!fileList) return
+    Array.from(fileList).forEach((file) => {
+      const reader = new FileReader()
+      reader.onload = () => setAttachments((prev) => [...prev, { name: file.name, size: file.size, dataUrl: String(reader.result) }])
+      reader.readAsDataURL(file)
+    })
+  }
+
+  return (
+    <div className="flex h-full flex-col rounded-xl border border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="size-4 text-primary" />
+          <div className="text-sm font-semibold">Planner Chat</div>
+        </div>
+        <div className="text-[10px] text-muted-foreground">{providerLabel ?? 'PLANNER_DEEP'}</div>
+      </div>
+      <ScrollArea className="tsf-scrollbar flex-1 px-4 py-3">
+        {!projectId ? (
+          <div className="py-10 text-center text-xs text-muted-foreground">Select a project to talk with its planner.</div>
+        ) : messages.length === 0 ? (
+          <div className="py-10 text-center text-xs text-muted-foreground">
+            Ask anything about <span className="text-foreground">{projectName}</span> — status, what's next, whether it's done, or leave feedback.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {messages.map((message, i) => (
+              <div key={i} className={cn('flex flex-col gap-1', message.role === 'user' ? 'items-end' : 'items-start')}>
+                <div
+                  className={cn(
+                    'max-w-[85%] overflow-hidden rounded-lg px-3 py-2 text-[13px] leading-relaxed [&_p]:m-0 [&_p+p]:mt-2',
+                    message.role === 'user' ? 'whitespace-pre-wrap bg-primary/15 text-foreground' : 'bg-muted text-foreground'
+                  )}
+                >
+                  {message.role === 'assistant' ? <Markdown>{message.content}</Markdown> : message.content}
+                </div>
+                {message.decisionClass && <DecisionBadge decisionClass={message.decisionClass} />}
+              </div>
+            ))}
+            {sending && <div className="text-[11px] text-muted-foreground">Planner is thinking…</div>}
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </ScrollArea>
+      {error && <div className="border-t border-border px-4 py-2 text-[11px] text-destructive">{error}</div>}
+      {attachments.length > 0 && (
+        <div className="border-t border-border px-4 py-2">
+          <div className="flex flex-wrap gap-2">
+            {attachments.map((a, i) => (
+              <div key={i} className="flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                {a.name}
+                <button onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))} aria-label={`Remove ${a.name}`}>
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-1 text-[10px] text-muted-foreground">Filenames are sent as context; contents aren't processed yet.</div>
+        </div>
+      )}
+      <div className="flex items-end gap-2 border-t border-border p-3">
+        <input ref={fileInputRef} type="file" accept="image/*,.txt,.md,.json,.log" multiple hidden onChange={(e) => onFiles(e.target.files)} />
+        <Button variant="ghost" size="icon-sm" disabled={!projectId} onClick={() => fileInputRef.current?.click()} aria-label="Attach a screenshot or file">
+          <Paperclip className="size-4" />
+        </Button>
+        <Textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              send()
+            }
+          }}
+          placeholder={projectId ? "What's going on with this project?" : 'Select a project first'}
+          disabled={!projectId}
+          rows={1}
+          className="min-h-9"
+        />
+        <Button size="icon-sm" disabled={!projectId || !draft.trim() || sending} onClick={send} aria-label="Send">
+          <SendHorizontal className="size-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}

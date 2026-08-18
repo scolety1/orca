@@ -15,7 +15,10 @@ Orca v1.4.184
     ├── routing/        roles and Usage Modes (configuration)
     ├── migration/      111-capability and upstream-delta records
     ├── fixtures/       synthetic dogfood only
-    ├── test/           overlay and plugin contract tests
+    ├── pilots/         real pilot project evidence (read-only source for server/)
+    ├── server/         narrow adapter: projects tsf/domain + tsf/pilots into JSON for ui/ (see docs/tsf/TSF_ORCA_OPERATOR_UI_V1.md)
+    ├── ui/             standalone operator frontend (Vite/React); not an Orca plugin panel
+    ├── test/           overlay, plugin contract, and operator-UI-server tests
     ├── main.mjs        Orca plugin worker entry
     └── panel.html      smallest read-only TSF operator surface
 ```
@@ -34,3 +37,7 @@ Orca v1.4.184
 ## Extension-seam result
 
 The official Orca plugin seam supports a sandboxed panel, commands, private storage, and bounded worktree/agent events. It does not yet expose the complete Run/task/dispatch graph through the public plugin API. The successor therefore uses the plugin for bounded operator integration and keeps orchestration adapters explicit. No Orca core patch was introduced to hide this gap.
+
+## Operator UI V1
+
+`tsf/server` + `tsf/ui` are a standalone TSF-owned overlay/module (the rung below the plugin seam in this file's preference order), not a plugin panel and not an Orca core change. `tsf/panel.html` remains the plugin-native drill-down surface. See `docs/tsf/TSF_ORCA_OPERATOR_UI_V1.md` for the full architecture, what's real vs. fixture-backed, and remaining gaps.
