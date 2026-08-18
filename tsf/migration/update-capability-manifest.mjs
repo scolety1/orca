@@ -16,7 +16,8 @@ const coverage = {
     'HLT-002': 'Orca native runtime and session health facts',
     'EXT-001': 'Orca plugin/skill/agent capability discovery',
     'REL-002': 'Orca native durable stores and atomic plugin storage',
-    'REL-005': 'Orca native terminal/session ownership and duplicate-worker fencing'
+    'REL-005': 'Orca native terminal/session ownership and duplicate-worker fencing',
+    'LEG-004': 'Orca native browser snapshot, select interaction, and loopback verification against the disposable fixture'
   },
   REUSED_LEGACY_CODE: {
     'CTX-005': 'Legacy project-context capsule schema retained byte-for-byte',
@@ -36,20 +37,26 @@ const coverage = {
     'PRJ-001': 'Bounded project registration domain contract; fixture-only runway',
     'PRJ-002': 'Known-project registry and provenance classes',
     'PRJ-006': 'Active Fleet domain logic',
-    'PRJ-007': 'Work Set subset, fingerprint, and saved-set logic',
-    'WRK-001': 'Persistent planner identity and bounded decomposition contract',
-    'WRK-003': 'Planner/worker coordination above Orca sessions',
-    'WRK-006': 'Independent verifier session enforcement',
+    'PRJ-007': 'Work Set subset, fingerprint, saved-set logic, fail-closed new-dispatch gate, and explicit reentry proof',
+    'WRK-001': 'Persistent Orca planner session decomposed and checkpointed one planning episode without implementing product code',
+    'WRK-003': 'Planner coordinated four real Orca task/dispatch/worktree sessions through compact capsules',
+    'WRK-006': 'Independent deterministic and deep Orca verifier sessions attested exact commits, trees, paths, tests, and browser behavior',
     'RTE-007': 'Provider-neutral stable role registry and configurable profiles',
     'CTX-001': 'Planner episode session-affinity contract and replacement receipt',
     'CTX-002': 'Worker mission session/worktree affinity enforcement',
     'MSN-002': 'High-level TSF mission state and Orca runtime fact projection',
     'MSN-007': 'Compact result admission validation and evidence requirement',
+    'MSN-009': 'Sticky planner checkpointed automatic continuation through four bounded tasks and final synthesis',
+    'MSN-010': 'Work Set removal blocks new dispatch while existing workers may settle; explicit reentry restores admission',
+    'MSN-011': 'Capsule stop conditions and bounded same-owner correction prevented repeated or authority-expanding repair loops',
+    'GIT-010': 'Independent Git and verifier checks rejected false-success claims until exact clean candidate commits existed',
     'GIT-011': 'Exact-binding adoption/reject/revision domain logic',
+    'GIT-012': 'Governed local fixture workers produced exact candidate commits with clean isolated worktrees and no publication',
     'GIT-013': 'Stable/Upgrade/Testing/Published domain model',
     'GIT-014': 'Exact-binding test disposition and Stable promotion model',
     'AUT-003': 'Worker completion remains READY_FOR_ADOPTION until exact decision',
     'AUT-007': 'Receipt Lite schema, hashes, producer/session facts, and verification',
+    'REL-007': 'Candidate admission binds exact commit/tree/path/test evidence plus independent runtime and browser attestation',
     'HLT-001': 'Actionable project/candidate/provider/compatibility Health projection'
   }
 }
@@ -78,7 +85,7 @@ manifest.summary = Object.fromEntries(
   manifest.allowedStates.map((state) => [state, manifest.capabilities.filter((entry) => entry.state === state).length])
 )
 manifest.summary.TOTAL = manifest.capabilities.length
-manifest.updatedAt = '2026-08-17'
+manifest.updatedAt = '2026-08-18'
 manifest.coverageRule = 'A non-PENDING state means foundation or overlay behavior exists; it does not claim final legacy parity unless separately proven.'
 
 await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')

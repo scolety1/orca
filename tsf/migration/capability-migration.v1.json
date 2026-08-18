@@ -98,7 +98,7 @@
       "orcaFit": "EASY_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 3,
-      "successorEvidence": "Work Set subset, fingerprint, and saved-set logic"
+      "successorEvidence": "Work Set subset, fingerprint, saved-set logic, fail-closed new-dispatch gate, and explicit reentry proof"
     },
     {
       "id": "PRJ-008",
@@ -143,7 +143,7 @@
       "orcaFit": "EASY_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 1,
-      "successorEvidence": "Persistent planner identity and bounded decomposition contract"
+      "successorEvidence": "Persistent Orca planner session decomposed and checkpointed one planning episode without implementing product code"
     },
     {
       "id": "WRK-002",
@@ -166,7 +166,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 1,
-      "successorEvidence": "Planner/worker coordination above Orca sessions"
+      "successorEvidence": "Planner coordinated four real Orca task/dispatch/worktree sessions through compact capsules"
     },
     {
       "id": "WRK-004",
@@ -200,7 +200,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 1,
-      "successorEvidence": "Independent verifier session enforcement"
+      "successorEvidence": "Independent deterministic and deep Orca verifier sessions attested exact commits, trees, paths, tests, and browser behavior"
     },
     {
       "id": "WRK-007",
@@ -510,8 +510,9 @@
       "importance": "CRITICAL",
       "legacyDisposition": "ADAPT_TSF",
       "orcaFit": "EASY_EXTENSION",
-      "state": "PENDING",
-      "proposedWave": 4
+      "state": "NEW_TSF_OVERLAY",
+      "proposedWave": 4,
+      "successorEvidence": "Sticky planner checkpointed automatic continuation through four bounded tasks and final synthesis"
     },
     {
       "id": "MSN-010",
@@ -521,8 +522,9 @@
       "importance": "CRITICAL",
       "legacyDisposition": "ADAPT_TSF",
       "orcaFit": "NATIVE_EQUIVALENT",
-      "state": "PENDING",
-      "proposedWave": 4
+      "state": "NEW_TSF_OVERLAY",
+      "proposedWave": 4,
+      "successorEvidence": "Work Set removal blocks new dispatch while existing workers may settle; explicit reentry restores admission"
     },
     {
       "id": "MSN-011",
@@ -532,8 +534,9 @@
       "importance": "HIGH",
       "legacyDisposition": "PORT_TSF",
       "orcaFit": "EASY_EXTENSION",
-      "state": "PENDING",
-      "proposedWave": 4
+      "state": "NEW_TSF_OVERLAY",
+      "proposedWave": 4,
+      "successorEvidence": "Capsule stop conditions and bounded same-owner correction prevented repeated or authority-expanding repair loops"
     },
     {
       "id": "MSN-012",
@@ -658,8 +661,9 @@
       "importance": "CRITICAL",
       "legacyDisposition": "ADAPT_TSF",
       "orcaFit": "EASY_EXTENSION",
-      "state": "PENDING",
-      "proposedWave": 2
+      "state": "NEW_TSF_OVERLAY",
+      "proposedWave": 2,
+      "successorEvidence": "Independent Git and verifier checks rejected false-success claims until exact clean candidate commits existed"
     },
     {
       "id": "GIT-011",
@@ -681,8 +685,9 @@
       "importance": "HIGH",
       "legacyDisposition": "ADAPT_TSF",
       "orcaFit": "NATIVE_EQUIVALENT",
-      "state": "PENDING",
-      "proposedWave": 2
+      "state": "NEW_TSF_OVERLAY",
+      "proposedWave": 2,
+      "successorEvidence": "Governed local fixture workers produced exact candidate commits with clean isolated worktrees and no publication"
     },
     {
       "id": "GIT-013",
@@ -1143,8 +1148,9 @@
       "importance": "CRITICAL",
       "legacyDisposition": "PORT_TSF",
       "orcaFit": "MODERATE_EXTENSION",
-      "state": "PENDING",
-      "proposedWave": 9
+      "state": "NEW_TSF_OVERLAY",
+      "proposedWave": 9,
+      "successorEvidence": "Candidate admission binds exact commit/tree/path/test evidence plus independent runtime and browser attestation"
     },
     {
       "id": "LEG-001",
@@ -1188,8 +1194,9 @@
       "importance": "HIGH",
       "legacyDisposition": "FOUNDATION_COMPARISON_REQUIRED",
       "orcaFit": "MODERATE_EXTENSION",
-      "state": "PENDING",
-      "proposedWave": 6
+      "state": "UPSTREAM_NATIVE",
+      "proposedWave": 6,
+      "successorEvidence": "Orca native browser snapshot, select interaction, and loopback verification against the disposable fixture"
     },
     {
       "id": "LEG-005",
@@ -1281,15 +1288,15 @@
     }
   ],
   "summary": {
-    "UPSTREAM_NATIVE": 11,
+    "UPSTREAM_NATIVE": 12,
     "REUSED_LEGACY_CODE": 4,
     "ADAPTED_LEGACY_CODE": 6,
-    "NEW_TSF_OVERLAY": 18,
-    "PENDING": 58,
+    "NEW_TSF_OVERLAY": 24,
+    "PENDING": 51,
     "REFERENCE_ONLY": 12,
     "REJECTED": 2,
     "TOTAL": 111
   },
-  "updatedAt": "2026-08-17",
+  "updatedAt": "2026-08-18",
   "coverageRule": "A non-PENDING state means foundation or overlay behavior exists; it does not claim final legacy parity unless separately proven."
 }
