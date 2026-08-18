@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_BROWSER_PROOF_V1",
+  "projectId": "colety-labs-sales-engine",
+  "missionId": "mission-5-operator-evidence-review",
+  "candidateHead": "50f9ce1fc5a462e168b1490391a02aa44ea63690",
+  "candidateTree": "578ee5cd359be686131a1f60e5e94b669b7f6049",
+  "orca": {
+    "runtimeId": "40c4c89d-4cec-4902-b49b-c6c9dca875a7",
+    "appVersion": "1.4.184",
+    "browserPageId": "28bcd976-0cce-4ecf-a552-ed55ebaf2e6e"
+  },
+  "origin": "http://localhost:3000/",
+  "data": "Synthetic local SQLite fixture only; no public URL, provider, credential, customer, CRM, outreach, or production access.",
+  "desktop": {
+    "viewport": [1440, 900],
+    "screeningDeepColumns": 2,
+    "runGridColumns": "489.5px 489.5px",
+    "comparisonGridColumns": "468.5px 468.5px",
+    "horizontalOverflow": false,
+    "linkedRunIdentityVisible": true,
+    "independentObservationCaveatVisible": true,
+    "lighthouseLabNotFieldCaveatVisible": true
+  },
+  "operatorReview": {
+    "offlineFailureStatus": "Failed to fetch",
+    "draftNoteRetainedAfterFailure": true,
+    "falseHistoryEntriesAfterFailure": 0,
+    "successfulDisposition": "accepted",
+    "historyEntriesAfterSuccess": 1,
+    "historyPersistedAfterReload": true,
+    "actor": "LOCAL_OPERATOR"
+  },
+  "healthyControl": {
+    "business": "Northstar Bicycle Repair Synthetic",
+    "screeningFindings": 0,
+    "deepFindings": 0,
+    "reviewForms": 0,
+    "copy": "No supported problems were found by either run's implemented checks. This healthy control is not a claim that the site is perfect, and there is no review item to manufacture."
+  },
+  "mobile": {
+    "viewport": [390, 844],
+    "documentClientWidth": 375,
+    "documentScrollWidth": 375,
+    "horizontalOverflow": false,
+    "runColumns": 1,
+    "comparisonColumns": 1,
+    "comparisonRegionWidth": 349,
+    "controlsWithinViewport": true,
+    "visibleFormLabels": 6
+  },
+  "console": {
+    "applicationErrors": 0,
+    "messages": "Vite connection and React development information only.",
+    "automationNoise": "Orca agent-browser reported no-URL Cannot redefine property: webdriver injection errors after reload; these originate in the automation shim, not the candidate."
+  },
+  "result": "GREEN"
+}

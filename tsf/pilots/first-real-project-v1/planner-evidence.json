@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_PLANNER_EVIDENCE_V1",
+  "projectId": "colety-labs-sales-engine",
+  "missionId": "mission-5-operator-evidence-review",
+  "planner": {
+    "role": "PLANNER_DEEP",
+    "usageMode": "BALANCED",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelObserved": "gpt-5.6-sol",
+    "effortObserved": "high",
+    "orcaSessionId": "term_2c649832-4bd5-43d0-95b8-2a05f380b3d4",
+    "runId": "run_502251c2543e",
+    "worktree": "C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-pilot-m5-planner",
+    "commit": "233582878e712400a32a8836b0004e26cf713872"
+  },
+  "selectedMission": {
+    "title": "Operator Evidence Review and SCREENING-vs-DEEP Comparison",
+    "rationale": "Current repository truth, HQ, roadmap, source, tests, and Missions 1-4 showed durable linked audit evidence but no operator comparison/disposition lane. The slice was useful, local-only, dependency-free, testable, and bounded to two sequential implementation scopes."
+  },
+  "artifacts": [
+    {
+      "path": "C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-pilot-m5-planner/.tsf/TSF_PILOT_PLANNER_OUTPUT_V1.json",
+      "sha256": "92c735fe85da7731cc171e4445c0b20f4ac61e39baf9697340d3be354b720d7c"
+    },
+    {
+      "path": "C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-pilot-m5-planner/.tsf/plan-evidence-review-backend.json",
+      "sha256": "dd193a15fe21d1d8bd193648a66e848a93d71a73417d3bbf00211f98084825b3",
+      "schemaValidation": "PASS"
+    },
+    {
+      "path": "C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-pilot-m5-planner/.tsf/plan-evidence-review-ui.json",
+      "sha256": "8ed8dd5e9302274bf3c17db38ad5c314f7980b56ce35dc451aed11cecae630ad",
+      "schemaValidation": "PASS"
+    }
+  ],
+  "semanticFriction": {
+    "finding": "The planner artifacts recorded baselineTree a5f4fc4f... while Git proves commit 6b8790be... has tree 0ce0df1c....",
+    "safetyImpact": "Execution did not trust that value: coordinator binding overrides and every worker/integration preflight used the exact baseline commit and clean worktrees.",
+    "followUp": "Add semantic head-to-tree validation to the compact-capsule admission path before broader rollout."
+  }
+}

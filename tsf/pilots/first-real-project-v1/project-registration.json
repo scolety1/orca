@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_REGISTRATION_V1",
+  "projectId": "colety-labs-sales-engine",
+  "displayName": "Colety Labs Sales Engine",
+  "repository": {
+    "path": "C:/Users/codex-agent/Documents/ChatGPT/Idea Incubator/colety-labs-sales-engine",
+    "topLevel": "C:/Users/codex-agent/Documents/ChatGPT/Idea Incubator/colety-labs-sales-engine",
+    "branch": "codex/mission-4-prospect-discovery",
+    "head": "6b8790bedfd56c0c75e71e9edef14e475f3211c3",
+    "tree": "0ce0df1cad78bf387290e504ffd78aae46116b6b",
+    "statusAtRegistration": "CLEAN"
+  },
+  "purpose": "Local evidence-first sales-engine research and operator review tooling.",
+  "lifecycle": "IDEA_INCUBATOR_LOCAL",
+  "sourceProvenance": "REAL_LOCAL_REPOSITORY",
+  "health": {
+    "status": "GREEN",
+    "repositoryAvailable": true,
+    "baselineTests": "34/34",
+    "baselineTypecheck": "PASS",
+    "baselineBuild": "PASS",
+    "activeGitOperation": false,
+    "activeExternalWorker": false
+  },
+  "workState": {
+    "knownProject": true,
+    "activeFleet": true,
+    "workSet": true,
+    "onlyRealProjectInPilotWorkSet": true,
+    "missionId": "mission-5-operator-evidence-review",
+    "missionState": "READY_FOR_ADOPTION"
+  },
+  "release": {
+    "stableHead": "6b8790bedfd56c0c75e71e9edef14e475f3211c3",
+    "stableTree": "0ce0df1cad78bf387290e504ffd78aae46116b6b",
+    "upgradeHead": "50f9ce1fc5a462e168b1490391a02aa44ea63690",
+    "upgradeTree": "578ee5cd359be686131a1f60e5e94b669b7f6049",
+    "testing": "GREEN",
+    "published": "UNCHANGED_NO_PUBLICATION_ACTION"
+  },
+  "restrictions": [
+    "No push, pull request, merge, deploy, publish, outreach, CRM, or production mutation.",
+    "No real customer or lead data; synthetic local fixtures only.",
+    "Source branch remains accepted Stable and must not change before Tim adoption.",
+    "Legacy TSF and all other real project repositories are out of scope."
+  ],
+  "registeredAt": "2026-08-18T03:54:59.000Z"
+}

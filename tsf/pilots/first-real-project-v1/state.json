@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_PILOT_STATE_V1",
+  "projectId": "colety-labs-sales-engine",
+  "missionId": "mission-5-operator-evidence-review",
+  "missionState": "READY_FOR_ADOPTION",
+  "stable": {
+    "branch": "codex/mission-4-prospect-discovery",
+    "head": "6b8790bedfd56c0c75e71e9edef14e475f3211c3",
+    "tree": "0ce0df1cad78bf387290e504ffd78aae46116b6b",
+    "unchanged": true
+  },
+  "upgrade": {
+    "branch": "tsf-pilot-m5-integration",
+    "head": "50f9ce1fc5a462e168b1490391a02aa44ea63690",
+    "tree": "578ee5cd359be686131a1f60e5e94b669b7f6049",
+    "worktree": "C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-pilot-m5-integration",
+    "clean": true
+  },
+  "testing": {
+    "status": "GREEN",
+    "independentVerifier": "GREEN",
+    "browser": "GREEN"
+  },
+  "published": {
+    "changed": false
+  },
+  "adoption": {
+    "status": "PENDING_TIM",
+    "automatic": false,
+    "mergePerformed": false,
+    "pushPerformed": false,
+    "deployPerformed": false,
+    "publishPerformed": false
+  },
+  "metrics": {
+    "plannerEpisodes": 1,
+    "implementationWorkers": 3,
+    "workerRetries": 0,
+    "verifierCorrectionCycles": 1,
+    "timInterruptions": 0,
+    "manualHumanCopyPaste": 0,
+    "providerUsageTelemetry": "NOT_EXPOSED",
+    "orchestrationRuns": 2,
+    "runtimeRecoveryEvents": 1
+  }
+}

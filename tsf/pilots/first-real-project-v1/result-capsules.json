@@ -1,0 +1,116 @@
+[
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "mission-5-operator-evidence-review/backend-ledger-and-comparison",
+    "workerIdentity": {
+      "role": "WORKER_BALANCED",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_b56dd3a5-71ea-4ad9-b47b-628978256961",
+      "providerConversationId": null,
+      "worktreeId": "443fd5dc-bd87-4019-a2a0-879188f97506::C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-pilot-m5-backend"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "8b8339f657ae000a6295e1ba1b93b1c3dbf6d892",
+      "tree": "286fd39012879ac2bc6f7ee3798def8c9cafd52f"
+    },
+    "filesChanged": [
+      "server/api.ts",
+      "server/evidence-review/compare.ts",
+      "server/evidence-review/service.ts",
+      "server/evidence-review/types.ts",
+      "server/storage/database.ts",
+      "tests/evidence-review/evidence-review.test.ts",
+      "tests/storage/database.test.ts"
+    ],
+    "testsRun": [
+      { "command": "scoped Prettier, lint, typecheck", "exitCode": 0 },
+      { "command": "npm.cmd test -- --no-file-parallelism", "exitCode": 0, "passed": 40, "failed": 0 },
+      { "command": "npm.cmd run build", "exitCode": 0 }
+    ],
+    "evidence": [
+      { "kind": "ORCA_DISPATCH", "runId": "run_502251c2543e", "taskId": "task_b37bd57f625a", "dispatchId": "ctx_7be7b8ab1dcd", "status": "completed" },
+      { "kind": "GIT", "clean": true, "exactCommit": "8b8339f657ae000a6295e1ba1b93b1c3dbf6d892" },
+      { "kind": "USAGE_MODE", "mode": "BALANCED" }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Added schema-v6 append-only operator review history, ownership guards, bounded review API, and neutral linked SCREENING/DEEP comparison.",
+    "recommendedNextStep": "Integrate the bounded UI worker and require independent verification."
+  },
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "mission-5-operator-evidence-review/lineage-comparison-ui",
+    "workerIdentity": {
+      "role": "WORKER_BALANCED",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_a6b11d04-0168-4c31-91ed-20a897c3b7ed",
+      "providerConversationId": null,
+      "worktreeId": "443fd5dc-bd87-4019-a2a0-879188f97506::C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-pilot-m5-ui"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "e581c9218669df781dc1b8aee7773ead2cd5b713",
+      "tree": "d72cd0973d74882638214d98410c39906e3a8ce3"
+    },
+    "filesChanged": [
+      "app/evidence-review.tsx",
+      "app/globals.css",
+      "app/sales-engine.tsx"
+    ],
+    "testsRun": [
+      { "command": "scoped Prettier, lint, typecheck", "exitCode": 0 },
+      { "command": "npm.cmd test -- --no-file-parallelism", "exitCode": 0, "passed": 40, "failed": 0 },
+      { "command": "npm.cmd run build", "exitCode": 0 }
+    ],
+    "evidence": [
+      { "kind": "ORCA_DISPATCH", "runId": "run_c168d9fbc35b", "taskId": "task_2546e8e6f4f5", "dispatchId": "ctx_b843a45f7413", "status": "completed" },
+      { "kind": "GIT", "clean": true, "exactCommit": "e581c9218669df781dc1b8aee7773ead2cd5b713" },
+      { "kind": "USAGE_MODE", "mode": "BALANCED" }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Added the server-authoritative linked evidence review UI, immutable history presentation, honest zero-finding control, accessible save states, and responsive stacking.",
+    "recommendedNextStep": "Integrate and run independent verifier plus coordinator-owned Orca browser QA."
+  },
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "mission-5-operator-evidence-review/request-body-revision",
+    "workerIdentity": {
+      "role": "WORKER_BALANCED",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_804603ac-b82c-494d-9b77-7aec4e92c166",
+      "providerConversationId": null,
+      "worktreeId": "443fd5dc-bd87-4019-a2a0-879188f97506::C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-pilot-m5-api-revision"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "8069d0070d3a0b088609ea45bcd42ec9984275a2",
+      "tree": "578ee5cd359be686131a1f60e5e94b669b7f6049"
+    },
+    "filesChanged": [
+      "server/api.ts",
+      "tests/evidence-review/evidence-review.test.ts"
+    ],
+    "testsRun": [
+      { "command": "focused evidence-review tests", "exitCode": 0, "passed": 6, "failed": 0 },
+      { "command": "npm.cmd test -- --no-file-parallelism", "exitCode": 0, "passed": 41, "failed": 0 },
+      { "command": "lint, typecheck, build, git diff --check", "exitCode": 0 }
+    ],
+    "evidence": [
+      { "kind": "ORCA_DISPATCH", "runId": "run_c168d9fbc35b", "taskId": "task_92666a452632", "dispatchId": "ctx_3fc6c87d45db", "status": "completed" },
+      { "kind": "VERIFIER_CORRECTION", "finding": "Malformed and oversized review bodies returned 500 instead of typed 4xx." },
+      { "kind": "GIT", "clean": true, "exactCommit": "8069d0070d3a0b088609ea45bcd42ec9984275a2" }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Mapped malformed JSON to 400 and oversized request bodies to 413 while retaining 500 for unexpected errors.",
+    "recommendedNextStep": "Re-run independent verification against the exact integrated candidate."
+  }
+]

@@ -71,7 +71,14 @@ const report = {
     uncovered: invalidCoverage.map((entry) => entry.id)
   },
   migrationWave: 4,
-  realProjectWork: 'NOT_AUTHORIZED_FOR_THIS_RUNWAY'
+  realProjectWork: migration.realPilotEvidence
+    ? {
+        authorization: 'FIRST_BOUNDED_PILOT_ONLY',
+        projectId: migration.realPilotEvidence.projectId,
+        candidateHead: migration.realPilotEvidence.candidateHead,
+        candidateState: migration.realPilotEvidence.candidateState
+      }
+    : 'NOT_AUTHORIZED_FOR_THIS_RUNWAY'
 }
 
 if (
