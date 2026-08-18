@@ -2,7 +2,13 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { createMission, transitionMission, projectOrcaRuntimeState } from '../domain/mission-state.mjs'
-import { createPortfolio, registerProject, setActiveFleet, setWorkSet } from '../domain/portfolio.mjs'
+import {
+  assertNewDispatchAllowed,
+  createPortfolio,
+  registerProject,
+  setActiveFleet,
+  setWorkSet
+} from '../domain/portfolio.mjs'
 import { createSessionBinding, assertAffinity, replaceSessionBinding } from '../domain/session-affinity.mjs'
 import { assertRoutingConfiguration, resolveUsageMode } from '../domain/routing.mjs'
 import { assessHealth } from '../domain/health.mjs'
@@ -30,6 +36,27 @@ test('Active Fleet preserves known projects and Work Set cannot exceed it', () =
   portfolio = setWorkSet(portfolio, ['fixture-a'], clock)
   assert.deepEqual(Object.keys(portfolio.projects).sort(), ['fixture-a', 'fixture-b'])
   assert.throws(() => setWorkSet(portfolio, ['fixture-b'], clock), /subset of Active Fleet/)
+})
+
+test('Work Set removal blocks new dispatch without invalidating existing state', () => {
+  let portfolio = createPortfolio(clock)
+  portfolio = registerProject(portfolio, {
+    id: 'fixture-a',
+    displayName: 'A',
+    root: 'fixture://a',
+    sourceClass: 'FIXTURE'
+  }, clock)
+  portfolio = setActiveFleet(portfolio, ['fixture-a'], clock)
+  portfolio = setWorkSet(portfolio, ['fixture-a'], clock)
+  const admitted = assertNewDispatchAllowed(portfolio, 'fixture-a')
+  assert.equal(admitted.allowed, true)
+
+  portfolio = setWorkSet(portfolio, [], clock)
+  assert.deepEqual(portfolio.activeFleet, ['fixture-a'])
+  assert.throws(
+    () => assertNewDispatchAllowed(portfolio, 'fixture-a'),
+    /new dispatch blocked outside Work Set/
+  )
 })
 
 test('provider roles and Usage Modes remain configuration-driven', async () => {

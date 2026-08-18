@@ -67,6 +67,24 @@ export function setWorkSet(portfolio, projectIds, clock) {
   return next
 }
 
+export function assertNewDispatchAllowed(portfolio, projectId) {
+  const project = portfolio.projects[projectId]
+  if (!project) throw new Error(`new dispatch blocked for unknown project: ${projectId}`)
+  if (!project.eligible) throw new Error(`new dispatch blocked for ineligible project: ${projectId}`)
+  if (!portfolio.activeFleet.includes(projectId)) {
+    throw new Error(`new dispatch blocked outside Active Fleet: ${projectId}`)
+  }
+  if (!portfolio.workSet.includes(projectId)) {
+    throw new Error(`new dispatch blocked outside Work Set: ${projectId}`)
+  }
+  return {
+    allowed: true,
+    projectId,
+    portfolioRevision: portfolio.revision,
+    workSetFingerprint: workSetFingerprint(portfolio)
+  }
+}
+
 export function saveWorkSet(portfolio, name, clock) {
   if (!name?.trim()) throw new Error('saved Work Set name is required')
   const next = deepClone(portfolio)
