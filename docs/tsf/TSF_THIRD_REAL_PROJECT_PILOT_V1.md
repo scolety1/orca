@@ -77,7 +77,7 @@ Orca's CDP screenshot timed out because the headless-served desktop window did n
 
 Worker completion, verification, and browser completion did not modify Stable. Only Tim's explicit adoption advanced the clean `main` branch, without a merge commit, amendment, or history rewrite. Post-adoption regression from Stable passed 79/79 tests, the frozen 124/124 adversarial evaluation with 58 TP / 0 FP / 0 FN, typecheck, lint, production build, and `git diff --check`.
 
-Orca removed the proven-clean planner, exact candidate, and final verifier worktrees after adoption. An older verifier retained a Windows dirty marker despite identical filtered working/HEAD blobs, so it was not force-removed. Other pre-existing Shopify worktrees and attached Orca sessions were outside this cleanup proof and remained untouched; the shared runtime was therefore retained. No preview listener remained on port 4173.
+Orca removed the proven-clean planner, exact candidate, and final verifier worktrees after adoption. Orca's removal also deleted the candidate branch ref; that local ref was immediately restored at the unchanged approved commit so the branch, HEAD, and tree identity remain preserved. An older verifier retained a Windows dirty marker despite identical filtered working/HEAD blobs, so it was not force-removed. Other pre-existing Shopify worktrees and attached Orca sessions were outside this cleanup proof and remained untouched; the shared runtime was therefore retained. No preview listener remained on port 4173.
 
 ## Capability feedback
 

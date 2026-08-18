@@ -60,6 +60,8 @@
     ],
     "previewPort4173Listeners": 0,
     "settledPilotWorkerProcessesRemaining": 0,
+    "candidateBranchRefPreserved": true,
+    "candidateBranchRefRestoredAfterOrcaWorktreeRemoval": true,
     "sharedOrcaRuntimeStopped": false,
     "sharedOrcaRuntimeRetentionReason": "Other pre-existing Orca terminals were attached; stopping shared runtime would broaden cleanup."
   },
