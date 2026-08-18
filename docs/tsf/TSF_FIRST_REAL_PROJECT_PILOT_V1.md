@@ -2,9 +2,9 @@
 
 ## Verdict
 
-`GREEN_TSF_ORCA_FIRST_REAL_PROJECT_PILOT_READY_FOR_ADOPTION`
+`GREEN_TSF_ORCA_FIRST_REAL_PROJECT_PILOT_ADOPTED_LOCAL`
 
-The Orca-based successor understood one real repository, selected a useful bounded mission from current evidence, produced an isolated candidate through real Orca workers, accepted one verifier-driven correction, passed an independent final verifier and Orca-native browser QA, and stopped before adoption. No source-branch mutation, merge, push, deployment, publication, outreach, CRM action, customer-data access, or other real-project access occurred.
+The Orca-based successor understood one real repository, selected a useful bounded mission from current evidence, produced an isolated candidate through real Orca workers, accepted one verifier-driven correction, and passed an independent final verifier and Orca-native browser QA. It stopped at the human gate; Tim then authorized local-only adoption of the exact candidate. The accepted branch advanced by fast-forward, post-adoption regression passed, and no push, PR, deployment, publication, outreach, CRM action, customer-data access, or other real-project access occurred.
 
 ## 1. Pilot project identity
 
@@ -152,14 +152,16 @@ Full machine-readable evidence is in `browser-proof.json`.
 
 ## 11. Release and adoption state
 
-- Stable: source branch remains unchanged at `6b8790be...`
+- Previous Stable: `6b8790bedfd56c0c75e71e9edef14e475f3211c3`
+- Adopted Stable: `50f9ce1fc5a462e168b1490391a02aa44ea63690`, tree `578ee5cd359be686131a1f60e5e94b669b7f6049`
 - Upgrade: exact candidate `50f9ce1f...`
 - Testing: GREEN on exact candidate tree
 - Published: unchanged; no publication action
-- Mission: `READY_FOR_ADOPTION`
-- Adoption: `PENDING_TIM`
+- Mission: `ADOPTED`
+- Adoption: `ADOPTED_LOCAL_ONLY` by Tim through `git merge --ff-only`
+- Adoption receipt: `fbd016d43f2a32b62943ca0fa8a3a367e4c305a8a36a47e1eec1fba4e9e380fb`
 
-Worker completion, integration, verifier completion, and browser completion did not modify Stable. No merge or adoption has occurred.
+Worker completion, integration, verifier completion, and browser completion did not modify Stable. Only Tim's later explicit adoption advanced the clean accepted branch, without a merge commit or history rewrite. Post-adoption regression from that accepted checkout passed 41/41 serialized tests, typecheck, production build, and `git diff --check`.
 
 ## 12. Pilot efficiency metrics
 
@@ -218,6 +220,6 @@ No legacy capability was removed; the 111-capability manifest still totals 111.
 
 ## 16. Recommendation
 
-Recommend Tim review and adopt this exact candidate into the project's accepted branch only if the product direction remains desired. Confidence is high because the scope is additive and local, 41/41 tests and build pass, the verifier found and closed a real defect, browser behavior is proven on synthetic desktop/mobile controls, and Stable remained untouched.
+The exact candidate was adopted locally after Tim's explicit approval. Preserve the accepted branch at the adopted identity until a separately authorized next mission; no remote or publication action is implied.
 
-Do not broaden to a second real project until Tim decides this adoption and the compact-capsule head/tree semantic check is scheduled. The host is otherwise safe for another controlled run after the local pilot processes are stopped.
+Do not broaden to a second real project. Schedule the compact-capsule head/tree semantic check before broader rollout.

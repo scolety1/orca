@@ -28,20 +28,23 @@
     "workSet": true,
     "onlyRealProjectInPilotWorkSet": true,
     "missionId": "mission-5-operator-evidence-review",
-    "missionState": "READY_FOR_ADOPTION"
+    "missionState": "ADOPTED"
   },
   "release": {
-    "stableHead": "6b8790bedfd56c0c75e71e9edef14e475f3211c3",
-    "stableTree": "0ce0df1cad78bf387290e504ffd78aae46116b6b",
+    "stableHead": "50f9ce1fc5a462e168b1490391a02aa44ea63690",
+    "stableTree": "578ee5cd359be686131a1f60e5e94b669b7f6049",
+    "previousStableHead": "6b8790bedfd56c0c75e71e9edef14e475f3211c3",
+    "previousStableTree": "0ce0df1cad78bf387290e504ffd78aae46116b6b",
     "upgradeHead": "50f9ce1fc5a462e168b1490391a02aa44ea63690",
     "upgradeTree": "578ee5cd359be686131a1f60e5e94b669b7f6049",
     "testing": "GREEN",
+    "adoption": "ADOPTED_LOCAL_ONLY_FAST_FORWARD",
     "published": "UNCHANGED_NO_PUBLICATION_ACTION"
   },
   "restrictions": [
     "No push, pull request, merge, deploy, publish, outreach, CRM, or production mutation.",
     "No real customer or lead data; synthetic local fixtures only.",
-    "Source branch remains accepted Stable and must not change before Tim adoption.",
+    "Source branch advanced only through Tim's exact local-only fast-forward adoption.",
     "Legacy TSF and all other real project repositories are out of scope."
   ],
   "registeredAt": "2026-08-18T03:54:59.000Z"

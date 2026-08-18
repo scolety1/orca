@@ -39,8 +39,8 @@ The TSF Health projection can report repository availability, worktree health, s
 - `git diff --check`: clean.
 - Successor worktree: clean after four local milestone commits.
 - First real-project candidate: 41/41 serialized tests, lint, typecheck, build, independent verifier, and Orca-native browser QA GREEN.
-- Stable real-project source remained unchanged at `6b8790bedfd56c0c75e71e9edef14e475f3211c3`; Upgrade `50f9ce1fc5a462e168b1490391a02aa44ea63690` is `READY_FOR_ADOPTION`.
+- Real-project Stable remained unchanged at `6b8790bedfd56c0c75e71e9edef14e475f3211c3` through worker/verifier/browser completion, then advanced by Tim-authorized fast-forward to `50f9ce1fc5a462e168b1490391a02aa44ea63690`; Published remains unchanged.
 
 ## Readiness
 
-The first carefully bounded real-project pilot is GREEN and stopped at Tim's adoption gate. Broader rollout should wait for Tim's decision on the exact candidate and should add semantic head-to-tree capsule validation, reusable project-profile discovery, and a first-class adoption review surface.
+The first carefully bounded real-project pilot and its local-only adoption are GREEN. No second real project is authorized; broader rollout should add semantic head-to-tree capsule validation, reusable project-profile discovery, and a first-class adoption review surface.

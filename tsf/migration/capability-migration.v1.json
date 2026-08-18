@@ -29,7 +29,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 3,
-      "successorEvidence": "Bounded project registration domain contract plus first real-project registration artifact; accepted source remained unchanged while isolated Upgrade reached READY_FOR_ADOPTION"
+      "successorEvidence": "Bounded project registration domain contract plus first real-project registration artifact; exact isolated Upgrade was adopted locally into the accepted branch only after Tim's explicit decision"
     },
     {
       "id": "PRJ-002",
@@ -596,7 +596,7 @@
       "orcaFit": "NATIVE_BETTER",
       "state": "UPSTREAM_NATIVE",
       "proposedWave": 0,
-      "successorEvidence": "Orca native real-project backend, UI, revision, verifier, and integration worktrees preserved accepted source while binding exact candidate commit/tree identity"
+      "successorEvidence": "Orca native real-project backend, UI, revision, verifier, and integration worktrees preserved accepted source until exact candidate commit/tree was adopted by fast-forward"
     },
     {
       "id": "GIT-005",
@@ -677,7 +677,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 2,
-      "successorEvidence": "Exact-binding revision path was used once after verifier failure; verified real candidate is held at READY_FOR_ADOPTION for Tim"
+      "successorEvidence": "Exact-binding revision path was used once after verifier failure; Tim then adopted only the reverified commit/tree through a fast-forward-only local integration"
     },
     {
       "id": "GIT-012",
@@ -701,7 +701,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 6,
-      "successorEvidence": "Stable/Upgrade/Testing/Published domain model"
+      "successorEvidence": "Stable/Upgrade/Testing/Published domain model plus first real-project proof that Stable stayed unchanged until explicit adoption and Published remained unchanged afterward"
     },
     {
       "id": "GIT-014",
@@ -713,7 +713,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 6,
-      "successorEvidence": "Exact-binding test disposition and Stable promotion model"
+      "successorEvidence": "Exact-binding test disposition and Stable promotion model plus first real-project fast-forward adoption preserving previous Stable identity and post-adoption regression evidence"
     },
     {
       "id": "AUT-001",
@@ -747,7 +747,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 2,
-      "successorEvidence": "First real-project worker completion, verifier GREEN, and browser GREEN still left accepted source unchanged and candidate READY_FOR_ADOPTION pending Tim"
+      "successorEvidence": "First real-project worker/verifier/browser completion left accepted source unchanged; only Tim's explicit local-only ADOPT decision advanced the accepted branch"
     },
     {
       "id": "AUT-004",
@@ -759,7 +759,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "PENDING",
       "proposedWave": 2,
-      "successorEvidence": "User-authorized local commits were safely created in three isolated real-project worktrees; reusable overlay authority classification is still pending"
+      "successorEvidence": "User-authorized local commits and an explicitly authorized local-only fast-forward adoption were performed without push/PR/deploy/publish; reusable overlay authority classification remains pending"
     },
     {
       "id": "AUT-005",
@@ -793,7 +793,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 2,
-      "successorEvidence": "Receipt Lite chain now records first real-project mission creation, exact candidate completion, independent verifier, browser identity, and READY_FOR_ADOPTION decision boundary"
+      "successorEvidence": "Receipt Lite chain records first real-project mission, exact candidate, independent verifier/browser evidence, and Tim's exact local-only adoption decision with post-adoption tests"
     },
     {
       "id": "AUT-008",
@@ -817,7 +817,7 @@
       "orcaFit": "EASY_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 5,
-      "successorEvidence": "Actionable Health projection plus real-project source/candidate cleanliness, runtime recovery, provider fallback, test/build, browser, and unresolved human adoption facts"
+      "successorEvidence": "Actionable Health projection plus real-project source/candidate cleanliness, runtime recovery, provider fallback, test/build/browser evidence, and resolved human adoption identity"
     },
     {
       "id": "HLT-002",
@@ -1306,7 +1306,11 @@
     "report": "docs/tsf/TSF_FIRST_REAL_PROJECT_PILOT_V1.md",
     "projectId": "colety-labs-sales-engine",
     "candidateHead": "50f9ce1fc5a462e168b1490391a02aa44ea63690",
-    "candidateState": "READY_FOR_ADOPTION",
+    "candidateState": "ADOPTED",
+    "adoptedHead": "50f9ce1fc5a462e168b1490391a02aa44ea63690",
+    "adoptedTree": "578ee5cd359be686131a1f60e5e94b669b7f6049",
+    "adoptionMode": "LOCAL_FAST_FORWARD_ONLY",
+    "adoptionReceiptHash": "fbd016d43f2a32b62943ca0fa8a3a367e4c305a8a36a47e1eec1fba4e9e380fb",
     "touchedCapabilityIds": [
       "PRJ-001",
       "PRJ-003",
@@ -1319,6 +1323,8 @@
       "GIT-004",
       "GIT-007",
       "GIT-011",
+      "GIT-013",
+      "GIT-014",
       "AUT-003",
       "AUT-004",
       "AUT-007",
