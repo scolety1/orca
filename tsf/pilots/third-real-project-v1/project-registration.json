@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_REGISTRATION_V1",
+  "projectId": "shopify-catalog-qa",
+  "displayName": "Shopify Catalog QA",
+  "sourcePath": "C:/Users/codex-agent/Documents/ChatGPT/Idea Incubator/shopify-catalog-qa",
+  "sourceProvenance": "REAL_LOCAL_REPOSITORY",
+  "health": {
+    "status": "GREEN",
+    "repositoryAvailable": true,
+    "baselineTests": "75/75",
+    "baselineTypecheck": "PASS",
+    "baselineLint": "PASS",
+    "activeGitOperation": false,
+    "activeExternalWorker": false
+  },
+  "workState": {
+    "knownProject": true,
+    "activeFleet": true,
+    "workSet": true,
+    "onlyRealProjectInPilotWorkSet": true,
+    "missionId": "mission-5-audit-coverage-uncertainty-review",
+    "missionState": "READY_FOR_ADOPTION"
+  },
+  "release": {
+    "stableHead": "d3b7819aaceea8ef01b06be2ac10a59a863f8200",
+    "stableTree": "143447a37b3369de8df386e045a13f2d7a2825fa",
+    "upgradeHead": "0a8133bfc103c302e72fdf70dd47aef9fa7b41a6",
+    "upgradeTree": "c406f512f734c39a5824201016ee586fd9e04b3c",
+    "testing": "GREEN",
+    "adoption": "PENDING_TIM",
+    "published": "UNCHANGED_NO_PUBLICATION_ACTION"
+  },
+  "restrictions": [
+    "No push, pull request, merge, deploy, publish, or production mutation.",
+    "Synthetic checked-in fixtures only; no Shopify account, credential, or live store access.",
+    "Stable remains unchanged until an explicit exact-candidate adoption decision.",
+    "Legacy TSF and all other real project repositories remain out of scope."
+  ],
+  "registeredAt": "2026-08-18T08:38:37.000Z"
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_VERIFIER_RESULT_V1",
+  "projectId": "shopify-catalog-qa",
+  "missionId": "mission-5-audit-coverage-uncertainty-review",
+  "verifier": {
+    "role": "VERIFIER_INDEPENDENT",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelObserved": "gpt-5.6-sol",
+    "effortObserved": "medium",
+    "orcaSessionId": "term_77d71b1a-57e9-4b98-9598-68b5ec9978c8",
+    "worktree": "C:/Users/codex-agent/orca/workspaces/shopify-catalog-qa/tsf-shopify-pilot-m5-revision-verifier"
+  },
+  "initialCandidatePass": {
+    "taskId": "task_d35b45d6aa39",
+    "dispatchId": "ctx_f56ae03d59d4",
+    "messageId": "msg_336015672468",
+    "outcome": "GREEN_CODE_REVIEW",
+    "candidateHead": "faddd5b1f7274f4e097ebd396cdaf8db138d6cf0",
+    "candidateTree": "695196c2e34b48c74f8db45132960d038919ddec"
+  },
+  "browserDiscoveredCorrection": {
+    "finding": "The narrow comparison list horizontally overflowed and clipped long rule identifiers at 321px.",
+    "revisionTaskId": "task_9cd54fa877d2",
+    "revisionHead": "25f00a7b0064e1fc2d82506618997c2c8833a50f"
+  },
+  "revisionPass": {
+    "taskId": "task_18df0a245045",
+    "dispatchId": "ctx_a8241d857b71",
+    "messageId": "msg_46900ef68728",
+    "outcome": "RED_TEST_QUALITY",
+    "finding": "The CSS guard encoded declaration order even though the responsive product fix was correct.",
+    "productChecks": "PASS"
+  },
+  "finalPass": {
+    "taskId": "task_f6d9252c920e",
+    "dispatchId": "ctx_798418a19e80",
+    "messageId": "msg_92d82e3ac530",
+    "outcome": "GREEN",
+    "candidateHead": "0a8133bfc103c302e72fdf70dd47aef9fa7b41a6",
+    "candidateTree": "c406f512f734c39a5824201016ee586fd9e04b3c",
+    "sourceTree": "7de46042a99748e97bf0b57c605f7834828d0909",
+    "worktreeClean": true,
+    "readyForBrowserQa": true
+  },
+  "checks": {
+    "focusedTests": "4/4",
+    "fullTests": "79/79",
+    "evaluation": "124/124; 58 TP, 0 FP, 0 FN",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS",
+    "diffCheck": "PASS",
+    "orderIndependentCssGuard": "PASS"
+  }
+}

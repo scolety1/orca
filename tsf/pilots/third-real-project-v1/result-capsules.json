@@ -1,0 +1,71 @@
+[
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "mission-5-audit-coverage-uncertainty-review/coverage-and-comparison-ui",
+    "workerIdentity": {
+      "role": "WORKER_BALANCED",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_7c536a08-e38f-449a-a25c-ba86d6386d18",
+      "providerConversationId": null,
+      "worktreeId": "1d166743-173d-445a-920a-7feb7d0109b3::C:/Users/codex-agent/orca/workspaces/shopify-catalog-qa/tsf-shopify-pilot-m5-candidate"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "faddd5b1f7274f4e097ebd396cdaf8db138d6cf0",
+      "tree": "695196c2e34b48c74f8db45132960d038919ddec"
+    },
+    "filesChanged": [
+      "src/styles.css",
+      "src/ui/CatalogQaApp.tsx",
+      "src/ui/RuleCoverage.tsx",
+      "tests/mission5-ui.test.tsx"
+    ],
+    "testsRun": [
+      { "command": "npm.cmd test", "exitCode": 0, "passed": 78, "failed": 0 },
+      { "command": "npm.cmd run evaluate", "exitCode": 0, "passed": 124, "failed": 0 },
+      { "command": "typecheck, lint, build, git diff --check", "exitCode": 0 }
+    ],
+    "evidence": [
+      { "kind": "ORCA_DISPATCH", "runId": "run_b00b1bdd428d", "taskId": "task_859d62d5cbc7", "dispatchId": "ctx_34e4a9705815", "status": "completed" },
+      { "kind": "USAGE_MODE", "mode": "BALANCED" }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Added honest 16-rule coverage, future skipped reasons, comparison filters, a prominent uncertainty queue, evidence details, accessible empty states, and keyboard-safe selection without changing engine semantics.",
+    "recommendedNextStep": "Run independent verification and Orca-native narrow-screen product QA."
+  },
+  {
+    "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+    "missionId": "mission-5-audit-coverage-uncertainty-review/narrow-overflow-revision",
+    "workerIdentity": {
+      "role": "WORKER_BALANCED",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelObserved": "gpt-5.6-sol",
+      "orcaSessionId": "term_26ee4162-218d-493e-a5fd-8d3fd9511430",
+      "providerConversationId": null,
+      "worktreeId": "1d166743-173d-445a-920a-7feb7d0109b3::C:/Users/codex-agent/orca/workspaces/shopify-catalog-qa/tsf-shopify-pilot-m5-candidate"
+    },
+    "outcome": "SUCCEEDED",
+    "repository": {
+      "head": "25f00a7b0064e1fc2d82506618997c2c8833a50f",
+      "tree": "7dbb42be7e721ed379b22c08f7a59f3d2da7cc07"
+    },
+    "filesChanged": ["src/styles.css", "tests/mission5-ui.test.tsx"],
+    "testsRun": [
+      { "command": "npm.cmd test", "exitCode": 0, "passed": 79, "failed": 0 },
+      { "command": "npm.cmd run evaluate", "exitCode": 0, "passed": 124, "failed": 0 },
+      { "command": "typecheck, lint, build, git diff --check", "exitCode": 0 }
+    ],
+    "evidence": [
+      { "kind": "ORCA_DISPATCH", "runId": "run_b00b1bdd428d", "taskId": "task_9cd54fa877d2", "dispatchId": "ctx_749e7e68073c", "status": "completed" },
+      { "kind": "BROWSER_FINDING", "finding": "At 321px the comparison list was 217px wide but scrolled to 290px and clipped long rule IDs." }
+    ],
+    "blockers": [],
+    "unresolvedQuestions": [],
+    "implementationSummary": "Added the missing intrinsic-size constraints and long-identifier wrapping while retaining bounded vertical list scrolling.",
+    "recommendedNextStep": "Require a fresh independent verifier before repeating browser QA."
+  }
+]

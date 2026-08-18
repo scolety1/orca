@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "TSF_REAL_PROJECT_BROWSER_PROOF_V1",
+  "projectId": "shopify-catalog-qa",
+  "missionId": "mission-5-audit-coverage-uncertainty-review",
+  "candidateHead": "0a8133bfc103c302e72fdf70dd47aef9fa7b41a6",
+  "candidateTree": "c406f512f734c39a5824201016ee586fd9e04b3c",
+  "orca": {
+    "runtimeId": "00b5aa79-540c-4d25-963d-6d7605f1585f",
+    "appVersion": "1.4.184",
+    "browserPageId": "47375af8-a2d7-42e4-b6f1-26e89c459c3d"
+  },
+  "origin": "http://127.0.0.1:4173/",
+  "data": "Checked-in synthetic baseline report plus bundled Healthy Store fixture; no live Shopify, credential, network API, or production access.",
+  "coverage": {
+    "registeredRulesVisible": 16,
+    "honestExecutionWordingVisible": true,
+    "appliesAndAbstainsBoundariesVisible": true
+  },
+  "uncertainty": {
+    "queueCount": 17,
+    "status": "Cannot confidently match",
+    "reasonVisible": true,
+    "matchMethod": "no safe match",
+    "confidence": "unmatched",
+    "baselineEvidenceVisible": true,
+    "currentEvidence": "No current finding is available; absence alone is not treated as resolution."
+  },
+  "narrow": {
+    "viewport": [321, 920],
+    "comparisonLayoutWidth": 232,
+    "listClientWidth": 217,
+    "listScrollWidth": 217,
+    "rowWidths": "17 rows at 217px",
+    "horizontalOverflow": false,
+    "verticalOverflow": "auto",
+    "longIdentifierOverflowWrap": "anywhere"
+  },
+  "alerts": 0,
+  "screenshot": {
+    "captured": false,
+    "reason": "Orca CDP screenshot timed out because the headless-served desktop window did not retain operating-system focus; accessibility snapshot and live DOM geometry remained available and authoritative for this check."
+  },
+  "result": "GREEN"
+}
