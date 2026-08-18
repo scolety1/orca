@@ -1,0 +1,22 @@
+{
+  "runtimeId": "34458289-58a0-43d5-aade-bae40a79adb7",
+  "runId": "run_79578caf1acb",
+  "taskId": "task_86fb11c93eed",
+  "dispatchId": "ctx_b1be706d2dec",
+  "supersededDispatchId": "ctx_86f4c7d63994",
+  "providerId": "openai",
+  "agentId": "codex",
+  "modelObserved": "gpt-5.6-sol",
+  "effortObserved": "high",
+  "codexVersion": "0.144.1",
+  "orcaSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+  "providerConversationId": "01a01270-3aae-7102-9a99-10027248ab64",
+  "processIncarnation": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade@@7285c9db:ad8d8231-1c51-4edf-b27a-40e0e2ee0e3c",
+  "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+  "worktreePath": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+  "branch": "refs/heads/tsf-runtime-bridge-upgrade",
+  "workerState": "succeeded",
+  "workerStage": "settled",
+  "taskState": "completed",
+  "workerMessageId": "msg_c56929574670"
+}

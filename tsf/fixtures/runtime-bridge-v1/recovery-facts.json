@@ -1,0 +1,20 @@
+{
+  "runtimeId": "517051c4-ba54-41a7-979a-c558e57547c3",
+  "runId": "run_79578caf1acb",
+  "taskId": "task_86fb11c93eed",
+  "dispatchId": "ctx_b1be706d2dec",
+  "providerId": "openai",
+  "agentId": "codex",
+  "modelObserved": "gpt-5.6-sol",
+  "effortObserved": "high",
+  "orcaSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+  "providerConversationId": "01a01270-3aae-7102-9a99-10027248ab64",
+  "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+  "worktreePath": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+  "taskState": "completed",
+  "dispatchState": "completed",
+  "workerState": "succeeded",
+  "workerStage": "settled",
+  "terminalObservation": "stale_handle_durable_in_dispatch_record",
+  "candidateHead": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e"
+}

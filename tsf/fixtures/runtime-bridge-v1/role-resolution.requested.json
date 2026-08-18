@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "TSF_ROLE_RESOLUTION_V1",
+  "role": "WORKER_BALANCED",
+  "requested": {
+    "profileId": "CODEX_SAFE",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelClass": "BALANCED_IMPLEMENTATION",
+    "effortClass": "MEDIUM"
+  },
+  "orcaLaunch": {
+    "agentId": "codex",
+    "model": "gpt-5.6-sol",
+    "effort": "high",
+    "selectionReason": "The bridge mission explicitly controls GPT-5.6 Sol at HIGH effort; Orca accepts provider model and effort as replaceable launch configuration."
+  },
+  "observed": {
+    "providerId": null,
+    "agentId": null,
+    "model": null,
+    "effort": null,
+    "assurance": "PENDING_NATIVE_SESSION_OBSERVATION"
+  },
+  "fallbackProfile": "CLAUDE_SAFE",
+  "selectionAssurance": "REQUESTED_NOT_YET_OBSERVED"
+}

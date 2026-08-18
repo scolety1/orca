@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "TSF_VERIFIER_RESULT_V1",
+  "verdict": "GREEN",
+  "verifierIdentity": {
+    "role": "VERIFIER_INDEPENDENT",
+    "providerId": "tsf-local",
+    "agentId": "deterministic-node-verifier",
+    "modelObserved": null,
+    "orcaSessionId": "term_61264a97-98ac-4023-813a-9fa7a630d185"
+  },
+  "evidence": [
+    {
+      "id": "CANDIDATE_HEAD_MATCHES_CAPSULE",
+      "pass": true,
+      "observed": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e"
+    },
+    {
+      "id": "CANDIDATE_TREE_MATCHES_CAPSULE",
+      "pass": true,
+      "observed": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4"
+    },
+    {
+      "id": "STABLE_HEAD_UNCHANGED",
+      "pass": true,
+      "observed": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba"
+    },
+    {
+      "id": "STABLE_TREE_UNCHANGED",
+      "pass": true,
+      "observed": "5333ecb6541b14c466004a23b8f128a2179d3e30"
+    },
+    {
+      "id": "EXACT_WORKTREE_ROOT",
+      "pass": true,
+      "observed": "C:\\Users\\codex-agent\\orca\\workspaces\\TSF_ORCA_RUNTIME_BRIDGE_FIXTURE\\tsf-runtime-bridge-upgrade"
+    },
+    {
+      "id": "ISOLATED_LINKED_WORKTREE",
+      "pass": true,
+      "observed": "C:\\TSF_ORCA_RUNTIME_BRIDGE_FIXTURE\\.git\\worktrees\\tsf-runtime-bridge-upgrade"
+    },
+    {
+      "id": "WORKTREE_CLEAN",
+      "pass": true,
+      "observed": ""
+    },
+    {
+      "id": "ONLY_ALLOWED_FILES_CHANGED",
+      "pass": true,
+      "observed": [
+        "src/greeting.js",
+        "test/greeting.test.js"
+      ]
+    },
+    {
+      "id": "SOURCE_VALUE_EXACT",
+      "pass": true,
+      "observed": "export function bridgeGreeting() {\n  return 'Orca native runtime bridge verified.'\n}"
+    },
+    {
+      "id": "TEST_ASSERTION_EXACT",
+      "pass": true,
+      "observed": "import assert from 'node:assert/strict'\r\nimport test from 'node:test'\r\n\r\nimport { bridgeGreeting } from '../src/greeting.js'\r\n\r\ntest('reports the current bridge state', () => {\n  assert.equal(bridgeGreeting(), 'Orca native runtime bridge verified.')\n})"
+    },
+    {
+      "id": "INDEPENDENT_TEST_PASS",
+      "pass": true,
+      "observed": {
+        "exitCode": 0,
+        "error": null,
+        "stdoutTail": [
+          "ℹ tests 1",
+          "ℹ suites 0",
+          "ℹ pass 1",
+          "ℹ fail 0",
+          "ℹ cancelled 0",
+          "ℹ skipped 0",
+          "ℹ todo 0",
+          "ℹ duration_ms 49.7255"
+        ]
+      }
+    }
+  ],
+  "verifiedResult": {
+    "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+    "workerSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+    "head": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+    "tree": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4",
+    "filesChanged": [
+      "src/greeting.js",
+      "test/greeting.test.js"
+    ],
+    "testCommand": "npm test",
+    "testExitCode": 0
+  },
+  "blockers": [],
+  "verifiedAt": "2026-08-18T01:24:25.102Z"
+}

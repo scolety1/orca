@@ -1,0 +1,997 @@
+{
+  "schemaVersion": "TSF_ORCA_NATIVE_RUNTIME_BRIDGE_STATE_V1",
+  "portfolio": {
+    "schemaVersion": "TSF_PORTFOLIO_V1",
+    "revision": 3,
+    "projects": {
+      "fixture:tsf-orca-runtime-bridge": {
+        "schemaVersion": "TSF_PROJECT_V1",
+        "id": "fixture:tsf-orca-runtime-bridge",
+        "displayName": "TSF Orca Runtime Bridge Fixture",
+        "root": "C:/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE",
+        "sourceClass": "FIXTURE",
+        "lifecycle": "IN_DEVELOPMENT",
+        "eligible": true,
+        "provenance": "DISPOSABLE_SYNTHETIC",
+        "registeredAt": "2026-08-18T01:12:54.716Z"
+      }
+    },
+    "activeFleet": [
+      "fixture:tsf-orca-runtime-bridge"
+    ],
+    "workSet": [
+      "fixture:tsf-orca-runtime-bridge"
+    ],
+    "savedWorkSets": {},
+    "updatedAt": "2026-08-18T01:12:54.717Z"
+  },
+  "usageMode": {
+    "schemaVersion": "TSF_USAGE_MODE_RESOLUTION_V1",
+    "mode": "TEST_MINIMAL",
+    "policy": {
+      "plannerTier": "PLANNER_BALANCED",
+      "workerTier": "WORKER_CHEAP",
+      "verifierDepth": "MINIMAL",
+      "parallelism": 1,
+      "retryBudget": 0,
+      "autonomy": "BOUNDED_SINGLE_STEP",
+      "trustMode": "STANDARD_AUTONOMOUS",
+      "researchDepth": "NONE",
+      "browserTesting": "OFF_UNLESS_REQUIRED",
+      "highAssuranceChecks": false
+    },
+    "planner": {
+      "schemaVersion": "TSF_ROLE_RESOLUTION_V1",
+      "role": "PLANNER_BALANCED",
+      "requested": {
+        "profileId": "CODEX_SAFE",
+        "providerId": "openai",
+        "agentId": "codex",
+        "modelClass": "BALANCED_REASONING",
+        "effortClass": "MEDIUM"
+      },
+      "observed": {
+        "providerId": null,
+        "agentId": null,
+        "model": null,
+        "effort": null,
+        "assurance": "UNOBSERVED"
+      },
+      "fallbackProfile": "CLAUDE_SAFE",
+      "selectionAssurance": "RECOMMENDED_ONLY"
+    },
+    "worker": {
+      "schemaVersion": "TSF_ROLE_RESOLUTION_V1",
+      "role": "WORKER_CHEAP",
+      "requested": {
+        "profileId": "CODEX_SAFE",
+        "providerId": "openai",
+        "agentId": "codex",
+        "modelClass": "ECONOMY_IMPLEMENTATION",
+        "effortClass": "LOW"
+      },
+      "observed": {
+        "providerId": null,
+        "agentId": null,
+        "model": null,
+        "effort": null,
+        "assurance": "UNOBSERVED"
+      },
+      "fallbackProfile": null,
+      "selectionAssurance": "RECOMMENDED_ONLY"
+    },
+    "verifier": {
+      "schemaVersion": "TSF_ROLE_RESOLUTION_V1",
+      "role": "VERIFIER_INDEPENDENT",
+      "requested": {
+        "profileId": "CLAUDE_SAFE",
+        "providerId": "anthropic",
+        "agentId": "claude-code",
+        "modelClass": "INDEPENDENT_VERIFICATION",
+        "effortClass": "HIGH"
+      },
+      "observed": {
+        "providerId": null,
+        "agentId": null,
+        "model": null,
+        "effort": null,
+        "assurance": "UNOBSERVED"
+      },
+      "fallbackProfile": "CODEX_SAFE",
+      "selectionAssurance": "RECOMMENDED_ONLY"
+    }
+  },
+  "workerRole": {
+    "schemaVersion": "TSF_ROLE_RESOLUTION_V1",
+    "role": "WORKER_BALANCED",
+    "requested": {
+      "profileId": "CODEX_SAFE",
+      "providerId": "openai",
+      "agentId": "codex",
+      "modelClass": "BALANCED_IMPLEMENTATION",
+      "effortClass": "MEDIUM"
+    },
+    "observed": {
+      "providerId": "openai",
+      "agentId": "codex",
+      "model": "gpt-5.6-sol",
+      "effort": "high",
+      "assurance": "OBSERVED_ORCA_NATIVE_SESSION"
+    },
+    "fallbackProfile": "CLAUDE_SAFE",
+    "selectionAssurance": "OBSERVED"
+  },
+  "plan": {
+    "schemaVersion": "TSF_PLAN_CAPSULE_V1",
+    "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+    "projectId": "fixture:tsf-orca-runtime-bridge",
+    "objective": "Prove real Orca-to-Codex execution by changing the fixture bridge greeting and its test in the Orca-managed Upgrade worktree.",
+    "decisions": [
+      "Orca owns the worktree, terminal, native agent session, and runtime facts.",
+      "TSF owns role resolution, the compact handoff, verification, and adoption authority.",
+      "Stable main must remain at 7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba until explicit adoption."
+    ],
+    "repository": {
+      "root": "C:/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE",
+      "worktree": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+      "branch": "tsf-runtime-bridge-upgrade",
+      "head": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba",
+      "tree": "5333ecb6541b14c466004a23b8f128a2179d3e30"
+    },
+    "allowedScope": [
+      "src/greeting.js",
+      "test/greeting.test.js"
+    ],
+    "constraints": [
+      "Change bridgeGreeting() to return exactly: Orca native runtime bridge verified.",
+      "Update the existing test to assert the exact new string.",
+      "Run npm test.",
+      "Create one local commit with message: feat: verify native runtime bridge.",
+      "Return a concise completion summary with changed files, tests, commit, and blockers."
+    ],
+    "prohibitedActions": [
+      "Do not modify any repository other than the assigned fixture worktree.",
+      "Do not modify main or adopt the candidate.",
+      "Do not push, open a PR, merge, deploy, publish, install dependencies, or access credentials.",
+      "Do not create or use a second runtime or worktree."
+    ],
+    "relevantComponents": [
+      "src/greeting.js",
+      "test/greeting.test.js",
+      "package.json"
+    ],
+    "acceptanceCriteria": [
+      "bridgeGreeting() returns exactly Orca native runtime bridge verified.",
+      "The focused Node test passes.",
+      "Only the two allowed files differ from Stable.",
+      "The change is committed only on the Upgrade branch."
+    ],
+    "requiredTests": [
+      "npm test"
+    ],
+    "stopConditions": [
+      "The assigned path is not the Orca-managed disposable fixture worktree.",
+      "Any action would touch a real project or require credentials/network/installation.",
+      "The requested model/provider is unavailable and Orca cannot report a clean failure."
+    ],
+    "expectedResultFormat": "TSF_RESULT_CAPSULE_V1"
+  },
+  "mission": {
+    "schemaVersion": "TSF_MISSION_V1",
+    "id": "tsf-orca-native-runtime-bridge-v1",
+    "projectId": "fixture:tsf-orca-runtime-bridge",
+    "objective": "Prove a real governed TSF to Orca to Codex fixture execution and adoption boundary.",
+    "usageMode": "TEST_MINIMAL",
+    "state": "ADOPTED",
+    "revision": 6,
+    "plannerIdentity": {
+      "role": "PLANNER_BALANCED",
+      "orcaSessionId": "term_61af709d-0f27-46f3-abf7-1c481aa76182"
+    },
+    "workItems": [
+      {
+        "id": "tsf-orca-native-runtime-bridge-v1-worker-1",
+        "capsule": {
+          "schemaVersion": "TSF_PLAN_CAPSULE_V1",
+          "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+          "projectId": "fixture:tsf-orca-runtime-bridge",
+          "objective": "Prove real Orca-to-Codex execution by changing the fixture bridge greeting and its test in the Orca-managed Upgrade worktree.",
+          "decisions": [
+            "Orca owns the worktree, terminal, native agent session, and runtime facts.",
+            "TSF owns role resolution, the compact handoff, verification, and adoption authority.",
+            "Stable main must remain at 7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba until explicit adoption."
+          ],
+          "repository": {
+            "root": "C:/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE",
+            "worktree": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+            "branch": "tsf-runtime-bridge-upgrade",
+            "head": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba",
+            "tree": "5333ecb6541b14c466004a23b8f128a2179d3e30"
+          },
+          "allowedScope": [
+            "src/greeting.js",
+            "test/greeting.test.js"
+          ],
+          "constraints": [
+            "Change bridgeGreeting() to return exactly: Orca native runtime bridge verified.",
+            "Update the existing test to assert the exact new string.",
+            "Run npm test.",
+            "Create one local commit with message: feat: verify native runtime bridge.",
+            "Return a concise completion summary with changed files, tests, commit, and blockers."
+          ],
+          "prohibitedActions": [
+            "Do not modify any repository other than the assigned fixture worktree.",
+            "Do not modify main or adopt the candidate.",
+            "Do not push, open a PR, merge, deploy, publish, install dependencies, or access credentials.",
+            "Do not create or use a second runtime or worktree."
+          ],
+          "relevantComponents": [
+            "src/greeting.js",
+            "test/greeting.test.js",
+            "package.json"
+          ],
+          "acceptanceCriteria": [
+            "bridgeGreeting() returns exactly Orca native runtime bridge verified.",
+            "The focused Node test passes.",
+            "Only the two allowed files differ from Stable.",
+            "The change is committed only on the Upgrade branch."
+          ],
+          "requiredTests": [
+            "npm test"
+          ],
+          "stopConditions": [
+            "The assigned path is not the Orca-managed disposable fixture worktree.",
+            "Any action would touch a real project or require credentials/network/installation.",
+            "The requested model/provider is unavailable and Orca cannot report a clean failure."
+          ],
+          "expectedResultFormat": "TSF_RESULT_CAPSULE_V1"
+        },
+        "state": "COMPLETED",
+        "resultId": "135a79bb5c49082cb7bfad4da7c068709dd9c93e99d8219c4faa75b54e3998eb"
+      }
+    ],
+    "results": [
+      {
+        "digest": "135a79bb5c49082cb7bfad4da7c068709dd9c93e99d8219c4faa75b54e3998eb",
+        "capsule": {
+          "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+          "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+          "workerIdentity": {
+            "role": "WORKER_BALANCED",
+            "providerId": "openai",
+            "agentId": "codex",
+            "modelObserved": "gpt-5.6-sol",
+            "orcaSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+            "providerConversationId": "01a01270-3aae-7102-9a99-10027248ab64",
+            "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade"
+          },
+          "outcome": "SUCCEEDED",
+          "repository": {
+            "head": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+            "tree": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4"
+          },
+          "filesChanged": [
+            "src/greeting.js",
+            "test/greeting.test.js"
+          ],
+          "testsRun": [
+            {
+              "command": "npm test",
+              "exitCode": 0,
+              "passed": 1,
+              "failed": 0,
+              "durationMsObserved": 63.0825,
+              "source": "ORCA_CODEX_TERMINAL_OUTPUT"
+            }
+          ],
+          "evidence": [
+            {
+              "kind": "ORCA_WORKER_SETTLED",
+              "runtimeId": "34458289-58a0-43d5-aade-bae40a79adb7",
+              "runId": "run_79578caf1acb",
+              "taskId": "task_86fb11c93eed",
+              "dispatchId": "ctx_b1be706d2dec",
+              "terminalHandle": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+              "state": "succeeded",
+              "stage": "settled"
+            },
+            {
+              "kind": "WORKER_REPORT",
+              "messageId": "msg_c56929574670",
+              "taskStatus": "completed"
+            },
+            {
+              "kind": "GIT_CANDIDATE",
+              "branch": "tsf-runtime-bridge-upgrade",
+              "commit": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+              "baseStable": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba",
+              "worktreeClean": true
+            }
+          ],
+          "blockers": [],
+          "unresolvedQuestions": [],
+          "implementationSummary": "A real Orca-owned Codex 0.144.1 session using gpt-5.6-sol/high changed the two allowed fixture files, passed npm test, committed the Upgrade candidate, and settled the recovered Orca dispatch successfully.",
+          "recommendedNextStep": "Run an independent verifier in a distinct Orca terminal before advancing to READY_FOR_ADOPTION."
+        },
+        "admittedAt": "2026-08-18T01:25:40.017Z"
+      }
+    ],
+    "verifierResults": [
+      {
+        "schemaVersion": "TSF_VERIFIER_RESULT_V1",
+        "verdict": "GREEN",
+        "verifierIdentity": {
+          "role": "VERIFIER_INDEPENDENT",
+          "providerId": "tsf-local",
+          "agentId": "deterministic-node-verifier",
+          "modelObserved": null,
+          "orcaSessionId": "term_61264a97-98ac-4023-813a-9fa7a630d185"
+        },
+        "evidence": [
+          {
+            "id": "CANDIDATE_HEAD_MATCHES_CAPSULE",
+            "pass": true,
+            "observed": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e"
+          },
+          {
+            "id": "CANDIDATE_TREE_MATCHES_CAPSULE",
+            "pass": true,
+            "observed": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4"
+          },
+          {
+            "id": "STABLE_HEAD_UNCHANGED",
+            "pass": true,
+            "observed": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba"
+          },
+          {
+            "id": "STABLE_TREE_UNCHANGED",
+            "pass": true,
+            "observed": "5333ecb6541b14c466004a23b8f128a2179d3e30"
+          },
+          {
+            "id": "EXACT_WORKTREE_ROOT",
+            "pass": true,
+            "observed": "C:\\Users\\codex-agent\\orca\\workspaces\\TSF_ORCA_RUNTIME_BRIDGE_FIXTURE\\tsf-runtime-bridge-upgrade"
+          },
+          {
+            "id": "ISOLATED_LINKED_WORKTREE",
+            "pass": true,
+            "observed": "C:\\TSF_ORCA_RUNTIME_BRIDGE_FIXTURE\\.git\\worktrees\\tsf-runtime-bridge-upgrade"
+          },
+          {
+            "id": "WORKTREE_CLEAN",
+            "pass": true,
+            "observed": ""
+          },
+          {
+            "id": "ONLY_ALLOWED_FILES_CHANGED",
+            "pass": true,
+            "observed": [
+              "src/greeting.js",
+              "test/greeting.test.js"
+            ]
+          },
+          {
+            "id": "SOURCE_VALUE_EXACT",
+            "pass": true,
+            "observed": "export function bridgeGreeting() {\n  return 'Orca native runtime bridge verified.'\n}"
+          },
+          {
+            "id": "TEST_ASSERTION_EXACT",
+            "pass": true,
+            "observed": "import assert from 'node:assert/strict'\r\nimport test from 'node:test'\r\n\r\nimport { bridgeGreeting } from '../src/greeting.js'\r\n\r\ntest('reports the current bridge state', () => {\n  assert.equal(bridgeGreeting(), 'Orca native runtime bridge verified.')\n})"
+          },
+          {
+            "id": "INDEPENDENT_TEST_PASS",
+            "pass": true,
+            "observed": {
+              "exitCode": 0,
+              "error": null,
+              "stdoutTail": [
+                "ℹ tests 1",
+                "ℹ suites 0",
+                "ℹ pass 1",
+                "ℹ fail 0",
+                "ℹ cancelled 0",
+                "ℹ skipped 0",
+                "ℹ todo 0",
+                "ℹ duration_ms 49.7255"
+              ]
+            }
+          }
+        ],
+        "verifiedResult": {
+          "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+          "workerSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+          "head": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+          "tree": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4",
+          "filesChanged": [
+            "src/greeting.js",
+            "test/greeting.test.js"
+          ],
+          "testCommand": "npm test",
+          "testExitCode": 0
+        },
+        "blockers": [],
+        "verifiedAt": "2026-08-18T01:24:25.102Z",
+        "digest": "52f647b688312ee0cb78a7922c9070b09cad602281ae2892027a43b6de404bc6",
+        "admittedAt": "2026-08-18T01:25:40.018Z"
+      }
+    ],
+    "unresolvedQuestions": [],
+    "transitions": [
+      {
+        "from": null,
+        "to": "DRAFT",
+        "reason": "MISSION_CREATED",
+        "at": "2026-08-18T01:12:54.717Z"
+      },
+      {
+        "from": "DRAFT",
+        "to": "PLANNING",
+        "reason": "LIVE_BRIDGE_MISSION_ACCEPTED",
+        "evidence": [],
+        "at": "2026-08-18T01:12:54.717Z"
+      },
+      {
+        "from": "PLANNING",
+        "to": "READY",
+        "reason": "PLANNER_DECOMPOSITION_COMPLETE",
+        "evidence": [],
+        "at": "2026-08-18T01:12:54.717Z"
+      },
+      {
+        "from": "READY",
+        "to": "ACTIVE",
+        "reason": "ORCA_DISPATCH_ACCEPTED",
+        "evidence": [],
+        "at": "2026-08-18T01:21:57.309Z"
+      },
+      {
+        "from": "ACTIVE",
+        "to": "REVIEW",
+        "reason": "ALL_WORKER_RESULTS_ADMITTED",
+        "evidence": [],
+        "at": "2026-08-18T01:25:40.018Z"
+      },
+      {
+        "from": "REVIEW",
+        "to": "READY_FOR_ADOPTION",
+        "reason": "INDEPENDENT_VERIFIER_GREEN",
+        "evidence": [],
+        "at": "2026-08-18T01:25:40.018Z"
+      },
+      {
+        "from": "READY_FOR_ADOPTION",
+        "to": "ADOPTED",
+        "reason": "EXPLICIT_FIXTURE_ADOPTION_APPROVED",
+        "evidence": [
+          "6d8842cfeabd4d3ebec3bb107f1b8ba88a75884344a4e09d1c46e5f0183fc28e"
+        ],
+        "at": "2026-08-18T01:29:42.796Z"
+      }
+    ],
+    "createdAt": "2026-08-18T01:12:54.717Z",
+    "updatedAt": "2026-08-18T01:29:42.796Z"
+  },
+  "release": {
+    "schemaVersion": "TSF_RELEASE_STATE_V1",
+    "projectId": "fixture:tsf-orca-runtime-bridge",
+    "revision": 2,
+    "stable": {
+      "head": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba",
+      "tree": "5333ecb6541b14c466004a23b8f128a2179d3e30",
+      "branch": "main",
+      "identity": "d0cb811c1556cafffe22469458a031005b89445e153e9bd1c5073c6f3e619175"
+    },
+    "previousStable": null,
+    "upgrade": {
+      "id": "upgrade-native-runtime-bridge-v1",
+      "state": "ADOPTED_LOCAL",
+      "branch": "tsf-runtime-bridge-upgrade",
+      "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+      "worktreePath": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+      "baseStableIdentity": "d0cb811c1556cafffe22469458a031005b89445e153e9bd1c5073c6f3e619175",
+      "candidate": {
+        "candidateId": "candidate-native-runtime-bridge-v1",
+        "head": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+        "tree": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4",
+        "binding": "6d8842cfeabd4d3ebec3bb107f1b8ba88a75884344a4e09d1c46e5f0183fc28e"
+      },
+      "createdAt": "2026-08-18T01:12:54.719Z"
+    },
+    "testing": null,
+    "published": null,
+    "promotions": [],
+    "updatedAt": "2026-08-18T01:29:42.796Z"
+  },
+  "binding": {
+    "schemaVersion": "TSF_SESSION_BINDING_V1",
+    "role": "WORKER_BALANCED",
+    "scope": "IMPLEMENTATION_MISSION",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelClass": "BALANCED_IMPLEMENTATION",
+    "modelObserved": "gpt-5.6-sol",
+    "orcaSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+    "providerConversationId": "01a01270-3aae-7102-9a99-10027248ab64",
+    "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+    "createdAt": "2026-08-18T01:21:57.307Z",
+    "identity": "a908901e508023b49538522effbde8615cdf4ef58861a0d25d6ccd206e49bbe3"
+  },
+  "dispatch": {
+    "schemaVersion": "TSF_ORCA_DISPATCH_V1",
+    "ownership": {
+      "commodityRuntime": "ORCA",
+      "missionGovernance": "TSF"
+    },
+    "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+    "orca": {
+      "sessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+      "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+      "agentId": "codex",
+      "providerId": "openai",
+      "modelClass": "BALANCED_IMPLEMENTATION",
+      "effortClass": "MEDIUM"
+    },
+    "usageMode": "TEST_MINIMAL",
+    "capsule": {
+      "schemaVersion": "TSF_PLAN_CAPSULE_V1",
+      "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+      "projectId": "fixture:tsf-orca-runtime-bridge",
+      "objective": "Prove real Orca-to-Codex execution by changing the fixture bridge greeting and its test in the Orca-managed Upgrade worktree.",
+      "decisions": [
+        "Orca owns the worktree, terminal, native agent session, and runtime facts.",
+        "TSF owns role resolution, the compact handoff, verification, and adoption authority.",
+        "Stable main must remain at 7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba until explicit adoption."
+      ],
+      "repository": {
+        "root": "C:/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE",
+        "worktree": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+        "branch": "tsf-runtime-bridge-upgrade",
+        "head": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba",
+        "tree": "5333ecb6541b14c466004a23b8f128a2179d3e30"
+      },
+      "allowedScope": [
+        "src/greeting.js",
+        "test/greeting.test.js"
+      ],
+      "constraints": [
+        "Change bridgeGreeting() to return exactly: Orca native runtime bridge verified.",
+        "Update the existing test to assert the exact new string.",
+        "Run npm test.",
+        "Create one local commit with message: feat: verify native runtime bridge.",
+        "Return a concise completion summary with changed files, tests, commit, and blockers."
+      ],
+      "prohibitedActions": [
+        "Do not modify any repository other than the assigned fixture worktree.",
+        "Do not modify main or adopt the candidate.",
+        "Do not push, open a PR, merge, deploy, publish, install dependencies, or access credentials.",
+        "Do not create or use a second runtime or worktree."
+      ],
+      "relevantComponents": [
+        "src/greeting.js",
+        "test/greeting.test.js",
+        "package.json"
+      ],
+      "acceptanceCriteria": [
+        "bridgeGreeting() returns exactly Orca native runtime bridge verified.",
+        "The focused Node test passes.",
+        "Only the two allowed files differ from Stable.",
+        "The change is committed only on the Upgrade branch."
+      ],
+      "requiredTests": [
+        "npm test"
+      ],
+      "stopConditions": [
+        "The assigned path is not the Orca-managed disposable fixture worktree.",
+        "Any action would touch a real project or require credentials/network/installation.",
+        "The requested model/provider is unavailable and Orca cannot report a clean failure."
+      ],
+      "expectedResultFormat": "TSF_RESULT_CAPSULE_V1"
+    }
+  },
+  "orcaFacts": {
+    "runtimeId": "7588786d-2bf7-40cc-8c8f-e5a65e4a62ed",
+    "runId": "run_79578caf1acb",
+    "taskId": "task_86fb11c93eed",
+    "coordinatorHandle": "term_61af709d-0f27-46f3-abf7-1c481aa76182",
+    "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+    "worktreePath": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+    "dispatchId": "ctx_b1be706d2dec",
+    "supersededDispatchId": "ctx_86f4c7d63994",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelObserved": "gpt-5.6-sol",
+    "effortObserved": "high",
+    "codexVersion": "0.144.1",
+    "orcaSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+    "providerConversationId": "01a01270-3aae-7102-9a99-10027248ab64",
+    "processIncarnation": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade@@7285c9db:ad8d8231-1c51-4edf-b27a-40e0e2ee0e3c",
+    "branch": "refs/heads/tsf-runtime-bridge-upgrade",
+    "workerState": "succeeded",
+    "workerStage": "settled",
+    "taskState": "completed",
+    "workerMessageId": "msg_c56929574670"
+  },
+  "candidate": {
+    "schemaVersion": "TSF_ADOPTION_CANDIDATE_V1",
+    "id": "candidate-native-runtime-bridge-v1",
+    "projectId": "fixture:tsf-orca-runtime-bridge",
+    "missionId": "tsf-orca-native-runtime-bridge-v1",
+    "state": "ADOPTED",
+    "revision": 1,
+    "resultCapsule": {
+      "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+      "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+      "workerIdentity": {
+        "role": "WORKER_BALANCED",
+        "providerId": "openai",
+        "agentId": "codex",
+        "modelObserved": "gpt-5.6-sol",
+        "orcaSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+        "providerConversationId": "01a01270-3aae-7102-9a99-10027248ab64",
+        "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade"
+      },
+      "outcome": "SUCCEEDED",
+      "repository": {
+        "head": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+        "tree": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4"
+      },
+      "filesChanged": [
+        "src/greeting.js",
+        "test/greeting.test.js"
+      ],
+      "testsRun": [
+        {
+          "command": "npm test",
+          "exitCode": 0,
+          "passed": 1,
+          "failed": 0,
+          "durationMsObserved": 63.0825,
+          "source": "ORCA_CODEX_TERMINAL_OUTPUT"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "ORCA_WORKER_SETTLED",
+          "runtimeId": "34458289-58a0-43d5-aade-bae40a79adb7",
+          "runId": "run_79578caf1acb",
+          "taskId": "task_86fb11c93eed",
+          "dispatchId": "ctx_b1be706d2dec",
+          "terminalHandle": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+          "state": "succeeded",
+          "stage": "settled"
+        },
+        {
+          "kind": "WORKER_REPORT",
+          "messageId": "msg_c56929574670",
+          "taskStatus": "completed"
+        },
+        {
+          "kind": "GIT_CANDIDATE",
+          "branch": "tsf-runtime-bridge-upgrade",
+          "commit": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+          "baseStable": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba",
+          "worktreeClean": true
+        }
+      ],
+      "blockers": [],
+      "unresolvedQuestions": [],
+      "implementationSummary": "A real Orca-owned Codex 0.144.1 session using gpt-5.6-sol/high changed the two allowed fixture files, passed npm test, committed the Upgrade candidate, and settled the recovered Orca dispatch successfully.",
+      "recommendedNextStep": "Run an independent verifier in a distinct Orca terminal before advancing to READY_FOR_ADOPTION."
+    },
+    "verifierResult": {
+      "schemaVersion": "TSF_VERIFIER_RESULT_V1",
+      "verdict": "GREEN",
+      "verifierIdentity": {
+        "role": "VERIFIER_INDEPENDENT",
+        "providerId": "tsf-local",
+        "agentId": "deterministic-node-verifier",
+        "modelObserved": null,
+        "orcaSessionId": "term_61264a97-98ac-4023-813a-9fa7a630d185"
+      },
+      "evidence": [
+        {
+          "id": "CANDIDATE_HEAD_MATCHES_CAPSULE",
+          "pass": true,
+          "observed": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e"
+        },
+        {
+          "id": "CANDIDATE_TREE_MATCHES_CAPSULE",
+          "pass": true,
+          "observed": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4"
+        },
+        {
+          "id": "STABLE_HEAD_UNCHANGED",
+          "pass": true,
+          "observed": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba"
+        },
+        {
+          "id": "STABLE_TREE_UNCHANGED",
+          "pass": true,
+          "observed": "5333ecb6541b14c466004a23b8f128a2179d3e30"
+        },
+        {
+          "id": "EXACT_WORKTREE_ROOT",
+          "pass": true,
+          "observed": "C:\\Users\\codex-agent\\orca\\workspaces\\TSF_ORCA_RUNTIME_BRIDGE_FIXTURE\\tsf-runtime-bridge-upgrade"
+        },
+        {
+          "id": "ISOLATED_LINKED_WORKTREE",
+          "pass": true,
+          "observed": "C:\\TSF_ORCA_RUNTIME_BRIDGE_FIXTURE\\.git\\worktrees\\tsf-runtime-bridge-upgrade"
+        },
+        {
+          "id": "WORKTREE_CLEAN",
+          "pass": true,
+          "observed": ""
+        },
+        {
+          "id": "ONLY_ALLOWED_FILES_CHANGED",
+          "pass": true,
+          "observed": [
+            "src/greeting.js",
+            "test/greeting.test.js"
+          ]
+        },
+        {
+          "id": "SOURCE_VALUE_EXACT",
+          "pass": true,
+          "observed": "export function bridgeGreeting() {\n  return 'Orca native runtime bridge verified.'\n}"
+        },
+        {
+          "id": "TEST_ASSERTION_EXACT",
+          "pass": true,
+          "observed": "import assert from 'node:assert/strict'\r\nimport test from 'node:test'\r\n\r\nimport { bridgeGreeting } from '../src/greeting.js'\r\n\r\ntest('reports the current bridge state', () => {\n  assert.equal(bridgeGreeting(), 'Orca native runtime bridge verified.')\n})"
+        },
+        {
+          "id": "INDEPENDENT_TEST_PASS",
+          "pass": true,
+          "observed": {
+            "exitCode": 0,
+            "error": null,
+            "stdoutTail": [
+              "ℹ tests 1",
+              "ℹ suites 0",
+              "ℹ pass 1",
+              "ℹ fail 0",
+              "ℹ cancelled 0",
+              "ℹ skipped 0",
+              "ℹ todo 0",
+              "ℹ duration_ms 49.7255"
+            ]
+          }
+        }
+      ],
+      "verifiedResult": {
+        "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+        "workerSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+        "head": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+        "tree": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4",
+        "filesChanged": [
+          "src/greeting.js",
+          "test/greeting.test.js"
+        ],
+        "testCommand": "npm test",
+        "testExitCode": 0
+      },
+      "blockers": [],
+      "verifiedAt": "2026-08-18T01:24:25.102Z"
+    },
+    "baseStable": "d0cb811c1556cafffe22469458a031005b89445e153e9bd1c5073c6f3e619175",
+    "decisions": [
+      {
+        "decision": "ADOPT",
+        "requestId": "fixture-adopt-native-runtime-bridge-v1",
+        "reason": "Explicit fixture-only adoption after GREEN verifier and restart recovery.",
+        "binding": "0ce36177ae1cedcf163948c563b1cce4cc248ba3e1aab4675cacd400258e7cb3",
+        "at": "2026-08-18T01:29:42.795Z"
+      }
+    ],
+    "createdAt": "2026-08-18T01:25:40.018Z",
+    "updatedAt": "2026-08-18T01:29:42.795Z",
+    "binding": "6d8842cfeabd4d3ebec3bb107f1b8ba88a75884344a4e09d1c46e5f0183fc28e"
+  },
+  "receipts": [
+    {
+      "schemaVersion": "TSF_RECEIPT_LITE_V1",
+      "kind": "MISSION_CREATED",
+      "projectId": "fixture:tsf-orca-runtime-bridge",
+      "missionId": "tsf-orca-native-runtime-bridge-v1",
+      "orca": {
+        "sessionId": null,
+        "worktreeId": null,
+        "worktreePath": null
+      },
+      "execution": {
+        "role": null,
+        "providerId": null,
+        "agentId": null,
+        "modelObserved": null
+      },
+      "result": null,
+      "tests": [],
+      "decision": "CREATE",
+      "identities": {
+        "orcaRuntimeId": "34458289-58a0-43d5-aade-bae40a79adb7",
+        "orcaRunId": "run_79578caf1acb",
+        "orcaTaskId": "task_86fb11c93eed"
+      },
+      "previousReceiptHash": null,
+      "timestamp": "2026-08-18T01:12:54.719Z",
+      "receiptHash": "d446c66d07f2b6a144aa39c19af397575e2db0eed80c7c8d828f6e49b6e606f9"
+    },
+    {
+      "schemaVersion": "TSF_RECEIPT_LITE_V1",
+      "kind": "CANDIDATE_FINISHED",
+      "projectId": "fixture:tsf-orca-runtime-bridge",
+      "missionId": "tsf-orca-native-runtime-bridge-v1",
+      "orca": {
+        "sessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+        "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+        "worktreePath": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade"
+      },
+      "execution": {
+        "role": "WORKER_BALANCED",
+        "providerId": "openai",
+        "agentId": "codex",
+        "modelObserved": "gpt-5.6-sol"
+      },
+      "result": "SUCCEEDED",
+      "tests": [
+        {
+          "command": "npm test",
+          "exitCode": 0,
+          "passed": 1,
+          "failed": 0,
+          "durationMsObserved": 63.0825,
+          "source": "ORCA_CODEX_TERMINAL_OUTPUT"
+        }
+      ],
+      "decision": null,
+      "identities": {
+        "head": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+        "tree": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4"
+      },
+      "previousReceiptHash": "d446c66d07f2b6a144aa39c19af397575e2db0eed80c7c8d828f6e49b6e606f9",
+      "timestamp": "2026-08-18T01:25:40.018Z",
+      "receiptHash": "41005b2129101c88e978de65c247b1a5fd209c95810b863621411ad3cc4fd8f5"
+    },
+    {
+      "schemaVersion": "TSF_RECEIPT_LITE_V1",
+      "kind": "VERIFIER_RESULT",
+      "projectId": "fixture:tsf-orca-runtime-bridge",
+      "missionId": "tsf-orca-native-runtime-bridge-v1",
+      "orca": {
+        "sessionId": "term_61264a97-98ac-4023-813a-9fa7a630d185",
+        "worktreeId": null,
+        "worktreePath": null
+      },
+      "execution": {
+        "role": "VERIFIER_INDEPENDENT",
+        "providerId": "tsf-local",
+        "agentId": "deterministic-node-verifier",
+        "modelObserved": null
+      },
+      "result": "GREEN",
+      "tests": [],
+      "decision": null,
+      "identities": {},
+      "previousReceiptHash": "41005b2129101c88e978de65c247b1a5fd209c95810b863621411ad3cc4fd8f5",
+      "timestamp": "2026-08-18T01:25:40.018Z",
+      "receiptHash": "76eab28e5c077c4eab72762d7832e87ad62fc8bc4709a4c601a06e8b55fda589"
+    },
+    {
+      "schemaVersion": "TSF_RECEIPT_LITE_V1",
+      "kind": "ADOPTION_DECISION",
+      "projectId": "fixture:tsf-orca-runtime-bridge",
+      "missionId": "tsf-orca-native-runtime-bridge-v1",
+      "orca": {
+        "sessionId": null,
+        "worktreeId": null,
+        "worktreePath": null
+      },
+      "execution": {
+        "role": null,
+        "providerId": null,
+        "agentId": null,
+        "modelObserved": null
+      },
+      "result": null,
+      "tests": [],
+      "decision": "ADOPT",
+      "identities": {
+        "candidateBinding": "6d8842cfeabd4d3ebec3bb107f1b8ba88a75884344a4e09d1c46e5f0183fc28e",
+        "stableIdentity": "d0cb811c1556cafffe22469458a031005b89445e153e9bd1c5073c6f3e619175",
+        "upgradeHead": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e"
+      },
+      "previousReceiptHash": "76eab28e5c077c4eab72762d7832e87ad62fc8bc4709a4c601a06e8b55fda589",
+      "timestamp": "2026-08-18T01:29:42.796Z",
+      "receiptHash": "08ea18060f0da907939fc102e30fe5c23e12e6d4353225a4deb33f1458316ca6"
+    }
+  ],
+  "recoveryChecks": [
+    {
+      "checkedAt": "2026-08-18T01:27:36.818Z",
+      "runtimeIdBefore": "34458289-58a0-43d5-aade-bae40a79adb7",
+      "runtimeIdAfter": "517051c4-ba54-41a7-979a-c558e57547c3",
+      "runtimeRecreated": true,
+      "identityChecks": [
+        {
+          "key": "runId",
+          "expected": "run_79578caf1acb",
+          "observed": "run_79578caf1acb",
+          "match": true
+        },
+        {
+          "key": "taskId",
+          "expected": "task_86fb11c93eed",
+          "observed": "task_86fb11c93eed",
+          "match": true
+        },
+        {
+          "key": "dispatchId",
+          "expected": "ctx_b1be706d2dec",
+          "observed": "ctx_b1be706d2dec",
+          "match": true
+        },
+        {
+          "key": "orcaSessionId",
+          "expected": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+          "observed": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+          "match": true
+        },
+        {
+          "key": "worktreeId",
+          "expected": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+          "observed": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+          "match": true
+        }
+      ],
+      "noDuplicateIdentity": true,
+      "missionState": "READY_FOR_ADOPTION"
+    },
+    {
+      "checkedAt": "2026-08-18T01:30:54.673Z",
+      "runtimeIdBefore": "517051c4-ba54-41a7-979a-c558e57547c3",
+      "runtimeIdAfter": "7588786d-2bf7-40cc-8c8f-e5a65e4a62ed",
+      "runtimeRecreated": true,
+      "identityChecks": [
+        {
+          "key": "runId",
+          "expected": "run_79578caf1acb",
+          "observed": "run_79578caf1acb",
+          "match": true
+        },
+        {
+          "key": "taskId",
+          "expected": "task_86fb11c93eed",
+          "observed": "task_86fb11c93eed",
+          "match": true
+        },
+        {
+          "key": "dispatchId",
+          "expected": "ctx_b1be706d2dec",
+          "observed": "ctx_b1be706d2dec",
+          "match": true
+        },
+        {
+          "key": "orcaSessionId",
+          "expected": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+          "observed": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+          "match": true
+        },
+        {
+          "key": "worktreeId",
+          "expected": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+          "observed": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+          "match": true
+        }
+      ],
+      "noDuplicateIdentity": true,
+      "missionState": "ADOPTED"
+    }
+  ],
+  "updatedAt": "2026-08-18T01:30:54.673Z"
+}

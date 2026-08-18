@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "TSF_RESULT_CAPSULE_V1",
+  "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+  "workerIdentity": {
+    "role": "WORKER_BALANCED",
+    "providerId": "openai",
+    "agentId": "codex",
+    "modelObserved": "gpt-5.6-sol",
+    "orcaSessionId": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+    "providerConversationId": "01a01270-3aae-7102-9a99-10027248ab64",
+    "worktreeId": "ab58eb9a-4367-4091-a9d2-fb8f7d975a83::C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade"
+  },
+  "outcome": "SUCCEEDED",
+  "repository": {
+    "head": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+    "tree": "f4bec901a88edc4843de7aade8bdf0fd6b9c94b4"
+  },
+  "filesChanged": [
+    "src/greeting.js",
+    "test/greeting.test.js"
+  ],
+  "testsRun": [
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "passed": 1,
+      "failed": 0,
+      "durationMsObserved": 63.0825,
+      "source": "ORCA_CODEX_TERMINAL_OUTPUT"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "ORCA_WORKER_SETTLED",
+      "runtimeId": "34458289-58a0-43d5-aade-bae40a79adb7",
+      "runId": "run_79578caf1acb",
+      "taskId": "task_86fb11c93eed",
+      "dispatchId": "ctx_b1be706d2dec",
+      "terminalHandle": "term_8e453c5b-c8c0-4320-9ce8-c5678050eee1",
+      "state": "succeeded",
+      "stage": "settled"
+    },
+    {
+      "kind": "WORKER_REPORT",
+      "messageId": "msg_c56929574670",
+      "taskStatus": "completed"
+    },
+    {
+      "kind": "GIT_CANDIDATE",
+      "branch": "tsf-runtime-bridge-upgrade",
+      "commit": "c437bd1765ff7de20a33cc2cdb9f3f074126fa3e",
+      "baseStable": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba",
+      "worktreeClean": true
+    }
+  ],
+  "blockers": [],
+  "unresolvedQuestions": [],
+  "implementationSummary": "A real Orca-owned Codex 0.144.1 session using gpt-5.6-sol/high changed the two allowed fixture files, passed npm test, committed the Upgrade candidate, and settled the recovered Orca dispatch successfully.",
+  "recommendedNextStep": "Run an independent verifier in a distinct Orca terminal before advancing to READY_FOR_ADOPTION."
+}

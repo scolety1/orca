@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "TSF_PLAN_CAPSULE_V1",
+  "missionId": "tsf-orca-native-runtime-bridge-v1-worker-1",
+  "projectId": "fixture:tsf-orca-runtime-bridge",
+  "objective": "Prove real Orca-to-Codex execution by changing the fixture bridge greeting and its test in the Orca-managed Upgrade worktree.",
+  "decisions": [
+    "Orca owns the worktree, terminal, native agent session, and runtime facts.",
+    "TSF owns role resolution, the compact handoff, verification, and adoption authority.",
+    "Stable main must remain at 7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba until explicit adoption."
+  ],
+  "repository": {
+    "root": "C:/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE",
+    "worktree": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA_RUNTIME_BRIDGE_FIXTURE/tsf-runtime-bridge-upgrade",
+    "branch": "tsf-runtime-bridge-upgrade",
+    "head": "7b9f1e0429f8c918bd977fba19aa4d4f0152e4ba",
+    "tree": "5333ecb6541b14c466004a23b8f128a2179d3e30"
+  },
+  "allowedScope": [
+    "src/greeting.js",
+    "test/greeting.test.js"
+  ],
+  "constraints": [
+    "Change bridgeGreeting() to return exactly: Orca native runtime bridge verified.",
+    "Update the existing test to assert the exact new string.",
+    "Run npm test.",
+    "Create one local commit with message: feat: verify native runtime bridge.",
+    "Return a concise completion summary with changed files, tests, commit, and blockers."
+  ],
+  "prohibitedActions": [
+    "Do not modify any repository other than the assigned fixture worktree.",
+    "Do not modify main or adopt the candidate.",
+    "Do not push, open a PR, merge, deploy, publish, install dependencies, or access credentials.",
+    "Do not create or use a second runtime or worktree."
+  ],
+  "relevantComponents": [
+    "src/greeting.js",
+    "test/greeting.test.js",
+    "package.json"
+  ],
+  "acceptanceCriteria": [
+    "bridgeGreeting() returns exactly Orca native runtime bridge verified.",
+    "The focused Node test passes.",
+    "Only the two allowed files differ from Stable.",
+    "The change is committed only on the Upgrade branch."
+  ],
+  "requiredTests": [
+    "npm test"
+  ],
+  "stopConditions": [
+    "The assigned path is not the Orca-managed disposable fixture worktree.",
+    "Any action would touch a real project or require credentials/network/installation.",
+    "The requested model/provider is unavailable and Orca cannot report a clean failure."
+  ],
+  "expectedResultFormat": "TSF_RESULT_CAPSULE_V1"
+}
