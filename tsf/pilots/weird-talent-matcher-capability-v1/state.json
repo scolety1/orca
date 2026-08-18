@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "TSF_WEIRD_TALENT_MATCHER_CAPABILITY_STATE_V1",
+  "projectId": "weird-talent-marketplace",
+  "missionState": "BLOCKED_ARCHITECTURAL_CONFLICT",
+  "verdict": "RED_WEIRD_TALENT_MATCHER_ARCHITECTURE_UNSAFE",
+  "stable": {
+    "head": "ef0e232888b0fe1689ab7433e3f1333807d3b00d",
+    "tree": "669dc8c4492bee2b264f9a8f90952e3bf05c7f99",
+    "changed": false
+  },
+  "blockedCandidatePreserved": "148ef43730fd876c90adbeaf82f93e0b3c8a3e86",
+  "proofCandidate": {
+    "head": "3af1b4a4ab2e6913cc34e5513f11b49930bcca7a",
+    "tree": "1548274a9ba4d37bda8acb2fffe7a075eae0a4da",
+    "adopted": false,
+    "safeToResumePilot": false
+  },
+  "phase2Allowed": false,
+  "pushPerformed": false,
+  "mergePerformed": false,
+  "deployPerformed": false,
+  "publishPerformed": false
+}

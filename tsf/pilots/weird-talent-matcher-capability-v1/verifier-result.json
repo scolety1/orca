@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "TSF_MATCHER_CAPABILITY_VERIFIER_RESULT_V1",
+  "taskId": "task_0c535d317b23",
+  "dispatchId": "ctx_7fb458f1a91a",
+  "messageId": "msg_d505e12b98a0",
+  "role": "VERIFIER_INDEPENDENT",
+  "candidateHead": "3af1b4a4ab2e6913cc34e5513f11b49930bcca7a",
+  "candidateTree": "1548274a9ba4d37bda8acb2fffe7a075eae0a4da",
+  "bindingMatch": true,
+  "worktreeInitiallyClean": true,
+  "filesModified": [],
+  "testsExecuted": 0,
+  "stopReason": "New architectural trust-boundary concern found during source review; mission required immediate stop rather than repair.",
+  "finding": "Allowed authority and admission-basis strings plus unkeyed current-content hashes are forgeable by an untrusted assertion supplier; no signature, trusted store, caller capability, or origin binding exists.",
+  "answers": {
+    "deterministicMatcherIntegrity": false,
+    "locallyAuthoredFalseAuthorityPossible": true,
+    "staleDependenciesRejected": "honest stale values yes; hostile recomputation defeats authority",
+    "abstentionPreserved": false,
+    "provenanceUnderstandableAndTrustworthy": false,
+    "scopeBroadened": false
+  },
+  "verdict": "RED_WEIRD_TALENT_MATCHER_ARCHITECTURE_UNSAFE"
+}

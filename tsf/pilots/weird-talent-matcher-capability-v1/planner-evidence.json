@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "TSF_MATCHER_CAPABILITY_PLANNER_EVIDENCE_V1",
+  "runId": "run_49844f81d9d2",
+  "taskId": "task_012fb9c6f19d",
+  "role": "PLANNER_DEEP",
+  "selectedOption": "D",
+  "invariant": "EXPLICIT_CONTENT_BOUND_CONCEPT_ADMISSION",
+  "artifactCommit": "96271f2e6dfdfe4797cff0b1e65741ce3e083f09",
+  "artifactTree": "088e4a316a909364f6b1d73e89b90120189f1fd7",
+  "artifactSha256": "84041fc945c630694cf88f671f5e5901f2741656981a18d4172ce5e8ad878474"
+}
