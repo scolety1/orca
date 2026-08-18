@@ -26,6 +26,18 @@ The TSF Health projection can report repository availability, worktree health, s
 - No real project has been registered or accessed.
 - Native dogfood runtime discovery is blocked: the headless server reached ready state, but the production CLI remained on a stale bootstrap and could not attach.
 
+## Final checkpoint evidence
+
+- TSF overlay Node tests: 16 passed, 0 failed.
+- Orca upstream plugin manifest/host/storage tests: 18 passed, 0 failed across 3 files.
+- Successor manifest validation through Orca's real plugin parser: 1 passed, 0 failed.
+- Foundation Health: PASS; 111 unique capability IDs; zero uncovered dispositions.
+- Deterministic overlay dogfood: GREEN; two work items, two results, independent GREEN verifier, exact fixture adoption, four valid receipts.
+- Stable and Published: unchanged by worker completion and local fixture adoption.
+- Direct legacy reuse hashes: both byte-for-byte matches verified.
+- `git diff --check`: clean.
+- Successor worktree: clean after four local milestone commits.
+
 ## Readiness
 
 The foundation is suitable for continued fixture integration. It is not yet ready for a real-project pilot until native Orca Run/task dispatch, restart recovery, browser verification, and the first bounded Windows reliability subset are GREEN.
