@@ -291,7 +291,7 @@
           "dispatchMethod": "orca terminal create --worktree active --command codex (bare terminal in the current worktree, not a new worktree, to avoid setup-time stranding risk)",
           "outcome": "COMPLETED_AND_VERIFIED -- worker finished in 14m31s, independently re-verified GREEN by the planner session (see milestones[M2].waves[3])",
           "capacityAfter": "Codex TUI surfaced its own 'approaching rate limits' model-downgrade prompt at task completion; per the rule's shrink-and-stop step, no second task was queued this wave even though ~5.5h remained before reset",
-          "checkpointCommit": null
+          "checkpointCommit": "d9af00f424d9c9ebb12c91d37348ee9acdec912f"
         }
       ]
     }
@@ -317,10 +317,10 @@
   "lastDurableCheckpoint": {
     "phase": "M2_WAVE_3_COMPLETE_EXPIRING_CAPACITY_APPLIED",
     "at": "2026-08-19T23:52:00Z",
-    "commit": null,
+    "commit": "d9af00f424d9c9ebb12c91d37348ee9acdec912f",
     "commitTree": null,
-    "workingTreeClean": false,
-    "note": "Amended Section G with the EXPIRING_CAPACITY rule and applied it once: live-dispatched the bounded mapOrchestrationFacts task to Codex, independently verified GREEN by the planner session (118/118 tests, oxlint/oxfmt clean), then stopped further Codex dispatch once its own UI signaled it was near its limit again -- see milestones[M2].waves[3] and capacityPolicy.expiringCapacityRule.applicationLog. Commit hash to be recorded in a follow-up checkpoint entry once made."
+    "workingTreeClean": true,
+    "note": "Amended Section G with the EXPIRING_CAPACITY rule and applied it once: live-dispatched the bounded mapOrchestrationFacts task to Codex, independently verified GREEN by the planner session (118/118 tests, oxlint/oxfmt clean), then stopped further Codex dispatch once its own UI signaled it was near its limit again -- see milestones[M2].waves[3] and capacityPolicy.expiringCapacityRule.applicationLog. Verified intact via git cat-file immediately after commit; same pre-existing geometric-repack housekeeping failure as prior waves (GIT-HYGIENE-001), non-blocking."
   },
   "priorDurableCheckpoint2": {
     "phase": "M2_WAVE_2_COMPLETE",
