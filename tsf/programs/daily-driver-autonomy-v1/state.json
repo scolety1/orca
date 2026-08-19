@@ -263,10 +263,10 @@
   "lastDurableCheckpoint": {
     "phase": "M2_WAVE_2_COMPLETE",
     "at": "2026-08-19T20:22:00Z",
-    "commit": null,
+    "commit": "bae423b531110277a199d98f625517969815edbe",
     "commitTree": null,
-    "workingTreeClean": false,
-    "note": "This checkpoint record is written to state.json immediately before the wave-2 commit that includes it; see git log for the actual commit hash once made. tsf/adapters/orca-orchestration-bridge.mjs + tsf/test/orca-orchestration-bridge.test.mjs + stub-orca-cli.mjs extension added. 115/115 full tsf suite GREEN, oxlint/oxfmt clean, no live dispatch performed."
+    "workingTreeClean": true,
+    "note": "tsf/adapters/orca-orchestration-bridge.mjs + tsf/test/orca-orchestration-bridge.test.mjs + stub-orca-cli.mjs extension added and committed. 115/115 full tsf suite GREEN, oxlint/oxfmt clean, no live dispatch performed. A pre-existing husky pre-commit 'geometric-repack' housekeeping step failed on the shared C:\\TSF_ORCA .git store during this commit (same known issue as advisory GIT-HYGIENE-001) but the commit itself was verified intact and readable via git cat-file immediately after."
   },
   "priorDurableCheckpoint": {
     "phase": "PAUSED_FOR_WINDOWS_SANDBOX_CRASH",
