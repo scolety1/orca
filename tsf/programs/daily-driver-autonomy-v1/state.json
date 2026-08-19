@@ -86,6 +86,19 @@
             "bounded fixture/dogfood mission with real Orca dispatch (paused: Codex weekly usage 91%, 0 reset credits -- see providerCapacityStatus)",
             "UI: project-level Keep Going / Overnight controls"
           ]
+        },
+        {
+          "wave": 2,
+          "summary": "Resumed from WINDOWS_SANDBOX_CRASH_001 checkpoint (see resumePreflight below); built the deferred orchestration adapter with a stubbed-CLI test suite, no live dispatch. tsf/adapters/orca-orchestration-bridge.mjs wraps run-create/task-create/dispatch/worker-list/gate-create over the orca CLI, following orca-cli-bridge.mjs's spawn-and-fail-honestly pattern (CLI_UNAVAILABLE/SPAWN_ERROR/TIMEOUT/CLI_ERROR/MALFORMED_RESPONSE, never a fabricated success). Deliberately kept as an independent sibling module (no shared extraction from orca-cli-bridge.mjs) because C:\\TSF_ORCA's shared working tree shows that file with a pending uncommitted deletion from an unrelated concurrent session -- see advisory CONCURRENT-SESSION-DIRTY-TSF-MAIN-001. tsf/test/fixtures/stub-orca-cli.mjs extended with run-create/task-create/dispatch/worker-list/gate-create stub handling (STUB_ORCA_WORKERS env var added for seeding worker-list). tsf/test/orca-orchestration-bridge.test.mjs added (13 tests: INVALID_ARGS guard clauses, success pass-through, CLI_ERROR, MALFORMED_RESPONSE, SPAWN_ERROR on unresolvable forced override).",
+          "testsAdded": 13,
+          "testsPassing": "13/13 new; 115/115 full tsf suite (no regressions); oxlint clean; oxfmt clean",
+          "verifier": "SELF -- not yet independently verified by a separate session/provider; independent verification deferred to milestone-completion gate per Section F",
+          "commit": null,
+          "deferredToNextWave": [
+            "mapOrcaFacts extension in tsf/adapters/orca-runtime.mjs for worker-list/task-list/gate-list facts (feeds keep-going.mjs's detectStall/registerWorkerResult shapes)",
+            "bounded fixture/dogfood mission with real Orca dispatch -- still blocked: Codex weekly usage unchanged at 91%, 0 reset credits as of this wave's re-check (see providerCapacityStatus)",
+            "UI: project-level Keep Going / Overnight controls"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -107,9 +120,8 @@
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": [
-        "orca-orchestration-bridge.mjs adapter (real orchestration/automations CLI wiring) not yet built",
         "orca-runtime.mjs mapOrcaFacts not yet extended for worker-list/task-list/gate-list",
-        "no real Orca dispatch proof yet for this milestone (governance module is unit-tested only so far)",
+        "no real Orca dispatch proof yet for this milestone (governance + adapter are unit-tested only so far)",
         "no UI surface yet",
         "independent verification not yet performed",
         "no candidate packaged yet"
@@ -199,7 +211,7 @@
   "currentMilestone": "M2",
   "currentCandidate": null,
   "unresolvedGaps": [
-    "M2 orchestration adapter, UI, and real-project-level dogfood proof do not exist yet -- wave 1 delivered only the unit-tested governance module (tsf/domain/keep-going.mjs)"
+    "M2 mapOrcaFacts extension, UI, and real-project-level dogfood proof do not exist yet -- waves 1-2 delivered only the unit-tested governance module (tsf/domain/keep-going.mjs) and the unit-tested orchestration adapter (tsf/adapters/orca-orchestration-bridge.mjs), no live Orca dispatch"
   ],
   "blockers": [],
   "advisories": [
@@ -219,33 +231,65 @@
       "summary": "Already-adopted tsf/domain/*.mjs (e.g. mission-state.mjs, coordinator.mjs) violates .oxlintrc.json's `curly: error` rule with single-line guard clauses -- pre-existing, predates this program. The rule IS actively enforced: the husky pre-commit lint-staged hook correctly rejected this wave's first commit attempt of tsf/domain/keep-going.mjs for the same style; it was fixed to use braces everywhere and now passes oxlint/oxfmt cleanly before being committed. The old sibling files were never re-linted because lint-staged only checks files staged in a given commit.",
       "actionTaken": "keep-going.mjs rewritten to satisfy curly/oxfmt before commit. No changes made to pre-existing sibling files (out of this wave's scope).",
       "recommendedNextStep": "Separate decision for Tim: a dedicated pass to reformat the remaining tsf/domain/**, tsf/adapters/** files so a full `pnpm lint` run (not just lint-staged on new commits) is clean -- not part of this program."
+    },
+    {
+      "id": "CONCURRENT-SESSION-DIRTY-TSF-MAIN-001",
+      "severity": "ADVISORY_NON_BLOCKING",
+      "observedAt": "2026-08-19T00:00:00Z",
+      "summary": "Post-restart resume preflight found C:\\TSF_ORCA (the tsf/main worktree) HEAD unchanged at the expected de105fb46, but its working tree/index carries staged deletions/modifications (orca-cli-bridge.mjs, onboarding.mjs, AddProjectPage.tsx, http-server.mjs, live-planner.mjs, App.tsx, capability-migration.v1.json, and others) that this program did not make. File pattern (Chat/live-planner/App.tsx changes, onboarding deletions) is consistent with unrelated, ongoing work from another session on this host (e.g. scolety1/tsf-planner-operator-chat), not with any action this program has ever taken there.",
+      "verifiedNotAffecting": "This program's own worktree (scolety1/tsf-autonomy-program-v1) is clean and matches the checkpoint commit exactly (bfae9f5c9, no diff). tsf/main's commit-level HEAD is unchanged from the expected baseline. This program has never written to C:\\TSF_ORCA directly (only a future Section H ff-only merge would touch it, and none has been attempted).",
+      "actionTaken": "None -- read-only observation only, consistent with the precedent in GIT-HYGIENE-001 (do not touch a shared checkout's uncommitted state from another active session).",
+      "recommendedNextStep": "Before any future Section H ff-only adoption into tsf/main, re-check that C:\\TSF_ORCA's working tree is clean (a dirty index there would make `git merge --ff-only` fail loudly, which is safe, but should not be mistaken for this program's own error)."
     }
   ],
   "retriesUsed": 0,
   "providerCapacityStatus": {
-    "queriedAt": "2026-08-19T00:00:00Z",
-    "source": "orca account list --json (live, trustworthy)",
+    "queriedAt": "2026-08-19T20:22:00Z",
+    "source": "orca account list --json (live, trustworthy) -- re-checked at resume-from-checkpoint preflight",
     "claude": {
-      "sessionUsedPercent": 12,
+      "sessionUsedPercent": 19,
       "sessionWindowMinutes": 300,
-      "weeklyUsedPercent": 15,
+      "weeklyUsedPercent": 16,
       "status": "HEALTHY"
     },
     "codex": {
       "weeklyUsedPercent": 91,
       "rateLimitResetCreditsAvailable": 0,
-      "status": "NEAR_LIMIT"
+      "status": "NEAR_LIMIT",
+      "changeSincePriorCheckpoint": "UNCHANGED -- still 91%/0 reset credits"
     },
-    "policy": "Codex weekly usage is near exhausted with 0 reset credits available -- per program Section G, no new Codex WORKER_* dispatch should start until capacity recovers or a reset occurs. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) remains healthy. This is why live Orca worker dispatch for the M2 dogfood proof is deferred rather than started this wave."
+    "policy": "Codex weekly usage is near exhausted with 0 reset credits available -- per program Section G, no new Codex WORKER_* dispatch should start until capacity recovers or a reset occurs. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) remains healthy. This is why live Orca worker dispatch for the M2 dogfood proof is deferred rather than started this wave; M2 wave 2 (orchestration adapter) was implemented directly by the planner session with a stubbed-CLI test suite instead, matching the wave-1 precedent."
   },
   "lastDurableCheckpoint": {
+    "phase": "M2_WAVE_2_COMPLETE",
+    "at": "2026-08-19T20:22:00Z",
+    "commit": null,
+    "commitTree": null,
+    "workingTreeClean": false,
+    "note": "This checkpoint record is written to state.json immediately before the wave-2 commit that includes it; see git log for the actual commit hash once made. tsf/adapters/orca-orchestration-bridge.mjs + tsf/test/orca-orchestration-bridge.test.mjs + stub-orca-cli.mjs extension added. 115/115 full tsf suite GREEN, oxlint/oxfmt clean, no live dispatch performed."
+  },
+  "priorDurableCheckpoint": {
     "phase": "PAUSED_FOR_WINDOWS_SANDBOX_CRASH",
     "at": "2026-08-19T00:00:00Z",
     "commit": "ec6b52fabb9562a32f7857d93e05f54c158d3518",
     "commitTree": "d0f5e59fda1416619a6319a0b4d88a337f9b9142",
     "workingTreeClean": true,
     "tsfMainHeadAtPause": "de105fb4632d7e8a297d824963f931dcd4eb858e",
-    "note": "Loop paused at Tim's request: Windows raised 'codex-windows-sandbox-setup.exe - Application Error (0xc0000142)'. Full read-only investigation performed (see pauseIncident below) -- no Codex worker, dispatch, run, or task belonging to this program was ever created; nothing to fence. Full tsf test suite re-verified 102/102 GREEN immediately before this checkpoint. Working tree clean, HEAD unchanged since the wave-1 checkpoint (no work lost or at risk). Design doc and source harvest ledger written. Codex capacity was already near limit (91% weekly) before this incident; live dispatch wave was already deferred for that reason, independent of this crash."
+    "note": "Loop paused at Tim's request: Windows raised 'codex-windows-sandbox-setup.exe - Application Error (0xc0000142)'. Full read-only investigation performed (see pauseIncident below) -- no Codex worker, dispatch, run, or task belonging to this program was ever created; nothing to fence. Full tsf test suite re-verified 102/102 GREEN immediately before this checkpoint. Working tree clean, HEAD unchanged since the wave-1 checkpoint (no work lost or at risk). Design doc and source harvest ledger written. Codex capacity was already near limit (91% weekly) before this incident; live dispatch wave was already deferred for that reason, independent of this crash. Durable pause commit: bfae9f5c95a992f9f3faa359ad8fac312433b386."
+  },
+  "resumePreflight": {
+    "id": "RESUME_FROM_WINDOWS_SANDBOX_CRASH_001",
+    "at": "2026-08-19T20:22:00Z",
+    "checkpointReadFrom": "bfae9f5c95a992f9f3faa359ad8fac312433b386",
+    "checks": {
+      "workingWorktreeHeadTreeStatus": "HEAD == bfae9f5c95a992f9f3faa359ad8fac312433b386 (the checkpoint commit exactly), working tree clean, no diff between checkpoint and HEAD -- GREEN",
+      "checkpointIntegrity": "git cat-file -e on commit and tree both succeeded -- GREEN",
+      "tsfMainUnchanged": "C:\\TSF_ORCA HEAD == de105fb4632d7e8a297d824963f931dcd4eb858e, matching the recorded baseline/pause-time value exactly -- commit-level GREEN. Working tree there carries unrelated staged changes from another concurrent session; recorded as advisory CONCURRENT-SESSION-DIRTY-TSF-MAIN-001, not attributable to this program, not a hard stop.",
+      "orcaRuntimeHealth": "orca status --json: appRunning true, runtimeReachable true, graphState ready -- GREEN. orca account list --json: Claude session 19%/weekly 16% HEALTHY; Codex weekly 91%/0 reset credits, unchanged since pause -- capacity remains NEAR_LIMIT, live Codex dispatch stays deferred per Section G.",
+      "orphanWorkerCheck": "orca orchestration worker-list --json (system-wide): all entries belong to pre-existing runs (run_79578caf1acb, run_e1297c4e9d73, etc.) predating this program, same set noted in the prior pause investigation -- none reference this program's worktree/branch/run -- GREEN",
+      "codexSandboxProbe": "Single harmless local probe run once, no retry: `codex doctor`. Result: 16 ok, 1 idle, 3 notes, 1 warn (pre-existing rollout-DB housekeeping note, unrelated), 0 fail. Sandbox subsystem reported 'restricted fs + restricted network, approval OnRequest' with no crash; websocket connectivity confirmed; git repo detection correctly resolved to this worktree. The codex-windows-sandbox-setup.exe crash did NOT recur -- GREEN. `codex --version` also succeeded (codex-cli 0.144.1) with no crash."
+    },
+    "overallResult": "GREEN -- resumed M2 wave 2 from the recorded nextSafeAction. No live Codex dispatch was performed (capacity still NEAR_LIMIT); wave 2 was implemented directly by the planner session with a stubbed-CLI test suite, matching the wave-1 precedent and staying within program authority."
   },
   "pauseIncident": {
     "id": "WINDOWS_SANDBOX_CRASH_001",
@@ -266,9 +310,11 @@
       "No git gc/repack/prune/cleanup run",
       "Durable checkpoint written and committed",
       "Autonomy loop stopped (ScheduleWakeup stop:true) pending Tim's next instruction"
-    ]
+    ],
+    "resolvedAt": "2026-08-19T20:22:00Z",
+    "resolution": "Resumed per Tim's instruction after a Windows restart. Post-restart safety preflight (see resumePreflight) re-ran the same worker-list/HEAD checks plus a single harmless `codex doctor` probe -- the sandbox crash did not recur and the runtime reported healthy. Treated as cleared; M2 wave 2 proceeded without live Codex dispatch (Codex capacity still NEAR_LIMIT, unrelated to the crash)."
   },
-  "nextSafeAction": "PAUSED -- awaiting Tim. Once Tim confirms it's safe to proceed (e.g. after a Windows restart or confirming the sandbox crash was unrelated to this program), resume with M2 wave 2: build tsf/adapters/orca-orchestration-bridge.mjs (run-create/task-create/dispatch/worker-list/gate-create wrappers over the orca CLI, following the orca-cli-bridge.mjs fail-honestly pattern) with a stubbed-CLI test suite first (no live dispatch yet). Do not attempt any live Codex dispatch until both (a) Tim clears the sandbox-crash concern and (b) Codex weekly usage has meaningfully recovered from 91% -- re-check `orca account list --json` at that time. Reread pauseIncident before resuming.",
+  "nextSafeAction": "Build the mapOrcaFacts extension in tsf/adapters/orca-runtime.mjs to project orchestration worker-list/task-list/gate-list facts into the shapes tsf/domain/keep-going.mjs's detectStall and a future registerWorkerResult-style capsule consume, with unit tests against synthetic facts (no live CLI calls needed for this step -- it's a pure projection, like the existing mapOrcaFacts). After that: reassess whether Codex weekly usage has recovered from 91%/0 reset credits before attempting the bounded fixture/dogfood mission with real Orca dispatch; if still NEAR_LIMIT, continue with the UI surface (tsf/ui project-level Keep Going / Overnight controls backed by a tsf/server projection) instead, which does not require live Codex dispatch either.",
   "authorityBoundaries": {
     "canAutoAdoptLocally": "Only into tsf/main, only via Section H's 14-condition checklist, ff-only merge, all gates GREEN",
     "cannotDo": [

@@ -83,7 +83,7 @@ milestone. Summary:
 | # | Milestone | Status |
 |---|---|---|
 | M1 | Project Onboarding V1 | `ACCEPTED_PRE_EXISTING` (adopted at `de105fb46` before this program started) |
-| M2 | Keep Going / Overnight V1 | `NOT_STARTED` — **current, highest priority** |
+| M2 | Keep Going / Overnight V1 | `IN_PROGRESS` (wave 2 of N) — **current, highest priority** |
 | M3 | Chat → Dispatch + Live Work Feed | `NOT_STARTED` |
 | M4 | Run Journal + Recovery | `NOT_STARTED` |
 | M5 | Capacity-Aware Routing | `NOT_STARTED` |
@@ -148,9 +148,10 @@ Section D.
 
 ## Next safe action
 
-See `state.json` → `nextSafeAction`. As of this checkpoint: read
-`tsf/fixtures/long-autonomous-runtime-v1/` and
-`tsf/domain/coordinator.mjs` + `tsf/domain/mission-state.mjs` in full, then
-design the real project-level long-run controller as an extension of the
-existing fixture domain loop, scoped to a first bounded implementation wave
-before touching UI or running a real dogfood mission.
+See `state.json` → `nextSafeAction`. As of this checkpoint (post-resume from
+`WINDOWS_SANDBOX_CRASH_001`, M2 wave 2 complete): extend `mapOrcaFacts` in
+`tsf/adapters/orca-runtime.mjs` to project `worker-list`/`task-list`/
+`gate-list` facts into the shapes `keep-going.mjs` consumes, then reassess
+Codex capacity before attempting the bounded fixture/dogfood mission with
+real Orca dispatch; if still near-exhausted, proceed with the UI surface
+instead.
