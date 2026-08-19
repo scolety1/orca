@@ -99,6 +99,20 @@
             "bounded fixture/dogfood mission with real Orca dispatch -- still blocked: Codex weekly usage unchanged at 91%, 0 reset credits as of this wave's re-check (see providerCapacityStatus)",
             "UI: project-level Keep Going / Overnight controls"
           ]
+        },
+        {
+          "wave": 3,
+          "summary": "First application of the new EXPIRING_CAPACITY policy (capacityPolicy.expiringCapacityRule) and this program's first real live Orca dispatch. Codex was ~5.75h from its weekly reset with ~9% capacity remaining -- treated as expiring inventory per the new rule and assigned exactly the bounded task already queued as nextSafeAction: extend tsf/adapters/orca-runtime.mjs with mapOrchestrationFacts(facts), a pure projection of real worker-list/task-list/gate-list output into workerHeartbeats/resultCapsules/openGates. Dispatched via `orca terminal create --worktree active --command codex` in the current worktree (no new worktree/heavy install, to avoid stranding risk within the capacity window) with a hard-scoped prompt (two files only, no CLI mutation, no commit). Worker ran real read-only orca CLI inspection (worker-list/task-list/gate-list/run-list --json against pre-existing run run_79578caf1acb) to ground field names in the actual output shape rather than guessing, implemented the projection, added tsf/test/orca-runtime.test.mjs (3 tests), and self-reported 118/118 GREEN + clean oxlint/oxfmt in 14m31s. Independently re-verified by the planner session (VERIFIER_INDEPENDENT, separate identity from the Codex worker): git diff reviewed line by line (workerHeartbeats correctly returns lastHeartbeatAt: null rather than fabricating a timestamp the real worker-list output doesn't have; resultCapsules correctly uses validateResultCapsule to filter out non-TSF-shaped raw worker reports rather than upgrading them; openGates field names cross-checked against a real live `task-list --json` sample confirming the CLI's snake_case convention, not guessed), full suite re-run independently (118/118 GREEN), oxlint/oxfmt re-run independently (both clean). Scope held exactly to the two authorized files -- no commit/staging performed by the worker, matching instructions. After completion, Codex's own in-session UI showed an 'approaching rate limits' model-downgrade prompt; per the policy's shrink-and-stop rule, no second task was queued this wave even though several hours remained before reset -- checkpointing here instead.",
+          "testsAdded": 3,
+          "testsPassing": "3/3 new; 118/118 full tsf suite (no regressions); oxlint clean; oxfmt clean -- confirmed independently by the planner session, not just the worker's self-report",
+          "verifier": "VERIFIER_INDEPENDENT (Claude/Sonnet 5 planner session) -- separate identity from the Codex worker that implemented the change; first wave in this milestone with a real separated worker/verifier split rather than SELF",
+          "worker": "codex (live dispatch, term_ad9343f3-b276-4348-abaa-bab496f89677, worked 14m31s)",
+          "commit": null,
+          "deferredToNextWave": [
+            "bounded fixture/dogfood mission with real Orca dispatch through the full orchestration graph (run-create/task-create/dispatch, not just a bare terminal) -- still gated on Codex capacity recovering past this reset",
+            "UI: project-level Keep Going / Overnight controls",
+            "wiring mapOrchestrationFacts into keep-going.mjs's detectStall/registerWave call sites (currently just a standalone projection function, not yet consumed)"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -120,10 +134,9 @@
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": [
-        "orca-runtime.mjs mapOrcaFacts not yet extended for worker-list/task-list/gate-list",
-        "no real Orca dispatch proof yet for this milestone (governance + adapter are unit-tested only so far)",
+        "no bounded fixture/dogfood mission proving the full orchestration graph (run-create/task-create/dispatch) end to end -- wave 3 used a bare terminal dispatch, not the orchestration adapter's run/task/dispatch calls",
         "no UI surface yet",
-        "independent verification not yet performed",
+        "mapOrchestrationFacts not yet wired into keep-going.mjs's detectStall/registerWave call sites",
         "no candidate packaged yet"
       ]
     },
@@ -211,7 +224,7 @@
   "currentMilestone": "M2",
   "currentCandidate": null,
   "unresolvedGaps": [
-    "M2 mapOrcaFacts extension, UI, and real-project-level dogfood proof do not exist yet -- waves 1-2 delivered only the unit-tested governance module (tsf/domain/keep-going.mjs) and the unit-tested orchestration adapter (tsf/adapters/orca-orchestration-bridge.mjs), no live Orca dispatch"
+    "M2 UI surface and a real-project-level dogfood proof through the full orchestration graph (run-create/task-create/dispatch) do not exist yet -- waves 1-3 delivered the unit-tested governance module, the unit-tested orchestration adapter, the mapOrchestrationFacts projection, and one real (independently-verified) live Codex dispatch via a bare terminal, but not yet a mission proven end to end through orchestration run/task/dispatch"
   ],
   "blockers": [],
   "advisories": [
@@ -243,6 +256,46 @@
     }
   ],
   "retriesUsed": 0,
+  "capacityPolicy": {
+    "expiringCapacityRule": {
+      "id": "EXPIRING_CAPACITY",
+      "addedAt": "2026-08-19T23:35:00Z",
+      "addedBy": "TIM",
+      "charterSection": "Section G (docs/tsf/TSF_DAILY_DRIVER_AUTONOMY_PROGRAM_V1.md)",
+      "statement": "Owner preference: use available provider capacity rather than leaving substantial capacity unused before a known reset, without straying from bounded/safe/independently-verified execution discipline.",
+      "trigger": "A provider reports a known reset window (resetsAt/reset description) via a live capacity check, with meaningful capacity remaining before that reset.",
+      "rules": [
+        "Treat remaining capacity as expiring inventory, not something to conserve past the reset.",
+        "Preferentially assign small, bounded, independently useful tasks to that provider: focused implementation, tests, verifier passes, documentation reconciliation, bounded research, fixture work, or isolated repairs.",
+        "Choose only tasks that can reasonably finish and checkpoint before exhaustion or reset, whichever comes first.",
+        "Do not start a large critical-path task likely to be stranded mid-flight merely to consume capacity.",
+        "Never manufacture useless work just to consume tokens -- if no useful bounded work exists, leave the capacity unused.",
+        "Keep a small safety reserve sufficient to finish/fence/checkpoint whatever is currently in flight.",
+        "As reset approaches, progressively shrink the size of newly assigned tasks.",
+        "Once usable capacity is effectively exhausted, checkpoint and wait/switch providers normally -- do not force further dispatch.",
+        "Immediately after reset, reassess live capacity and restore the normal worker budget/concurrency for that provider."
+      ],
+      "appliesToProviders": ["codex", "claude", "any future provider with a known reset window"],
+      "supersedesForNearResetWindowOnly": "The general 'hold off on new WORKER_* dispatch near a limit' base policy above -- this amendment only relaxes that base policy inside a known-reset window with a genuine bounded task available; it does not authorize dispatch when no such task exists or when the task risks stranding.",
+      "mustStillHonor": [
+        "Section F execution discipline (conflict-aware waves, independent verification, no worker self-report treated as done)",
+        "Section H adoption checklist for anything reaching adoption",
+        "Section I hard-stop conditions"
+      ],
+      "applicationLog": [
+        {
+          "at": "2026-08-19T23:35:00Z",
+          "provider": "codex",
+          "capacityAtDecision": "91% weekly used, 0 reset credits, resetsAt 2026-08-20T05:20:51Z (~5.75h away)",
+          "taskAssigned": "M2 wave 3: extend tsf/adapters/orca-runtime.mjs with mapOrchestrationFacts + tests (already the recorded nextSafeAction -- not manufactured)",
+          "dispatchMethod": "orca terminal create --worktree active --command codex (bare terminal in the current worktree, not a new worktree, to avoid setup-time stranding risk)",
+          "outcome": "COMPLETED_AND_VERIFIED -- worker finished in 14m31s, independently re-verified GREEN by the planner session (see milestones[M2].waves[3])",
+          "capacityAfter": "Codex TUI surfaced its own 'approaching rate limits' model-downgrade prompt at task completion; per the rule's shrink-and-stop step, no second task was queued this wave even though ~5.5h remained before reset",
+          "checkpointCommit": null
+        }
+      ]
+    }
+  },
   "providerCapacityStatus": {
     "queriedAt": "2026-08-19T20:22:00Z",
     "source": "orca account list --json (live, trustworthy) -- re-checked at resume-from-checkpoint preflight",
@@ -255,12 +308,21 @@
     "codex": {
       "weeklyUsedPercent": 91,
       "rateLimitResetCreditsAvailable": 0,
-      "status": "NEAR_LIMIT",
-      "changeSincePriorCheckpoint": "UNCHANGED -- still 91%/0 reset credits"
+      "resetsAt": "2026-08-20T05:20:51Z",
+      "status": "NEAR_LIMIT_BUT_EXPIRING_SOON",
+      "changeSincePriorCheckpoint": "Account-level percent snapshot still reads 91% (this endpoint appears to update on a lag), but the live Codex TUI itself surfaced an 'approaching rate limits' downgrade prompt after wave 3's dispatch -- treat that in-session signal as the more current one. Effectively near-exhausted now."
     },
-    "policy": "Codex weekly usage is near exhausted with 0 reset credits available -- per program Section G, no new Codex WORKER_* dispatch should start until capacity recovers or a reset occurs. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) remains healthy. This is why live Orca worker dispatch for the M2 dogfood proof is deferred rather than started this wave; M2 wave 2 (orchestration adapter) was implemented directly by the planner session with a stubbed-CLI test suite instead, matching the wave-1 precedent."
+    "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Section G was amended 2026-08-19 with the EXPIRING_CAPACITY rule (state.json -> capacityPolicy.expiringCapacityRule): near a known reset, remaining capacity is used for small bounded useful work rather than left idle. Applied once this session (M2 wave 3, see capacityPolicy.expiringCapacityRule.applicationLog) -- one bounded task dispatched and independently verified GREEN. After that task, Codex's own UI signaled it was near its limit again, so per the rule's shrink-and-stop step no further Codex dispatch was queued this wave. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) remains healthy throughout."
   },
   "lastDurableCheckpoint": {
+    "phase": "M2_WAVE_3_COMPLETE_EXPIRING_CAPACITY_APPLIED",
+    "at": "2026-08-19T23:52:00Z",
+    "commit": null,
+    "commitTree": null,
+    "workingTreeClean": false,
+    "note": "Amended Section G with the EXPIRING_CAPACITY rule and applied it once: live-dispatched the bounded mapOrchestrationFacts task to Codex, independently verified GREEN by the planner session (118/118 tests, oxlint/oxfmt clean), then stopped further Codex dispatch once its own UI signaled it was near its limit again -- see milestones[M2].waves[3] and capacityPolicy.expiringCapacityRule.applicationLog. Commit hash to be recorded in a follow-up checkpoint entry once made."
+  },
+  "priorDurableCheckpoint2": {
     "phase": "M2_WAVE_2_COMPLETE",
     "at": "2026-08-19T20:22:00Z",
     "commit": "bae423b531110277a199d98f625517969815edbe",
@@ -314,7 +376,7 @@
     "resolvedAt": "2026-08-19T20:22:00Z",
     "resolution": "Resumed per Tim's instruction after a Windows restart. Post-restart safety preflight (see resumePreflight) re-ran the same worker-list/HEAD checks plus a single harmless `codex doctor` probe -- the sandbox crash did not recur and the runtime reported healthy. Treated as cleared; M2 wave 2 proceeded without live Codex dispatch (Codex capacity still NEAR_LIMIT, unrelated to the crash)."
   },
-  "nextSafeAction": "Build the mapOrcaFacts extension in tsf/adapters/orca-runtime.mjs to project orchestration worker-list/task-list/gate-list facts into the shapes tsf/domain/keep-going.mjs's detectStall and a future registerWorkerResult-style capsule consume, with unit tests against synthetic facts (no live CLI calls needed for this step -- it's a pure projection, like the existing mapOrcaFacts). After that: reassess whether Codex weekly usage has recovered from 91%/0 reset credits before attempting the bounded fixture/dogfood mission with real Orca dispatch; if still NEAR_LIMIT, continue with the UI surface (tsf/ui project-level Keep Going / Overnight controls backed by a tsf/server projection) instead, which does not require live Codex dispatch either.",
+  "nextSafeAction": "M2 wave 3 (mapOrchestrationFacts) is complete and independently verified -- commit it, then continue with the UI surface (tsf/ui project-level Keep Going / Overnight controls backed by a tsf/server projection), which needs no Codex capacity. Codex is effectively at its expiring-capacity floor for this reset window (see providerCapacityStatus) -- per capacityPolicy.expiringCapacityRule, do not queue further Codex WORKER_* dispatch until either (a) a live re-check of `orca account list --json` plus the in-session TUI signal shows real headroom again, or (b) the weekly reset passes (~2026-08-20T05:20:51Z) and normal worker budget/concurrency is restored. After reset, immediately re-check capacity and reassess whether the bounded fixture/dogfood mission through the full orchestration graph (run-create/task-create/dispatch) is now a good EXPIRING_CAPACITY or normal-budget candidate.",
   "authorityBoundaries": {
     "canAutoAdoptLocally": "Only into tsf/main, only via Section H's 14-condition checklist, ff-only merge, all gates GREEN",
     "cannotDo": [

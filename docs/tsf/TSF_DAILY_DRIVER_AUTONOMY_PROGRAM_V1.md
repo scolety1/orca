@@ -113,6 +113,45 @@ rather than independently re-verified from scratch by this program.
   worker concurrency defaults to 2 (3 only when demonstrably
   non-conflicting and host resources are healthy).
 
+## Provider capacity policy (Section G)
+
+Base rule: near a provider's usage limit, prefer cheaper/healthier providers
+and generally hold off on starting new `WORKER_*` dispatch on the
+constrained one (this is what paused live Codex dispatch through M2 waves
+1-2). `state.json` → `providerCapacityStatus` is re-checked live
+(`orca account list --json`) before any dispatch decision — never assumed
+stale.
+
+**Amendment 2026-08-19 — `EXPIRING_CAPACITY` utilization rule.** The owner
+prefers using available provider capacity rather than leaving substantial
+capacity unused ahead of a known reset. When a provider is near a known
+reset (its account status reports a `resetsAt`/reset window) with
+meaningful capacity still remaining:
+
+- Treat the remaining capacity as **expiring inventory**, not something to
+  conserve past the reset.
+- Preferentially assign it small, bounded, independently useful tasks —
+  focused implementation, tests, verifier passes, documentation
+  reconciliation, bounded research, fixture work, or isolated repairs.
+- Choose only tasks that can reasonably finish and checkpoint before
+  exhaustion or reset, whichever comes first.
+- Do **not** start a large critical-path task likely to be stranded
+  mid-flight merely to consume capacity, and never manufacture busywork
+  just to spend tokens — if no useful bounded work exists, leave the
+  capacity unused.
+- Keep a small safety reserve sufficient to finish, fence, and checkpoint
+  whatever is currently in flight.
+- As the reset approaches, progressively shrink the size of newly assigned
+  tasks.
+- Once usable capacity is effectively exhausted, checkpoint normally and
+  wait for reset or switch providers — do not force further dispatch.
+- Immediately after reset, reassess live capacity and restore the normal
+  worker budget/concurrency for that provider.
+
+Machine-readable form: `state.json` → `capacityPolicy.expiringCapacityRule`.
+Future Overnight runs must consult it automatically before every dispatch
+decision near a known reset, not just at the wave this was written.
+
 ## Local adoption pre-authorization (Section H)
 
 For `TSF_ORCA` only, a completed milestone may be locally adopted into
