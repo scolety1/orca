@@ -1,4 +1,4 @@
-import type { AgentEvidence, ChatMessage, ChatResponse, Portfolio, ProjectCard, ProjectDetail, ReceiptEntry, RoutingInfo, WorkSummary } from './types'
+import type { AgentEvidence, ChatAttachmentMeta, ChatMessage, ChatResponse, Portfolio, ProjectCard, ProjectDetail, ReceiptEntry, RoutingInfo, WorkSummary } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -30,7 +30,7 @@ export const api = {
   receipts: (id: string) => request<{ chain: ReceiptEntry[]; chainValid: boolean; tip: string | null }>(`/receipts/${encodeURIComponent(id)}`),
   decideCandidate: (projectId: string, body: { decision: string; requestId: string; reason?: string }) =>
     request<{ ok: true; candidateState: string; receipt: ReceiptEntry }>(`/candidates/${encodeURIComponent(projectId)}/decision`, { method: 'POST', body: JSON.stringify(body) }),
-  chat: (projectId: string | null, message: string) =>
-    request<ChatResponse>('/chat', { method: 'POST', body: JSON.stringify({ projectId, message }) }),
+  chat: (projectId: string | null, message: string, attachments: ChatAttachmentMeta[] = []) =>
+    request<ChatResponse>('/chat', { method: 'POST', body: JSON.stringify({ projectId, message, attachments }) }),
   chatHistory: (projectId: string) => request<ChatMessage[]>(`/chat/${encodeURIComponent(projectId)}`)
 }

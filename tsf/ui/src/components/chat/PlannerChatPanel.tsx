@@ -12,6 +12,7 @@ import type { ChatMessage } from '@/lib/types'
 interface Attachment {
   name: string
   size: number
+  type: string
   dataUrl: string
 }
 
@@ -29,12 +30,15 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [providerLabel, setProviderLabel] = useState<string | null>(null)
+  const [live, setLive] = useState<boolean | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setMessages([])
     setError(null)
+    setProviderLabel(null)
+    setLive(null)
     if (!projectId) return
     api
       .chatHistory(projectId)
@@ -55,9 +59,11 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
     setMessages((prev) => [...prev, { role: 'user', content: text + attachmentNote, at: new Date().toISOString() }])
     setDraft('')
     setAttachments([])
+    const attachmentMeta = attachments.map((a) => ({ name: a.name, type: a.type || 'unknown' }))
     try {
-      const result = await api.chat(projectId, text + attachmentNote)
+      const result = await api.chat(projectId, text + attachmentNote, attachmentMeta)
       setProviderLabel(result.providerLabel)
+      setLive(result.live ?? false)
       setMessages((prev) => [...prev, { role: 'assistant', content: result.text, at: new Date().toISOString(), decisionClass: result.decisionClass, intent: result.intent }])
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the planner right now.')
@@ -70,7 +76,7 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
     if (!fileList) return
     Array.from(fileList).forEach((file) => {
       const reader = new FileReader()
-      reader.onload = () => setAttachments((prev) => [...prev, { name: file.name, size: file.size, dataUrl: String(reader.result) }])
+      reader.onload = () => setAttachments((prev) => [...prev, { name: file.name, size: file.size, type: file.type, dataUrl: String(reader.result) }])
       reader.readAsDataURL(file)
     })
   }
@@ -82,7 +88,10 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
           <Sparkles className="size-4 text-primary" />
           <div className="text-sm font-semibold">Planner Chat</div>
         </div>
-        <div className="text-[10px] text-muted-foreground">{providerLabel ?? 'PLANNER_DEEP'}</div>
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title={providerLabel ?? undefined}>
+          {live !== null && <span className={cn('size-1.5 rounded-full', live ? 'bg-emerald-500' : 'bg-amber-500')} aria-hidden />}
+          <span>{providerLabel ? `Planner: ${providerLabel}` : 'Planner: PLANNER_DEEP'}</span>
+        </div>
       </div>
       <ScrollArea className="tsf-scrollbar flex-1 px-4 py-3">
         {!projectId ? (

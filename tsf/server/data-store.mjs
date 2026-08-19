@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const STATE_DIR = path.join(HERE, '.local-state')
-const STATE_FILE = path.join(STATE_DIR, 'operator-state.json')
+// Overridable so tests can point at an isolated temp file instead of the
+// real local operator state (which a running dev server may hold open).
+const STATE_FILE = process.env.TSF_UI_STATE_FILE || path.join(STATE_DIR, 'operator-state.json')
 
 const DEFAULTS = {
   schemaVersion: 'TSF_UI_OPERATOR_LOCAL_STATE_V1',
@@ -15,7 +17,8 @@ const DEFAULTS = {
   workSet: ['colety-labs-sales-engine', 'weird-talent-marketplace', 'shopify-catalog-qa', 'tsf-ui-capability-check'],
   fixtureCandidateDecision: null, // { decision, requestId, reason, at, receiptHash }
   fixtureReceipts: [],
-  chatThreads: {} // projectId -> [{ role, content, at, decisionClass, intent }]
+  chatThreads: {}, // projectId -> [{ role, content, at, decisionClass, intent }]
+  plannerSessions: {} // projectId -> TSF_SESSION_BINDING_V1 (see tsf/domain/session-affinity.mjs)
 }
 
 export function loadState() {

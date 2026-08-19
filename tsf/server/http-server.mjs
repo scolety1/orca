@@ -8,7 +8,8 @@ import { pathToFileURL } from 'node:url'
 import { loadRealPilotProjects } from './portfolio-projection.mjs'
 import { createFixtureState, decideFixtureCandidate, FIXTURE_PROJECT_ID } from './fixture-project.mjs'
 import { loadState, saveState } from './data-store.mjs'
-import { respond } from './chat-responder.mjs'
+import { respond, classifyIntent, classifyDecision } from './chat-responder.mjs'
+import { invokeLivePlanner, providerLabel, fallbackLabel } from './live-planner.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import usageModes from '../routing/usage-modes.v1.json' with { type: 'json' }
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
@@ -200,17 +201,61 @@ export function createRequestHandler() {
         }
       }
 
-      // POST /api/chat { projectId, message }
+      // POST /api/chat { projectId, message, attachments? }
       if (parts[1] === 'chat' && req.method === 'POST') {
         const body = await readBody(req)
         const project = map.get(body.projectId) ?? null
         const message = String(body.message ?? '').slice(0, 4000)
         if (!message.trim()) return json(res, 400, { ok: false, error: 'message is required' })
-        const result = respond(project, message)
+        const attachments = Array.isArray(body.attachments)
+          ? body.attachments.slice(0, 10).map((a) => ({ name: String(a?.name ?? 'attachment').slice(0, 200), type: String(a?.type ?? '').slice(0, 100) }))
+          : []
+
+        const intent = classifyIntent(message)
+        const decisionClass = classifyDecision(message, intent)
+        let result
+        let plannerSessions = opState.plannerSessions
+
+        if (!project) {
+          result = respond(project, message)
+        } else if (decisionClass === 'TIM_REQUIRED') {
+          // Consequential phrasing is refused deterministically, before ever
+          // spending a live call on it — not left to the model's judgment.
+          // Label this distinctly from an actually-unavailable provider: one
+          // may well be configured and reachable, it was just deliberately
+          // not called for this message.
+          result = { ...respond(project, message), providerLabel: 'PLANNER_DEEP · policy refusal — consequential action, no live call made', live: false }
+        } else {
+          const key = body.projectId
+          const history = (opState.chatThreads[key] ?? []).slice(-12)
+          const live = await invokeLivePlanner({ project, message, opState, recentHistory: history, attachments })
+          if (live.ok) {
+            plannerSessions = { ...plannerSessions, [project.id]: live.binding }
+            result = {
+              intent,
+              decisionClass,
+              text: live.text,
+              plannerRole: 'PLANNER_DEEP',
+              providerLabel: providerLabel({ agentId: live.agentId, model: live.model }),
+              live: true,
+              agentId: live.agentId,
+              providerId: live.providerId,
+              model: live.model
+            }
+          } else {
+            result = { ...respond(project, message), providerLabel: fallbackLabel(live.reason), live: false, unavailableReason: live.reason, unavailableDetail: live.detail }
+          }
+        }
+
         const threads = { ...opState.chatThreads }
         const key = body.projectId ?? '__none__'
-        threads[key] = [...(threads[key] ?? []), { role: 'user', content: message, at: new Date().toISOString() }, { role: 'assistant', content: result.text, at: new Date().toISOString(), decisionClass: result.decisionClass, intent: result.intent }].slice(-200)
-        saveState({ ...opState, chatThreads: threads })
+        const attachmentSummary = attachments.length ? { attachmentCount: attachments.length, attachmentNames: attachments.map((a) => a.name) } : {}
+        threads[key] = [
+          ...(threads[key] ?? []),
+          { role: 'user', content: message, at: new Date().toISOString(), ...attachmentSummary },
+          { role: 'assistant', content: result.text, at: new Date().toISOString(), decisionClass: result.decisionClass, intent: result.intent }
+        ].slice(-200)
+        saveState({ ...opState, chatThreads: threads, plannerSessions })
         return json(res, 200, result)
       }
 

@@ -159,6 +159,16 @@ export interface ChatResponse {
   text: string
   plannerRole: string
   providerLabel: string
+  live?: boolean
+  agentId?: string
+  providerId?: string
+  model?: string
+  unavailableReason?: string
+}
+
+export interface ChatAttachmentMeta {
+  name: string
+  type: string
 }
 
 export interface ChatMessage {
