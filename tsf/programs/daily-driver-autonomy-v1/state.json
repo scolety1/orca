@@ -1,0 +1,208 @@
+{
+  "schemaVersion": "TSF_PROGRAM_STATE_V1",
+  "programId": "daily-driver-autonomy-v1",
+  "programName": "TSF Daily Driver + Autonomy Program V1",
+  "charterPath": "docs/tsf/TSF_DAILY_DRIVER_AUTONOMY_PROGRAM_V1.md",
+  "governingArchitecture": {
+    "tsfRole": "project intelligence / planner / governance / portfolio / Health / autonomy / operator UX",
+    "orcaRole": "execution runtime / worktrees / terminals / sessions / agents / browser / orchestration primitives",
+    "providersAreRolesBehind": "TSF stable roles (PLANNER_DEEP, PLANNER_BALANCED, WORKER_CHEAP, WORKER_BALANCED, WORKER_DEEP, VERIFIER_INDEPENDENT)",
+    "orcaCoreDeltaTarget": 0,
+    "orcaCoreDeltaActual": 0,
+    "forbiddenPattern": "TSF -> Zenith -> Command Center -> Smithers -> OpenWeft -> Orca (competing execution foundation)"
+  },
+  "baseline": {
+    "confirmedAt": "2026-08-19T00:00:00Z",
+    "repoRoot": "C:\\TSF_ORCA",
+    "workingWorktree": "C:\\Users\\codex-agent\\orca\\workspaces\\TSF_ORCA\\tsf-autonomy-program-v1",
+    "workingBranch": "scolety1/tsf-autonomy-program-v1",
+    "tsfMainWorktree": "C:\\TSF_ORCA",
+    "tsfMainBranch": "tsf/main",
+    "expectedAdoptedHead": "de105fb4632d7e8a297d824963f931dcd4eb858e",
+    "confirmedTsfMainHead": "de105fb4632d7e8a297d824963f931dcd4eb858e",
+    "headMatchesExpected": true,
+    "workingTreeCleanAtStart": true,
+    "legacyReadOnly": {
+      "path": "C:\\TSF_V1",
+      "confirmedReadOnlyIntent": true,
+      "note": "Not mutated by this program; treated as reference-only per FOUNDATION_IDENTITY.md"
+    },
+    "unrelatedRealRepositoriesMutated": false,
+    "existingLongRunEvidence": "docs/tsf/TSF_ORCA_LONG_AUTONOMOUS_RUNTIME_RUN_V1.md + tsf/fixtures/long-autonomous-runtime-v1/ (fixture-level GREEN proof of persistent planner, real Orca dispatch, verification, recovery, Work Set gating; no real project, no UI, no cross-restart durability yet)",
+    "existingCapabilityLedger": "tsf/migration/capability-migration.v1.json (111 capabilities; 27 as of last count: 12 UPSTREAM_NATIVE, 4 REUSED_LEGACY_CODE, 6 ADAPTED_LEGACY_CODE, 24 NEW_TSF_OVERLAY, 51 PENDING, 12 REFERENCE_ONLY, 2 REJECTED)",
+    "existingOrchestrationAdapters": "tsf/adapters/orca-runtime.mjs, tsf/adapters/orca-cli-bridge.mjs -- thin fact-projection/dispatch-shape adapters, not a duplicate orchestration engine"
+  },
+  "originalGoal": {
+    "statement": "Owner can leave the computer for long periods while TSF continues useful, bounded engineering work without drifting from the original goal, across seven upgrades that turn TSF into a real daily-driver planner/autonomy layer over Orca.",
+    "sevenUpgrades": [
+      "M1: Project Onboarding V1 -- Add Project -> Analyze -> Health -> Direction -> Upgrade Backlog -> Known/Active/Work Set",
+      "M2: Keep Going / Overnight V1 -- real project-level long-run controller over Orca (highest priority)",
+      "M3: Chat -> Dispatch + Live Work Feed -- Planner Chat becomes operational, not just conversational",
+      "M4: Run Journal + Recovery -- durable run timeline, restart recovery, no repeated settled work",
+      "M5: Capacity-Aware Routing -- route around provider capacity without manual meter-watching",
+      "M6: Desktop TSF -- double-click launch, no manual localhost/terminal management",
+      "M7: Project Memory V2 -- durable selective memory (facts/decisions/preferences/lessons) across planner sessions"
+    ],
+    "immutableUnless": "Tim changes it"
+  },
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Project Onboarding V1",
+      "status": "ACCEPTED_PRE_EXISTING",
+      "acceptanceCriteria": [
+        "Add Project flow exists and analyzes a real local repository read-only-first",
+        "Health assessment produced at onboarding time",
+        "Direction / Upgrade Backlog surfaced",
+        "Project reaches Known/Active Fleet/Work Set states through real domain logic, not hardcoded UI state"
+      ],
+      "candidateCommit": "de105fb4632d7e8a297d824963f931dcd4eb858e",
+      "adoptedCommit": "de105fb4632d7e8a297d824963f931dcd4eb858e",
+      "adoptedInto": "tsf/main",
+      "verifier": "PRE_PROGRAM -- verified by commit presence at expected tsf/main HEAD per program preflight; not re-verified independently by this program run",
+      "evidence": [
+        "commit de105fb46 'feat(tsf): add project onboarding v1' -- tsf/domain/onboarding.mjs, tsf/server/onboarding.mjs, tsf/server/repo-inspector.mjs, tsf/server/onboarded-project-projection.mjs, tsf/ui/src/pages/AddProjectPage.tsx, tsf/test/onboarding.test.mjs, tsf/test/http-onboarding.test.mjs"
+      ],
+      "gaps": [
+        "Not independently re-verified by this program (inherited as pre-adopted baseline per program instructions Section B)"
+      ]
+    },
+    {
+      "id": "M2",
+      "name": "Keep Going / Overnight V1",
+      "status": "NOT_STARTED",
+      "priority": "HIGHEST",
+      "acceptanceCriteria": [
+        "Original goal immutable unless Tim changes it",
+        "Planner establishes acceptance criteria and compares repo state to goal each wave",
+        "Bounded, conflict-aware work waves dispatched to non-conflicting Orca workers",
+        "Independent verification per wave; no worker self-report treated as done",
+        "Replan/continue/stop loop against original goal, not against worker claims",
+        "Stall watchdog, worker heartbeat, max concurrency, retry budget, time/resource budget",
+        "Needs You / safe pause / Ready to Resume / resume all real",
+        "Durable checkpoint after meaningful phases",
+        "Morning/return summary",
+        "No silent push/merge/deploy/publish",
+        "UI: project-level 'Keep Going / Overnight' action with goal, Usage Mode, budget, constraints, stop conditions, Start/Pause/Resume, and live phase/gap/worker/retry/verifier/NeedsYou/ReadyForAdoption display",
+        "Proven via a bounded fixture/dogfood mission (not NWR/HouseOS/EasyLife) showing multiple waves, at least one revision, verification, pause/resume, no duplicate settled task, concise summary"
+      ],
+      "relatedExistingEvidence": "tsf/fixtures/long-autonomous-runtime-v1/ already proves most of the *domain* loop (planner persistence, wave dispatch, verification, Work Set gate, recovery) at fixture level with a synthetic offline mission board -- M2 must extend this to a real project-level goal + UI surface + durable cross-restart checkpoint, not rebuild the loop from scratch",
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started"]
+    },
+    {
+      "id": "M3",
+      "name": "Chat -> Dispatch + Live Work Feed",
+      "status": "NOT_STARTED",
+      "acceptanceCriteria": [
+        "Planner Chat can bind a request to selected project, classify intent/authority, get a bounded plan, and create real Orca Run/tasks",
+        "Workers dispatched from chat without Tim opening Orca terminals manually",
+        "Live Work Feed shows only real Orca-sourced states (Working/Waiting/Blocked/Needs You/Verifying/Ready for Adoption/Completed), no fabricated states",
+        "Drill-down/open-in-Orca available for technical detail",
+        "Planner Chat never bypasses authority gates"
+      ],
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started; depends on M2 controller existing"]
+    },
+    {
+      "id": "M4",
+      "name": "Run Journal + Recovery",
+      "status": "NOT_STARTED",
+      "acceptanceCriteria": [
+        "Durable run timeline with phase/task outputs persisted compactly",
+        "Original goal retained across restart",
+        "Settled work distinguished from interrupted work; no repeat of settled steps on resume",
+        "Durable pending human question survives restart",
+        "Audit trail; checkpoint before provider/resource pause; recovery summary after restart",
+        "Proven via an intentional interruption/restart"
+      ],
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started; depends on M2"]
+    },
+    {
+      "id": "M5",
+      "name": "Capacity-Aware Routing",
+      "status": "NOT_STARTED",
+      "acceptanceCriteria": [
+        "Uses trustworthy provider capacity signals when available; reports UNKNOWN otherwise, never fabricated",
+        "Preserves planner capacity; prefers cheaper workers for mechanical work",
+        "Reduces concurrency near limits; avoids starting work that can't finish before exhaustion",
+        "Switches providers at mission boundaries, not mid-session",
+        "Checkpoints safely on low capacity; resumes after capacity returns",
+        "Shows requested role separately from effective provider/model",
+        "Proven fallback without faking exhaustion"
+      ],
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started"]
+    },
+    {
+      "id": "M6",
+      "name": "Desktop TSF",
+      "status": "NOT_STARTED",
+      "acceptanceCriteria": [
+        "Double-click launch opens TSF UI and connects to/starts required local TSF/Orca services",
+        "Planner Chat, projects, Health, adoption all work without manual localhost commands",
+        "Orca core delta stays 0",
+        "Windows application build with reliable launch, graceful backend-unavailable state, clean shutdown",
+        "Update/install strategy documented; unsigned local dev installer acceptable; no external distribution",
+        "Smoke-tested locally"
+      ],
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started"]
+    },
+    {
+      "id": "M7",
+      "name": "Project Memory V2",
+      "status": "NOT_STARTED",
+      "acceptanceCriteria": [
+        "Inspects existing capsules/onboarding state/receipts/session affinity/backlog before adding new storage",
+        "Facts/Decisions/Preferences/Experiences-Lessons memory classes",
+        "Retrieval is project-scoped, selective, provenance-aware, bounded",
+        "Stale facts can be superseded; explicit user decisions cannot be silently overwritten",
+        "Hindsight evaluated only as OPTIONAL_MEMORY_BACKEND, adopted only if it survives bounded local evaluation",
+        "Tests: cross-session recall, project isolation, stale-fact supersession, rejected-design recall, preference persistence, no giant transcript injection"
+      ],
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started"]
+    }
+  ],
+  "currentMilestone": "M2",
+  "currentCandidate": null,
+  "unresolvedGaps": [
+    "M2 controller, UI, and real-project-level proof do not exist yet -- only the fixture-level long-autonomous-runtime-v1 domain loop exists"
+  ],
+  "blockers": [],
+  "retriesUsed": 0,
+  "providerCapacityStatus": "UNKNOWN -- not queried this program run yet; query at next milestone boundary before dispatching M2 workers",
+  "lastDurableCheckpoint": {
+    "phase": "PREFLIGHT_AND_CHARTER_COMPLETE",
+    "at": "2026-08-19T00:00:00Z",
+    "commit": "de105fb4632d7e8a297d824963f931dcd4eb858e",
+    "note": "Baseline preflight (Section B) confirmed GREEN; durable program charter and state created (Section C). No implementation work started yet."
+  },
+  "nextSafeAction": "Begin M2 (Keep Going / Overnight V1): read tsf/fixtures/long-autonomous-runtime-v1/ and tsf/domain/coordinator.mjs + mission-state.mjs in full, then design the real project-level long-run controller as an extension of the existing fixture domain loop (not a rebuild), scoped to a first bounded implementation wave (e.g. immutable-goal + acceptance-criteria + gap-comparison domain module with tests) before touching UI or a real dogfood mission.",
+  "authorityBoundaries": {
+    "canAutoAdoptLocally": "Only into tsf/main, only via Section H's 14-condition checklist, ff-only merge, all gates GREEN",
+    "cannotDo": [
+      "push/PR/merge to any remote",
+      "deploy/publish/production changes",
+      "modify C:\\TSF_V1",
+      "modify NWR/HouseOS/EasyLife/Nytheria-Worldforge",
+      "introduce paid external dependencies or services",
+      "handle credentials/secrets",
+      "modify Orca core (target delta 0)"
+    ],
+    "mustStopAndReturn": "TIM_REQUIRED or the specific YELLOW/RED blocker per program Section I if any hard-stop condition is met"
+  },
+  "harvestLedger": {
+    "path": "docs/tsf/SOURCE_HARVEST_LEDGER_V1.md",
+    "status": "NOT_YET_CREATED",
+    "note": "To be created before/alongside M2 implementation per program Section D"
+  }
+}
