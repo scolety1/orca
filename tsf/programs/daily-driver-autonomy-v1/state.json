@@ -178,6 +178,17 @@
     "M2 controller, UI, and real-project-level proof do not exist yet -- only the fixture-level long-autonomous-runtime-v1 domain loop exists"
   ],
   "blockers": [],
+  "advisories": [
+    {
+      "id": "GIT-HYGIENE-001",
+      "severity": "ADVISORY_NON_BLOCKING",
+      "observedAt": "2026-08-19T00:00:00Z",
+      "summary": "Shared .git object store at C:\\TSF_ORCA (used by tsf/main, this worktree, flounder, featherstar) has 211 packs and 5 stale tmp_pack_* files (dated Aug 18 16:08 through Aug 19 16:28, i.e. pre-existing across multiple prior sessions, not caused by this program's commit) from repeatedly failed 'geometric-repack' housekeeping triggered by the husky/lint-staged pre-commit hook. `git fsck --full` reports broken links to missing blobs in some unrelated/older tree objects.",
+      "verifiedNotAffecting": "This program's checkpoint commit (19511dda9) and the M1 baseline commit (de105fb46) are both fully readable via git show/git cat-file; their trees are intact.",
+      "actionTaken": "None -- no destructive git maintenance (gc/repack/tmp_pack deletion) was run unilaterally against a store shared by other active worktrees.",
+      "recommendedNextStep": "Tim or a dedicated maintenance task should run `git gc` on C:\\TSF_ORCA once all worktrees have clean/committed trees, ideally after checking whether the broken blobs belong to any reachable ref."
+    }
+  ],
   "retriesUsed": 0,
   "providerCapacityStatus": "UNKNOWN -- not queried this program run yet; query at next milestone boundary before dispatching M2 workers",
   "lastDurableCheckpoint": {
