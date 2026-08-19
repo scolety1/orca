@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import { Lock } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Lock, Plus } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api, ApiError } from '@/lib/api'
 import { LoadingState, ErrorState } from '@/components/States'
 import { ProjectCard } from '@/components/ProjectCard'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/cn'
 
 export function ProjectsPage() {
+  const navigate = useNavigate()
   const { data: portfolio, loading, error, reload } = useApi(() => api.portfolio(), [])
   const { data: routing, reload: reloadRouting } = useApi(() => api.routing(), [])
   const [switching, setSwitching] = useState<string | null>(null)
@@ -33,9 +36,14 @@ export function ProjectsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
-      <header className="mb-8">
-        <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
-        <p className="text-sm text-muted-foreground">Known Projects, Active Fleet, and Work Set. Usage Mode governs routing and budgets only — never repository authority.</p>
+      <header className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
+          <p className="text-sm text-muted-foreground">Known Projects, Active Fleet, and Work Set. Usage Mode governs routing and budgets only — never repository authority.</p>
+        </div>
+        <Button size="sm" onClick={() => navigate('/projects/add')}>
+          <Plus className="size-4" /> Add Project
+        </Button>
       </header>
 
       {routing && (

@@ -6,7 +6,8 @@ export const TSF_RECEIPT_KINDS = Object.freeze([
   'VERIFIER_RESULT',
   'ADOPTION_DECISION',
   'RELEASE_PROMOTION',
-  'HUMAN_CONSEQUENTIAL_APPROVAL'
+  'HUMAN_CONSEQUENTIAL_APPROVAL',
+  'PROJECT_ONBOARDED'
 ])
 
 export function createReceipt(input, { previousReceiptHash = null, clock } = {}) {

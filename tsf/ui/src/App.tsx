@@ -6,6 +6,7 @@ import { WorkPage } from '@/pages/WorkPage'
 import { ProjectsPage } from '@/pages/ProjectsPage'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
 import { AgentsPage } from '@/pages/AgentsPage'
+import { AddProjectPage } from '@/pages/AddProjectPage'
 
 export function App() {
   return (
@@ -16,6 +17,7 @@ export function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/add" element={<AddProjectPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/agents" element={<AgentsPage />} />
           </Route>

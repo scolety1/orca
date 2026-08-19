@@ -34,10 +34,12 @@ const coverage = {
     'LEG-003': 'Legacy thin work-order invariants adapted into compact plan capsules'
   },
   NEW_TSF_OVERLAY: {
-    'PRJ-001': 'Bounded project registration domain contract; fixture-only runway',
+    'PRJ-001': 'Bounded, read-only-first project onboarding (repo analysis, handoff reconciliation, migration classification, commit) proven end-to-end against a real local repository, including live Orca repo registration',
     'PRJ-002': 'Known-project registry and provenance classes',
+    'PRJ-003': 'Bounded repository discovery (README/AGENTS.md/CLAUDE.md, package manifests, command guidance, stack/test/build detection) via tsf/server/repo-inspector.mjs, proven against a real local repository',
     'PRJ-006': 'Active Fleet domain logic',
     'PRJ-007': 'Work Set subset, fingerprint, saved-set logic, fail-closed new-dispatch gate, and explicit reentry proof',
+    'PRJ-008': 'Known Projects/Active Fleet/Work Set lifecycle exercised end-to-end through real project onboarding, gated by the reused domain/portfolio.mjs invariant (Work Set is never automatic)',
     'WRK-001': 'Persistent Orca planner session decomposed and checkpointed one planning episode without implementing product code',
     'WRK-003': 'Planner coordinated four real Orca task/dispatch/worktree sessions through compact capsules',
     'WRK-006': 'Independent deterministic and deep Orca verifier sessions attested exact commits, trees, paths, tests, and browser behavior',
@@ -57,7 +59,7 @@ const coverage = {
     'AUT-003': 'Worker completion remains READY_FOR_ADOPTION until exact decision',
     'AUT-007': 'Receipt Lite schema, hashes, producer/session facts, and verification',
     'REL-007': 'Candidate admission binds exact commit/tree/path/test evidence plus independent runtime and browser attestation',
-    'HLT-001': 'Actionable project/candidate/provider/compatibility Health projection'
+    'HLT-001': 'Actionable project/candidate/provider/compatibility Health projection, extended with an onboarding-time repository Health assessor (tsf/domain/health.mjs:assessRepositoryOnboardingHealth) proven against a real local repository'
   }
 }
 
@@ -85,7 +87,7 @@ manifest.summary = Object.fromEntries(
   manifest.allowedStates.map((state) => [state, manifest.capabilities.filter((entry) => entry.state === state).length])
 )
 manifest.summary.TOTAL = manifest.capabilities.length
-manifest.updatedAt = '2026-08-18'
+manifest.updatedAt = '2026-08-19'
 manifest.coverageRule = 'A non-PENDING state means foundation or overlay behavior exists; it does not claim final legacy parity unless separately proven.'
 
 await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')

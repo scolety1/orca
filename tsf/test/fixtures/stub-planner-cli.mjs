@@ -41,10 +41,28 @@ if (resume && resume !== sessionId) {
 }
 
 const prompt = argValue('-p') || ''
+const jsonSchema = argValue('--json-schema')
+
+// When --json-schema is passed (structured one-shot analysis calls, e.g.
+// onboarding direction analysis), emit a result matching the shape those
+// callers expect instead of the plain chat-style text.
+const structured = jsonSchema
+  ? {
+      purpose: `stub-answer-for::${prompt}`.slice(0, 4000),
+      completedSummary: 'stub completed summary',
+      unfinishedSummary: 'stub unfinished summary',
+      alignment: 'ALIGNED',
+      alignmentRationale: 'stub alignment rationale',
+      recommendedNextMission: { title: 'stub next mission', rationale: 'stub rationale' },
+      upgradeCandidates: []
+    }
+  : null
+
 process.stdout.write(
   JSON.stringify({
     is_error: false,
-    result: `stub-answer-for::${prompt}`,
+    result: structured ? JSON.stringify(structured) : `stub-answer-for::${prompt}`,
+    structured_output: structured,
     session_id: sessionId,
     total_cost_usd: 0.001,
     modelUsage: { [model]: { canonicalModel: model } }

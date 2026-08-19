@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CandidateCard } from '@/components/CandidateCard'
 import { PlannerChatPanel } from '@/components/chat/PlannerChatPanel'
+import { RefreshProjectButton } from '@/components/onboarding/RefreshProjectButton'
 
 function copy(text: string) {
   navigator.clipboard?.writeText(text).catch(() => undefined)
@@ -47,6 +48,7 @@ export function ProjectDetailPage() {
             {project.sourceClass === 'FIXTURE' ? <Badge variant="fixture">Fixture</Badge> : <Badge variant="neutral">Real project</Badge>}
           </div>
           {project.purpose && <p className="mt-1 max-w-xl text-sm text-muted-foreground">{project.purpose}</p>}
+          {project.evidence.onboarding && <div className="mt-2"><RefreshProjectButton projectId={project.id} onRefreshed={reload} /></div>}
         </div>
         <StatusChip status={project.health.status} />
       </header>
@@ -105,6 +107,30 @@ export function ProjectDetailPage() {
                     <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Recent decision</div>
                     <div className="text-sm font-medium">{project.evidence.selectedMission.title}</div>
                     <p className="text-xs text-muted-foreground">{project.evidence.selectedMission.rationale}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {project.evidence.onboarding && (
+                <Card>
+                  <CardContent className="flex flex-col gap-2 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Onboarding</div>
+                      <Badge variant="neutral">{project.evidence.onboarding.migrationClassification.classification.replace(/_/g, ' ')}</Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">Maturity: {project.evidence.onboarding.maturity.replace(/_/g, ' ')} · Alignment: {project.evidence.onboarding.alignment}</div>
+                    {project.evidence.onboarding.unfinishedSummary && <p className="text-xs text-muted-foreground">{project.evidence.onboarding.unfinishedSummary}</p>}
+                    {project.evidence.onboarding.upgradeCandidates.length > 0 && (
+                      <div className="mt-1 flex flex-col gap-1">
+                        <div className="text-[11px] font-medium text-muted-foreground">Upgrade backlog ({project.evidence.onboarding.upgradeCandidates.length})</div>
+                        {project.evidence.onboarding.upgradeCandidates.slice(0, 3).map((c, i) => (
+                          <div key={i} className="text-xs">• {c.title}</div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="text-[10px] text-muted-foreground">
+                      Orca: {project.evidence.onboarding.orcaRegistration.checked ? (project.evidence.onboarding.orcaRegistration.registered ? 'registered' : 'not registered') : 'unknown'} · Analyzed {new Date(project.evidence.onboarding.analyzedAt).toLocaleString()}
+                    </div>
                   </CardContent>
                 </Card>
               )}

@@ -29,7 +29,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 3,
-      "successorEvidence": "Bounded project registration domain contract plus first real-project registration artifact; exact isolated Upgrade was adopted locally into the accepted branch only after Tim's explicit decision"
+      "successorEvidence": "Bounded, read-only-first project onboarding (repo analysis, handoff reconciliation, migration classification, commit) proven end-to-end against a real local repository, including live Orca repo registration"
     },
     {
       "id": "PRJ-002",
@@ -51,9 +51,9 @@
       "importance": "CRITICAL",
       "legacyDisposition": "FOUNDATION_COMPARISON_REQUIRED",
       "orcaFit": "NATIVE_EQUIVALENT",
-      "state": "PENDING",
+      "state": "NEW_TSF_OVERLAY",
       "proposedWave": 3,
-      "successorEvidence": "First real pilot proved planner-led README/HQ/architecture/package/test/history discovery, but no reusable overlay project-profile discovery service exists yet"
+      "successorEvidence": "Bounded repository discovery (README/AGENTS.md/CLAUDE.md, package manifests, command guidance, stack/test/build detection) via tsf/server/repo-inspector.mjs, proven against a real local repository"
     },
     {
       "id": "PRJ-004",
@@ -99,7 +99,7 @@
       "orcaFit": "EASY_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 3,
-      "successorEvidence": "Work Set subset, fingerprint, saved-set logic, fail-closed dispatch gate, explicit reentry proof, and a first real pilot with exactly one real project in scope"
+      "successorEvidence": "Work Set subset, fingerprint, saved-set logic, fail-closed new-dispatch gate, and explicit reentry proof"
     },
     {
       "id": "PRJ-008",
@@ -109,8 +109,9 @@
       "importance": "HIGH",
       "legacyDisposition": "ADAPT_TSF",
       "orcaFit": "EASY_EXTENSION",
-      "state": "PENDING",
-      "proposedWave": 3
+      "state": "NEW_TSF_OVERLAY",
+      "proposedWave": 3,
+      "successorEvidence": "Known Projects/Active Fleet/Work Set lifecycle exercised end-to-end through real project onboarding, gated by the reused domain/portfolio.mjs invariant (Work Set is never automatic)"
     },
     {
       "id": "PRJ-009",
@@ -144,7 +145,7 @@
       "orcaFit": "EASY_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 1,
-      "successorEvidence": "Persistent Orca planner selected and decomposed an evidence-backed first real-project mission without implementing product code"
+      "successorEvidence": "Persistent Orca planner session decomposed and checkpointed one planning episode without implementing product code"
     },
     {
       "id": "WRK-002",
@@ -167,7 +168,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 1,
-      "successorEvidence": "Planner/coordinator separated a first real-project planner from three bounded implementation workers and an independent verifier across Orca task/dispatch/worktree sessions"
+      "successorEvidence": "Planner coordinated four real Orca task/dispatch/worktree sessions through compact capsules"
     },
     {
       "id": "WRK-004",
@@ -351,7 +352,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 0,
-      "successorEvidence": "Worker mission session/worktree affinity enforcement plus persistent first-real-pilot verifier session reused across one bounded correction cycle"
+      "successorEvidence": "Worker mission session/worktree affinity enforcement"
     },
     {
       "id": "CTX-003",
@@ -489,7 +490,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 2,
-      "successorEvidence": "Compact result admission rejected verifier-discovered 500 responses, admitted the bounded correction only after 41/41 tests, and bound the exact integrated candidate"
+      "successorEvidence": "Compact result admission validation and evidence requirement"
     },
     {
       "id": "MSN-008",
@@ -561,7 +562,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "UPSTREAM_NATIVE",
       "proposedWave": 2,
-      "successorEvidence": "Orca/Git read-only preflight proved exact real-project top-level, branch, HEAD, tree, clean state, active-operation absence, package requirements, and baseline tests"
+      "successorEvidence": "Orca native repository/workspace inspection"
     },
     {
       "id": "GIT-002",
@@ -596,7 +597,7 @@
       "orcaFit": "NATIVE_BETTER",
       "state": "UPSTREAM_NATIVE",
       "proposedWave": 0,
-      "successorEvidence": "Orca native real-project backend, UI, revision, verifier, and integration worktrees preserved accepted source until exact candidate commit/tree was adopted by fast-forward"
+      "successorEvidence": "Orca native worktree and candidate branch identity"
     },
     {
       "id": "GIT-005",
@@ -677,7 +678,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 2,
-      "successorEvidence": "Exact-binding revision path was used once after verifier failure; Tim then adopted only the reverified commit/tree through a fast-forward-only local integration"
+      "successorEvidence": "Exact-binding adoption/reject/revision domain logic"
     },
     {
       "id": "GIT-012",
@@ -701,7 +702,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 6,
-      "successorEvidence": "Stable/Upgrade/Testing/Published domain model plus first real-project proof that Stable stayed unchanged until explicit adoption and Published remained unchanged afterward"
+      "successorEvidence": "Stable/Upgrade/Testing/Published domain model"
     },
     {
       "id": "GIT-014",
@@ -713,7 +714,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 6,
-      "successorEvidence": "Exact-binding test disposition and Stable promotion model plus first real-project fast-forward adoption preserving previous Stable identity and post-adoption regression evidence"
+      "successorEvidence": "Exact-binding test disposition and Stable promotion model"
     },
     {
       "id": "AUT-001",
@@ -747,7 +748,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 2,
-      "successorEvidence": "First real-project worker/verifier/browser completion left accepted source unchanged; only Tim's explicit local-only ADOPT decision advanced the accepted branch"
+      "successorEvidence": "Worker completion remains READY_FOR_ADOPTION until exact decision"
     },
     {
       "id": "AUT-004",
@@ -793,7 +794,7 @@
       "orcaFit": "NATIVE_EQUIVALENT",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 2,
-      "successorEvidence": "Receipt Lite chain records first real-project mission, exact candidate, independent verifier/browser evidence, and Tim's exact local-only adoption decision with post-adoption tests"
+      "successorEvidence": "Receipt Lite schema, hashes, producer/session facts, and verification"
     },
     {
       "id": "AUT-008",
@@ -817,7 +818,7 @@
       "orcaFit": "EASY_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 5,
-      "successorEvidence": "Actionable Health projection plus real-project source/candidate cleanliness, runtime recovery, provider fallback, test/build/browser evidence, and resolved human adoption identity"
+      "successorEvidence": "Actionable project/candidate/provider/compatibility Health projection, extended with an onboarding-time repository Health assessor (tsf/domain/health.mjs:assessRepositoryOnboardingHealth) proven against a real local repository"
     },
     {
       "id": "HLT-002",
@@ -1155,7 +1156,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "NEW_TSF_OVERLAY",
       "proposedWave": 9,
-      "successorEvidence": "First real candidate admission bound exact commit/tree/path, rejected a false-success API edge case, admitted one correction, and required independent runtime plus Orca-browser attestation"
+      "successorEvidence": "Candidate admission binds exact commit/tree/path/test evidence plus independent runtime and browser attestation"
     },
     {
       "id": "LEG-001",
@@ -1201,7 +1202,7 @@
       "orcaFit": "MODERATE_EXTENSION",
       "state": "UPSTREAM_NATIVE",
       "proposedWave": 6,
-      "successorEvidence": "Orca native browser proved a real-project Upgrade on loopback synthetic data: snapshot/eval/select/fill, offline error retention, durable reload history, zero-finding control, console inspection, and desktop/mobile layout"
+      "successorEvidence": "Orca native browser snapshot, select interaction, and loopback verification against the disposable fixture"
     },
     {
       "id": "LEG-005",
@@ -1296,8 +1297,8 @@
     "UPSTREAM_NATIVE": 12,
     "REUSED_LEGACY_CODE": 4,
     "ADAPTED_LEGACY_CODE": 6,
-    "NEW_TSF_OVERLAY": 24,
-    "PENDING": 51,
+    "NEW_TSF_OVERLAY": 26,
+    "PENDING": 49,
     "REFERENCE_ONLY": 12,
     "REJECTED": 2,
     "TOTAL": 111
@@ -1418,6 +1419,6 @@
     "summaryCountsChanged": false,
     "feedback": "A third real repository reconfirmed exact discovery, Balanced planner/worker separation, isolated candidates, independent verifier revision loops, Stable protection, receipt binding, and Orca-native product checks. Passing tests and an initial verifier did not override contrary narrow-screen browser evidence; no pending capability was promoted on this evidence alone."
   },
-  "updatedAt": "2026-08-18",
+  "updatedAt": "2026-08-19",
   "coverageRule": "A non-PENDING state means foundation or overlay behavior exists; it does not claim final legacy parity unless separately proven."
 }

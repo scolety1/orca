@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createPortfolio } from '../domain/portfolio.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const STATE_DIR = path.join(HERE, '.local-state')
@@ -18,7 +19,9 @@ const DEFAULTS = {
   fixtureCandidateDecision: null, // { decision, requestId, reason, at, receiptHash }
   fixtureReceipts: [],
   chatThreads: {}, // projectId -> [{ role, content, at, decisionClass, intent }]
-  plannerSessions: {} // projectId -> TSF_SESSION_BINDING_V1 (see tsf/domain/session-affinity.mjs)
+  plannerSessions: {}, // projectId -> TSF_SESSION_BINDING_V1 (see tsf/domain/session-affinity.mjs)
+  portfolio: createPortfolio(), // real tsf/domain/portfolio.mjs structure: Known/Active Fleet/Work Set
+  onboardedProjects: {} // projectId -> { repoPath, lastAnalysis, receipts, acceptedAt, refreshedAt }
 }
 
 export function loadState() {

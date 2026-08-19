@@ -6,6 +6,85 @@ function finding(code, status, summary, remediation, evidence = {}) {
   return { code, status, summary, remediation, evidence }
 }
 
+// Onboarding-time repository Health — a distinct vocabulary from
+// assessHealth's mission-governance status (HEALTHY_WITH_CAVEATS sits
+// between HEALTHY and NEEDS_ATTENTION, matching what a first-look repo scan
+// actually needs to express: "fine, but worth knowing X"). Every finding
+// here traces to a fact repo-inspector.mjs actually observed — nothing is
+// fabricated for dimensions that weren't checked.
+const onboardingSeverityRank = { HEALTHY: 0, HEALTHY_WITH_CAVEATS: 1, UNKNOWN: 2, NEEDS_ATTENTION: 3, BLOCKED: 4 }
+
+export function assessRepositoryOnboardingHealth(facts, clock) {
+  const findings = []
+  const add = (code, status, summary, remediation, evidence = {}) => findings.push(finding(code, status, summary, remediation, evidence))
+
+  // Git/state health
+  if (facts.activeGitOperation) {
+    add('GIT_OPERATION_ACTIVE', 'BLOCKED', `An unfinished Git ${facts.activeGitOperationKind ?? 'operation'} is in progress.`, 'Resolve or abort the Git operation outside TSF before onboarding for work.', { kind: facts.activeGitOperationKind })
+  }
+  if (facts.conflicted?.length) {
+    add('GIT_CONFLICTED_FILES', 'BLOCKED', `${facts.conflicted.length} conflicted file(s) present.`, 'Resolve conflicts before this project is safe for normal work.', { files: facts.conflicted.slice(0, 20) })
+  }
+  if (facts.detached) {
+    add('GIT_DETACHED_HEAD', 'NEEDS_ATTENTION', 'Repository is on a detached HEAD.', 'Confirm the intended branch before any future mutation work.', { head: facts.head })
+  }
+  if (facts.dirty && !facts.conflicted?.length) {
+    add(
+      'GIT_DIRTY_WORKING_TREE',
+      'HEALTHY_WITH_CAVEATS',
+      `Working tree has uncommitted work (${facts.stagedCount ?? 0} staged, ${facts.unstagedCount ?? 0} unstaged, ${facts.untrackedCount ?? 0} untracked).`,
+      'Preserve this work — do not reset or clean. Review before it is considered safe for autonomous work.',
+      { staged: facts.stagedCount, unstaged: facts.unstagedCount, untracked: facts.untrackedCount }
+    )
+  }
+  if (facts.missingWorktrees?.length) {
+    add('WORKTREE_RESIDUE', 'NEEDS_ATTENTION', `${facts.missingWorktrees.length} registered Git worktree path(s) are missing on disk.`, 'Inspect worktree registration; do not prune automatically.', { paths: facts.missingWorktrees })
+  }
+  if (facts.largeUntrackedDirectories?.length) {
+    add('LARGE_UNTRACKED_DIRECTORY', 'HEALTHY_WITH_CAVEATS', `${facts.largeUntrackedDirectories.length} large untracked director${facts.largeUntrackedDirectories.length === 1 ? 'y' : 'ies'} found.`, 'May be generated output or real work — inspect ownership before ignoring or deleting anything.', { directories: facts.largeUntrackedDirectories })
+  }
+
+  // Build/test health
+  if (!facts.hasKnownTestCommand) {
+    add('NO_KNOWN_TEST_COMMAND', 'NEEDS_ATTENTION', 'No test command could be discovered from package scripts.', 'Ask the operator, or look for a test runner config not yet covered by discovery.', {})
+  }
+
+  // Architecture/documentation clarity
+  if (!facts.hasReadme) {
+    add('NO_README', 'HEALTHY_WITH_CAVEATS', 'No README found at the repository root.', 'Not blocking, but onboarding confidence is lower without one.', {})
+  }
+  if (!facts.hasInstructions) {
+    add('NO_PROJECT_INSTRUCTIONS', 'HEALTHY_WITH_CAVEATS', 'No AGENTS.md/CLAUDE.md project instructions found.', 'Consider adding one once this project sees real work — not required to onboard.', {})
+  }
+
+  // Dependency/runtime health
+  if (facts.hasPackageManifest && !facts.dependenciesInstalled) {
+    add('DEPENDENCIES_NOT_INSTALLED', 'UNKNOWN', 'A package manifest exists but dependencies are not installed locally.', 'Install policy and safety are unverified until dependencies are actually installed.', {})
+  }
+
+  // Source-of-truth ambiguity
+  if (facts.handoffConflict) {
+    add('HANDOFF_REPOSITORY_MISMATCH', 'NEEDS_ATTENTION', 'The migration handoff disagrees with observed repository state.', 'An authoritative source must be chosen before trusting handoff claims.', { summary: facts.handoffConflictSummary ?? null })
+  }
+
+  // Deployment sensitivity
+  if (facts.deploymentConfigPresent) {
+    add('DEPLOYMENT_CONFIG_PRESENT', 'HEALTHY_WITH_CAVEATS', 'Deployment configuration files were found in this repository.', 'Treat with elevated caution; confirm no live/production target is implied before any write action.', { files: facts.deploymentConfigFiles ?? [] })
+  }
+
+  const status = findings.reduce(
+    (current, item) => (onboardingSeverityRank[item.status] > onboardingSeverityRank[current] ? item.status : current),
+    'HEALTHY'
+  )
+  return {
+    schemaVersion: 'TSF_ONBOARDING_HEALTH_V1',
+    status,
+    findings,
+    observedAt: isoNow(clock),
+    authority: 'ADVISORY_ONLY'
+  }
+}
+
 export function assessHealth(facts, clock) {
   const findings = []
   if (facts.repositoryAvailable === false) {

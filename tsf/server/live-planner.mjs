@@ -59,6 +59,7 @@ function ensureNeutralCwd() {
 // tsf/contracts/project-context-capsule.schema.v1.json) from the same real
 // ProjectDetail the rest of the UI already reads — no separate data source.
 export function buildProjectContextCapsule(project) {
+  const onboarding = project.evidence?.onboarding ?? null
   const blockers = []
   if (project.mission.blockedReason) blockers.push(project.mission.blockedReason)
   for (const f of project.health.findings ?? []) blockers.push(`${f.code}: ${f.summary}`)
@@ -76,6 +77,18 @@ export function buildProjectContextCapsule(project) {
     .map((r) => r.implementationSummary)
     .filter(Boolean)
   const lastResult = project.evidence?.resultCapsules?.at(-1) ?? null
+
+  // Onboarded-project facts: compact decisions, not the full scan (per the
+  // "avoid dumping the entire onboarding scan into every chat turn"
+  // requirement) — migration classification, top upgrade candidates, and
+  // handoff discrepancies, not the raw discovery payload.
+  if (onboarding) {
+    if (onboarding.completedSummary) completedMissions.push(onboarding.completedSummary)
+    blockers.push(`Migration classification: ${onboarding.migrationClassification.classification} (${onboarding.migrationClassification.reasons[0] ?? 'see onboarding record'})`)
+    for (const discrepancy of onboarding.handoffReconciliation?.discrepancies ?? []) blockers.push(`Handoff discrepancy: ${discrepancy}`)
+    for (const candidate of (onboarding.upgradeCandidates ?? []).slice(0, 5)) knownRisks.push(`Upgrade candidate (${candidate.category}, ${candidate.importance}): ${candidate.title}`)
+  }
+
   return {
     capsule_id: `planner-chat:${project.id}:${Date.now()}`,
     project_id: project.id,
@@ -88,8 +101,10 @@ export function buildProjectContextCapsule(project) {
     known_risks: knownRisks,
     do_not_repeat_lessons: [],
     next_recommended_action:
-      project.health.findings?.[0]?.remediation ??
-      (project.candidate?.state === 'READY_FOR_ADOPTION' ? 'Review and decide the candidate on the Adoption surface.' : 'No specific recommendation recorded.'),
+      project.evidence?.selectedMission?.title && project.evidence?.selectedMission?.rationale
+        ? `${project.evidence.selectedMission.title} — ${project.evidence.selectedMission.rationale}`
+        : (project.health.findings?.[0]?.remediation ??
+          (project.candidate?.state === 'READY_FOR_ADOPTION' ? 'Review and decide the candidate on the Adoption surface.' : 'No specific recommendation recorded.')),
     hq_escalation_history: [],
     artifacts_created: (lastResult?.filesChanged ?? []).slice(0, 20),
     last_worker_role: lastResult?.workerIdentity?.role ?? null,
@@ -166,10 +181,11 @@ function spawnAgent({ entry, args, cwd, timeoutMs }) {
   })
 }
 
-function buildArgs({ agentId, prompt, systemPrompt, resumeSessionId }) {
+function buildArgs({ agentId, prompt, systemPrompt, resumeSessionId, jsonSchema }) {
   if (agentId === 'claude-code') {
     const args = ['-p', prompt, '--output-format', 'json', '--tools', '', '--strict-mcp-config', '--system-prompt', systemPrompt]
     if (resumeSessionId) args.push('--resume', resumeSessionId)
+    if (jsonSchema) args.push('--json-schema', JSON.stringify(jsonSchema))
     return args
   }
   if (agentId === 'codex') {
@@ -182,12 +198,12 @@ function buildArgs({ agentId, prompt, systemPrompt, resumeSessionId }) {
   return null
 }
 
-async function runOnce({ agentId, prompt, systemPrompt, resumeSessionId }) {
+async function runOnce({ agentId, prompt, systemPrompt, resumeSessionId, jsonSchema, timeoutOverrideMs }) {
   const entry = resolveAgentEntry(agentId)
   if (!entry) return { ok: false, reason: 'PROVIDER_UNAVAILABLE', detail: `no runnable entry found for agent: ${agentId}` }
-  const cliArgs = buildArgs({ agentId, prompt, systemPrompt, resumeSessionId })
+  const cliArgs = buildArgs({ agentId, prompt, systemPrompt, resumeSessionId, jsonSchema })
   if (!cliArgs) return { ok: false, reason: 'PROVIDER_UNAVAILABLE', detail: `no invocation shape configured for agent: ${agentId}` }
-  const outcome = await spawnAgent({ entry, args: [...entry.args, ...cliArgs], cwd: ensureNeutralCwd(), timeoutMs: timeoutMs() })
+  const outcome = await spawnAgent({ entry, args: [...entry.args, ...cliArgs], cwd: ensureNeutralCwd(), timeoutMs: timeoutOverrideMs ?? timeoutMs() })
   if (!outcome.ok) return outcome
   if (outcome.code !== 0) {
     // A resume against an unknown/expired session id surfaces as plain text
@@ -205,7 +221,7 @@ async function runOnce({ agentId, prompt, systemPrompt, resumeSessionId }) {
   if (parsed.is_error) return { ok: false, reason: 'PROVIDER_ERROR', detail: typeof parsed.result === 'string' ? parsed.result.slice(0, 500) : JSON.stringify(parsed).slice(0, 500) }
   if (typeof parsed.result !== 'string' || !parsed.session_id) return { ok: false, reason: 'MALFORMED_RESPONSE', detail: 'provider response missing result/session_id' }
   const modelUsageKeys = Object.keys(parsed.modelUsage ?? {})
-  return { ok: true, text: parsed.result, sessionId: parsed.session_id, observedModel: modelUsageKeys[0] ?? null, costUsd: parsed.total_cost_usd ?? null }
+  return { ok: true, text: parsed.result, structuredOutput: parsed.structured_output ?? null, sessionId: parsed.session_id, observedModel: modelUsageKeys[0] ?? null, costUsd: parsed.total_cost_usd ?? null }
 }
 
 // Attempts PLANNER_DEEP live, honoring sticky per-project session affinity
@@ -294,6 +310,52 @@ export async function invokeLivePlanner({ project, message, opState, recentHisto
 export function providerLabel({ agentId, model }) {
   const display = [agentDisplayName(agentId), modelDisplayName(model)].filter(Boolean).join(' · ')
   return `PLANNER_DEEP · ${display}`
+}
+
+// One-shot, schema-validated PLANNER_DEEP analysis — used by onboarding's
+// direction analysis (tsf/server/onboarding.mjs), not the chat session
+// affinity path. No --resume (each onboarding analysis is independent), and
+// the CLI's own --json-schema validates the shape so the caller gets a real
+// parsed object back, not free text to regex against. Still zero-tool
+// (--tools ""): the model reasons only over the facts given in the prompt,
+// it cannot go re-inspect the repository itself.
+export async function invokeLiveStructuredAnalysis({ systemPrompt, prompt, jsonSchema, timeoutOverrideMs }) {
+  const roleResolution = resolveRole({ role: 'PLANNER_DEEP', mappings: providerRoles, profiles: { profiles: launchProfiles.profiles } })
+  const preferredAgent = roleResolution.requested.agentId
+  let result = await runOnce({ agentId: preferredAgent, prompt, systemPrompt, jsonSchema, timeoutOverrideMs })
+  let agentUsed = preferredAgent
+
+  if (!result.ok && roleResolution.fallbackProfile) {
+    const fallbackAgentId = launchProfiles.profiles[roleResolution.fallbackProfile]?.agentId
+    if (fallbackAgentId && fallbackAgentId !== preferredAgent) {
+      const fallbackResult = await runOnce({ agentId: fallbackAgentId, prompt, systemPrompt, jsonSchema, timeoutOverrideMs })
+      if (fallbackResult.ok) {
+        result = fallbackResult
+        agentUsed = fallbackAgentId
+      }
+    }
+  }
+
+  if (!result.ok) return { ok: false, role: 'PLANNER_DEEP', reason: result.reason, detail: result.detail, attempted: preferredAgent }
+
+  let parsed = result.structuredOutput
+  if (!parsed) {
+    try {
+      parsed = JSON.parse(result.text)
+    } catch {
+      return { ok: false, role: 'PLANNER_DEEP', reason: 'MALFORMED_RESPONSE', detail: 'structured output was not valid JSON', attempted: preferredAgent }
+    }
+  }
+
+  return {
+    ok: true,
+    role: 'PLANNER_DEEP',
+    data: parsed,
+    agentId: agentUsed,
+    providerId: AGENT_PROVIDER_ID[agentUsed] ?? 'unknown',
+    model: result.observedModel,
+    costUsd: result.costUsd
+  }
 }
 
 export function fallbackLabel(reason) {
