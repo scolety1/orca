@@ -239,12 +239,36 @@
     "policy": "Codex weekly usage is near exhausted with 0 reset credits available -- per program Section G, no new Codex WORKER_* dispatch should start until capacity recovers or a reset occurs. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) remains healthy. This is why live Orca worker dispatch for the M2 dogfood proof is deferred rather than started this wave."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_1_GOVERNANCE_MODULE_COMPLETE",
+    "phase": "PAUSED_FOR_WINDOWS_SANDBOX_CRASH",
     "at": "2026-08-19T00:00:00Z",
-    "commit": "43203a7fa79453956863c9c106bd8a94954034c9",
-    "note": "tsf/domain/keep-going.mjs + tests committed on scolety1/tsf-autonomy-program-v1 (not yet adopted into tsf/main -- M2 is not yet a candidate). Full tsf test suite 102/102 GREEN, working tree clean. Design doc and source harvest ledger written. Codex capacity near limit; live dispatch wave deferred."
+    "commit": "ec6b52fabb9562a32f7857d93e05f54c158d3518",
+    "commitTree": "d0f5e59fda1416619a6319a0b4d88a337f9b9142",
+    "workingTreeClean": true,
+    "tsfMainHeadAtPause": "de105fb4632d7e8a297d824963f931dcd4eb858e",
+    "note": "Loop paused at Tim's request: Windows raised 'codex-windows-sandbox-setup.exe - Application Error (0xc0000142)'. Full read-only investigation performed (see pauseIncident below) -- no Codex worker, dispatch, run, or task belonging to this program was ever created; nothing to fence. Full tsf test suite re-verified 102/102 GREEN immediately before this checkpoint. Working tree clean, HEAD unchanged since the wave-1 checkpoint (no work lost or at risk). Design doc and source harvest ledger written. Codex capacity was already near limit (91% weekly) before this incident; live dispatch wave was already deferred for that reason, independent of this crash."
   },
-  "nextSafeAction": "M2 wave 2: build tsf/adapters/orca-orchestration-bridge.mjs (run-create/task-create/dispatch/worker-list/gate-create wrappers over the orca CLI, following the orca-cli-bridge.mjs fail-honestly pattern) with a stubbed-CLI test suite first (no live dispatch yet). Only attempt a real live-dispatch dogfood mission once Codex weekly usage has meaningfully recovered from 91%, or route that specific wave to Claude/PLANNER_DEEP+WORKER roles instead of Codex if bounded and cheap enough. Re-check `orca account list --json` at the start of the wave that needs real dispatch.",
+  "pauseIncident": {
+    "id": "WINDOWS_SANDBOX_CRASH_001",
+    "reportedBy": "TIM",
+    "reportedAt": "2026-08-19T00:00:00Z",
+    "trigger": "Windows Application Error dialog: codex-windows-sandbox-setup.exe, exception 0xc0000142 (STATUS_DLL_INIT_FAILED)",
+    "investigation": {
+      "orchestrationWorkerList": "Queried system-wide (orca orchestration worker-list --json): 12 retained workers total, all from pre-existing runs created before this program started (run_79578caf1acb, run_e1297c4e9d73 [long-autonomous-runtime-v1 fixture], run_7e8a8de60da9, run_49844f81d9d2, run_b00b1bdd428d [prior real pilots]). None reference this program's worktree, branch, or any run/task/dispatch this program created -- this program never called orchestration run-create/task-create/dispatch/worker-start.",
+      "orchestrationRunList": "No run objective references daily-driver-autonomy-v1 or this program's goal.",
+      "windowsProcessCheck": "Get-CimInstance Win32_Process for all running codex*/codex-command-runner* processes: every one has --working-dir or sandboxed filesystem permissions pointing to C:\\Users\\codex-agent\\orca\\workspaces\\TSF_ORCA\\featherstar (a different, pre-existing worktree/session -- scolety1/tsf-planner-operator-chat) or C:\\Users\\codex-agent\\Documents\\Codex\\2026-08-19\\can (an unrelated standalone Codex session outside Orca entirely). None reference tsf-autonomy-program-v1.",
+      "eventLogCheck": "Application event log (Id 1000/1001/1002, last 6h and matched for 'sandbox'/'0xc0000142') did not surface the exact codex-windows-sandbox-setup.exe crash record within the queried window/source -- could not independently corroborate the precise event, only that no currently-running process traces to this program. A RADAR_PRE_LEAK_64 WER report for claude.exe (this session, 12:32 PM) was found but is an automatic memory-leak diagnostic, not an application crash, and not actionable.",
+      "conclusion": "No Codex worker, sandbox, or process belonging to this program (daily-driver-autonomy-v1) was active, launching, or in an uncertain state at the time of the crash report. Nothing was fenced because nothing of this run's was found to fence. The crash most likely originated from a different, pre-existing session (featherstar, or the standalone Documents\\Codex session) -- neither was touched, killed, or otherwise acted upon by this program, per Tim's instruction to fence only positively-identified TSF-program processes."
+    },
+    "actionsTaken": [
+      "Read-only recon only: git status/log, orca status, orca orchestration worker-list/run-list, orca terminal list, Get-CimInstance Win32_Process, Get-WinEvent",
+      "No new Codex worker spawned, no sandbox setup retried",
+      "No process killed or fenced (none identified as belonging to this run)",
+      "No git gc/repack/prune/cleanup run",
+      "Durable checkpoint written and committed",
+      "Autonomy loop stopped (ScheduleWakeup stop:true) pending Tim's next instruction"
+    ]
+  },
+  "nextSafeAction": "PAUSED -- awaiting Tim. Once Tim confirms it's safe to proceed (e.g. after a Windows restart or confirming the sandbox crash was unrelated to this program), resume with M2 wave 2: build tsf/adapters/orca-orchestration-bridge.mjs (run-create/task-create/dispatch/worker-list/gate-create wrappers over the orca CLI, following the orca-cli-bridge.mjs fail-honestly pattern) with a stubbed-CLI test suite first (no live dispatch yet). Do not attempt any live Codex dispatch until both (a) Tim clears the sandbox-crash concern and (b) Codex weekly usage has meaningfully recovered from 91% -- re-check `orca account list --json` at that time. Reread pauseIncident before resuming.",
   "authorityBoundaries": {
     "canAutoAdoptLocally": "Only into tsf/main, only via Section H's 14-condition checklist, ff-only merge, all gates GREEN",
     "cannotDo": [
