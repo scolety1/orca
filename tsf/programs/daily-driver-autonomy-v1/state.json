@@ -79,7 +79,7 @@
           "testsAdded": 15,
           "testsPassing": "15/15 new; 102/102 full tsf suite (no regressions)",
           "verifier": "SELF -- not yet independently verified by a separate session/provider; independent verification deferred to milestone-completion gate per Section F",
-          "commit": null,
+          "commit": "43203a7fa79453956863c9c106bd8a94954034c9",
           "deferredToNextWave": [
             "tsf/adapters/orca-orchestration-bridge.mjs wiring real orchestration/automations CLI calls",
             "mapOrcaFacts extension in tsf/adapters/orca-runtime.mjs for worker-list/task-list/gate-list facts",
@@ -241,8 +241,8 @@
   "lastDurableCheckpoint": {
     "phase": "M2_WAVE_1_GOVERNANCE_MODULE_COMPLETE",
     "at": "2026-08-19T00:00:00Z",
-    "commit": null,
-    "note": "tsf/domain/keep-going.mjs + tests committed on scolety1/tsf-autonomy-program-v1 (not yet adopted into tsf/main -- M2 is not yet a candidate). Full tsf test suite 102/102 GREEN. Design doc and source harvest ledger written. Codex capacity near limit; live dispatch wave deferred."
+    "commit": "43203a7fa79453956863c9c106bd8a94954034c9",
+    "note": "tsf/domain/keep-going.mjs + tests committed on scolety1/tsf-autonomy-program-v1 (not yet adopted into tsf/main -- M2 is not yet a candidate). Full tsf test suite 102/102 GREEN, working tree clean. Design doc and source harvest ledger written. Codex capacity near limit; live dispatch wave deferred."
   },
   "nextSafeAction": "M2 wave 2: build tsf/adapters/orca-orchestration-bridge.mjs (run-create/task-create/dispatch/worker-list/gate-create wrappers over the orca CLI, following the orca-cli-bridge.mjs fail-honestly pattern) with a stubbed-CLI test suite first (no live dispatch yet). Only attempt a real live-dispatch dogfood mission once Codex weekly usage has meaningfully recovered from 91%, or route that specific wave to Claude/PLANNER_DEEP+WORKER roles instead of Codex if bounded and cheap enough. Re-check `orca account list --json` at the start of the wave that needs real dispatch.",
   "authorityBoundaries": {
