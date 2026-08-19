@@ -70,8 +70,24 @@
     {
       "id": "M2",
       "name": "Keep Going / Overnight V1",
-      "status": "NOT_STARTED",
+      "status": "IN_PROGRESS",
       "priority": "HIGHEST",
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Design + first governance module. Discovered orca CLI already exposes a full native orchestration graph (orchestration run/task/dispatch/worker/gate, automations create --trigger cron|rrule|preset) -- documented in docs/tsf/M2_KEEP_GOING_DESIGN_V1.md as the execution substrate. Implemented tsf/domain/keep-going.mjs (immutable goal, gap analysis that only trusts independently-verified criteria, conflict-aware planWave, idempotent recordWave, retry budget, stall detection, run-level ACTIVE/NEEDS_YOU/PAUSED/STALLED/COMPLETE/BLOCKED state machine, hash-chained checkpoints, summarizeRun) + tsf/test/keep-going.test.mjs.",
+          "testsAdded": 15,
+          "testsPassing": "15/15 new; 102/102 full tsf suite (no regressions)",
+          "verifier": "SELF -- not yet independently verified by a separate session/provider; independent verification deferred to milestone-completion gate per Section F",
+          "commit": null,
+          "deferredToNextWave": [
+            "tsf/adapters/orca-orchestration-bridge.mjs wiring real orchestration/automations CLI calls",
+            "mapOrcaFacts extension in tsf/adapters/orca-runtime.mjs for worker-list/task-list/gate-list facts",
+            "bounded fixture/dogfood mission with real Orca dispatch (paused: Codex weekly usage 91%, 0 reset credits -- see providerCapacityStatus)",
+            "UI: project-level Keep Going / Overnight controls"
+          ]
+        }
+      ],
       "acceptanceCriteria": [
         "Original goal immutable unless Tim changes it",
         "Planner establishes acceptance criteria and compares repo state to goal each wave",
@@ -87,9 +103,17 @@
         "Proven via a bounded fixture/dogfood mission (not NWR/HouseOS/EasyLife) showing multiple waves, at least one revision, verification, pause/resume, no duplicate settled task, concise summary"
       ],
       "relatedExistingEvidence": "tsf/fixtures/long-autonomous-runtime-v1/ already proves most of the *domain* loop (planner persistence, wave dispatch, verification, Work Set gate, recovery) at fixture level with a synthetic offline mission board -- M2 must extend this to a real project-level goal + UI surface + durable cross-restart checkpoint, not rebuild the loop from scratch",
+      "designDoc": "docs/tsf/M2_KEEP_GOING_DESIGN_V1.md",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started"]
+      "gaps": [
+        "orca-orchestration-bridge.mjs adapter (real orchestration/automations CLI wiring) not yet built",
+        "orca-runtime.mjs mapOrcaFacts not yet extended for worker-list/task-list/gate-list",
+        "no real Orca dispatch proof yet for this milestone (governance module is unit-tested only so far)",
+        "no UI surface yet",
+        "independent verification not yet performed",
+        "no candidate packaged yet"
+      ]
     },
     {
       "id": "M3",
@@ -175,7 +199,7 @@
   "currentMilestone": "M2",
   "currentCandidate": null,
   "unresolvedGaps": [
-    "M2 controller, UI, and real-project-level proof do not exist yet -- only the fixture-level long-autonomous-runtime-v1 domain loop exists"
+    "M2 orchestration adapter, UI, and real-project-level dogfood proof do not exist yet -- wave 1 delivered only the unit-tested governance module (tsf/domain/keep-going.mjs)"
   ],
   "blockers": [],
   "advisories": [
@@ -187,17 +211,40 @@
       "verifiedNotAffecting": "This program's checkpoint commit (19511dda9) and the M1 baseline commit (de105fb46) are both fully readable via git show/git cat-file; their trees are intact.",
       "actionTaken": "None -- no destructive git maintenance (gc/repack/tmp_pack deletion) was run unilaterally against a store shared by other active worktrees.",
       "recommendedNextStep": "Tim or a dedicated maintenance task should run `git gc` on C:\\TSF_ORCA once all worktrees have clean/committed trees, ideally after checking whether the broken blobs belong to any reachable ref."
+    },
+    {
+      "id": "LINT-CURLY-001",
+      "severity": "ADVISORY_NON_BLOCKING",
+      "observedAt": "2026-08-19T00:00:00Z",
+      "summary": "Already-adopted tsf/domain/*.mjs (e.g. mission-state.mjs, coordinator.mjs) violates .oxlintrc.json's `curly: error` rule with single-line guard clauses -- pre-existing, predates this program. The rule IS actively enforced: the husky pre-commit lint-staged hook correctly rejected this wave's first commit attempt of tsf/domain/keep-going.mjs for the same style; it was fixed to use braces everywhere and now passes oxlint/oxfmt cleanly before being committed. The old sibling files were never re-linted because lint-staged only checks files staged in a given commit.",
+      "actionTaken": "keep-going.mjs rewritten to satisfy curly/oxfmt before commit. No changes made to pre-existing sibling files (out of this wave's scope).",
+      "recommendedNextStep": "Separate decision for Tim: a dedicated pass to reformat the remaining tsf/domain/**, tsf/adapters/** files so a full `pnpm lint` run (not just lint-staged on new commits) is clean -- not part of this program."
     }
   ],
   "retriesUsed": 0,
-  "providerCapacityStatus": "UNKNOWN -- not queried this program run yet; query at next milestone boundary before dispatching M2 workers",
-  "lastDurableCheckpoint": {
-    "phase": "PREFLIGHT_AND_CHARTER_COMPLETE",
-    "at": "2026-08-19T00:00:00Z",
-    "commit": "de105fb4632d7e8a297d824963f931dcd4eb858e",
-    "note": "Baseline preflight (Section B) confirmed GREEN; durable program charter and state created (Section C). No implementation work started yet."
+  "providerCapacityStatus": {
+    "queriedAt": "2026-08-19T00:00:00Z",
+    "source": "orca account list --json (live, trustworthy)",
+    "claude": {
+      "sessionUsedPercent": 12,
+      "sessionWindowMinutes": 300,
+      "weeklyUsedPercent": 15,
+      "status": "HEALTHY"
+    },
+    "codex": {
+      "weeklyUsedPercent": 91,
+      "rateLimitResetCreditsAvailable": 0,
+      "status": "NEAR_LIMIT"
+    },
+    "policy": "Codex weekly usage is near exhausted with 0 reset credits available -- per program Section G, no new Codex WORKER_* dispatch should start until capacity recovers or a reset occurs. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) remains healthy. This is why live Orca worker dispatch for the M2 dogfood proof is deferred rather than started this wave."
   },
-  "nextSafeAction": "Begin M2 (Keep Going / Overnight V1): read tsf/fixtures/long-autonomous-runtime-v1/ and tsf/domain/coordinator.mjs + mission-state.mjs in full, then design the real project-level long-run controller as an extension of the existing fixture domain loop (not a rebuild), scoped to a first bounded implementation wave (e.g. immutable-goal + acceptance-criteria + gap-comparison domain module with tests) before touching UI or a real dogfood mission.",
+  "lastDurableCheckpoint": {
+    "phase": "M2_WAVE_1_GOVERNANCE_MODULE_COMPLETE",
+    "at": "2026-08-19T00:00:00Z",
+    "commit": null,
+    "note": "tsf/domain/keep-going.mjs + tests committed on scolety1/tsf-autonomy-program-v1 (not yet adopted into tsf/main -- M2 is not yet a candidate). Full tsf test suite 102/102 GREEN. Design doc and source harvest ledger written. Codex capacity near limit; live dispatch wave deferred."
+  },
+  "nextSafeAction": "M2 wave 2: build tsf/adapters/orca-orchestration-bridge.mjs (run-create/task-create/dispatch/worker-list/gate-create wrappers over the orca CLI, following the orca-cli-bridge.mjs fail-honestly pattern) with a stubbed-CLI test suite first (no live dispatch yet). Only attempt a real live-dispatch dogfood mission once Codex weekly usage has meaningfully recovered from 91%, or route that specific wave to Claude/PLANNER_DEEP+WORKER roles instead of Codex if bounded and cheap enough. Re-check `orca account list --json` at the start of the wave that needs real dispatch.",
   "authorityBoundaries": {
     "canAutoAdoptLocally": "Only into tsf/main, only via Section H's 14-condition checklist, ff-only merge, all gates GREEN",
     "cannotDo": [
@@ -213,7 +260,7 @@
   },
   "harvestLedger": {
     "path": "docs/tsf/SOURCE_HARVEST_LEDGER_V1.md",
-    "status": "NOT_YET_CREATED",
-    "note": "To be created before/alongside M2 implementation per program Section D"
+    "status": "CREATED",
+    "note": "Zenith/Command Center/Smithers/OpenWeft concepts mapped to keep-going.mjs functions and Orca-native orchestration/automations CLI primitives; Hindsight explicitly deferred to M7 as OPTIONAL_MEMORY_BACKEND. No code copied from any of the five projects."
   }
 }

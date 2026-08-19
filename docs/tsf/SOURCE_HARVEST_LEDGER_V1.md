@@ -1,0 +1,22 @@
+# Source Harvest Ledger V1
+
+Concepts adapted into native TSF/Orca code, never vendored runtimes, per
+program charter Section D. One row per harvested concept.
+
+| Concept | Source inspiration | TSF implementation choice | Why not install the runtime |
+|---|---|---|---|
+| Persistent original goal, immutable unless the owner changes it | Zenith | `tsf/domain/keep-going.mjs` `createOvernightRun`/`replaceGoal` — a frozen goal object; only `authorizedBy: 'TIM'` can replace it, with history preserved | A single pure-function domain object; a whole planning runtime adds nothing TSF's existing Mission/Portfolio state machines don't already give |
+| Repeated gap analysis against the original goal, not against worker claims | Zenith | `compareStateToGoal` — only accepts `verifiedSatisfied` criteria (independently-verified evidence), decides CONTINUE/STOP_COMPLETE/STOP_BLOCKED/STOP_BUDGET_EXHAUSTED | Same reason; this is a comparison function, not a service |
+| Refusal to stop merely because a worker says "done" | Zenith | Enforced structurally: `compareStateToGoal` never reads a worker's own result capsule, only verifier-attested criteria; `coordinator.mjs`'s `registerVerifierResult` already rejects a verifier session that reuses a worker session | Existing `VERIFIER_INDEPENDENT` role + session-affinity contracts already provide this; no separate "critic" service needed |
+| Unattended scheduling, active hours/budgets | Command Center | Mapped to Orca-native `orca automations create --trigger cron|rrule|preset [--precheck <cmd>]` (see `M2_KEEP_GOING_DESIGN_V1.md`) rather than a TSF scheduler | Orca already has a scheduled-automation primitive with run history (`automations runs`); building a second one would violate the 0-core-delta / no-competing-foundation rule |
+| Worker caps, stall detection, escalation ("Needs You") | Command Center | `keep-going.mjs` `budget.maxConcurrentWorkers`, `detectStall` (heartbeat threshold), `raiseNeedsYou`/`resolveNeedsYou`; sourced from `orca orchestration worker-list`/`worker-abandon`/`gate-create` facts (adapter deferred) | Orca's `worker-list` already reports terminal resource accounting and `worker-abandon` already fences an uncertain worker without a false success/failure claim; TSF adds only the threshold policy and the run-level block |
+| Morning/operator summary | Command Center | `summarizeRun` — pure function producing state, goal, waves completed, open Needs You, last checkpoint | One function, not a report-generation service |
+| Durable step journal, checkpoint semantics, crash resume, no duplicate completed work after restart | Smithers | `checkpointRun` (hash-chained, same pattern as `tsf/domain/receipts.mjs`) + `recordWave`'s idempotent-by-digest replay guard | `tsf/domain/receipts.mjs` and the fixture's `state.json` checkpoint pattern already establish this shape; a durable journal service is Milestone 4 (Run Journal + Recovery)'s job, built on this same primitive, not a new dependency |
+| Durable human gates | Smithers | Mapped to Orca-native `orchestration gate-create/gate-resolve/gate-list`, surfaced through `keep-going.mjs`'s `NEEDS_YOU` run state | Orca already blocks a task on a gate; TSF only needs to reflect that as a run-level state, not reimplement blocking |
+| Conflict-aware task batching, work briefs | OpenWeft | `planWave` — bins candidate work items by declared file `scope`, deferring overlapping items to a later sequential batch, capped at `budget.maxConcurrentWorkers` | A ~40-line pure function; OpenWeft's batching logic is a documented technique, not code worth vendoring |
+| Scheduling non-conflicting edits / recovery-reconciliation | OpenWeft | Same `planWave`, plus Orca-native isolated worktrees (already `UPSTREAM_NATIVE` per the capability ledger, `GIT-004`/`GIT-005`) providing the actual isolation | Orca worktrees already give real filesystem isolation; TSF only needs the *decision* of what goes in which batch |
+| Durable semantic project memory | Hindsight | Not evaluated this wave — explicitly scoped to Milestone 7 as `OPTIONAL_MEMORY_BACKEND`, only after inspecting existing capsules/receipts/session-affinity state | Premature for M2; adopting a memory backend before the smaller TSF-native option is tried would risk installing a runtime the program doesn't need |
+
+No code from any of these five projects was copied. All rows are concept
+adaptations implemented from scratch in `tsf/domain/`, `tsf/adapters/`, or
+mapped onto an existing Orca CLI primitive.
