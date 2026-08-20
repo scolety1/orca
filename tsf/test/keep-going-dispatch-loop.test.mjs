@@ -495,6 +495,68 @@ test('worktree collision detection normalizes slash direction and case (Windows 
   assert.equal(result.reason, 'UNSAFE_PLACEMENT_COLLISION')
 })
 
+test('collision detection does not lowercase-fold case-sensitive selector forms (branch:/name:/id:/issue:/path:)', async () => {
+  const store = makeFakeStore(baseRun())
+  const distinctBranchItems = [
+    { id: 't1', scope: ['src/a.mjs'], worktree: 'branch:Feature-X' },
+    { id: 't2', scope: ['src/b.mjs'], worktree: 'branch:feature-x' }
+  ]
+  const result = await tickKeepGoingRun(PROJECT_ID, distinctBranchItems, clock, {
+    orchestration: okOrchestration(),
+    store
+  })
+  assert.equal(
+    result.action,
+    'WAVE_DISPATCHED',
+    'two distinct case-differing branch selectors must not be treated as the same place'
+  )
+  assert.equal(result.dispatchRecords.length, 2)
+})
+
+test('duplicate candidate work item ids never cause one dispatch to silently use the wrong placement', async () => {
+  const store = makeFakeStore(baseRun({ budget: { maxConcurrentWorkers: 1 } }))
+  const seenPlacements = []
+  const duplicateIdItems = [
+    { id: 't1', scope: ['src/a.mjs'], worktree: 'C:/repo/a' },
+    { id: 't1', scope: ['src/b.mjs'], worktree: 'C:/repo/b' }
+  ]
+  await tickKeepGoingRun(PROJECT_ID, duplicateIdItems, clock, {
+    orchestration: okOrchestration({
+      startOrchestrationWorker: async (args) => {
+        seenPlacements.push(args.worktree)
+        return { ok: true, result: { taskId: args.task, dispatchId: 'ctx-1', state: 'ready' } }
+      }
+    }),
+    store
+  })
+  assert.deepEqual(
+    seenPlacements,
+    ['C:/repo/a', 'C:/repo/b'],
+    "each dispatch must use its OWN item worktree, never the other duplicate-id item's"
+  )
+})
+
+test('retryOf is threaded through even when reusing an existing terminal, not only on a fresh placement', async () => {
+  const store = makeFakeStore(baseRun())
+  let seenArgs = null
+  await tickKeepGoingRun(
+    PROJECT_ID,
+    [{ id: 't1', scope: ['src/a.mjs'], workerTerminal: 'term_existing', retryOf: 'ctx_prior' }],
+    clock,
+    {
+      orchestration: okOrchestration({
+        startOrchestrationWorker: async (args) => {
+          seenArgs = args
+          return { ok: true, result: { taskId: args.task, dispatchId: 'ctx-1', state: 'ready' } }
+        }
+      }),
+      store
+    }
+  )
+  assert.equal(seenArgs.terminal, 'term_existing')
+  assert.equal(seenArgs.retryOf, 'ctx_prior')
+})
+
 test('two overlapping ticks on the same run: the second is rejected outright, never attempting CLI work', async () => {
   const store = makeFakeStore(baseRun())
   let taskCreateCalls = 0

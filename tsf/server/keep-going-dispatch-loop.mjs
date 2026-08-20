@@ -104,7 +104,7 @@ const PER_ITEM_LOCK_TIMEOUT_MS = 45_000
 // own INVALID_ARGS rejection.
 function resolveWorkerPlacement(item) {
   if (item.workerTerminal) {
-    return { terminal: item.workerTerminal }
+    return { terminal: item.workerTerminal, ...(item.retryOf ? { retryOf: item.retryOf } : {}) }
   }
   return {
     worktree: item.worktree || 'current',
@@ -113,23 +113,31 @@ function resolveWorkerPlacement(item) {
   }
 }
 
-// Mirrors keep-going.mjs's own normalizeScopePath -- Windows paths can
-// differ by slash direction/case and still name the same directory (a
-// real review finding: raw === comparison let that pair through undetected).
+// Orca's --worktree grammar mixes case-sensitive selector forms
+// (branch:<x>, name:<x>, id:<x>::<path>, issue:<n>) with plain filesystem
+// paths and the bare 'current'/'active' keywords -- folding everything to
+// lowercase (a real review finding) would falsely collide two distinct
+// branches/names differing only in case. Only bare paths are
+// slash/case-normalized; a recognized selector prefix is compared
+// verbatim. Canonicalizing a selector form against a differently-shaped
+// one naming the SAME place (e.g. id:repo::/path vs path:/path) would need
+// Orca-side resolution -- a known, disclosed, not-yet-closed gap.
+const SELECTOR_PREFIX_PATTERN = /^(branch|name|id|issue|path):/i
 function normalizePlacementPath(p) {
-  return String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  const raw = String(p)
+  if (SELECTOR_PREFIX_PATTERN.test(raw)) {
+    return raw
+  }
+  return raw.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
 
 // Two placements collide if worker-start would run two agents in the same
-// place at once: either both land fresh in the same worktree (most
-// commonly two items both defaulting to 'current'), or both explicitly
-// reuse the identical existing terminal. Checked across the WHOLE wave,
-// not just one planWave batch -- planWave batches only to keep scope-
-// conflicting items from touching the same files concurrently; it never
-// promises batch N+1 waits for batch N's agent to finish, so two items in
-// DIFFERENT batches that both default to 'current' would still overlap in
-// the same physical directory (a real review finding against the
-// same-batch-only version of this guard).
+// place at once: both fresh in the same worktree, or both reusing the
+// identical existing terminal. Checked across the whole wave in
+// dispatchStep, not just one planWave batch (see the comment there).
+// Known, disclosed gap: a fresh placement and a terminal-reuse placement
+// are never cross-checked, since this module has no lookup from a
+// terminal handle to the worktree it is currently parked in.
 function placementsCollide(a, b) {
   if (a.terminal && b.terminal) {
     return normalizePlacementPath(a.terminal) === normalizePlacementPath(b.terminal)
@@ -257,21 +265,21 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     }
   }
 
-  // Collision-checked across the WHOLE wave (every batch), not per batch --
-  // planWave only separates scope-conflicting items into different batches
-  // to keep them off the same files; it never guarantees batch N+1 waits
-  // for batch N's agent to finish, so two items in different batches that
-  // both default to worktree 'current' would still overlap in the same
-  // physical directory (a real review finding against an earlier,
-  // same-batch-only version of this guard). Checked once, up front, before
-  // any batch is touched, so a colliding wave is refused atomically rather
-  // than after already dispatching some earlier, non-colliding batch.
-  const allPlacements = wavePlan.batches
-    .flat()
-    .map((item) => ({ item, placement: resolveWorkerPlacement(item) }))
-  for (let i = 0; i < allPlacements.length; i += 1) {
-    for (let j = i + 1; j < allPlacements.length; j += 1) {
-      if (placementsCollide(allPlacements[i].placement, allPlacements[j].placement)) {
+  // Resolved once per item, positionally paired (never looked up again by
+  // item.id afterward) -- a Map keyed by id would silently misroute a
+  // dispatch if candidateWorkItems ever contained a duplicate id (a real
+  // review finding against an earlier version of this function).
+  const placedBatches = wavePlan.batches.map((batch) =>
+    batch.map((item) => ({ item, placement: resolveWorkerPlacement(item) }))
+  )
+
+  // Checked across the whole wave (see placementsCollide), once up front
+  // before any batch is touched, so a colliding wave is refused atomically
+  // rather than after already dispatching an earlier, non-colliding batch.
+  const allPlaced = placedBatches.flat()
+  for (let i = 0; i < allPlaced.length; i += 1) {
+    for (let j = i + 1; j < allPlaced.length; j += 1) {
+      if (placementsCollide(allPlaced[i].placement, allPlaced[j].placement)) {
         return commitPartialOrAbortedDispatch(
           projectId,
           store,
@@ -282,15 +290,14 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
           orchestrationRunId,
           orchestrationRunFreshlyCreated,
           {
-            failedItem: allPlacements[j].item.id,
+            failedItem: allPlaced[j].item.id,
             reason: 'UNSAFE_PLACEMENT_COLLISION',
-            detail: `${allPlacements[i].item.id} and ${allPlacements[j].item.id} would land in the same place at the same time -- give each an explicit, distinct item.worktree or item.workerTerminal`
+            detail: `${allPlaced[i].item.id} and ${allPlaced[j].item.id} would land in the same place at the same time -- give each an explicit, distinct item.worktree or item.workerTerminal`
           }
         )
       }
     }
   }
-  const placementByItemId = new Map(allPlacements.map((p) => [p.item.id, p.placement]))
 
   // Batches themselves must stay sequential (planWave puts conflicting
   // items in separate batches precisely so they don't overlap), but items
@@ -302,9 +309,8 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
   // among concurrently-dispatched items needs more care than the current
   // sequential-with-early-return shape.
   const dispatchRecords = []
-  for (const batch of wavePlan.batches) {
-    for (const item of batch) {
-      const placement = placementByItemId.get(item.id)
+  for (const batch of placedBatches) {
+    for (const { item, placement } of batch) {
       const taskResult = await orchestration.createOrchestrationTask({
         spec: item.spec ?? item.id,
         run: orchestrationRunId,
