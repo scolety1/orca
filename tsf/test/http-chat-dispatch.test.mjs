@@ -337,3 +337,56 @@ test("a silently non-progressing worker is detected STALLED by M2's own dispatch
     assert.equal(redispatch.body.tickResult.action, 'WAVE_DISPATCHED')
   })
 })
+
+test('user feedback on a completed wave becomes a bounded revision on the SAME still-ACTIVE run -- not a new run, not a full re-plan', async () => {
+  await withServer(async (base) => {
+    const firstDispatch = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'go ahead and add a bounded doc note',
+      placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+    })
+    assert.equal(firstDispatch.body.tickResult.action, 'WAVE_DISPATCHED')
+    const runId = firstDispatch.body.tickResult.run.id
+    const firstWorkItemId = firstDispatch.body.candidateWorkItem.id
+
+    try {
+      // Settle wave 1 as genuinely completed (not failed/stalled) so the
+      // run stays ACTIVE with no in-flight wave -- exactly the state a
+      // real settled-but-not-yet-fully-satisfying wave leaves behind for
+      // Tim to react to.
+      process.env.STUB_ORCA_TASKS = JSON.stringify([{ id: 'stub-task-id', status: 'completed' }])
+      const settle = await chat(base, {
+        projectId: PROJECT_ID,
+        message: 'go ahead and check on it',
+        placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+      })
+      assert.equal(settle.body.tickResult.action, 'WAVE_SETTLED')
+    } finally {
+      delete process.env.STUB_ORCA_TASKS
+    }
+
+    // Tim's feedback on the settled wave -- a bounded revision request,
+    // not a fresh objective -- goes through the exact same dispatch-worthy
+    // chat path as any other "go ahead"/"fix this" phrasing (no new
+    // revision-specific code exists, nor is any needed: the run is still
+    // ACTIVE and not in flight, so this is just the next wave).
+    const revision = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'fix this: the note format was wrong, use ISO dates instead',
+      placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+    })
+    assert.equal(revision.body.dispatched, true)
+    assert.equal(revision.body.tickResult.action, 'WAVE_DISPATCHED')
+    assert.equal(
+      revision.body.tickResult.run.id,
+      runId,
+      'the revision must land on the SAME run, not a new one'
+    )
+    assert.notEqual(
+      revision.body.candidateWorkItem.id,
+      firstWorkItemId,
+      'the revision is its own bounded work item, not a repeat of the original one'
+    )
+    assert.match(revision.body.planCapsule.objective, /ISO dates|note format/i)
+  })
+})
