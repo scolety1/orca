@@ -42,6 +42,28 @@ async function withServer(fn) {
 // (tsf/server/fixture-project.mjs) -- safe to exercise a real Keep Going
 // run against without touching any real project.
 const PROJECT_ID = 'tsf-ui-capability-check'
+const ORCA_STUB = path.join(HERE, 'fixtures', 'stub-orca-cli.mjs')
+
+async function withStubOrca(mode, fn) {
+  const priorCommand = process.env.TSF_ORCA_CLI_COMMAND
+  const priorMode = process.env.STUB_ORCA_MODE
+  process.env.TSF_ORCA_CLI_COMMAND = ORCA_STUB
+  process.env.STUB_ORCA_MODE = mode
+  try {
+    return await fn()
+  } finally {
+    if (priorCommand === undefined) {
+      delete process.env.TSF_ORCA_CLI_COMMAND
+    } else {
+      process.env.TSF_ORCA_CLI_COMMAND = priorCommand
+    }
+    if (priorMode === undefined) {
+      delete process.env.STUB_ORCA_MODE
+    } else {
+      process.env.STUB_ORCA_MODE = priorMode
+    }
+  }
+}
 
 test('GET /api/keep-going/:projectId reports not-started before any run exists', async () => {
   await withServer(async (base) => {
@@ -176,5 +198,72 @@ test('POST pause is rejected with 409 over the real HTTP layer while an autonomo
     // Persisted state is untouched by the rejected pause -- still ACTIVE.
     const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
     assert.equal((await getRes.json()).state, 'ACTIVE')
+  })
+})
+
+// The "manual Run now" route -- the one real HTTP/UI entry point for
+// tickKeepGoingRun (an independent verifier pass found this route did not
+// exist at all: the autonomous dispatch loop was reachable only from raw
+// Node scripts, never from anything a UI or HTTP caller could invoke).
+test('POST tick with no candidate work items NOOPs honestly rather than fabricating a wave', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ originalGoal: 'Tick route proof.', acceptanceCriteria: ['X'] })
+    })
+    const tickRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/tick`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    })
+    assert.equal(tickRes.status, 200)
+    const body = await tickRes.json()
+    assert.equal(body.action, 'NOOP')
+    assert.match(body.reason, /candidate work items/)
+  })
+})
+
+test('POST tick with real candidate work items dispatches a wave through the real production path (stubbed Orca CLI)', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ originalGoal: 'Tick route proof.', acceptanceCriteria: ['X'] })
+    })
+    const tickRes = await withStubOrca('success', () =>
+      fetch(`${base}/api/keep-going/${PROJECT_ID}/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          candidateWorkItems: [
+            { id: 't1', scope: ['docs/x.md'], worktree: 'C:/repo/wt1', agent: 'codex' }
+          ]
+        })
+      })
+    )
+    assert.equal(tickRes.status, 200)
+    const body = await tickRes.json()
+    assert.equal(body.action, 'WAVE_DISPATCHED')
+    assert.equal(body.dispatchRecords.length, 1)
+
+    const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
+    const got = await getRes.json()
+    assert.equal(
+      got.phase,
+      'WAVE_DISPATCHED',
+      'the dispatched wave must be reflected in persisted state, not just the tick response'
+    )
+  })
+})
+
+test('POST tick on an unknown project 404s, same as the other routes', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/keep-going/does-not-exist/tick`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    })
+    assert.equal(res.status, 404)
   })
 })

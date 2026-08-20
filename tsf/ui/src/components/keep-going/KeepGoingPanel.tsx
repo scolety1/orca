@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import type { KeepGoingActiveRunView, KeepGoingRunState } from '@/lib/keep-going-types'
+import { KeepGoingTickForm } from './KeepGoingTickForm'
 
 const STATE_BADGE: Record<
   KeepGoingRunState,
@@ -367,6 +368,8 @@ function LiveRun({
         )}
 
         {error && <p className="text-xs text-status-blocked">{error}</p>}
+
+        {run.state === 'ACTIVE' && <KeepGoingTickForm projectId={projectId} onTicked={onChanged} />}
 
         <div className="flex gap-2">
           {canPause && (

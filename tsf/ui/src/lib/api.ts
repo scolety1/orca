@@ -1,4 +1,8 @@
-import type { KeepGoingRunView } from './keep-going-types'
+import type {
+  KeepGoingCandidateWorkItem,
+  KeepGoingRunView,
+  KeepGoingTickResult
+} from './keep-going-types'
 import type {
   AgentEvidence,
   ChatAttachmentMeta,
@@ -143,5 +147,10 @@ export const api = {
     request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/resume`, {
       method: 'POST',
       body: JSON.stringify({ expectedRevision })
+    }),
+  tickKeepGoing: (projectId: string, candidateWorkItems: KeepGoingCandidateWorkItem[]) =>
+    request<KeepGoingTickResult>(`/keep-going/${encodeURIComponent(projectId)}/tick`, {
+      method: 'POST',
+      body: JSON.stringify({ candidateWorkItems })
     })
 }

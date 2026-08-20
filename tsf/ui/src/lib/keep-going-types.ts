@@ -62,3 +62,26 @@ export type KeepGoingRunView =
     }
 
 export type KeepGoingActiveRunView = Extract<KeepGoingRunView, { started: true }>
+
+// Mirrors keep-going-dispatch-loop.mjs's tickKeepGoingRun result shape --
+// deliberately loose (unknown fields pass through) since the action union
+// there is intentionally open-ended (NOOP/WAVE_DISPATCHED/WAVE_SETTLED/
+// DISPATCH_FAILED/..._LOST_LOCK/etc.) and the UI only needs action/reason
+// to render a result, not to branch on every possible value.
+export type KeepGoingTickResult = {
+  action: string
+  reason?: string
+  detail?: string
+}
+
+// One caller-supplied candidate work item for the manual "Run now" tick --
+// deciding what candidates exist is a planning judgment tickKeepGoingRun
+// itself refuses to make, so the operator supplies it here.
+export type KeepGoingCandidateWorkItem = {
+  id: string
+  scope: string[]
+  spec?: string
+  worktree?: string
+  agent?: string
+  workerTerminal?: string
+}

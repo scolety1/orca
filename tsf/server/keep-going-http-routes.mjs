@@ -24,6 +24,7 @@ import {
   resumeKeepGoingRun,
   startKeepGoingRun
 } from './keep-going-controller.mjs'
+import { tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
 import { withKeepGoingRun } from './keep-going-run-store.mjs'
 
 const CONFLICT_CODES = new Set(['TSF_STALE_REVISION', 'TSF_TICK_IN_PROGRESS'])
@@ -136,6 +137,30 @@ export async function handleKeepGoingRoute(
         200,
         projectKeepGoingRun(run, () => new Date())
       )
+    } catch (error) {
+      respondError(res, json, error)
+    }
+    return true
+  }
+
+  // Manual "Run now" -- the one real entry point for the autonomous
+  // wave-dispatch loop (tickKeepGoingRun) until an `orca automations
+  // create --trigger cron` job is separately, explicitly authorized (see
+  // keep-going-dispatch-loop.mjs's module header). Never fabricates a
+  // plan: candidateWorkItems must come from the caller (today: an
+  // operator/planner session), same restriction tickKeepGoingRun itself
+  // enforces. Uses tickKeepGoingRun's own default deps (the real
+  // orchestration bridge + the real synchronous store), so a call here
+  // performs genuine Orca dispatch/settlement, not a simulation.
+  if (parts[3] === 'tick') {
+    const body = await readBody(req)
+    try {
+      const result = await tickKeepGoingRun(
+        projectId,
+        Array.isArray(body.candidateWorkItems) ? body.candidateWorkItems : [],
+        () => new Date()
+      )
+      json(res, 200, result)
     } catch (error) {
       respondError(res, json, error)
     }
