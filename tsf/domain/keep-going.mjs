@@ -548,6 +548,17 @@ export function recordTaskAttempt(run, taskId, outcome, clock, expectedRevision)
 
 // workerHeartbeats: [{ dispatchId, taskId, lastHeartbeatAt }] — sourced from
 // `orca orchestration worker-list`/`task-list` facts, not invented here.
+// Not currently called by keep-going-dispatch-loop.mjs's settleStep: real
+// per-worker heartbeat data doesn't exist yet (mapOrchestrationFacts still
+// always emits lastHeartbeatAt: null, wave 11 finding, still open), and a
+// null lastHeartbeatAt would make this function's own filter a permanent
+// no-op today (Date.parse(null) is NaN, so nothing is ever flagged) --
+// worse than silent, actively misleading if wired in as-is. settleStep
+// uses its own wall-clock-since-dispatch check instead, real stall
+// detection this session genuinely relied on (waves 17/23) -- an
+// independent verifier pass flagged this function's non-use as worth
+// disclosing explicitly, since it reads as dead code without this
+// context. Keep this function for when the heartbeat gap is closed.
 export function detectStall(run, workerHeartbeats, clock) {
   const now = Date.parse(isoNow(clock))
   return workerHeartbeats
