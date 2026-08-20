@@ -696,7 +696,80 @@
         "no candidate packaged yet",
         "two independent review passes now completed (wave 7 fully, from Claude; wave 8 partially, from Claude; wave 11 fully, from Codex -- genuine cross-provider verification). 4 of wave 11's 9 findings were new, not caught by either Claude pass -- real evidence that milestone-completion-gate verification benefits from more than one independent pass. Open findings from all three passes are tracked per-wave above; none are fixed-and-forgotten, all are either fixed with regression tests or explicitly deferred with reasoning",
         "waves 12-14 closed all 3 fixable wave-11 findings (checkpointRun added to resume; resolveNeedsYou no longer un-pauses a separately-paused run; recordWave/recordTaskAttempt/checkpointRun now bump revision). Remaining open findings from both independent reviews are the ones deliberately judged too large for a single bounded wave (document/request-level concurrency in data-store.mjs) or out of M2's actual scope (onboarding's client-trust gap, UI polish items) -- see waves 8/11 for full detail"
-      ]
+      ],
+      "acceptanceStatus2026_08_20": {
+        "schemaVersion": "TSF_M2_ACCEPTANCE_STATUS_V1",
+        "generatedAt": "2026-08-20T09:26:28.534Z",
+        "perCriterion": [
+          {
+            "criterion": "Original goal immutable unless Tim changes it",
+            "status": "PROVEN_UNIT_TEST",
+            "evidence": "tsf/test/keep-going.test.mjs: replaceGoal requires authorizedBy TIM (long-standing, not re-exercised live tonight)"
+          },
+          {
+            "criterion": "Planner establishes acceptance criteria and compares repo state to goal each wave",
+            "status": "PROVEN_LIVE",
+            "evidence": "compareStateToGoal called live against 2 real runs tonight (run_5aa5b6d8b029 and the fresh pause/resume-proof run), both reaching STOP_COMPLETE from independently-verified criteria"
+          },
+          {
+            "criterion": "Bounded, conflict-aware work waves dispatched to non-conflicting Orca workers",
+            "status": "PROVEN_LIVE_AND_HARDENED",
+            "evidence": "planWave used in every live dispatch tonight; the wave-20 rewiring introduced a same-worktree placement-collision gap, found and fixed across 2 further review rounds (waves 22, 24) with new regression tests -- now checked wave-wide, not just within one batch, and Windows-path-normalized"
+          },
+          {
+            "criterion": "Independent verification per wave; no worker self-report treated as done",
+            "status": "PROVEN_LIVE",
+            "evidence": "Every worker_done tonight (4 real Codex dispatches) was independently verified by reading the actual file on disk before being trusted -- never from the payload alone"
+          },
+          {
+            "criterion": "Replan/continue/stop loop against original goal, not against worker claims",
+            "status": "PROVEN_LIVE",
+            "evidence": "Both completed runs tonight reached COMPLETE via compareStateToGoal with verifiedSatisfied criteria, not via trusting a wave result directly"
+          },
+          {
+            "criterion": "Stall watchdog, worker heartbeat, max concurrency, retry budget, time/resource budget",
+            "status": "PARTIALLY_PROVEN_ONE_DISCLOSED_GAP",
+            "evidence": "Stall watchdog + retry budget both proven live (wave 17, and again tonight resuming that same run). Real per-worker heartbeat timestamp remains a disclosed, unclosed gap: mapOrchestrationFacts still always emits lastHeartbeatAt: null (wave 11 finding) -- stall detection uses wall-clock-since-dispatch, not a true heartbeat, and this was not addressed this session"
+          },
+          {
+            "criterion": "Needs You / safe pause / Ready to Resume / resume all real",
+            "status": "PROVEN_LIVE",
+            "evidence": "NEEDS_YOU raised/resolved live on the resumed parked run; Pause proven live under a genuinely in-flight real dispatch (proof B), Resume proven live afterward, settlement correctly reused the pre-pause taskId/dispatchId (no duplicate/blind redispatch)"
+          },
+          {
+            "criterion": "Durable checkpoint after meaningful phases",
+            "status": "PROVEN_LIVE",
+            "evidence": "Every mutation tonight checkpointed with an intact hash chain (previousHash/hash verified)"
+          },
+          {
+            "criterion": "Morning/return summary",
+            "status": "PROVEN_LIVE",
+            "evidence": "summarizeRun() called live against a real completed run tonight, producing a valid TSF_KEEP_GOING_SUMMARY_V1 capsule"
+          },
+          {
+            "criterion": "No silent push/merge/deploy/publish",
+            "status": "HELD",
+            "evidence": "All work stayed on the feature branch (scolety1/tsf-autonomy-program-v1); no push, no merge to tsf/main, no deploy/publish this session"
+          },
+          {
+            "criterion": "UI: project-level 'Keep Going / Overnight' action with Start/Pause/Resume and live display",
+            "status": "NOT_EXERCISED_THIS_SESSION",
+            "evidence": "This session drove every run entirely through the same server-side production code paths (keep-going-run-store.mjs / keep-going-dispatch-loop.mjs / keep-going.mjs) a UI action would call, via Node scripts, not by clicking the actual Electron UI -- a genuine, disclosed gap, not claimed as proven"
+          },
+          {
+            "criterion": "Proven via a bounded fixture/dogfood mission showing multiple waves, a revision, verification, pause/resume, no duplicate settled task, concise summary",
+            "status": "PROVEN_LIVE",
+            "evidence": "Proof A (run_5aa5b6d8b029): 4 real waves total (2 stalled/honestly-fenced under the old broken path, 2 completed under the repaired path), reached COMPLETE. Proof B (fresh run): 1 real wave, Pause/Resume under it, reached COMPLETE. Both independently verified, no duplicate settled work (idempotent-by-digest), summarizeRun exercised live."
+          }
+        ],
+        "notYetDone": [
+          "A holistic, dedicated M2 independent-verifier pass (distinct from the 3 targeted code-review rounds on the dispatch-loop repair itself) explicitly confirming all acceptance criteria as a milestone -- Section H requires \"independent verifier GREEN\" before local auto-adoption is authorized without asking again",
+          "A literal killed/restarted long-running poller daemon -- this session proved the practical equivalent via cold-process-per-tick (every single script invocation tonight was itself a fresh process reading only durable state), but never ran and killed an actual persistent polling loop",
+          "Provider-capacity pause/fallback under a real constrained-capacity window -- Codex capacity was healthy throughout tonight, so this path was never genuinely exercised live",
+          "The actual Electron UI Start/Pause/Resume controls and live display"
+        ],
+        "recommendation": "M2 is substantially proven live end-to-end tonight (root cause fixed, 3 independent-review rounds converging on the dispatch-loop repair, 2 complete live dogfood missions covering most of the acceptance list). Given the still-open items above -- especially the missing dedicated holistic verifier pass -- recommend NOT yet declaring M2 packaged/adopted under Section H tonight; a clean next step is a dedicated VERIFIER_INDEPENDENT pass against this exact list before that decision."
+      }
     },
     {
       "id": "M3",
