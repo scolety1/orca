@@ -775,7 +775,7 @@
       ],
       "acceptanceStatus2026_08_20": {
         "schemaVersion": "TSF_M2_ACCEPTANCE_STATUS_V1",
-        "generatedAt": "2026-08-20T09:26:28.534Z",
+        "generatedAt": "2026-08-20T10:45:49.916Z",
         "perCriterion": [
           {
             "criterion": "Original goal immutable unless Tim changes it",
@@ -805,7 +805,7 @@
           {
             "criterion": "Stall watchdog, worker heartbeat, max concurrency, retry budget, time/resource budget",
             "status": "PARTIALLY_PROVEN_ONE_DISCLOSED_GAP",
-            "evidence": "Stall watchdog + retry budget both proven live (wave 17, and again tonight resuming that same run). Real per-worker heartbeat timestamp remains a disclosed, unclosed gap: mapOrchestrationFacts still always emits lastHeartbeatAt: null (wave 11 finding) -- stall detection uses wall-clock-since-dispatch, not a true heartbeat, and this was not addressed this session"
+            "evidence": "Stall watchdog + retry budget both proven live (wave 17, and again tonight resuming that same run). Real per-worker heartbeat timestamp remains a disclosed, unclosed gap: mapOrchestrationFacts still always emits lastHeartbeatAt: null (wave 11 finding) -- stall detection uses wall-clock-since-dispatch, not a true heartbeat, and this was not addressed this session UPDATE (waves 27-29): a real, previously-undisclosed cross-process concurrency gap was found (the CAS models atomicity only held within one OS process) and fixed with a real, adversarially-proven cross-process file lock (two genuinely separate OS processes racing the same state file, verified via real overlap instrumentation). While hardening that fix, a severe duplicate-dispatch regression the fix itself introduced was found and fixed via direct live instrumentation before it ever shipped, then independently re-reviewed (dual-pass) and judged non-blocking."
           },
           {
             "criterion": "Needs You / safe pause / Ready to Resume / resume all real",
@@ -829,8 +829,8 @@
           },
           {
             "criterion": "UI: project-level 'Keep Going / Overnight' action with Start/Pause/Resume and live display",
-            "status": "PARTIALLY_ADDRESSED",
-            "evidence": "RESOLVED (wave 26): tickKeepGoingRun is now wired to a real POST /api/keep-going/:projectId/tick route and a Run now control in the actual KeepGoingPanel UI. Start/Pause/Resume were already real; the dispatch loop itself is now reachable from the product surface too (previously it was reachable from NEITHER an HTTP route NOR any UI control, in any session -- worse than this entry originally disclosed). Not yet done: the Run now control has not been exercised by actually launching the Electron app and clicking it (still a raw-HTTP-level proof, via node --test and tsc typecheck), and it is deliberately single-item, not the full batch-planning UI the criterion describes."
+            "status": "PROVEN_HTTP_LEVEL_UI_NOT_CLICKED",
+            "evidence": "Wave 26: tickKeepGoingRun is wired to a real POST /api/keep-going/:projectId/tick route (validated input, tested against a stubbed Orca CLI end-to-end through the real production code path) and a Run now control exists in the actual KeepGoingPanel React UI (KeepGoingTickForm.tsx). Start/Pause/Resume were already real and HTTP-tested. Not yet done: nobody has launched the actual Electron app and clicked the button -- this is proven at the HTTP/production-code-path level (node --test + tsc typecheck), not via a real rendered-UI click-through. The Run now control is also deliberately single-item, not the full batch-planning UI this criterion originally describes."
           },
           {
             "criterion": "Proven via a bounded fixture/dogfood mission showing multiple waves, a revision, verification, pause/resume, no duplicate settled task, concise summary",
@@ -844,7 +844,8 @@
           "Provider-capacity pause/fallback under a real constrained-capacity window -- Codex capacity was healthy throughout tonight, so this path was never genuinely exercised live",
           "The actual Electron UI Start/Pause/Resume controls and live display"
         ],
-        "recommendation": "M2 is substantially proven live end-to-end tonight (root cause fixed, 3 independent-review rounds converging on the dispatch-loop repair, 2 complete live dogfood missions covering most of the acceptance list). Given the still-open items above -- especially the missing dedicated holistic verifier pass -- recommend NOT yet declaring M2 packaged/adopted under Section H tonight; a clean next step is a dedicated VERIFIER_INDEPENDENT pass against this exact list before that decision."
+        "recommendation": "M2 is substantially proven live end-to-end tonight (root cause fixed, 3 independent-review rounds converging on the dispatch-loop repair, 2 complete live dogfood missions covering most of the acceptance list). Given the still-open items above -- especially the missing dedicated holistic verifier pass -- recommend NOT yet declaring M2 packaged/adopted under Section H tonight; a clean next step is a dedicated VERIFIER_INDEPENDENT pass against this exact list before that decision.",
+        "updateNote": "Refreshed after waves 26-29 (HTTP/UI wiring for the dispatch loop; cross-process lock; a severe duplicate-dispatch bug found and fixed; dual-pass independent review of that fix). See milestones[M2].waves[26]-[29] for full detail."
       }
     },
     {
