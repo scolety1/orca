@@ -49,8 +49,8 @@
 import {
   createOrchestrationRun,
   createOrchestrationTask,
-  dispatchOrchestrationTask,
-  listOrchestrationTasks
+  listOrchestrationTasks,
+  startOrchestrationWorker
 } from '../adapters/orca-orchestration-bridge.mjs'
 import { isoNow } from '../domain/canonical.mjs'
 import {
@@ -70,9 +70,13 @@ import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
 const DEFAULT_ORCHESTRATION = Object.freeze({
   createOrchestrationRun,
   createOrchestrationTask,
-  dispatchOrchestrationTask,
-  listOrchestrationTasks
+  listOrchestrationTasks,
+  startOrchestrationWorker
 })
+
+// Fresh work items dispatch through a new agent terminal unless the item
+// specifies an existing one to reuse (item.workerTerminal).
+const DEFAULT_WORKER_AGENT = 'codex'
 
 const DEFAULT_STORE = Object.freeze({
   readRun: readKeepGoingRun,
@@ -224,12 +228,20 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
         )
       }
       const taskId = taskResult.result.task.id
-      const dispatchResult = await orchestration.dispatchOrchestrationTask({
+      // startOrchestrationWorker (orca orchestration worker-start) is the
+      // documented, supervised dispatch path -- it composes worktree/
+      // terminal/readiness itself and only reports ok:true for a real
+      // "ready" state (see wave 19: the low-level dispatch --inject path
+      // this replaced could report success while the target agent never
+      // engaged with the task at all, with zero diagnostic signal).
+      const startResult = await orchestration.startOrchestrationWorker({
         task: taskId,
-        to: item.workerTerminal,
+        worktree: item.workerTerminal ? undefined : (item.worktree ?? 'current'),
+        terminal: item.workerTerminal,
+        agent: item.workerTerminal ? undefined : (item.agent ?? DEFAULT_WORKER_AGENT),
         run: orchestrationRunId
       })
-      if (!dispatchResult.ok) {
+      if (!startResult.ok) {
         return commitPartialOrAbortedDispatch(
           projectId,
           store,
@@ -239,14 +251,14 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
           dispatchRecords,
           orchestrationRunId,
           orchestrationRunFreshlyCreated,
-          { failedItem: item.id, reason: dispatchResult.reason, detail: dispatchResult.detail }
+          { failedItem: item.id, reason: startResult.reason, detail: startResult.detail }
         )
       }
       dispatchRecords.push({
         workItemId: item.id,
         scope: item.scope,
         taskId,
-        dispatchId: dispatchResult.result.dispatch.id
+        dispatchId: startResult.result.dispatchId
       })
     }
   }

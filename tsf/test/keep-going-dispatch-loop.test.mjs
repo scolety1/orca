@@ -42,9 +42,9 @@ function okOrchestration(overrides = {}) {
       ok: true,
       result: { task: { id: `task-${taskTitle}` } }
     }),
-    dispatchOrchestrationTask: async ({ task }) => ({
+    startOrchestrationWorker: async ({ task }) => ({
       ok: true,
-      result: { dispatch: { id: `ctx-${task}` } }
+      result: { taskId: task, dispatchId: `ctx-${task}`, state: 'ready', stage: 'input_accepted' }
     }),
     listOrchestrationTasks: async () => ({ ok: true, result: { tasks: [] } }),
     ...overrides
