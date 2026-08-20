@@ -35,6 +35,7 @@ async function withServer(fn) {
     await new Promise((resolve) => server.close(resolve))
     rmSync(STATE_FILE, { force: true })
     rmSync(`${STATE_FILE}.tmp`, { force: true })
+    rmSync(`${STATE_FILE}.lock`, { force: true })
   }
 }
 

@@ -68,6 +68,7 @@ const oneItem = [{ id: 't1', scope: ['src/a.mjs'] }]
 test.afterEach(() => {
   rmSync(STATE_FILE, { force: true })
   rmSync(`${STATE_FILE}.tmp`, { force: true })
+  rmSync(`${STATE_FILE}.lock`, { force: true })
 })
 
 // --- Requirement: test two ticks attempting to act on the same run ---

@@ -29,6 +29,15 @@ const DEFAULTS = {
   keepGoingRuns: {} // projectId -> TSF_OVERNIGHT_RUN_V1 (see tsf/domain/keep-going.mjs)
 }
 
+// Exposes the real state file path (honoring the same TSF_UI_STATE_FILE
+// test-isolation override loadState/saveState use) so a caller that needs
+// its own file-based lock scoped to this exact file -- keep-going-run-
+// store.mjs's cross-process lock -- can derive a sibling lock path
+// without duplicating the override logic.
+export function getStateFilePath() {
+  return STATE_FILE
+}
+
 export function loadState() {
   if (!existsSync(STATE_FILE)) {
     return structuredClone(DEFAULTS)
