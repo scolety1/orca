@@ -758,6 +758,29 @@
             "Tim performs the manual validation checklist (acceptanceClosure2026_08_20.manualValidationChecklist)",
             "once satisfied: rerun full M2 acceptance suite, a fresh independent verifier pass, package as an immutable candidate, confirm HEAD/tree and Orca-core-delta-0, then evaluate Section H local adoption"
           ]
+        },
+        {
+          "wave": 31,
+          "summary": "Reconciled the real, live ui-run-now-smoke dispatch per Tim's explicit directive (do not redispatch; determine actual status; apply existing bounded stall semantics if past threshold; preserve evidence; confirm no duplicates/no file changes). Read-only Orca CLI inspection confirmed: the task was genuinely dispatched (real worker-start, not the defective --inject path), assigned to a real Codex terminal actively running, exactly 1 task on the Run (no duplicate), git status on the shared worktree clean. The worker had been silent for ~11 minutes, well past this run's configured 300000ms stallThresholdMs. Ran a real, read-only settle-step tick (tickKeepGoingRun with empty candidateWorkItems -- never a redispatch) which correctly and honestly escalated the run to STALLED via the EXISTING, already-tested markStalled mechanism, recording the task as PENDING (never fabricated as completed or failed). While doing this, found a real, previously-undiscovered gap: settleStep's WAVE_STALLED branch was the only phase transition in this module with no explicit checkpointRun call -- fixed in the same wave (see wave 32 note below, though tracked as a separate commit). Also read the live terminal directly and found the actual root cause of the silence: Codex itself was still in its own MCP-server startup phase (a cloudflare-api MCP login failure/retry), NOT a TSF/Orca dispatch failure -- this is an external Codex/MCP configuration issue, recorded separately in externalIssues below, explicitly out of TSF's scope per Tim's own instruction not to broaden M2 into repairing it. Disclosed the DISPATCH_SUCCEEDED-vs-AGENT_STARTUP_READY distinction Tim asked about: TSF's own PENDING outcome does not currently distinguish 'worker-start succeeded, real worker assigned' from 'the agent has actually finished its own startup and begun the task' -- documented inline as a known, deliberately-not-modeled-further gap (see wave 32's disclosure comment in keep-going-dispatch-loop.mjs).",
+          "testsAdded": 0,
+          "testsPassing": "213/213 (unaffected by this reconciliation -- read-only investigation plus one real, non-redispatching tick)",
+          "verifier": "SELF (live reconciliation, read-only Orca CLI inspection, one real settle-step tick using existing tested mechanisms)",
+          "commit": null,
+          "deferredToNextWave": [
+            "the WAVE_STALLED checkpoint gap found here (fixed: wave 32 commit 1a461168f)"
+          ]
+        },
+        {
+          "wave": 32,
+          "summary": "A fresh independent verifier pass (commissioned after the manual UI checklist reported PASS) found a real, live-demonstrated safety gap: resolveWorkerPlacement's item.worktree || 'current' default resolves to the Orca coordinator process's own working directory, not anything scoped to the project a Keep Going run belongs to. The manual UI checklist's own Run now step, performed exactly as instructed (leaving the pre-filled default), proved this live -- the resulting real dispatch (task_dd9e9dc6677f) landed directly in THIS PROGRAM'S OWN REPOSITORY, not the fixture project's intended isolated location (which, on inspection, has no real backing directory at all -- fixture-project.mjs's worktreeId is a synthetic label for adoption-receipt fixtures, not a real path). The checklist's own 'zero real-repo risk' framing was demonstrably false for this specific control. Fixed by removing the silent default everywhere it existed: resolveWorkerPlacement no longer falls back to 'current'; a new requireExplicitPlacement check in dispatchStep refuses (DISPATCH_FAILED, TSF_MISSING_PLACEMENT) any item missing both worktree and workerTerminal before any CLI call; keep-going-http-routes.mjs's findInvalidWorkItem mirrors the same requirement at the HTTP boundary; the UI form's worktree field default changed from pre-filled 'current' to empty, with required client-side validation and updated placeholder text -- removing the exact affordance that let the real click-through proceed unknowingly. 'current' remains a legitimate value an operator can type deliberately; nothing defaults to it silently anymore. Updated test fixtures (no more implicit reliance on the old default), fixed 2 existing collision tests to use explicit identical worktrees instead of omission (preserving their intent), added 2 new tests for the missing-placement guard. 215/215 full tsf suite GREEN (up from 213), stable across repeated runs, oxlint/tsc/max-lines-ratchet clean. This fix (commit ed0b7db07) is undergoing one more independent review given its criticality before being treated as fully closing this specific safety gap. Also fixed in this wave (separate commit 1a461168f): the WAVE_STALLED checkpoint gap found during wave 31's reconciliation.",
+          "testsAdded": 4,
+          "testsPassing": "215/215 full tsf suite GREEN, stable across 3+ repeated runs",
+          "verifier": "SELF (fixing a fresh independent verifier finding); a further independent review of this specific safety fix is in flight",
+          "commit": "ed0b7db07",
+          "deferredToNextWave": [
+            "independent review of this safety fix (in flight)",
+            "final Section H packaging decision, gated on that review"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -904,9 +927,21 @@
             "gap": "Per-project lock granularity (one global lock file currently serializes ALL projects' Keep Going operations, not just genuinely racing ones)",
             "classification": "M3_OR_LATER",
             "reasoning": "A scalability/latency characteristic, not a correctness or safety bug -- worst case is bounded added latency (the lock has a timeout) to an unrelated project's request, never data corruption or duplicate dispatch. Only matters once real multi-project concurrent Keep Going load exists, which is not current usage (single active pilot projects). No near-term milestone depends on it."
+          },
+          {
+            "gap": "keep-going-http-routes.mjs's findInvalidWorkItem validates id/scope/worktree-or-terminal but not an allowlist for worktree/agent/spec content -- any local process able to POST to the TSF API (bound to 127.0.0.1 only) could supply an arbitrary worktree/spec",
+            "classification": "SAFE_FOLLOWUP",
+            "reasoning": "This is the standard local-service trust boundary shared by any tool binding to 127.0.0.1 with no auth token -- not a gap introduced by TSF's specific choices, and not exposed beyond localhost. Worth hardening (an auth token, or an explicit allowlist of known-safe worktrees) before this server is ever exposed beyond a single operator's own machine, which is not the current deployment model."
+          },
+          {
+            "gap": "startKeepGoingRun overwrites a prior COMPLETE/BLOCKED run's full history (waves/checkpoints/hash chain) wholesale when a new run starts for the same project, with no separate archive",
+            "classification": "SAFE_FOLLOWUP",
+            "reasoning": "A durability/retention concern across MULTIPLE runs' history over time, not a safety issue within any single run's own execution -- the CURRENT run's own checkpoint chain remains fully intact throughout its lifecycle, satisfying the acceptance criterion's actual wording (checkpoint after meaningful phases within a run). Worth adding a run-history archive before Keep Going sees heavy multi-run-per-project usage, not before this milestone's adoption."
           }
         ],
-        "m2BlockingItemsFound": [],
+        "m2BlockingItemsFound": [
+          "RESOLVED (wave 32): resolveWorkerPlacement's silent 'current' worktree default -- a real, live-demonstrated safety gap where a Run now dispatch could land in an unintended directory. Fixed by requiring an explicit worktree/workerTerminal everywhere; independent review in flight."
+        ],
         "recommendation": "M2 is not yet ready for Section H adoption. The single remaining acceptance blocker is the UI click-through above, which requires Tim (no compliant automated substitute exists and none should be invented). Nothing else in this review is classified M2_BLOCKING. Once Tim confirms the checklist passes, the packaging/adoption sequence (rerun suite, fresh independent verifier, immutable candidate, HEAD/tree confirmation, Orca-core-delta-0 confirmation, Section H evaluation) should proceed directly.",
         "manualValidationResult": {
           "schemaVersion": "TSF_M2_MANUAL_UI_VALIDATION_RESULT_V1",
@@ -930,7 +965,18 @@
             "conclusion": "Dispatch itself is unambiguously confirmed real and successful, satisfying the checklist's own pass criterion (a completed Codex response was explicitly not required). Task completion/settlement was still pending at inspection time and was not forced."
           }
         }
-      }
+      },
+      "externalIssues": [
+        {
+          "schemaVersion": "TSF_EXTERNAL_ISSUE_V1",
+          "recordedAt": "2026-08-20T17:46:55.523Z",
+          "title": "Codex CLI stuck in its own MCP-server startup (cloudflare-api login failure/retry)",
+          "scope": "EXPLICITLY_NOT_TSF -- local Codex/MCP configuration on this machine, not a TSF or Orca defect",
+          "evidence": "Observed live during M2 reconciliation: the ui-run-now-smoke worker (task_dd9e9dc6677f, terminal term_15ab6262-b301-4e8f-9f73-362ea016fc60) sat silent for 11+ minutes. Reading the live terminal showed Codex repeatedly retrying \"Starting MCP servers (4/5): codex-security, ...\" with a warning \"MCP startup incomplete (failed: cloudflare-api)\" -- the coordinator preamble and task had already been delivered into the terminal; Codex itself had not proceeded past its own startup checklist.",
+          "tsfImpact": "None to TSF correctness -- the dispatch mechanism (worker-start, task creation, terminal assignment) worked correctly and was independently confirmed. This is a downstream execution-speed/availability issue in the operator's own Codex CLI environment.",
+          "action": "Not repaired as part of M2, per Tim's explicit instruction not to broaden M2 into fixing the user's Cloudflare MCP configuration. Recorded here for Tim's own awareness/action outside this program."
+        }
+      ]
     },
     {
       "id": "M3",
@@ -1381,12 +1427,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_30_ACCEPTANCE_CLOSURE_INVESTIGATION",
-    "at": "2026-08-20T17:10:54.902Z",
-    "commit": null,
+    "phase": "M2_WAVES_31_32_RECONCILIATION_AND_SAFETY_FIX",
+    "at": "2026-08-20T17:46:55.523Z",
+    "commit": "ed0b7db07",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "Investigated automated UI-validation options per Tim's explicit M2 Acceptance Closure directive. Confirmed no compliant repository-supported automated mechanism exists for TSF's own UI surface (the real Playwright/Electron e2e harness tests Orca core, which has zero TSF integration; tsf/ui has no test tooling of its own). Did not invent a new framework, per explicit instruction. Prepared the smallest exact manual checklist (4 steps, ~5 min, against the safe fixture project) instead -- see milestones[M2].acceptanceClosure2026_08_20. Classified the three remaining disclosed gaps: none are M2_BLOCKING (heartbeat projection and lock TOCTOU are SAFE_FOLLOWUP; per-project lock granularity is M3_OR_LATER). The single remaining M2 acceptance blocker is the manual UI checklist, which requires Tim to perform. Packaging/adoption sequence intentionally not run yet -- it is gated on that checklist passing."
+    "note": "Reconciled the live smoke-test dispatch honestly (STALLED, checkpointed, evidence preserved, no redispatch) and, in doing so and via a fresh independent verifier pass, found and fixed a real M2_BLOCKING safety gap: the Run now path's silent 'current' worktree default, proven live to land a real dispatch in the wrong directory. Fixed everywhere it existed (server validation, HTTP validation, UI default). 215/215 suite GREEN. An independent review of this specific fix is in flight before treating M2 as ready for Section H packaging. External Codex/MCP configuration issue recorded separately, explicitly out of TSF scope, not repaired. Next: act on the review, then proceed to final packaging if GREEN."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1580,5 +1626,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "The dispatch-loop repair (waves 19-29: root cause found, worker-start wired in, coordinator-binding fix, 3 rounds of placement-collision hardening, HTTP/UI wiring, async cross-process lock, a severe duplicate-dispatch bug found and fixed via live testing, and a dual-pass review of that fix) is now independently judged non-blocking for continued live dispatch use. 213/213 suite GREEN throughout, stable across repeated runs. Two live end-to-end dogfood missions from earlier this session (resumed-parked-run completion; pause/resume-under-a-real-in-flight-wave) remain valid, unaffected evidence. M2's own acceptance-status self-assessment (see m2.acceptanceStatus2026_08_20) still needs a final refresh incorporating waves 26-29's HTTP/UI wiring and cross-process-safety work before a Section H packaging decision. Next: refresh that assessment, then decide on packaging/adoption, or produce a session summary if capacity/time favors stopping here."
+  },
+  "priorDurableCheckpoint18": {
+    "phase": "M2_WAVE_30_ACCEPTANCE_CLOSURE_INVESTIGATION",
+    "at": "2026-08-20T17:10:54.902Z",
+    "commit": null,
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Investigated automated UI-validation options per Tim's explicit M2 Acceptance Closure directive. Confirmed no compliant repository-supported automated mechanism exists for TSF's own UI surface (the real Playwright/Electron e2e harness tests Orca core, which has zero TSF integration; tsf/ui has no test tooling of its own). Did not invent a new framework, per explicit instruction. Prepared the smallest exact manual checklist (4 steps, ~5 min, against the safe fixture project) instead -- see milestones[M2].acceptanceClosure2026_08_20. Classified the three remaining disclosed gaps: none are M2_BLOCKING (heartbeat projection and lock TOCTOU are SAFE_FOLLOWUP; per-project lock granularity is M3_OR_LATER). The single remaining M2 acceptance blocker is the manual UI checklist, which requires Tim to perform. Packaging/adoption sequence intentionally not run yet -- it is gated on that checklist passing."
   }
 }
