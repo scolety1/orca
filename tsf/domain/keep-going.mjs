@@ -358,7 +358,13 @@ export function resolveNeedsYou(run, needsYouId, resolution, clock, expectedRevi
   next.needsYou[index] = { ...next.needsYou[index], resolvedAt: isoNow(clock), resolution }
   next.updatedAt = isoNow(clock)
   const stillOpen = next.needsYou.some((entry) => !entry.resolvedAt)
-  if (stillOpen) {
+  // Only auto-return to ACTIVE when the run's own state is NEEDS_YOU for
+  // this reason -- PAUSED -> ACTIVE is also a legal transition (RUN_ALLOWED),
+  // so resolving the last question on a run the operator separately paused
+  // would otherwise silently un-pause it without operator intent (real
+  // review finding, wave 11). Any other state just clears the answered
+  // question and leaves the run's state alone.
+  if (stillOpen || next.state !== 'NEEDS_YOU') {
     // Skips transitionRun (no state change), so bump revision here too.
     next.revision += 1
     return next

@@ -270,6 +270,24 @@ test('raiseNeedsYou/resolveNeedsYou bump revision and honor expectedRevision eve
   assert.equal(run.revision, 4)
 })
 
+test('resolving the last Needs You question does not silently un-pause a run the operator separately paused', () => {
+  // PAUSED -> ACTIVE is also a legal transition (RUN_ALLOWED), so a naive
+  // "resolve the last question -> always go ACTIVE" would override an
+  // operator's explicit pause without their intent.
+  let run = baseRun()
+  run = raiseNeedsYou(run, { question: 'Proceed?' }, clock)
+  assert.equal(run.state, 'NEEDS_YOU')
+  run = pauseRun(run, 'operator paused while awaiting the answer', clock)
+  assert.equal(run.state, 'PAUSED')
+  run = resolveNeedsYou(run, run.needsYou[0].id, 'yes', clock)
+  assert.equal(run.state, 'PAUSED', 'resolving the question must not silently un-pause the run')
+  assert.equal(
+    run.needsYou[0].resolvedAt !== null,
+    true,
+    'the question is still recorded as resolved'
+  )
+})
+
 test('checkpoints form a durable hash chain', () => {
   let run = baseRun()
   run = checkpointRun(run, { phase: 'WAVE_1_PLANNED' }, clock)

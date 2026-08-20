@@ -366,10 +366,24 @@
           "testsAdded": 0,
           "testsPassing": "0 new tests, but strengthened the existing pause/resume controller test with explicit phase assertions (OPERATOR_PAUSED after pause, RUN_RESUMED after resume) -- this is exactly the regression that test would now catch. 134/134 full tsf suite GREEN, oxlint/oxfmt clean, UI build succeeds.",
           "verifier": "SELF -- one-line, well-understood fix directly matching an established sibling pattern (pauseKeepGoingRun), low risk",
-          "commit": null,
+          "commit": "69808958bcb23114387f2c16771d1aa6dd75b865",
           "deferredToNextWave": [
             "finding 2 (wave 11): revision bump for recordWave/recordTaskAttempt/checkpointRun",
             "finding 3 (wave 11): resolveNeedsYou incorrectly overriding a pause when the last question resolves",
+            "document/request-level concurrency in data-store.mjs and its route handlers (wave 8 finding 4, wave 11 findings 1/6)",
+            "onboarding commit's trust of client-supplied analysis (wave 11 finding 7) -- separate, pre-existing M1/onboarding item",
+            "UI polish items (wave 11 findings 5, 8, 9)"
+          ]
+        },
+        {
+          "wave": 13,
+          "summary": "Closed wave 11 finding 3: resolveNeedsYou unconditionally transitioned to ACTIVE once the last open question was resolved, but PAUSED -> ACTIVE is also a legal transition, so resolving the last question on a run the operator had separately paused while awaiting the answer would silently un-pause it without operator intent. Fixed by only auto-returning to ACTIVE when the run's own state is still NEEDS_YOU for that reason; any other state (e.g. PAUSED) now just clears the answered question and leaves the run's state alone.",
+          "testsAdded": 1,
+          "testsPassing": "1/1 new (raises a question, pauses the run, resolves the question, asserts the run stays PAUSED not ACTIVE, and that the question is still recorded resolved); 135/135 full tsf suite GREEN (no regressions -- the existing 'Needs You blocks the run... then returns to ACTIVE' test still passes since that scenario never pauses in between); oxlint/oxfmt clean; UI build succeeds.",
+          "verifier": "SELF -- small, well-scoped domain-only fix (resolveNeedsYou is still not wired to any HTTP route, zero live exposure), directly targeted regression test proves the exact bug is closed",
+          "commit": null,
+          "deferredToNextWave": [
+            "finding 2 (wave 11): revision bump for recordWave/recordTaskAttempt/checkpointRun -- the last open item from the wave-11 Codex review",
             "document/request-level concurrency in data-store.mjs and its route handlers (wave 8 finding 4, wave 11 findings 1/6)",
             "onboarding commit's trust of client-supplied analysis (wave 11 finding 7) -- separate, pre-existing M1/onboarding item",
             "UI polish items (wave 11 findings 5, 8, 9)"
@@ -399,7 +413,7 @@
         "wave 11 closed the specific 'bare terminal, not the orchestration adapter's calls' gap -- a real live dispatch through createOrchestrationRun/createOrchestrationTask/dispatchOrchestrationTask against the live orca CLI is now proven (run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b). What remains: a bounded fixture/dogfood mission that also exercises planWave/recordWave/verification against that live dispatch, not just one ad hoc task",
         "no candidate packaged yet",
         "two independent review passes now completed (wave 7 fully, from Claude; wave 8 partially, from Claude; wave 11 fully, from Codex -- genuine cross-provider verification). 4 of wave 11's 9 findings were new, not caught by either Claude pass -- real evidence that milestone-completion-gate verification benefits from more than one independent pass. Open findings from all three passes are tracked per-wave above; none are fixed-and-forgotten, all are either fixed with regression tests or explicitly deferred with reasoning",
-        "wave 12 closed wave 11's flagged 'single best next action' (resumeKeepGoingRun now checkpoints, matching pauseKeepGoingRun) -- the next best single actions are wave 11 findings 2 and 3 (revision bump for recordWave/recordTaskAttempt/checkpointRun; resolveNeedsYou incorrectly overriding an active pause)"
+        "waves 12-13 closed wave 11 findings 3 and 4 (resumeKeepGoingRun now checkpoints; resolveNeedsYou no longer silently un-pauses a separately-paused run). The one remaining open item from that review is finding 2 (revision bump for recordWave/recordTaskAttempt/checkpointRun, same class as wave 9's fix but three more functions)"
       ]
     },
     {
@@ -815,7 +829,7 @@
     "resolvedAt": "2026-08-19T20:22:00Z",
     "resolution": "Resumed per Tim's instruction after a Windows restart. Post-restart safety preflight (see resumePreflight) re-ran the same worker-list/HEAD checks plus a single harmless `codex doctor` probe -- the sandbox crash did not recur and the runtime reported healthy. Treated as cleared; M2 wave 2 proceeded without live Codex dispatch (Codex capacity still NEAR_LIMIT, unrelated to the crash)."
   },
-  "nextSafeAction": "Wave 12 closed the smallest flagged item (resumeKeepGoingRun now checkpoints). Best remaining single next actions, in order: (a) recordWave/recordTaskAttempt/checkpointRun should bump run.revision, same class as wave 9's fix (wave 11 finding 2); (b) resolveNeedsYou's ACTIVE transition should not override an active pause (wave 11 finding 3). The larger items (autonomous wave-dispatch loop; document-level concurrency in data-store.mjs; a combined fixture/dogfood mission exercising planWave/recordWave against the now-proven live dispatch mechanism) remain correctly out of scope for a single bounded wave -- do not start them without a fresh, explicit time/capacity assessment. Codex is at its expiring-capacity safety-reserve threshold for this reset window (capacityPolicy.tonightCodexWindowOverride) -- no further Codex dispatch until the ~2026-08-20T05:20:51Z reset (coincides with the hard operator-return time); reassess Codex capacity immediately after reset. M8 (Project Estimator + Delivery Planner) is an approved future milestone with a recorded research/harvest plan (milestones[M8]) -- do not begin it; it does not change M2's priority.",
+  "nextSafeAction": "Waves 12-13 closed 2 of 3 fixable wave-11 findings (resumeKeepGoingRun checkpoints; resolveNeedsYou no longer un-pauses a separately-paused run). One remains: recordWave/recordTaskAttempt/checkpointRun should bump run.revision, same class as wave 9's fix but three more functions (wave 11 finding 2) -- a reasonable next single action if time/capacity allow. The larger items (autonomous wave-dispatch loop; document-level concurrency in data-store.mjs; a combined fixture/dogfood mission exercising planWave/recordWave against the now-proven live dispatch mechanism) remain correctly out of scope for a single bounded wave -- do not start them without a fresh, explicit time/capacity assessment. Codex is at its expiring-capacity safety-reserve threshold for this reset window (capacityPolicy.tonightCodexWindowOverride) -- no further Codex dispatch until the ~2026-08-20T05:20:51Z reset (coincides with the hard operator-return time); reassess Codex capacity immediately after reset. M8 (Project Estimator + Delivery Planner) is an approved future milestone with a recorded research/harvest plan (milestones[M8]) -- do not begin it; it does not change M2's priority.",
   "authorityBoundaries": {
     "canAutoAdoptLocally": "Only into tsf/main, only via Section H's 14-condition checklist, ff-only merge, all gates GREEN",
     "cannotDo": [
