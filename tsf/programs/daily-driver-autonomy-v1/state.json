@@ -259,12 +259,25 @@
           "testsAdded": 1,
           "testsPassing": "1/1 new (asserts revision incrementing correctly across both transitioning and non-transitioning branches, and stale expectedRevision rejected on both); 134/134 full tsf suite (no regressions); oxlint/oxfmt clean.",
           "verifier": "SELF -- low-risk, well-covered by the new regression test; not HTTP/UI-integrated so no browser re-verification needed",
-          "commit": null,
+          "commit": "050edbe5ce33ea2f4bdc2467a05ced5bf1cbfb2b",
           "deferredToNextWave": [
-            "finding 3: generalized HTTP route-module pattern across http-server.mjs",
             "finding 4: document-level (not just keepGoingRun-level) optimistic concurrency in data-store.mjs",
             "wiring raiseNeedsYou/resolveNeedsYou to an actual HTTP route (part of the still-not-built autonomous wave-dispatch loop)",
-            "a genuinely complete independent review of waves 4-9 (only 1 of 8 finder-angles from wave 8's review ever ran)"
+            "a genuinely complete independent review of waves 4-10 (only 1 of 8 finder-angles from wave 8's review ever ran)"
+          ]
+        },
+        {
+          "wave": 10,
+          "summary": "Closed finding 3 from wave 8's partial review, revisited after reconsidering available runway (the user's evening-sprint directive explicitly says not to pause early merely to conserve capacity): extracted the onboarding routes (browse/analyze/commit/refresh, ~155 lines) out of http-server.mjs into tsf/server/onboarding-http-routes.mjs, using the exact same (parts, req, res, ..., { json, notFound, readBody, saveState }) -> boolean-handled signature pattern already proven safe by wave 5/7's keep-going-http-routes.mjs extraction. Judged lower-risk than initially assessed at wave 8 (right after the session-limit incident) because: (a) the pattern was already proven with zero regressions once, (b) it's a pure mechanical move with no logic changes, and (c) onboarding already has thorough existing test coverage (9 HTTP-level tests covering every route, including real filesystem/git operations) to verify against immediately. http-server.mjs drops from ~589 to 443 lines, comfortably under the 600-line cap with room for future routes; the two inconsistent conventions finding 3 flagged (inline vs. one bespoke extraction) are now two consistent extracted route modules following the same shape.",
+          "testsAdded": 0,
+          "testsPassing": "0 new (pure refactor, no new behavior); all 9 existing http-onboarding.test.mjs tests pass unchanged, confirming zero behavior change; 134/134 full tsf suite GREEN; oxlint/oxfmt clean; UI build succeeds (vite mounts http-server.mjs as middleware, confirmed it still resolves).",
+          "verifier": "SELF -- pure mechanical extraction verified by full existing test coverage passing unchanged, the strongest form of regression evidence available for a no-logic-change refactor",
+          "commit": null,
+          "deferredToNextWave": [
+            "finding 4: document-level (not just keepGoingRun-level) optimistic concurrency in data-store.mjs -- still explicitly out of scope, touches every opState-writing route across the whole server, not bounded the way findings 1-3 were",
+            "wiring raiseNeedsYou/resolveNeedsYou to an actual HTTP route (part of the still-not-built autonomous wave-dispatch loop)",
+            "a genuinely complete independent review of waves 4-10 (only 1 of 8 finder-angles from wave 8's review ever ran)",
+            "the candidates-decision and chat routes remain inline in http-server.mjs -- not extracted, since http-server.mjs now has ample headroom under the line cap and there was no forcing function (unlike keep-going and onboarding, which were both extracted specifically because their combined size pushed the file over 600 lines)"
           ]
         }
       ],
