@@ -507,6 +507,35 @@
           "checkpointCommit": "d9af00f424d9c9ebb12c91d37348ee9acdec912f"
         }
       ]
+    },
+    "tonightCodexWindowOverride": {
+      "id": "EXPIRING_CAPACITY_TIM_OVERRIDE_2026-08-19_2135",
+      "setAt": "2026-08-19T21:35:00-06:00",
+      "setBy": "TIM",
+      "statement": "Explicit override of the NEAR_LIMIT deferral that had been in effect since wave 3: Codex has roughly 9% of its weekly budget remaining before the ~11:20 PM reset. Tim directed treating that remainder as EXPIRING_CAPACITY and spending it productively this window, more concretely than the general expiringCapacityRule above.",
+      "targets": {
+        "targetUsagePercentOfRemaining": "7-8%",
+        "safetyReservePercentOfRemaining": "1-2%",
+        "noArtificialWorkToHit100Percent": true
+      },
+      "operationalConstraints": [
+        "One Codex worker at a time (Windows sandbox incident caution from the resume preflight).",
+        "Do not overlap heavy installs/builds with another Codex worker.",
+        "Shrink Codex task size as reset approaches; prefer tasks that settle in roughly 10-30 minutes.",
+        "Recheck trustworthy Codex capacity after each worker/task.",
+        "At the safety reserve threshold, or if a task cannot reasonably finish before reset: stop new Codex dispatch, settle/fence current work, checkpoint exact state, continue with Claude-only work if useful, reassess immediately after reset.",
+        "No new architecture/planning responsibility given to Codex -- Claude remains the persistent program planner; Codex only executes well-specified bounded tasks."
+      ],
+      "priorityOrder": [
+        "1. Real Orca -> Codex dispatch dogfood for M2 (highest -- M2 still needs proof the orca-orchestration-bridge.mjs adapter can dispatch and supervise a genuine Codex worker through the real orchestration graph, not just a bare terminal like wave 3).",
+        "2. Bounded M2 implementation tasks already designed and unlikely to conflict.",
+        "3. Independent verifier/reviewer passes.",
+        "4. Focused tests, adversarial cases, fixture work, isolated repairs.",
+        "5. Documentation/evidence reconciliation, only if useful implementation work is exhausted."
+      ],
+      "evidencePurpose": "Explicitly intended as real behavioral evidence for the future M5 Capacity-Aware Routing milestone -- how this program actually paces/targets/reserves capacity near a provider reset, not just the general policy statement.",
+      "preservedConstraints": "Does not change any existing architecture, authority, real-project, Windows-safety, or local-adoption rule -- pacing/priority only, per Tim's explicit instruction.",
+      "applicationLog": []
     }
   },
   "providerCapacityStatus": {
