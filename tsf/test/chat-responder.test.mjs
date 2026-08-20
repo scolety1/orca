@@ -121,3 +121,59 @@ test('respond() without a run keeps the exact prior mission-shaped behavior unch
   assert.equal(result.intent, 'STATUS')
   assert.match(result.text, /mission `/)
 })
+
+// An independent review finding: an earlier version let ANY existing run
+// -- including one long COMPLETE/BLOCKED and since forgotten -- shadow
+// every future STATUS/NEXT_ACTION/FINISHED question for that project
+// forever (nothing in the codebase ever clears keepGoingRuns[projectId]).
+// A run that has genuinely concluded must fall back to the old, richer
+// mission/candidate/release model instead, since that model's own
+// completion/adoption answer is the more relevant one at that point.
+test('a COMPLETE run does not shadow STATUS -- falls back to the old mission-shaped model', () => {
+  const project = loadRealPilotProjects()[0]
+  let run = createOvernightRun(
+    {
+      id: 'run-1',
+      projectId: 'fixture:proj',
+      originalGoal: 'Ship it.',
+      acceptanceCriteria: ['CRITERION_A'],
+      usageMode: 'BALANCED'
+    },
+    clock
+  )
+  run = { ...run, state: 'COMPLETE' }
+  const result = respond(project, "what's going on with this project?", run)
+  assert.equal(result.intent, 'STATUS')
+  assert.match(
+    result.text,
+    /mission `/,
+    'must fall back to the old model, not the stale COMPLETE run'
+  )
+})
+
+test('a BLOCKED run does not shadow NEXT_ACTION either', () => {
+  const project = loadRealPilotProjects()[0]
+  let run = createOvernightRun(
+    {
+      id: 'run-1',
+      projectId: 'fixture:proj',
+      originalGoal: 'Ship it.',
+      acceptanceCriteria: ['CRITERION_A'],
+      usageMode: 'BALANCED'
+    },
+    clock
+  )
+  run = { ...run, state: 'BLOCKED' }
+  const result = respond(project, 'what should we do next?', run)
+  assert.equal(result.intent, 'NEXT_ACTION')
+  assert.doesNotMatch(result.text, /Keep Going run `/)
+})
+
+test('FINISHED on a non-terminal live run honestly answers "not yet", grounded in real state', () => {
+  const project = loadRealPilotProjects()[0]
+  const run = activeRunWithInFlightWave()
+  const result = respond(project, 'is this actually finished?', run)
+  assert.equal(result.intent, 'FINISHED')
+  assert.match(result.text, /No, not yet/)
+  assert.match(result.text, /WORKING/)
+})

@@ -89,9 +89,28 @@ function fmtTests(testsRun) {
 // (compareStateToGoal's own output, or null) -- see
 // projectLiveWorkFeedState's own honesty guarantee for what happens
 // without it.
+// Only STATUS/NEXT_ACTION/FINISHED are ever answered from the live run,
+// and only while it is genuinely still the primary story -- a
+// COMPLETE/BLOCKED run stays that way forever with nothing to clear it
+// (an independent review finding: an earlier version let ANY run --
+// including one long finished and since forgotten -- permanently shadow
+// every future question about this project, even when the old, richer
+// mission/candidate/release model held separately-relevant, more current
+// information). Exported so http-server.mjs can decide whether to skip
+// the live conversational planner call using the exact same rule
+// respond() itself applies, rather than two independently-drifting checks.
+const LIVE_RUN_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED'])
+const LIVE_RUN_TERMINAL_STATES = new Set(['COMPLETE', 'BLOCKED'])
+export function isLiveRunRelevantFor(intent, run) {
+  return !!run && LIVE_RUN_INTENTS.has(intent) && !LIVE_RUN_TERMINAL_STATES.has(run.state)
+}
+
 function respondStatusOrNextActionFromRun(intent, project, run, gap) {
   const feed = projectLiveWorkFeedState(run, gap)
   const base = `**${project.displayName}** — Keep Going run \`${run.id}\` is **${feed.state}**: ${feed.reason}.`
+  if (intent === 'FINISHED') {
+    return `No, not yet — ${base}`
+  }
   if (intent === 'STATUS') {
     return base
   }
@@ -234,7 +253,7 @@ export function respond(project, message, run = null, gap = null) {
     ? `No project selected — pick one first.`
     : decisionClass === 'TIM_REQUIRED'
       ? respondTimRequired(project)
-      : run && (intent === 'STATUS' || intent === 'NEXT_ACTION')
+      : isLiveRunRelevantFor(intent, run)
         ? respondStatusOrNextActionFromRun(intent, project, run, gap)
         : RESPONDERS[intent](project)
   return {

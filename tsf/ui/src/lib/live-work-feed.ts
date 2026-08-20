@@ -1,9 +1,19 @@
 // M3: client-side mirror of tsf/domain/live-work-feed.mjs's state mapping,
 // adapted to the fields KeepGoingRunView (the server's own projection)
 // actually exposes -- no raw domain internals (inFlightWave, tickLock) are
-// sent to the client, so this reads state/phase/gap/openNeedsYou instead.
-// Every branch is derived from a real, already-fetched field -- no
-// fabricated status.
+// sent to the client, so this reads state/phase/gap/openNeedsYou/
+// dispatchTickActive instead. Every branch is derived from a real,
+// already-fetched field -- no fabricated status.
+//
+// An independent review finding: an earlier version had no analog for the
+// domain function's own ACTIVE-with-no-wave-yet-but-a-dispatch-tick-
+// currently-claimed-the-lock case (WAITING) -- a real, reachable window
+// (claim() persists the tick lock in its own write, before the real Orca
+// CLI round-trips and the eventual WAVE_DISPATCHED commit), not merely
+// theoretical: any concurrent load of this panel (a second tab, a
+// refresh) while a dispatch is mid-flight would show a stale PLANNING/
+// WORKING guess instead. dispatchTickActive (added to the server's view
+// model specifically for this) closes that gap.
 import type { KeepGoingActiveRunView } from './keep-going-types'
 
 export type LiveWorkFeedState =
@@ -59,6 +69,9 @@ export function projectLiveWorkFeedState(
   // run.state === 'ACTIVE' from here.
   if (DISPATCHED_PHASES.has(run.phase)) {
     return { state: 'WORKING', reason: 'a wave is in flight' }
+  }
+  if (run.dispatchTickActive) {
+    return { state: 'WAITING', reason: 'a dispatch tick currently holds the run lock' }
   }
   if (run.wavesCompleted === 0) {
     return { state: 'PLANNING', reason: 'run started, no wave dispatched yet' }

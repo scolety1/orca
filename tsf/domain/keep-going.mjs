@@ -46,7 +46,15 @@ const DEFAULT_BUDGET = Object.freeze({
 // genuinely stuck tick doesn't permanently wedge the run.
 export const TICK_LOCK_TIMEOUT_MS = 2 * 60 * 1000
 
-function isTickLockActive(run, clock) {
+// Exported for projectKeepGoingRun's view model (keep-going-controller.mjs)
+// -- an independent review finding: the client's own Live Work Feed
+// mapping (tsf/ui/src/lib/live-work-feed.ts) has no access to the raw
+// tickLock a WAITING projection depends on (correctly -- it's a domain
+// internal, never sent to the client as-is), so without this exposed as a
+// plain boolean, the client-side mapping structurally could not detect
+// the exact window a real dispatch tick claim leaves between persisting
+// the lock and the wave itself committing.
+export function isTickLockActive(run, clock) {
   if (!run.tickLock) {
     return false
   }

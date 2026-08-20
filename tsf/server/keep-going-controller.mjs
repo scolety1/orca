@@ -13,6 +13,7 @@ import {
   checkpointRun,
   compareStateToGoal,
   createOvernightRun,
+  isTickLockActive,
   pauseRun,
   resumeRun
 } from '../domain/keep-going.mjs'
@@ -203,6 +204,15 @@ export function projectKeepGoingRun(run, clock) {
     // wave has actually been dispatched (the run may not have created a
     // real Orca Run yet).
     orchestrationRunId: run.orchestrationRunId ?? null,
+    // An independent review finding: the client's Live Work Feed mapping
+    // (tsf/ui/src/lib/live-work-feed.ts) has no access to the raw
+    // tickLock a real WAITING window depends on (correctly -- it's a
+    // domain internal, never sent as-is) -- exposing just this boolean is
+    // what actually lets the client detect the real gap between a
+    // dispatch tick claiming the lock and the wave itself committing,
+    // without leaking the lock's own internal shape.
+    dispatchTickActive:
+      !!run.tickLock && run.tickLock.kind === 'DISPATCH' && isTickLockActive(run, clock),
     createdAt: run.createdAt,
     updatedAt: run.updatedAt
   }

@@ -58,6 +58,7 @@ export type KeepGoingRunView =
       lastCheckpoint: KeepGoingCheckpoint | null
       readyForAdoption: boolean
       orchestrationRunId: string | null
+      dispatchTickActive: boolean
       createdAt: string
       updatedAt: string
     }

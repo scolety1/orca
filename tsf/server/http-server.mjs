@@ -12,7 +12,12 @@ import {
   FIXTURE_PROJECT_ID
 } from './fixture-project.mjs'
 import { loadState, saveState } from './data-store.mjs'
-import { respond, classifyIntent, classifyDecision } from './chat-responder.mjs'
+import {
+  respond,
+  classifyIntent,
+  classifyDecision,
+  isLiveRunRelevantFor
+} from './chat-responder.mjs'
 import { invokeLivePlanner, providerLabel, fallbackLabel } from './live-planner.mjs'
 import { planAndDispatchFromChat } from './chat-dispatch-bridge.mjs'
 import { resolveRepositoryIdentity } from './repository-identity.mjs'
@@ -432,7 +437,15 @@ export function createRequestHandler() {
         const liveGap = liveRun
           ? compareStateToGoal(liveRun, { verifiedSatisfied: [] }, () => new Date())
           : null
-        const statusWorthy = intent === 'STATUS' || intent === 'NEXT_ACTION'
+        // Uses the exact same relevance rule respond() itself applies
+        // (chat-responder.mjs's isLiveRunRelevantFor) so this "should I
+        // skip the live conversational call" decision can never drift
+        // from what respond() actually does with the same inputs -- a
+        // COMPLETE/BLOCKED run does NOT count, however long ago it
+        // finished (an independent review finding: an earlier version
+        // let any existing run, however stale, permanently shadow this
+        // decision).
+        const statusWorthy = isLiveRunRelevantFor(intent, liveRun)
 
         if (!project) {
           result = respond(project, message)
@@ -450,7 +463,7 @@ export function createRequestHandler() {
           }
         } else if (dispatchWorthy && hasExplicitPlacement) {
           result = await dispatchFromChat({ project, message, placement: body.placement })
-        } else if (liveRun && statusWorthy) {
+        } else if (statusWorthy) {
           result = {
             ...respond(project, message, liveRun, liveGap),
             providerLabel: 'PLANNER_DEEP · grounded in the live Keep Going run, no live call made',

@@ -34,6 +34,13 @@ function run(overrides = {}) {
     openNeedsYou: [],
     lastCheckpoint: null,
     readyForAdoption: false,
+    // Kept in sync with the real KeepGoingActiveRunView shape -- an
+    // independent review finding was that an earlier version of this
+    // fixture omitted fields, invisible to tooling here since .mjs test
+    // files aren't type-checked and Node's native TS stripping performs
+    // no type-checking either.
+    orchestrationRunId: null,
+    dispatchTickActive: false,
     createdAt: '2026-08-20T05:00:00.000Z',
     updatedAt: '2026-08-20T05:00:00.000Z',
     ...overrides
@@ -88,6 +95,18 @@ test('state BLOCKED -> NEEDS_YOU', () => {
 
 test('state PAUSED -> WAITING', () => {
   assert.equal(projectLiveWorkFeedState(run({ state: 'PAUSED' })).state, 'WAITING')
+})
+
+// An independent review finding: a real, reachable window where a
+// dispatch tick claims the lock (a real write) before the eventual
+// WAVE_DISPATCHED commit (a separate, later write) -- any concurrent load
+// of this data (a second tab, a refresh) mid-window previously fell
+// through to a stale PLANNING/WORKING guess instead of the honest WAITING.
+test('ACTIVE, no wave in flight yet, but a dispatch tick currently holds the lock -> WAITING', () => {
+  assert.equal(
+    projectLiveWorkFeedState(run({ wavesCompleted: 0, dispatchTickActive: true })).state,
+    'WAITING'
+  )
 })
 
 test('state COMPLETE -> READY_FOR_ADOPTION', () => {
