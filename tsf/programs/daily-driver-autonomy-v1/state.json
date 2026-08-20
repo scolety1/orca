@@ -548,7 +548,7 @@
           "testsAdded": 3,
           "testsPassing": "3 net new (honest settle + retry-budget consumption; NEEDS_YOU escalation on budget exhaustion; requires-in-flight-wave + revision-first + tick-lock guard ordering); 174/174 full tsf suite GREEN (no regressions); oxlint clean; oxfmt clean; max-lines ratchet clean.",
           "verifier": "SELF -- new function composed entirely from already-independently-verified primitives (recordTaskAttempt, settleInFlightWave, checkpointRun, raiseNeedsYou, isTickLockActive), each already adversarially tested in prior waves; the NEW composition itself is unit-tested here but not yet independently (non-SELF) reviewed",
-          "commit": null,
+          "commit": "ef81783557aa2661467679130d1b9255f23b1602",
           "deferredToNextWave": [
             "independent review of abandonStalledWave specifically (SELF-only so far)",
             "wiring abandonStalledWave into the tick loop's own automatic recovery (a larger design decision, deliberately deferred)",
