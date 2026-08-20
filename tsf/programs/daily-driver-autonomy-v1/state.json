@@ -1146,7 +1146,7 @@
     {
       "id": "M3",
       "name": "Chat -> Dispatch + Live Work Feed",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "acceptanceCriteria": [
         "Planner Chat can bind a natural-language request to the selected project, classify intent AND authority (AUTO_DECIDE / RECOMMEND_AND_PROCEED / TIM_REQUIRED), and never silently authorize adoption/push/merge/deploy/publish/credentials/paid-services/destructive-ops/major-product-direction decisions",
         "The planner creates a bounded implementation plan from that classified request -- not a fabricated or unbounded one",
@@ -1161,7 +1161,19 @@
         "Also proven: a follow-up \"what is it doing?\" chat query returns real state; a worker question appears as Needs You; a bounded revision can be requested via chat feedback; switching projects cannot leak another project's context; no duplicate dispatch; authority interception holds"
       ],
       "candidateCommit": "e99b90b2d622b5437da70a5eaa7ec9fae89a852d",
-      "adoptedCommit": null,
+      "adoptedCommit": "e99b90b2d622b5437da70a5eaa7ec9fae89a852d",
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M3_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-20T23:46:32.526Z",
+        "adoptedCommit": "e99b90b2d622b5437da70a5eaa7ec9fae89a852d",
+        "previousTsfMainHead": "923294edcf76bd27a6f9ac864a352e182f870e7a",
+        "mergeMethod": "git merge --ff-only (local, C:\\TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "wave 15 final holistic verifier -- GREEN, no blocking findings across all 14 waves, including 2 fresh mutation-testing spot checks and confirmed Orca core delta 0",
+        "postAdoptionTestRun": "306/306 GREEN, re-run directly from the adopted tsf/main tree (backend suite); tsf/ui typecheck + production build also re-run clean from the adopted tree",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging (matching the M2 adoption investigation's own discipline): git status clean, no unexpected dirty/staged state, HEAD at 923294edcf76bd27a6f9ac864a352e182f870e7a (the exact M2 adoption commit) -- no unrelated finding this time.",
+        "rollback": "To roll back: git -C C:\\TSF_ORCA reset --hard 923294edcf76bd27a6f9ac864a352e182f870e7a (previous tsf/main HEAD, recorded above)."
+      },
       "gaps": [
         "Also-prove items remaining: a worker question surfacing as Needs You, a bounded revision request, stalled/failed worker recovery reuse -- likely provable via HTTP-level tests. Then: independent review of waves 5-6, the live fixture dogfood proof (real Codex dispatch), Tim's manual UI acceptance checklist, final packaging/adoption.",
         "RESOLVED in wave 14 (commit 66ab82754), pending independent review: the rendered Planner Chat UI (tsf/ui/src/components/chat/PlannerChatPanel.tsx, tsf/ui/src/lib/api.ts) had NO field, control, or mechanism to supply the 'placement' (worktree) a real dispatch requires -- confirmed by a full search (zero occurrences of 'placement' anywhere under tsf/ui/src at the time). http-server.mjs's own comment already disclosed this as deliberate deferred scope, not a hidden bug. Judged as a bounded mechanical-wiring task (not an ambiguous product-direction question -- the north star and backend contract were already set, only the input mechanism was missing) and closed autonomously per WORKDAY_UNATTENDED's 'keep making useful progress' instruction: added a small, optional 'Worktree' text field to the composer (empty by default, zero change to existing conversational behavior unless Tim fills it in). New tsf/ui/src/lib/chat-dispatch-types.ts holds the new ChatPlacement type, kept out of lib/types.ts (already over its own 300-line cap before this change) matching the M2 wave 6 keep-going-types.ts precedent. See milestones[M3].waves[14] for the full record."
@@ -1366,7 +1378,8 @@
     {
       "id": "M4",
       "name": "Run Journal + Recovery",
-      "status": "NOT_STARTED",
+      "status": "CURRENT",
+      "priority": "HIGHEST",
       "acceptanceCriteria": [
         "Durable run timeline with phase/task outputs persisted compactly",
         "Original goal retained across restart",
@@ -1500,7 +1513,7 @@
       ]
     }
   ],
-  "currentMilestone": "M3",
+  "currentMilestone": "M4",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
