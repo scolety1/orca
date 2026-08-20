@@ -63,7 +63,10 @@ function okOrchestration(overrides = {}) {
   }
 }
 
-const oneItem = [{ id: 't1', scope: ['src/a.mjs'] }]
+// Explicit worktree -- there is no safe default (a real review finding:
+// an omitted worktree used to silently fall back to 'current', the
+// coordinator's own working directory).
+const oneItem = [{ id: 't1', scope: ['src/a.mjs'], worktree: 'C:/repo/wt1' }]
 
 test.afterEach(() => {
   rmSync(STATE_FILE, { force: true })

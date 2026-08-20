@@ -52,11 +52,10 @@ function okOrchestration(overrides = {}) {
   }
 }
 
-const oneItem = [{ id: 't1', scope: ['src/a.mjs'] }]
-const twoItems = [
-  { id: 't1', scope: ['src/a.mjs'] },
-  { id: 't2', scope: ['src/b.mjs'] }
-]
+// Explicit worktree -- there is no safe default (a real review finding:
+// an omitted worktree used to silently fall back to 'current', the
+// coordinator's own working directory).
+const oneItem = [{ id: 't1', scope: ['src/a.mjs'], worktree: 'C:/repo/wt1' }]
 
 test('tickKeepGoingRun no-ops when there is no run for the project', async () => {
   const store = makeFakeStore(null)
@@ -355,10 +354,9 @@ test('a dispatch failure on an already-known orchestrationRunId does not touch i
 
 test('a mid-wave dispatch failure records only the items actually dispatched, trimming the plan honestly', async () => {
   const store = makeFakeStore(baseRun({ budget: { maxConcurrentWorkers: 1 } }))
-  // Distinct explicit worktrees -- twoItems both defaulting to 'current'
-  // would (correctly) be refused by the placement-collision guard before
-  // either ever reached createOrchestrationTask, which is not what this
-  // test means to exercise.
+  // Distinct explicit worktrees -- two items sharing one (or omitting it)
+  // would (correctly) be refused before either ever reached
+  // createOrchestrationTask, which is not what this test means to exercise.
   const twoItemsDistinctPlacement = [
     { id: 't1', scope: ['src/a.mjs'], worktree: 'C:/repo/wt1' },
     { id: 't2', scope: ['src/b.mjs'], worktree: 'C:/repo/wt2' }
@@ -446,10 +444,14 @@ test('a startOrchestrationWorker failure reports DISPATCH_FAILED honestly, disti
   assert.equal(result.reason, 'CLI_ERROR')
 })
 
-test('two independent (disjoint-scope) items in the same batch that would both land fresh agents in worktree "current" are refused, not silently collided', async () => {
+test('two independent (disjoint-scope) items in the same batch that would both land fresh agents in the SAME explicit worktree are refused, not silently collided', async () => {
   const store = makeFakeStore(baseRun())
+  const sameWorktreeItems = [
+    { id: 't1', scope: ['src/a.mjs'], worktree: 'C:/repo/shared-wt' },
+    { id: 't2', scope: ['src/b.mjs'], worktree: 'C:/repo/shared-wt' }
+  ]
   let startCalls = 0
-  const result = await tickKeepGoingRun(PROJECT_ID, twoItems, clock, {
+  const result = await tickKeepGoingRun(PROJECT_ID, sameWorktreeItems, clock, {
     orchestration: okOrchestration({
       startOrchestrationWorker: async (args) => {
         startCalls += 1
@@ -477,12 +479,12 @@ test('two independent items in the same batch with distinct explicit worktrees d
   assert.equal(result.dispatchRecords.length, 2)
 })
 
-test('two overlapping-scope items forced into SEPARATE batches, both defaulting to worktree "current", are still refused as a collision (checked across the whole wave, not per batch)', async () => {
+test('two overlapping-scope items forced into SEPARATE batches, both explicitly targeting the SAME worktree, are still refused as a collision (checked across the whole wave, not per batch)', async () => {
   const store = makeFakeStore(baseRun({ budget: { maxConcurrentWorkers: 2 } }))
   let startCalls = 0
   const overlappingScopeItems = [
-    { id: 't1', scope: ['src/shared.mjs'] },
-    { id: 't2', scope: ['src/shared.mjs'] }
+    { id: 't1', scope: ['src/shared.mjs'], worktree: 'C:/repo/shared-wt' },
+    { id: 't2', scope: ['src/shared.mjs'], worktree: 'C:/repo/shared-wt' }
   ]
   const result = await tickKeepGoingRun(PROJECT_ID, overlappingScopeItems, clock, {
     orchestration: okOrchestration({
@@ -593,6 +595,35 @@ test('retryOf is threaded through even when reusing an existing terminal, not on
   )
   assert.equal(seenArgs.terminal, 'term_existing')
   assert.equal(seenArgs.retryOf, 'ctx_prior')
+})
+
+test('a work item with neither an explicit worktree nor a workerTerminal is refused honestly, never silently defaulted (a real, live-confirmed safety finding)', async () => {
+  const store = makeFakeStore(baseRun())
+  let taskCreateCalls = 0
+  const result = await tickKeepGoingRun(PROJECT_ID, [{ id: 't1', scope: ['src/a.mjs'] }], clock, {
+    orchestration: okOrchestration({
+      createOrchestrationTask: async ({ taskTitle }) => {
+        taskCreateCalls += 1
+        return { ok: true, result: { task: { id: `task-${taskTitle}` } } }
+      }
+    }),
+    store
+  })
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.reason, 'TSF_MISSING_PLACEMENT')
+  assert.equal(taskCreateCalls, 0, 'no real Orca task may be created without an explicit placement')
+})
+
+test('a work item with an empty-string worktree and no workerTerminal is refused the same way, not silently treated as missing entirely', async () => {
+  const store = makeFakeStore(baseRun())
+  const result = await tickKeepGoingRun(
+    PROJECT_ID,
+    [{ id: 't1', scope: ['src/a.mjs'], worktree: '   ' }],
+    clock,
+    { orchestration: okOrchestration(), store }
+  )
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.reason, 'TSF_MISSING_PLACEMENT')
 })
 
 test('two overlapping ticks on the same run: the second is rejected outright, never attempting CLI work', async () => {

@@ -26,7 +26,14 @@ export function KeepGoingTickForm({
   const [workItemId, setWorkItemId] = useState('')
   const [scope, setScope] = useState('')
   const [spec, setSpec] = useState('')
-  const [worktree, setWorktree] = useState('current')
+  // No pre-filled default -- a real, live-confirmed safety finding was
+  // that a default of 'current' here (the Orca coordinator's own working
+  // directory, not anything scoped to this project) let an operator
+  // click through without realizing where a real dispatch would land; a
+  // real manual validation run did exactly that and it landed in this
+  // program's own repository. The operator must now type an explicit
+  // target every time.
+  const [worktree, setWorktree] = useState('')
   const [agent, setAgent] = useState('codex')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<string | null>(null)
@@ -34,8 +41,10 @@ export function KeepGoingTickForm({
 
   async function runNow() {
     const scopePaths = linesOf(scope)
-    if (!workItemId.trim() || scopePaths.length === 0) {
-      setError('A work item id and at least one scope path (one per line) are required.')
+    if (!workItemId.trim() || scopePaths.length === 0 || !worktree.trim()) {
+      setError(
+        'A work item id, at least one scope path (one per line), and an explicit worktree are required -- there is no safe default for where a real dispatch lands.'
+      )
       return
     }
     setSubmitting(true)
@@ -47,7 +56,7 @@ export function KeepGoingTickForm({
           id: workItemId.trim(),
           scope: scopePaths,
           ...(spec.trim() ? { spec: spec.trim() } : {}),
-          worktree: worktree.trim() || 'current',
+          worktree: worktree.trim(),
           agent: agent.trim() || 'codex'
         }
       ])
@@ -72,7 +81,7 @@ export function KeepGoingTickForm({
         />
         <input
           className="rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="Worktree (default: current)"
+          placeholder="Worktree (required -- e.g. an exact path, or literally 'current')"
           value={worktree}
           onChange={(e) => setWorktree(e.target.value)}
         />

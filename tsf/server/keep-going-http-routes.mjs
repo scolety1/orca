@@ -73,9 +73,20 @@ async function mutateThroughStore(projectId, controllerFn) {
 // directly, would be rejected only when routed through this HTTP layer,
 // two validation guards in the same feature silently disagreeing on what
 // "valid" means.
+// Also requires an explicit worktree or workerTerminal, matching
+// dispatchStep's own requireExplicitPlacement -- a real, live-confirmed
+// safety finding was that a missing worktree silently defaulted to
+// 'current' (the Orca coordinator's own working directory, not anything
+// scoped to the project being operated on); a real manual UI validation
+// run left the form's worktree field at that old default and the
+// resulting live dispatch landed directly in this program's own repo.
 function findInvalidWorkItem(candidateWorkItems) {
   return candidateWorkItems.find(
-    (item) => !item?.id || !Array.isArray(item.scope) || item.scope.length === 0
+    (item) =>
+      !item?.id ||
+      !Array.isArray(item.scope) ||
+      item.scope.length === 0 ||
+      (!item.workerTerminal && !item.worktree?.trim())
   )
 }
 
