@@ -505,7 +505,7 @@
           "testsAdded": 3,
           "testsPassing": "3 net new (2 SETTLE/STALLED abandoned-lock-recovery tests in keep-going-dispatch-loop-concurrency.test.mjs, 1 real-HTTP-layer pause-rejected-while-locked test in http-keep-going.test.mjs); 171/171 full tsf suite GREEN (no regressions); oxlint clean; oxfmt clean.",
           "verifier": "VERIFIER_INDEPENDENT (code-review skill, forked execution, separate reasoning context from wave 16's implementation) -- caught two genuine critical bugs a SELF pass had missed, real evidence for why this program requires independent verification before adoption rather than trusting the implementer's own confidence",
-          "commit": null,
+          "commit": "dee5835e87b14815643ac0e1c2c18308e794b62d",
           "deferredToNextWave": [
             "the real M2 autonomous multi-wave dogfood (now unblocked pending Codex sandbox-helper confirmation -- see blockers.CODEX_SANDBOX_HELPER_MISSING_001)",
             "automatic reconciliation of a losing tick's orphaned Orca resources",
@@ -903,6 +903,14 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
+    "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
+    "at": "2026-08-20T00:15:00-06:00",
+    "commit": "dee5835e87b14815643ac0e1c2c18308e794b62d",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Tim directed a bounded concurrency-hardening wave (16) on wave 15b's disclosed finding 2 (the revision guard did not protect against state changing mid-tick), requiring a specific adversarial test suite plus independent review before any further dogfood. Wave 16 delivered a claim/commit lock via one small synchronous CAS primitive (keep-going-run-store.mjs) -- the smallest safe model, not a data-store.mjs rewrite. Wave 16b's independent (forked) review then caught 2 genuine CRITICAL bugs in the hardening itself (the SETTLE-side commits never actually checked the claim-time revision -- a tautological self-check; the STALLED escalation had zero revision protection at all), both fixed via one shared commitClaimed wrapper, plus 4 more findings (lock-timeout sizing, the HTTP routes' pre-existing stale-opState race now closed for real, a real test-coverage gap now closed with tests that would have failed pre-fix, and a maintainability consolidation). 171/171 full tsf suite GREEN, oxlint/oxfmt clean. Verified intact via git cat-file immediately after commit; same pre-existing geometric-repack housekeeping failure as prior waves (GIT-HYGIENE-001), non-blocking. Codex weekly rate-limit capacity has genuinely reset (0% used, confirmed fresh) since the CODEX_SANDBOX_HELPER_MISSING_001 blocker was recorded; that blocker itself (a provider-runtime sandbox-execution failure, not a capacity issue) remains open pending Tim's confirmation the sandbox helper is repaired -- this is what gates the live M2 dogfood next, per nextSafeAction. See milestones[M2].waves[16]/[16b]."
+  },
+  "priorDurableCheckpoint7": {
     "phase": "M2_WAVE_15B_INDEPENDENT_REVIEW_ADDRESSED",
     "at": "2026-08-19T23:52:00-06:00",
     "commit": "b051b80f8d58d0583c6c1a8b2daccf4230aa50ac",
