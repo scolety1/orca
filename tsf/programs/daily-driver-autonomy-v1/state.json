@@ -892,6 +892,40 @@
       ]
     }
   },
+  "bedtimeUnattendedMode2026-08-20T01:40": {
+    "enteredBy": "TIM",
+    "directive": "Tim is asleep and unavailable to rescue/supervise. Do not interrupt a currently-running bounded polling window; let it settle naturally. Once control returns: if the task completed, collect/verify and continue M2 normally; if still running but healthy, persist exact task/run ownership and supervise only via bounded watchdog intervals (never indefinitely); if supervision times out or becomes uncertain, do not redispatch blindly -- rediscover the existing Orca run/task/terminal from durable state, checkpoint before any recovery action, fence uncertain work rather than claiming it stopped, prevent duplicate dispatch, apply bounded retry/stall budgets, transition to NEEDS_YOU if safe autonomous recovery is exhausted, never wait indefinitely on one worker/shell. Continue autonomous M2 work while away whenever safe. Do not start unrelated real-project work. Do not push/deploy/publish/adopt outside pre-authorized rules. On a genuine blocker: leave a durable NEEDS_YOU checkpoint and stop safely rather than spinning.",
+    "newM2AcceptanceRequirement": "Tim explicitly added: unattended recovery is itself an M2 acceptance requirement -- supervisor loss (this Claude session dying, matching the earlier TERMINAL_CLOSED_RECOVERY_001 precedent this same evening), polling timeout, a worker continuing after supervisor loss, and restart/recovery must not require Tim to manually save the run. This state.json entry IS that durable recovery point -- a fresh session with zero conversational memory must be able to execute the runbook below unassisted.",
+    "missionInProgressAtEntry": {
+      "description": "M2 real multi-wave dogfood (Tim-authorized), wave 1 of 2, dispatched but not yet settled",
+      "projectId": "colety-labs-sales-engine",
+      "keepGoingRunId": "keep-going-colety-labs-sales-engine-1787209970594",
+      "orchestrationRunId": "run_5aa5b6d8b029",
+      "taskId": "task_fd9a12aed26d",
+      "dispatchId": "ctx_705c7ef59e6f",
+      "workerTerminalHandle": "term_f9545f57-abba-4b18-90a3-12d246ae65de",
+      "worktreePath": "C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-m2-live-dogfood-v1",
+      "worktreeRepoId": "443fd5dc-bd87-4019-a2a0-879188f97506",
+      "operatorStateFile": "tsf/server/.local-state/operator-state.json (real default store, not a test override -- gitignored, inspect directly on disk)",
+      "wave1Goal": "docs/m2-live-dogfood/wave-1-marker.md containing exactly the line 'M2 live dogfood wave 1 marker'",
+      "acceptanceCriteria": ["DOGFOOD_MARKER_WAVE_1_ADDED", "DOGFOOD_MARKER_WAVE_2_ADDED"],
+      "dispatchedAt": "2026-08-20T07:12:51.241Z",
+      "statusAtEntry": "orca orchestration task-list still reports status:'dispatched' as of 2026-08-20T07:42:35Z (~30 minutes elapsed, at/past the run's own stallThresholdMs of 30 minutes). orca terminal read on the worker terminal shows latestCursor/nextCursor UNCHANGED (14) since immediately after MCP startup -- zero new output in ~28 minutes, a genuine stall (the --inject dispatch mechanism appears to not have delivered visibly, or the terminal is deadlocked before echoing it), not a transient delay. This is being fenced as UNCERTAIN, not claimed as failed or stopped.",
+      "scratchpadEvidence": "A non-committed mission driver script and its log live in this session's scratchpad temp dir (m2-live-dogfood.mjs / .log) -- NOT durable, may not survive a session loss; this state.json entry is the durable source of truth, not that log."
+    },
+    "recoveryRunbookForAFutureOrRestartedSession": [
+      "1. Re-read this entry and docs/tsf/TSF_DAILY_DRIVER_AUTONOMY_PROGRAM_V1.md + this file's nextSafeAction before acting.",
+      "2. Read-only: `orca orchestration task-list --run run_5aa5b6d8b029 --json` to get the task's CURRENT real status (dispatched/completed/failed/cancelled/unknown) -- never assume it is still what it was at entry.",
+      "3. Read-only: `orca terminal read --terminal term_f9545f57-abba-4b18-90a3-12d246ae65de --json` and compare latestCursor to what is recorded above -- if it has advanced, real work happened; if identical, the stall is confirmed to persist.",
+      "4. Read-only: inspect tsf/server/.local-state/operator-state.json directly (or via readKeepGoingRun('colety-labs-sales-engine')) for the CURRENT keepGoingRuns['colety-labs-sales-engine'] run -- do not trust this recorded snapshot once it's stale.",
+      "5. Do NOT call tickKeepGoingRun repeatedly/indefinitely as a substitute for judgment -- one bounded call is a legitimate next step (it will correctly escalate to WAVE_STALLED via the run's own real stallThresholdMs once that threshold is exceeded, which is the SYSTEM'S OWN designed response, not a blind redispatch) but if it returns WAVE_STILL_IN_FLIGHT again, do not loop forever -- apply a bounded watchdog window (e.g. a handful of checks over 10-20 minutes), then stop and re-assess rather than spin.",
+      "6. If the task genuinely completed for real (task-list status flips to completed/succeeded and/or the terminal shows real new output describing the file being created): verify independently by reading the actual file at <worktreePath>/docs/m2-live-dogfood/wave-1-marker.md before treating the criterion as satisfied -- never trust the task's own SUCCEEDED claim alone (Section F).",
+      "7. If the stall is confirmed to persist (tick escalates to WAVE_STALLED, or has already done so): this is the run's own real, working stall-escalation mechanism firing correctly -- do NOT redispatch the same work item into the SAME stalled terminal. Safe recovery options, in order of preference: (a) close/replace the stalled terminal and create a fresh Codex-backed terminal in the same worktree, then supply a NEW work item (same spec, new id) with the new terminal's handle on the next dispatch tick -- this is a deliberate, bounded, non-blind re-attempt, not a blind retry; (b) if that also fails or budget is exhausted (maxRetriesPerTask:1 on this run), the system's own retry-budget-exceeded escalation to NEEDS_YOU is the correct, designed outcome -- let it happen (or raise it explicitly) rather than forcing a third attempt.",
+      "8. Whatever happens, checkpoint the outcome into this state.json file (append findings, do not silently overwrite this entry) and commit before doing anything else real-project-related.",
+      "9. Do not touch NWR/HouseOS/EasyLife/Nytheria/WorldForge/Landing Page or any repo other than colety-labs-sales-engine (this mission) and TSF_ORCA (this program's own code) while resolving this.",
+      "10. If recovery genuinely cannot proceed safely (e.g. Orca itself unreachable, or the stalled state cannot be distinguished from real progress after a bounded check), raise NEEDS_YOU-equivalent by stopping here, recording exactly why, and leaving this entry as the durable handoff -- do not spin or guess further."
+    ]
+  },
   "resumePreflight2": {
     "id": "RESUME_FROM_TERMINAL_CLOSED_001",
     "at": "2026-08-19T23:25:00-06:00",
