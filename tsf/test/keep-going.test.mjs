@@ -240,6 +240,36 @@ test('two Needs You questions with identical text and timestamp never collide in
   assert.equal(run.state, 'ACTIVE')
 })
 
+test('raiseNeedsYou/resolveNeedsYou bump revision and honor expectedRevision even on their non-transitioning branches', () => {
+  let run = baseRun()
+  assert.equal(run.revision, 0)
+  // First raiseNeedsYou transitions (bumps via transitionRun).
+  run = raiseNeedsYou(run, { question: 'Q1?' }, clock, 0)
+  assert.equal(run.revision, 1)
+  // Second raiseNeedsYou takes the non-transitioning "already NEEDS_YOU"
+  // branch -- must still bump revision and honor expectedRevision.
+  assert.throws(
+    () => raiseNeedsYou(run, { question: 'Q2?' }, clock, 0), // stale
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+  run = raiseNeedsYou(run, { question: 'Q2?' }, clock, 1)
+  assert.equal(run.revision, 2)
+  // resolveNeedsYou's "still open" branch (one of two questions resolved)
+  // also skips transitionRun -- must bump revision and honor
+  // expectedRevision too.
+  assert.throws(
+    () => resolveNeedsYou(run, run.needsYou[0].id, 'yes', clock, 0), // stale
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+  run = resolveNeedsYou(run, run.needsYou[0].id, 'yes', clock, 2)
+  assert.equal(run.revision, 3)
+  assert.equal(run.state, 'NEEDS_YOU', 'still blocked while one question remains open')
+  // Resolving the last one transitions back to ACTIVE (via transitionRun).
+  run = resolveNeedsYou(run, run.needsYou[1].id, 'yes', clock, 3)
+  assert.equal(run.state, 'ACTIVE')
+  assert.equal(run.revision, 4)
+})
+
 test('checkpoints form a durable hash chain', () => {
   let run = baseRun()
   run = checkpointRun(run, { phase: 'WAVE_1_PLANNED' }, clock)

@@ -299,10 +299,21 @@ export function detectStall(run, workerHeartbeats, clock) {
     }))
 }
 
-export function raiseNeedsYou(run, { question, options = [], taskId = null }, clock) {
+// expectedRevision is checked up front (before any mutation) so both the
+// transitioning and non-transitioning paths below are guarded consistently
+// -- the non-transitioning "already NEEDS_YOU" path doesn't go through
+// transitionRun (see comment below) and previously had no revision check
+// or bump at all, an inconsistency an independent review caught.
+export function raiseNeedsYou(
+  run,
+  { question, options = [], taskId = null },
+  clock,
+  expectedRevision
+) {
   if (!question?.trim()) {
     throw new Error('a question is required to raise Needs You')
   }
+  assertExpectedRevision(run, expectedRevision)
   const at = isoNow(clock)
   const next = deepClone(run)
   // Includes the insertion ordinal so two questions with identical
@@ -321,8 +332,11 @@ export function raiseNeedsYou(run, { question, options = [], taskId = null }, cl
   })
   // A run can already be NEEDS_YOU with other open questions — only
   // transition on the first one; RUN_ALLOWED has no NEEDS_YOU -> NEEDS_YOU
-  // self-loop, and piling up questions shouldn't need one.
+  // self-loop, and piling up questions shouldn't need one. This path skips
+  // transitionRun, so it must bump revision itself to stay consistent with
+  // every other mutation in this module.
   if (next.state === 'NEEDS_YOU') {
+    next.revision += 1
     next.updatedAt = at
     return next
   }
@@ -334,18 +348,22 @@ export function raiseNeedsYou(run, { question, options = [], taskId = null }, cl
   )
 }
 
-export function resolveNeedsYou(run, needsYouId, resolution, clock) {
+export function resolveNeedsYou(run, needsYouId, resolution, clock, expectedRevision) {
   const index = run.needsYou.findIndex((entry) => entry.id === needsYouId)
   if (index === -1) {
     throw new Error(`unknown Needs You question: ${needsYouId}`)
   }
+  assertExpectedRevision(run, expectedRevision)
   const next = deepClone(run)
   next.needsYou[index] = { ...next.needsYou[index], resolvedAt: isoNow(clock), resolution }
   next.updatedAt = isoNow(clock)
   const stillOpen = next.needsYou.some((entry) => !entry.resolvedAt)
-  return stillOpen
-    ? next
-    : transitionRun(next, 'ACTIVE', { reason: 'ALL_NEEDS_YOU_RESOLVED' }, clock)
+  if (stillOpen) {
+    // Skips transitionRun (no state change), so bump revision here too.
+    next.revision += 1
+    return next
+  }
+  return transitionRun(next, 'ACTIVE', { reason: 'ALL_NEEDS_YOU_RESOLVED' }, clock)
 }
 
 // Durable, hash-chained checkpoint after each meaningful phase — the

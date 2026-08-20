@@ -246,12 +246,25 @@
           "testsAdded": 1,
           "testsPassing": "1/1 new; 133/133 full tsf suite (no regressions); oxlint/oxfmt clean; UI typecheck clean; UI build succeeds; not separately browser-re-verified given time pressure (structurally identical to the already browser-verified pause/resume revision plumbing -- same code paths, same pattern) -- an intentional, disclosed reduction in verification depth as the RETURN_HANDOFF window approaches, not a silent skip.",
           "verifier": "Partial VERIFIER_INDEPENDENT (one of 8 planned finder-angle sub-agents completed before the coordinator hit a Claude session limit) + SELF for the fix itself",
-          "commit": null,
+          "commit": "5c23aaa4489982f3fb77358bc2b6e5d911f81967",
           "deferredToNextWave": [
-            "finding 2: revision/expectedRevision support for raiseNeedsYou/resolveNeedsYou, before those functions are ever wired to a live route",
             "finding 3: generalized HTTP route-module pattern across http-server.mjs",
             "finding 4: document-level (not just keepGoingRun-level) optimistic concurrency in data-store.mjs",
-            "the remaining 7 of 8 review finder-angles never ran -- a genuinely complete independent review of waves 4-8 still has not happened"
+            "the remaining 7 of 8 review finder-angles never ran -- a genuinely complete independent review of waves 4-9 still has not happened"
+          ]
+        },
+        {
+          "wave": 9,
+          "summary": "Closed finding 2 from wave 8's partial review while a safe window remained before RETURN_HANDOFF: raiseNeedsYou's already-NEEDS_YOU branch and resolveNeedsYou's still-open branch both skip transitionRun and previously neither bumped run.revision nor checked expectedRevision, unlike every other mutation in keep-going.mjs. Both now accept an optional expectedRevision (checked via assertExpectedRevision up front, before any mutation) and explicitly bump revision on their non-transitioning branches. Chosen specifically because it was safe (pure domain function, zero live HTTP exposure today -- confirmed by grep, so no integration/route/UI plumbing risk this late in the window) and bounded (~20 min, one file + one test file).",
+          "testsAdded": 1,
+          "testsPassing": "1/1 new (asserts revision incrementing correctly across both transitioning and non-transitioning branches, and stale expectedRevision rejected on both); 134/134 full tsf suite (no regressions); oxlint/oxfmt clean.",
+          "verifier": "SELF -- low-risk, well-covered by the new regression test; not HTTP/UI-integrated so no browser re-verification needed",
+          "commit": null,
+          "deferredToNextWave": [
+            "finding 3: generalized HTTP route-module pattern across http-server.mjs",
+            "finding 4: document-level (not just keepGoingRun-level) optimistic concurrency in data-store.mjs",
+            "wiring raiseNeedsYou/resolveNeedsYou to an actual HTTP route (part of the still-not-built autonomous wave-dispatch loop)",
+            "a genuinely complete independent review of waves 4-9 (only 1 of 8 finder-angles from wave 8's review ever ran)"
           ]
         }
       ],
