@@ -83,7 +83,7 @@ milestone. Summary:
 | # | Milestone | Status |
 |---|---|---|
 | M1 | Project Onboarding V1 | `ACCEPTED_PRE_EXISTING` (adopted at `de105fb46` before this program started) |
-| M2 | Keep Going / Overnight V1 | `IN_PROGRESS` (wave 2 of N) — **current, highest priority** |
+| M2 | Keep Going / Overnight V1 | `IN_PROGRESS` (wave 9, evening sprint 2026-08-19) — **current, highest priority** |
 | M3 | Chat → Dispatch + Live Work Feed | `NOT_STARTED` |
 | M4 | Run Journal + Recovery | `NOT_STARTED` |
 | M5 | Capacity-Aware Routing | `NOT_STARTED` |
@@ -185,12 +185,35 @@ OpenWeft feeds conflict-aware batching; Hindsight is evaluated later as
 code using existing Orca primitives — no runtime vendoring — per program
 Section D.
 
+## Evening sprint 2026-08-19 (Section see `state.json` → `executionWindow`)
+
+Tim set a hard operator-return time of 11:20 PM local (coincides with the
+Codex weekly reset) and asked for continued autonomous work toward M2
+completion, with RETURN_HANDOFF triggering at ~11:05 PM. Waves 4-9 that
+evening delivered: a domain+adapter-level dogfood fixture proving the
+Keep Going loop end to end; the server controller + 4 HTTP routes; a
+browser-proven UI (Start/Pause/Resume, goal/Usage-Mode/budget/
+constraints/stop-conditions form, live phase/gap/worker/retry/verifier/
+NeedsYou/ReadyForAdoption display); the program's first live Codex
+dispatch (wave 3, via the new `EXPIRING_CAPACITY` policy — see
+`state.json` → `capacityPolicy.expiringCapacityRule`); and two
+independent code-review passes (the first fully completed, all 6
+findings addressed; the second partial after its coordinator hit a
+Claude session-usage limit, 1 of 8 finder-angle sub-agents finished and
+returned 4 more findings, 2 fixed, 2 documented as legitimate but
+too-large-for-the-window architectural gaps). Full detail, including an
+honest scope note on what M2 still needs (an autonomous wave-dispatch
+loop and a combined live-Orca dogfood mission), is in `state.json` →
+`milestones[M2].waves[]`.
+
 ## Next safe action
 
-See `state.json` → `nextSafeAction`. As of this checkpoint (post-resume from
-`WINDOWS_SANDBOX_CRASH_001`, M2 wave 2 complete): extend `mapOrcaFacts` in
-`tsf/adapters/orca-runtime.mjs` to project `worker-list`/`task-list`/
-`gate-list` facts into the shapes `keep-going.mjs` consumes, then reassess
-Codex capacity before attempting the bounded fixture/dogfood mission with
-real Orca dispatch; if still near-exhausted, proceed with the UI surface
-instead.
+See `state.json` → `nextSafeAction` for the machine-readable current
+value. As of the wave-9 checkpoint: the autonomous wave-dispatch loop
+(so a UI-started run actually progresses through waves on its own) is
+the largest remaining M2 gap, deliberately not attempted during the
+evening sprint (it needs an async job-execution architecture this
+program judged too large a new surface to safely land and verify before
+the cutoff). The combined live-Orca dogfood mission is blocked until
+Codex's weekly reset, which coincides with the hard cutoff itself, so it
+cannot happen before Tim returns regardless of remaining time tonight.
