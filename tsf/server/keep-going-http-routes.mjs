@@ -2,6 +2,21 @@
 // split out of http-server.mjs to keep that file under the repo's
 // max-lines lint cap. Pure route glue over keep-going-controller.mjs --
 // no domain logic lives here.
+//
+// Mutating routes (start/pause/resume) deliberately do NOT use the
+// `opState` snapshot the caller captured before this handler ran -- that
+// snapshot predates `await readBody(req)`, so two requests racing the same
+// project (including a pause landing while an autonomous wave-dispatch
+// tick holds its lock, see keep-going-dispatch-loop.mjs) could otherwise
+// each act on a stale read and the later `saveState` silently discard the
+// other (this was wave 11 finding 1, and a real review finding on the
+// concurrency-hardening wave: leaving it unfixed here would have made the
+// tick's own pause-rejection guarantee only true in theory, not over
+// HTTP). Instead, each mutation re-reads fresh and commits atomically via
+// keep-going-run-store.mjs's synchronous compare-and-swap -- the same
+// primitive the tick itself uses -- immediately before applying the real
+// domain transition, so a concurrent tick's lock (or another request that
+// landed first) is always seen.
 import {
   keepGoingRunFor,
   pauseKeepGoingRun,
@@ -9,6 +24,30 @@ import {
   resumeKeepGoingRun,
   startKeepGoingRun
 } from './keep-going-controller.mjs'
+import { withKeepGoingRun } from './keep-going-run-store.mjs'
+
+const CONFLICT_CODES = new Set(['TSF_STALE_REVISION', 'TSF_TICK_IN_PROGRESS'])
+
+function respondError(res, json, error) {
+  json(res, CONFLICT_CODES.has(error.code) ? 409 : 422, {
+    ok: false,
+    error: error.message,
+    code: error.code ?? null
+  })
+}
+
+// Runs one of keep-going-controller.mjs's existing (opState-shaped) pure
+// functions against a freshly-read run, wrapped in a throwaway opState of
+// exactly that one project -- reuses their unchanged logic/signature
+// without needing to break their existing callers (the dogfood fixture,
+// keep-going-controller.test.mjs) while still committing through the real
+// atomic primitive.
+function mutateThroughStore(projectId, controllerFn) {
+  return withKeepGoingRun(projectId, (current) => {
+    const { run } = controllerFn({ keepGoingRuns: { [projectId]: current } })
+    return run
+  })
+}
 
 // Returns true and writes the response if this request matched a Keep
 // Going route; returns false (writes nothing) otherwise, so the caller can
@@ -18,7 +57,7 @@ export async function handleKeepGoingRoute(
   req,
   res,
   { map, opState },
-  { json, notFound, readBody, saveState }
+  { json, notFound, readBody }
 ) {
   if (parts[1] !== 'keep-going') {
     return false
@@ -49,25 +88,16 @@ export async function handleKeepGoingRoute(
   if (parts[3] === 'start') {
     const body = await readBody(req)
     try {
-      const { opState: nextState, run } = startKeepGoingRun(
-        opState,
-        projectId,
-        body,
-        () => new Date(),
-        body.expectedRevision
+      const run = mutateThroughStore(projectId, (fakeOpState) =>
+        startKeepGoingRun(fakeOpState, projectId, body, () => new Date(), body.expectedRevision)
       )
-      saveState(nextState)
       json(
         res,
         200,
         projectKeepGoingRun(run, () => new Date())
       )
     } catch (error) {
-      json(res, error.code === 'TSF_STALE_REVISION' ? 409 : 422, {
-        ok: false,
-        error: error.message,
-        code: error.code ?? null
-      })
+      respondError(res, json, error)
     }
     return true
   }
@@ -75,25 +105,22 @@ export async function handleKeepGoingRoute(
   if (parts[3] === 'pause') {
     const body = await readBody(req)
     try {
-      const { opState: nextState, run } = pauseKeepGoingRun(
-        opState,
-        projectId,
-        body.reason,
-        () => new Date(),
-        body.expectedRevision
+      const run = mutateThroughStore(projectId, (fakeOpState) =>
+        pauseKeepGoingRun(
+          fakeOpState,
+          projectId,
+          body.reason,
+          () => new Date(),
+          body.expectedRevision
+        )
       )
-      saveState(nextState)
       json(
         res,
         200,
         projectKeepGoingRun(run, () => new Date())
       )
     } catch (error) {
-      json(res, error.code === 'TSF_STALE_REVISION' ? 409 : 422, {
-        ok: false,
-        error: error.message,
-        code: error.code ?? null
-      })
+      respondError(res, json, error)
     }
     return true
   }
@@ -101,24 +128,16 @@ export async function handleKeepGoingRoute(
   if (parts[3] === 'resume') {
     const body = await readBody(req)
     try {
-      const { opState: nextState, run } = resumeKeepGoingRun(
-        opState,
-        projectId,
-        () => new Date(),
-        body.expectedRevision
+      const run = mutateThroughStore(projectId, (fakeOpState) =>
+        resumeKeepGoingRun(fakeOpState, projectId, () => new Date(), body.expectedRevision)
       )
-      saveState(nextState)
       json(
         res,
         200,
         projectKeepGoingRun(run, () => new Date())
       )
     } catch (error) {
-      json(res, error.code === 'TSF_STALE_REVISION' ? 409 : 422, {
-        ok: false,
-        error: error.message,
-        code: error.code ?? null
-      })
+      respondError(res, json, error)
     }
     return true
   }

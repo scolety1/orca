@@ -50,7 +50,14 @@ function isTickLockActive(run, clock) {
   if (!run.tickLock) {
     return false
   }
-  return Date.parse(isoNow(clock)) - Date.parse(run.tickLock.claimedAt) <= TICK_LOCK_TIMEOUT_MS
+  // timeoutMs is stored on the lock itself (set at claim time, defaulting
+  // to TICK_LOCK_TIMEOUT_MS for locks that didn't specify one) so a large
+  // wave's dispatch claim can request a longer allowance -- the fixed
+  // default assumed a small, fast wave and could otherwise be exceeded by
+  // a legitimately still-working dispatch of many sequential CLI calls,
+  // wrongly treating it as abandoned.
+  const timeoutMs = run.tickLock.timeoutMs ?? TICK_LOCK_TIMEOUT_MS
+  return Date.parse(isoNow(clock)) - Date.parse(run.tickLock.claimedAt) <= timeoutMs
 }
 
 function freezeGoal(statement, acceptanceCriteria) {
@@ -187,14 +194,15 @@ export const blockRun = (run, reason, evidence, clock) =>
 // blocked while a tick holds the lock, same as pause/resume) -- the tick's
 // own settleStep passes tickInternal:true since it is escalating STALLED
 // as part of releasing its own lock, not racing it.
-export const markStalled = (run, stalledWorkers, clock, tickInternal = false) =>
+export const markStalled = (run, stalledWorkers, clock, tickInternal = false, expectedRevision) =>
   transitionRun(
     run,
     'STALLED',
     {
       reason: 'STALL_WATCHDOG_TRIGGERED',
       evidence: stalledWorkers.map((w) => w.dispatchId),
-      tickInternal
+      tickInternal,
+      expectedRevision
     },
     clock
   )
@@ -207,7 +215,7 @@ export const markStalled = (run, stalledWorkers, clock, tickInternal = false) =>
 // two ticks from both starting real duplicate dispatch work, not this
 // function alone. A stale/abandoned lock (past TICK_LOCK_TIMEOUT_MS) is
 // treated as absent so a crashed tick cannot permanently wedge the run.
-export function claimTick(run, kind, clock, expectedRevision) {
+export function claimTick(run, kind, clock, expectedRevision, timeoutMs = TICK_LOCK_TIMEOUT_MS) {
   assertExpectedRevision(run, expectedRevision)
   if (run.state !== 'ACTIVE') {
     const error = new Error(`cannot start a tick on a run that is ${run.state}, not ACTIVE`)
@@ -220,7 +228,7 @@ export function claimTick(run, kind, clock, expectedRevision) {
     throw error
   }
   const next = deepClone(run)
-  next.tickLock = { kind, claimedAt: isoNow(clock) }
+  next.tickLock = { kind, claimedAt: isoNow(clock), timeoutMs }
   next.revision += 1
   next.updatedAt = isoNow(clock)
   return next

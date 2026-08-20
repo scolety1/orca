@@ -35,7 +35,17 @@
 // itself rejects external state changes (operator pause/resume/etc.)
 // while a tick holds the lock, so a pause request racing an in-flight tick
 // is cleanly rejected (409-shaped, retryable) rather than silently
-// dropped or silently overwritten by the tick's eventual commit.
+// dropped or silently overwritten by the tick's eventual commit --
+// keep-going-http-routes.mjs's start/pause/resume routes now commit
+// through this same primitive (not a stale opState captured before their
+// own `await readBody`), so that guarantee holds end to end over HTTP too,
+// not only for a caller that already goes through keep-going-run-store.mjs
+// directly. Every commit path here is built on commitClaimed, which always
+// threads the claim-time revision through the FIRST domain mutation --
+// never a mutation's own self-consistent revision, which is a tautology
+// that can never detect the lock was recovered by another tick since the
+// claim (a real, confirmed review finding on an earlier version of this
+// module's settle-side commits).
 import {
   createOrchestrationRun,
   createOrchestrationTask,
@@ -52,7 +62,8 @@ import {
   raiseNeedsYou,
   recordTaskAttempt,
   releaseTick,
-  settleInFlightWave
+  settleInFlightWave,
+  TICK_LOCK_TIMEOUT_MS
 } from '../domain/keep-going.mjs'
 import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
 
@@ -71,6 +82,14 @@ const DEFAULT_STORE = Object.freeze({
 const COMPLETED_STATUSES = new Set(['completed', 'succeeded'])
 const FAILED_STATUSES = new Set(['failed', 'error'])
 
+// Each dispatched work item costs up to two sequential CLI round-trips
+// (task-create + dispatch), each up to the orchestration bridge's own 15s
+// timeout, plus a comfortable buffer -- a fixed lock timeout sized for a
+// small wave would otherwise treat a legitimately still-working large-wave
+// dispatch as abandoned (a real review finding). Settle only ever makes
+// one listOrchestrationTasks call, so it keeps the base timeout.
+const PER_ITEM_LOCK_TIMEOUT_MS = 45_000
+
 function runNotFoundError() {
   const error = new Error('no Keep Going run for this project')
   error.code = 'TSF_RUN_NOT_FOUND'
@@ -80,24 +99,30 @@ function runNotFoundError() {
 // Claims the tick lock via one synchronous CAS. Throws (never silently
 // no-ops) on any conflict -- the caller turns that into a clean, no-CLI-
 // work-attempted result.
-function claim(projectId, kind, clock, store) {
+function claim(projectId, kind, clock, store, timeoutMs = TICK_LOCK_TIMEOUT_MS) {
   return store.withRun(projectId, (current) => {
     if (!current) {
       throw runNotFoundError()
     }
-    return claimTick(current, kind, clock, current.revision)
+    return claimTick(current, kind, clock, current.revision, timeoutMs)
   })
 }
 
-// Commits the tick's real mutation via a second synchronous CAS, keyed on
-// the exact revision the claim produced -- if that no longer matches (the
-// lock was recovered as abandoned by another tick; see
-// TICK_LOCK_TIMEOUT_MS), the commit throws rather than silently clobbering
-// whatever the current holder has since done. mutateFn receives the FRESH
-// current run and must itself call releaseTick as its final step alongside
-// whatever domain mutation it applies.
-function commit(projectId, store, mutateFn) {
-  return store.withRun(projectId, mutateFn)
+// Commits the tick's real mutation via a second synchronous CAS. mutateFn
+// is always handed `expectedRevision` (the exact revision the claim
+// produced) explicitly, alongside the freshly-read current run, and MUST
+// use it for its FIRST real domain mutation -- never a mutation's own
+// self-consistent revision, which is a tautology (current.revision always
+// equals current.revision) and can never detect that the lock was
+// recovered by another tick since the claim (a real, confirmed review
+// finding: two commit paths omitted this and used self-checks instead).
+// Threading it through this one wrapper, rather than each call site
+// improvising its own commit, makes that omission structurally harder to
+// repeat. Subsequent mutations within the SAME closure may use the
+// just-produced value's own revision safely (nothing else can run between
+// them -- this whole closure is one synchronous unit).
+function commitClaimed(projectId, store, claimed, mutateFn) {
+  return store.withRun(projectId, (current) => mutateFn(current, claimed.revision))
 }
 
 // A commit lost the CAS race (lock timed out and was recovered by another
@@ -130,9 +155,13 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     return { action: 'NOOP', reason: 'no candidate work items available to plan a wave' }
   }
 
+  // Sized to this wave's candidate count -- see PER_ITEM_LOCK_TIMEOUT_MS.
+  const dispatchTimeoutMs =
+    TICK_LOCK_TIMEOUT_MS + candidateWorkItems.length * PER_ITEM_LOCK_TIMEOUT_MS
+
   let claimed
   try {
-    claimed = claim(projectId, 'DISPATCH', clock, store)
+    claimed = claim(projectId, 'DISPATCH', clock, store, dispatchTimeoutMs)
   } catch (error) {
     // Another tick already holds the lock, or the run is no longer
     // ACTIVE/found -- no CLI work is attempted, so no duplicate dispatch.
@@ -240,8 +269,8 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
 // partial-dispatch helper's own safety net for symmetry).
 function commitAbortedDispatch(projectId, store, claimed, clock, failure) {
   try {
-    const next = commit(projectId, store, (current) =>
-      releaseTick(current, clock, claimed.revision)
+    const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) =>
+      releaseTick(current, clock, expectedRevision)
     )
     return { action: 'DISPATCH_FAILED', run: next, ...failure }
   } catch (error) {
@@ -266,7 +295,7 @@ function commitPartialOrAbortedDispatch(
 ) {
   if (dispatchRecords.length === 0) {
     try {
-      const next = commit(projectId, store, (current) => {
+      const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
         let n = current
         // Nothing dispatched, but if this tick just created a new real
         // Orca orchestration Run, persist it even on a total failure --
@@ -274,7 +303,7 @@ function commitPartialOrAbortedDispatch(
         if (orchestrationRunFreshlyCreated) {
           n = { ...n, orchestrationRunId }
         }
-        return releaseTick(n, clock, claimed.revision)
+        return releaseTick(n, clock, expectedRevision)
       })
       return { action: 'DISPATCH_FAILED', run: next, ...failure }
     } catch (error) {
@@ -310,8 +339,8 @@ function commitDispatchedWave(
   failure = null
 ) {
   try {
-    const next = commit(projectId, store, (current) => {
-      let n = dispatchWave(current, wavePlan, dispatchRecords, clock, claimed.revision)
+    const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
+      let n = dispatchWave(current, wavePlan, dispatchRecords, clock, expectedRevision)
       n = { ...n, orchestrationRunId }
       n = checkpointRun(
         n,
@@ -379,14 +408,15 @@ async function settleStep(projectId, clock, orchestration, store) {
     const silentForMs = Date.parse(isoNow(clock)) - Date.parse(inFlightWave.dispatchedAt)
     if (silentForMs > claimed.budget.stallThresholdMs) {
       try {
-        const next = commit(projectId, store, (current) => {
+        const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
           const stalled = markStalled(
             current,
             inFlightWave.dispatchRecords.filter((r) =>
               outcomes.some((o) => o.workItemId === r.workItemId && o.outcome === 'PENDING')
             ),
             clock,
-            true // tickInternal -- this tick still holds the lock it is releasing
+            true, // tickInternal -- this tick still holds the lock it is releasing
+            expectedRevision
           )
           return releaseTick(stalled, clock, stalled.revision)
         })
@@ -405,17 +435,25 @@ async function settleStep(projectId, clock, orchestration, store) {
   // the saved state.
   let retryBudgetExceededOut = []
   try {
-    const next = commit(projectId, store, (current) => {
+    const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
       let n = current
       const retryBudgetExceeded = []
-      for (const outcome of outcomes) {
+      outcomes.forEach((outcome, index) => {
         try {
           n = recordTaskAttempt(
             n,
             outcome.workItemId,
             outcome.outcome === 'FAILED' ? 'RETRY' : 'COMPLETED',
             clock,
-            n.revision
+            // Only the FIRST mutation in this closure needs the real
+            // claim-time check (index === 0 ? expectedRevision) -- a real,
+            // confirmed review finding was that every mutation here
+            // previously used `n.revision` (self-consistent, a tautology
+            // that can never detect the lock was recovered by another
+            // tick since the claim). Subsequent iterations reusing the
+            // now-validated `n.revision` is safe: nothing else can run
+            // between them inside this one synchronous closure.
+            index === 0 ? expectedRevision : n.revision
           )
         } catch (error) {
           if (error.code === 'TSF_RETRY_BUDGET_EXCEEDED') {
@@ -424,7 +462,7 @@ async function settleStep(projectId, clock, orchestration, store) {
             throw error
           }
         }
-      }
+      })
 
       const waveResult = {
         schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
@@ -476,8 +514,8 @@ async function settleStep(projectId, clock, orchestration, store) {
 
 function commitReleaseOnly(projectId, store, claimed, clock, action, outcomes, extra = {}) {
   try {
-    const next = commit(projectId, store, (current) =>
-      releaseTick(current, clock, claimed.revision)
+    const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) =>
+      releaseTick(current, clock, expectedRevision)
     )
     return { action, run: next, ...(outcomes ? { outcomes } : {}), ...extra }
   } catch (error) {

@@ -16,6 +16,8 @@ const STATE_FILE = path.join(
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
+const { claimTick } = await import('../domain/keep-going.mjs')
+const { withKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 
 async function withServer(fn) {
   const handler = createRequestHandler()
@@ -135,5 +137,44 @@ test('POST pause with a stale expectedRevision is rejected with 409, not silentl
     assert.equal(staleResume.status, 409)
     const body = await staleResume.json()
     assert.equal(body.code, 'TSF_STALE_REVISION')
+  })
+})
+
+test('POST pause is rejected with 409 over the real HTTP layer while an autonomous tick holds the lock (closes wave 11 finding 1 for this route)', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        originalGoal: 'Prove the HTTP route is lock-aware.',
+        acceptanceCriteria: ['X']
+      })
+    })
+
+    // Simulate an autonomous wave-dispatch tick that has claimed the lock
+    // and is mid-flight -- via the SAME synchronous store the route now
+    // uses, not a stale pre-captured opState.
+    const clock = () => new Date()
+    const claimed = withKeepGoingRun(PROJECT_ID, (current) =>
+      claimTick(current, 'DISPATCH', clock, current.revision)
+    )
+
+    // A pause request carrying the CURRENT (post-claim) revision -- an
+    // operator who refreshed and saw the real current state -- isolates
+    // the lock check specifically (a stale revision alone would already
+    // be rejected regardless of the lock, as proven above). Must still be
+    // rejected: the lock, not just the revision, protects the tick.
+    const pauseRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/pause`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'operator pause', expectedRevision: claimed.revision })
+    })
+    assert.equal(pauseRes.status, 409)
+    const body = await pauseRes.json()
+    assert.equal(body.code, 'TSF_TICK_IN_PROGRESS')
+
+    // Persisted state is untouched by the rejected pause -- still ACTIVE.
+    const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
+    assert.equal((await getRes.json()).state, 'ACTIVE')
   })
 })

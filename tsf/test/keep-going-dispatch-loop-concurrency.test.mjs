@@ -270,3 +270,64 @@ test('tickKeepGoingRun itself reports a *_LOST_LOCK result (not a thrown excepti
   assert.equal(persisted.inFlightWave, null)
   assert.equal(persisted.tickLock.kind, 'DISPATCH')
 })
+
+// Mirrors the DISPATCH-side abandonment-recovery test above on the SETTLE
+// path specifically -- a real, confirmed review finding was that the
+// settle-side commit closures (recordTaskAttempt's first call,
+// settleInFlightWave, markStalled) previously threaded a mutation's own
+// self-consistent revision instead of the claim-time revision, which is a
+// tautology that can never catch this exact scenario.
+test('a SETTLE tick that loses its lock to abandonment-recovery reports *_LOST_LOCK instead of silently completing a stale settlement', async () => {
+  seedRun()
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration() })
+
+  const orchestration = okOrchestration({
+    listOrchestrationTasks: async () => {
+      const muchLater = () => new Date('2026-08-20T06:10:00.000Z')
+      withKeepGoingRun(PROJECT_ID, (current) =>
+        claimTick(current, 'SETTLE', muchLater, current.revision)
+      )
+      return { ok: true, result: { tasks: [{ id: 'task-t1', status: 'completed' }] } }
+    }
+  })
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration })
+  assert.equal(result.action, 'WAVE_SETTLED_LOST_LOCK')
+  assert.equal(result.reason, 'TSF_STALE_REVISION')
+
+  // Persisted state reflects the recovering claim -- the wave was NOT
+  // settled twice, and the recovering tick's own claim is intact.
+  const persisted = readKeepGoingRun(PROJECT_ID)
+  assert.equal(
+    persisted.waves.length,
+    0,
+    'the stale settle attempt must not have recorded the wave'
+  )
+  assert.ok(persisted.inFlightWave, 'the wave is still in flight under the recovering claim')
+  assert.equal(persisted.tickLock.kind, 'SETTLE')
+})
+
+// The WAVE_STALLED escalation path specifically -- markStalled previously
+// had no expectedRevision parameter at all (zero protection, not even the
+// tautological self-check the other paths had).
+test("a stall escalation that loses its lock to abandonment-recovery reports *_LOST_LOCK instead of stealing the recovering tick's lock", async () => {
+  seedRun({ budget: { stallThresholdMs: 60_000 } })
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration() })
+
+  const laterClock = () => new Date('2026-08-20T06:05:00.000Z') // past the stall threshold
+  const orchestration = okOrchestration({
+    listOrchestrationTasks: async () => {
+      const muchLater = () => new Date('2026-08-20T06:10:00.000Z')
+      withKeepGoingRun(PROJECT_ID, (current) =>
+        claimTick(current, 'SETTLE', muchLater, current.revision)
+      )
+      return { ok: true, result: { tasks: [{ id: 'task-t1', status: 'in_progress' }] } }
+    }
+  })
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, laterClock, { orchestration })
+  assert.equal(result.action, 'WAVE_STALLED_LOST_LOCK')
+  assert.equal(result.reason, 'TSF_STALE_REVISION')
+
+  const persisted = readKeepGoingRun(PROJECT_ID)
+  assert.equal(persisted.state, 'ACTIVE', 'the stale STALLED attempt must not have applied')
+  assert.equal(persisted.tickLock.kind, 'SETTLE', "the recovering tick's lock must survive intact")
+})

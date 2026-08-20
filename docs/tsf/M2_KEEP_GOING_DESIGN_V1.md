@@ -299,6 +299,68 @@ follow-up, not done in this bounded wave.
 
 168/168 full suite GREEN, oxlint/oxfmt clean.
 
+## Wave 16b: independent review of the concurrency hardening, findings fixed
+
+A forked code-review pass (effort `high`) on wave 16's diff returned 6
+findings. Two were genuine, serious bugs in the hardening itself; all were
+addressed the same session before proceeding to dogfood, as required.
+
+1. **Fixed (critical)** -- the SETTLE-side commit closures
+   (`WAVE_SETTLED`/`WAVE_SETTLED_NEEDS_YOU`) never actually checked the
+   claim-time revision: `recordTaskAttempt`'s first call used the freshly-
+   read run's own revision as its own expectedRevision -- a tautology
+   (`current.revision === current.revision`) that can never detect the
+   lock was recovered by another tick since the claim. Contrast with the
+   DISPATCH-side commit, which correctly threaded `claimed.revision`
+   through. Fixed by introducing `commitClaimed`, a single wrapper every
+   commit path now goes through, which always hands the claim-time
+   revision to the caller's mutateFn explicitly as its first parameter --
+   making the omission structurally harder to repeat (this also directly
+   answers finding 6 below).
+2. **Fixed (critical)** -- the `WAVE_STALLED` path's `markStalled` call had
+   *no* `expectedRevision` parameter at all (zero protection, not even the
+   tautological kind), and `tickInternal:true` bypassed the lock-check
+   unconditionally regardless of whose lock was actually held. Fixed by
+   adding `expectedRevision` to `markStalled` and threading the claim-time
+   revision through it via the same `commitClaimed` wrapper -- the revision
+   check alone (which now runs first, per wave 15b's own established
+   order) is sufficient to reject a hijack attempt regardless of the
+   `tickInternal` bypass's scope.
+3. **Fixed** -- `TICK_LOCK_TIMEOUT_MS` (2 minutes, fixed) could legitimately
+   be exceeded by a real, healthy dispatch of many sequential work items
+   (each up to two ~15s CLI round-trips), wrongly treating a still-working
+   tick as abandoned. Fixed by storing the effective timeout on the lock
+   itself (`tickLock.timeoutMs`, defaulting to the constant for backward
+   compatibility), with `dispatchStep` requesting a wave-size-scaled
+   timeout (`TICK_LOCK_TIMEOUT_MS + candidateWorkItems.length *
+   PER_ITEM_LOCK_TIMEOUT_MS`) before claiming.
+4. **Fixed** -- `keep-going-http-routes.mjs`'s start/pause/resume routes
+   still captured `opState` before `await readBody(req)` (wave 11 finding
+   1), so a pause request with a stale pre-await snapshot never saw an
+   in-progress tick's lock at all -- the module header's claim that pause
+   is "cleanly rejected" while locked was true only for a caller already
+   using `keep-going-run-store.mjs` directly, not over the actual HTTP
+   route. Fixed by routing all three mutating routes through
+   `withKeepGoingRun` (reusing the existing pure controller functions
+   unchanged, wrapped in a throwaway single-project opState so their
+   signature/tests are untouched) immediately after `readBody` resolves.
+   Closes wave 11 finding 1 for these three routes specifically (not the
+   other opState-writing routes elsewhere in `http-server.mjs`, which
+   remain the separate, larger, still out-of-scope item).
+5. **Test coverage gap, now closed** -- the only abandoned-lock-recovery
+   adversarial test exercised the DISPATCH path; nothing drove the SETTLE
+   or STALLED commit closures through the same scenario, which is exactly
+   where findings 1/2 hid. Added two mirrored tests in
+   `keep-going-dispatch-loop-concurrency.test.mjs` (both would have failed
+   against the pre-fix code) plus an HTTP-level test in
+   `http-keep-going.test.mjs` proving pause is rejected over the real
+   route while a tick holds the lock.
+6. **Addressed via the `commitClaimed` refactor above** -- the repeated,
+   slightly-varying commit-wrapper pattern that let findings 1/2 hide is
+   now one shared helper.
+
+171/171 full suite GREEN, oxlint/oxfmt clean.
+
 ## Correction: `curly` lint is enforced on staged files
 
 Earlier in this wave, `tsf/domain/*.mjs` (including already-adopted files
