@@ -3,10 +3,9 @@
 // one file, read on demand, written atomically. Gitignored.
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { createPortfolio } from '../domain/portfolio.mjs'
 
-const HERE = path.dirname(fileURLToPath(import.meta.url))
+const HERE = import.meta.dirname
 const STATE_DIR = path.join(HERE, '.local-state')
 // Overridable so tests can point at an isolated temp file instead of the
 // real local operator state (which a running dev server may hold open).
@@ -15,17 +14,25 @@ const STATE_FILE = process.env.TSF_UI_STATE_FILE || path.join(STATE_DIR, 'operat
 const DEFAULTS = {
   schemaVersion: 'TSF_UI_OPERATOR_LOCAL_STATE_V1',
   usageMode: 'BALANCED',
-  workSet: ['colety-labs-sales-engine', 'weird-talent-marketplace', 'shopify-catalog-qa', 'tsf-ui-capability-check'],
+  workSet: [
+    'colety-labs-sales-engine',
+    'weird-talent-marketplace',
+    'shopify-catalog-qa',
+    'tsf-ui-capability-check'
+  ],
   fixtureCandidateDecision: null, // { decision, requestId, reason, at, receiptHash }
   fixtureReceipts: [],
   chatThreads: {}, // projectId -> [{ role, content, at, decisionClass, intent }]
   plannerSessions: {}, // projectId -> TSF_SESSION_BINDING_V1 (see tsf/domain/session-affinity.mjs)
   portfolio: createPortfolio(), // real tsf/domain/portfolio.mjs structure: Known/Active Fleet/Work Set
-  onboardedProjects: {} // projectId -> { repoPath, lastAnalysis, receipts, acceptedAt, refreshedAt }
+  onboardedProjects: {}, // projectId -> { repoPath, lastAnalysis, receipts, acceptedAt, refreshedAt }
+  keepGoingRuns: {} // projectId -> TSF_OVERNIGHT_RUN_V1 (see tsf/domain/keep-going.mjs)
 }
 
 export function loadState() {
-  if (!existsSync(STATE_FILE)) return structuredClone(DEFAULTS)
+  if (!existsSync(STATE_FILE)) {
+    return structuredClone(DEFAULTS)
+  }
   try {
     return { ...structuredClone(DEFAULTS), ...JSON.parse(readFileSync(STATE_FILE, 'utf8')) }
   } catch {
@@ -35,7 +42,7 @@ export function loadState() {
 
 export function saveState(state) {
   mkdirSync(STATE_DIR, { recursive: true })
-  const tmp = STATE_FILE + '.tmp'
+  const tmp = `${STATE_FILE}.tmp`
   writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8')
   renameSync(tmp, STATE_FILE)
 }

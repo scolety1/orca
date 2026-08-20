@@ -126,6 +126,19 @@
             "UI: project-level Keep Going / Overnight controls (tsf/server projection + tsf/ui page)",
             "combined live-Orca+governance dogfood mission if Codex capacity and time allow later"
           ]
+        },
+        {
+          "wave": 5,
+          "summary": "Evening-sprint wave. Server-side half of the UI acceptance criterion: tsf/server/keep-going-controller.mjs bridges the real keep-going.mjs state machine to persisted per-project operator state (data-store.mjs extended with keepGoingRuns: {}) -- startKeepGoingRun/pauseKeepGoingRun/resumeKeepGoingRun are real domain transitions (createOvernightRun/pauseRun/resumeRun/checkpointRun), and projectKeepGoingRun is an honest view-model projector (goal/usageMode/budget/constraints/stopConditions/wavesCompleted/retryCounts/openNeedsYou/lastCheckpoint/readyForAdoption) reading every field directly off the real run, never inventing data. 4 new HTTP routes added to tsf/server/http-server.mjs: GET /api/keep-going/:projectId, POST .../start, .../pause, .../resume, following the file's existing route-table pattern exactly. Explicitly NOT built this wave: an autonomous server-side wave-dispatch loop (planWave/recordWave against live Orca workers) -- Start/Pause/Resume are real but a started run does not yet self-drive through waves; that remains a separate, larger piece of work, called out honestly rather than implied.",
+          "testsAdded": 8,
+          "testsPassing": "8/8 new (5 controller unit tests + 3 HTTP integration tests); 127/127 full tsf suite (no regressions); oxlint clean; oxfmt clean",
+          "lintNote": "The husky pre-commit hook lints the FULL content of any staged file, not just changed lines -- committing touched http-server.mjs/data-store.mjs (both pre-existing LINT-CURLY-001 debt) was rejected outright until every curly/format/prefer-template issue in those two files was fixed, not only the new route blocks. Fixed all of it (pure formatting, zero behavior change) rather than working around the hook. This effectively resolves LINT-CURLY-001 for these two files; other pre-existing tsf/domain/** files remain untouched per that advisory's original scope.",
+          "verifier": "SELF -- evening-sprint pace; scheduled for genuine independent verification at the milestone-completion gate",
+          "commit": null,
+          "deferredToNextWave": [
+            "tsf/ui page: goal/usage-mode/budget/constraints/stop-conditions form + Start/Pause/Resume buttons + live display, backed by these real endpoints",
+            "autonomous server-side wave-dispatch loop (out of scope for tonight)"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -255,8 +268,9 @@
       "severity": "ADVISORY_NON_BLOCKING",
       "observedAt": "2026-08-19T00:00:00Z",
       "summary": "Already-adopted tsf/domain/*.mjs (e.g. mission-state.mjs, coordinator.mjs) violates .oxlintrc.json's `curly: error` rule with single-line guard clauses -- pre-existing, predates this program. The rule IS actively enforced: the husky pre-commit lint-staged hook correctly rejected this wave's first commit attempt of tsf/domain/keep-going.mjs for the same style; it was fixed to use braces everywhere and now passes oxlint/oxfmt cleanly before being committed. The old sibling files were never re-linted because lint-staged only checks files staged in a given commit.",
-      "actionTaken": "keep-going.mjs rewritten to satisfy curly/oxfmt before commit. No changes made to pre-existing sibling files (out of this wave's scope).",
-      "recommendedNextStep": "Separate decision for Tim: a dedicated pass to reformat the remaining tsf/domain/**, tsf/adapters/** files so a full `pnpm lint` run (not just lint-staged on new commits) is clean -- not part of this program."
+      "actionTaken": "keep-going.mjs rewritten to satisfy curly/oxfmt before commit. No changes made to pre-existing sibling files at the time (out of that wave's scope).",
+      "recommendedNextStep": "Separate decision for Tim: a dedicated pass to reformat the remaining tsf/domain/**, tsf/adapters/** files so a full `pnpm lint` run (not just lint-staged on new commits) is clean -- not part of this program.",
+      "update2026-08-19-eveningSprint": "M2 wave 5 needed to touch tsf/server/http-server.mjs and tsf/server/data-store.mjs; the husky pre-commit hook lints a staged file's FULL content, not just new lines, so the commit was rejected until all pre-existing curly/format/prefer-template issues in those two specific files were fixed (pure formatting, zero behavior change). This resolves LINT-CURLY-001 for those two files; tsf/domain/** and tsf/adapters/** siblings remain untouched, so the recommendedNextStep above still applies to them."
     },
     {
       "id": "CONCURRENT-SESSION-DIRTY-TSF-MAIN-001",
