@@ -178,14 +178,16 @@ export async function handleKeepGoingRoute(
     return true
   }
 
-  // Recovers a run whose in-flight wave stalled -- otherwise tickKeepGoingRun
-  // always routes to settleStep whenever inFlightWave is set (STALLED or
-  // not), silently re-checking the same stuck wave and discarding any new
-  // work item on every future "Run now" click with no signal that this
-  // happened (a real, live-confirmed gap: a manual UI acceptance test hit
-  // this exact stuck state with no way back to it through the product
-  // surface at all). Wraps the same abandonStalledWave already proven in
-  // waves 18/18b.
+  // Recovers a run whose in-flight wave stalled -- once run.state reaches
+  // STALLED, tickKeepGoingRun immediately NOOPs (it requires ACTIVE before
+  // even looking at inFlightWave) and the UI's own Run now form stops
+  // rendering entirely, so there was no path back to ACTIVE with the stuck
+  // wave cleared through the product surface at all (a real, live-confirmed
+  // gap: a manual UI acceptance test hit this exact stuck state). Wraps the
+  // same abandonStalledWave already proven in waves 18/18b -- the
+  // controller enforces run.state === 'STALLED' before calling it, since
+  // that domain function itself has no opinion on run state and would
+  // otherwise let this route abort a healthy, still-in-progress wave too.
   if (parts[3] === 'abandon-stalled-wave') {
     const body = await readBody(req)
     try {

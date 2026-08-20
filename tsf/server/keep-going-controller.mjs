@@ -89,20 +89,33 @@ export function resumeKeepGoingRun(opState, projectId, clock, expectedRevision) 
   return { opState: next, run: resumed }
 }
 
-// A real, live-confirmed gap: a run left STALLED with its in-flight wave
-// never fenced had NO path back to usability from the product surface at
-// all -- tickKeepGoingRun always routes to settleStep whenever
-// inFlightWave is set (STALLED or not), silently re-checking the SAME
-// stuck wave and discarding any new work item a caller supplies, with no
-// signal that this happened. abandonStalledWave already existed
-// (tsf/domain/keep-going.mjs, waves 18/18b) but was only ever reachable
-// from a raw script. Exposing it here is what actually lets an operator
-// recover a stalled run through the UI instead of needing one.
+// A real, live-confirmed gap: once a run's own state reached STALLED, it
+// had NO path back to usability from the product surface at all --
+// canResume only shows for PAUSED, and tickKeepGoingRun refuses to touch
+// anything but an ACTIVE run, so a STALLED run with its wave never fenced
+// was permanently wedged short of raw script access. abandonStalledWave
+// already existed (tsf/domain/keep-going.mjs, waves 18/18b) but was only
+// ever reachable that way. Exposing it here is what actually lets an
+// operator recover a stalled run through the UI instead of needing one.
 export function abandonKeepGoingStalledWave(opState, projectId, reason, clock, expectedRevision) {
   const run = keepGoingRunFor(opState, projectId)
   if (!run) {
     const error = new Error('no Keep Going run exists for this project')
     error.code = 'TSF_RUN_NOT_FOUND'
+    throw error
+  }
+  // abandonStalledWave itself has no opinion on run.state -- it only checks
+  // the tick lock and inFlightWave -- so without this guard, exposing it
+  // over HTTP would let any caller prematurely abort a perfectly healthy,
+  // still-in-progress ACTIVE wave (burning real retry budget on tasks that
+  // never actually stalled), not just recover a genuinely STALLED one. A
+  // real, independent-review-caught gap: the UI button is gated on STALLED,
+  // but nothing previously stopped a direct API call from bypassing that.
+  if (run.state !== 'STALLED') {
+    const error = new Error(
+      `this run is ${run.state}, not STALLED -- there is no stalled wave to abandon`
+    )
+    error.code = 'TSF_RUN_NOT_STALLED'
     throw error
   }
   let next = abandonStalledWave(

@@ -368,7 +368,7 @@ test("a stalled in-flight wave silently absorbs a later tick's new work item unt
   })
 })
 
-test('POST abandon-stalled-wave 422s honestly when there is no in-flight wave to abandon', async () => {
+test('POST abandon-stalled-wave 422s honestly when the run is not STALLED (an independent-review-caught gap: this must not let a caller abort a healthy in-progress wave)', async () => {
   await withServer(async (base) => {
     await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
       method: 'POST',
@@ -381,7 +381,7 @@ test('POST abandon-stalled-wave 422s honestly when there is no in-flight wave to
       body: JSON.stringify({})
     })
     assert.equal(res.status, 422)
-    assert.equal((await res.json()).code, 'TSF_NO_IN_FLIGHT_WAVE')
+    assert.equal((await res.json()).code, 'TSF_RUN_NOT_STALLED')
   })
 })
 
