@@ -340,6 +340,97 @@ test('a mid-wave dispatch failure records only the items actually dispatched, tr
   )
 })
 
+test('startOrchestrationWorker is called with the resolved fresh-terminal placement (worktree/agent), not just task', async () => {
+  const store = makeFakeStore(baseRun())
+  let seenArgs = null
+  await tickKeepGoingRun(
+    PROJECT_ID,
+    [{ id: 't1', scope: ['src/a.mjs'], worktree: 'C:/repo/wt1', agent: 'claude' }],
+    clock,
+    {
+      orchestration: okOrchestration({
+        startOrchestrationWorker: async (args) => {
+          seenArgs = args
+          return { ok: true, result: { taskId: args.task, dispatchId: 'ctx-1', state: 'ready' } }
+        }
+      }),
+      store
+    }
+  )
+  assert.equal(seenArgs.worktree, 'C:/repo/wt1')
+  assert.equal(seenArgs.agent, 'claude')
+  assert.equal(seenArgs.terminal, undefined)
+})
+
+test('startOrchestrationWorker is called with the resolved terminal-reuse placement, omitting worktree/agent', async () => {
+  const store = makeFakeStore(baseRun())
+  let seenArgs = null
+  await tickKeepGoingRun(
+    PROJECT_ID,
+    [{ id: 't1', scope: ['src/a.mjs'], workerTerminal: 'term_existing' }],
+    clock,
+    {
+      orchestration: okOrchestration({
+        startOrchestrationWorker: async (args) => {
+          seenArgs = args
+          return { ok: true, result: { taskId: args.task, dispatchId: 'ctx-1', state: 'ready' } }
+        }
+      }),
+      store
+    }
+  )
+  assert.equal(seenArgs.terminal, 'term_existing')
+  assert.equal(seenArgs.worktree, undefined)
+  assert.equal(seenArgs.agent, undefined)
+})
+
+test('a startOrchestrationWorker failure reports DISPATCH_FAILED honestly, distinct from a createOrchestrationTask failure', async () => {
+  const store = makeFakeStore(baseRun())
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      startOrchestrationWorker: async () => ({
+        ok: false,
+        reason: 'CLI_ERROR',
+        detail: 'agent failed to become ready'
+      })
+    }),
+    store
+  })
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.reason, 'CLI_ERROR')
+})
+
+test('two independent (disjoint-scope) items in the same batch that would both land fresh agents in worktree "current" are refused, not silently collided', async () => {
+  const store = makeFakeStore(baseRun())
+  let startCalls = 0
+  const result = await tickKeepGoingRun(PROJECT_ID, twoItems, clock, {
+    orchestration: okOrchestration({
+      startOrchestrationWorker: async (args) => {
+        startCalls += 1
+        return { ok: true, result: { taskId: args.task, dispatchId: 'ctx-1', state: 'ready' } }
+      }
+    }),
+    store
+  })
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.reason, 'UNSAFE_PLACEMENT_COLLISION')
+  assert.equal(startCalls, 0, 'neither colliding item should have been dispatched')
+})
+
+test('two independent items in the same batch with distinct explicit worktrees do not collide', async () => {
+  const store = makeFakeStore(baseRun())
+  const distinctItems = [
+    { id: 't1', scope: ['src/a.mjs'], worktree: 'C:/repo/wt1' },
+    { id: 't2', scope: ['src/b.mjs'], worktree: 'C:/repo/wt2' }
+  ]
+  const result = await tickKeepGoingRun(PROJECT_ID, distinctItems, clock, {
+    orchestration: okOrchestration(),
+    store
+  })
+  assert.equal(result.action, 'WAVE_DISPATCHED')
+  assert.equal(result.dispatchRecords.length, 2)
+})
+
 test('two overlapping ticks on the same run: the second is rejected outright, never attempting CLI work', async () => {
   const store = makeFakeStore(baseRun())
   let taskCreateCalls = 0

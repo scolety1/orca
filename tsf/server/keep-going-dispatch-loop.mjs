@@ -89,12 +89,39 @@ const COMPLETED_STATUSES = new Set(['completed', 'succeeded'])
 const FAILED_STATUSES = new Set(['failed', 'error'])
 
 // Each dispatched work item costs up to two sequential CLI round-trips
-// (task-create + dispatch), each up to the orchestration bridge's own 15s
+// (task-create + worker-start, the latter composing worktree/terminal/
+// readiness itself), each up to the orchestration bridge's own 15s
 // timeout, plus a comfortable buffer -- a fixed lock timeout sized for a
 // small wave would otherwise treat a legitimately still-working large-wave
 // dispatch as abandoned (a real review finding). Settle only ever makes
 // one listOrchestrationTasks call, so it keeps the base timeout.
 const PER_ITEM_LOCK_TIMEOUT_MS = 45_000
+
+// Resolves one work item's worker-start placement: reuse an existing
+// terminal verbatim, or launch fresh into item.worktree (default 'current')
+// with item.agent (default codex). `||`, not `??`, so an explicit empty
+// string still falls back rather than reaching startOrchestrationWorker's
+// own INVALID_ARGS rejection.
+function resolveWorkerPlacement(item) {
+  if (item.workerTerminal) {
+    return { terminal: item.workerTerminal }
+  }
+  return {
+    worktree: item.worktree || 'current',
+    agent: item.agent || DEFAULT_WORKER_AGENT,
+    ...(item.retryOf ? { retryOf: item.retryOf } : {})
+  }
+}
+
+// Two placements collide if they'd land fresh agents in the same worktree
+// (most commonly two items both defaulting to 'current') -- worker-start
+// always creates a NEW terminal for a fresh (non-reused) placement, so two
+// such items in one conflict-free-by-scope batch would still run
+// concurrently in the same physical directory, risking real git/file-state
+// collisions that scope-based batching was never meant to catch.
+function placementsCollide(a, b) {
+  return !a.terminal && !b.terminal && a.worktree === b.worktree
+}
 
 function runNotFoundError() {
   const error = new Error('no Keep Going run for this project')
@@ -224,7 +251,29 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
   // sequential-with-early-return shape.
   const dispatchRecords = []
   for (const batch of wavePlan.batches) {
-    for (const item of batch) {
+    const placements = batch.map((item) => ({ item, placement: resolveWorkerPlacement(item) }))
+    for (let i = 0; i < placements.length; i += 1) {
+      for (let j = i + 1; j < placements.length; j += 1) {
+        if (placementsCollide(placements[i].placement, placements[j].placement)) {
+          return commitPartialOrAbortedDispatch(
+            projectId,
+            store,
+            claimed,
+            clock,
+            wavePlan,
+            dispatchRecords,
+            orchestrationRunId,
+            orchestrationRunFreshlyCreated,
+            {
+              failedItem: placements[j].item.id,
+              reason: 'UNSAFE_PLACEMENT_COLLISION',
+              detail: `${placements[i].item.id} and ${placements[j].item.id} would both launch fresh agents into worktree '${placements[i].placement.worktree}' concurrently -- give each an explicit, distinct item.worktree or item.workerTerminal`
+            }
+          )
+        }
+      }
+    }
+    for (const { item, placement } of placements) {
       const taskResult = await orchestration.createOrchestrationTask({
         spec: item.spec ?? item.id,
         run: orchestrationRunId,
@@ -244,18 +293,12 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
         )
       }
       const taskId = taskResult.result.task.id
-      // startOrchestrationWorker (orca orchestration worker-start) is the
-      // documented, supervised dispatch path -- it composes worktree/
-      // terminal/readiness itself and only reports ok:true for a real
-      // "ready" state (see wave 19: the low-level dispatch --inject path
-      // this replaced could report success while the target agent never
-      // engaged with the task at all, with zero diagnostic signal).
+      // worker-start (not the low-level dispatch --inject path) -- see
+      // wave 19/20.
       const startResult = await orchestration.startOrchestrationWorker({
         task: taskId,
-        worktree: item.workerTerminal ? undefined : (item.worktree ?? 'current'),
-        terminal: item.workerTerminal,
-        agent: item.workerTerminal ? undefined : (item.agent ?? DEFAULT_WORKER_AGENT),
-        run: orchestrationRunId
+        run: orchestrationRunId,
+        ...placement
       })
       if (!startResult.ok) {
         return commitPartialOrAbortedDispatch(
