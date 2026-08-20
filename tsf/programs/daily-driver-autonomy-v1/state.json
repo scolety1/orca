@@ -517,6 +517,14 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Section G was amended 2026-08-19 with the EXPIRING_CAPACITY rule (state.json -> capacityPolicy.expiringCapacityRule): near a known reset, remaining capacity is used for small bounded useful work rather than left idle. Applied once this session (M2 wave 3, see capacityPolicy.expiringCapacityRule.applicationLog) -- one bounded task dispatched and independently verified GREEN. After that task, Codex's own UI signaled it was near its limit again, so per the rule's shrink-and-stop step no further Codex dispatch was queued this wave. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) is healthy again after the wave-8 session-limit reset, but multi-sub-agent review dispatch is being used more conservatively for the rest of tonight given that incident."
   },
   "lastDurableCheckpoint": {
+    "phase": "M2_WAVE_9_COMPLETE",
+    "at": "2026-08-19T21:24:41-06:00",
+    "commit": "050edbe5ce33ea2f4bdc2467a05ced5bf1cbfb2b",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Evening-sprint waves 4-9: fixture/dogfood domain proof, server controller + HTTP routes, browser-proven UI (Start/Pause/Resume/live display, gap/worker/verifier wiring), two independent code-review passes (first fully completed with 6 findings all addressed; second partial -- coordinator hit a Claude session limit after 1 of 8 finder-angle sub-agents completed, that one returned 4 more findings, 2 fixed [startKeepGoingRun revision race, raiseNeedsYou/resolveNeedsYou revision consistency] with regression tests, 2 documented as legitimate but too-large-for-tonight architectural gaps). 134/134 full tsf suite GREEN, UI typecheck/build clean, browser-reverified after each UI-affecting change. Verified intact via git cat-file immediately after commit; same pre-existing geometric-repack housekeeping failure as prior waves (GIT-HYGIENE-001), non-blocking."
+  },
+  "priorDurableCheckpoint4": {
     "phase": "M2_WAVE_7_COMPLETE_INDEPENDENT_REVIEW_ADDRESSED",
     "at": "2026-08-19T18:44:00-06:00",
     "commit": "5db085a1e19c152b0151b143ca4a8e6a80355be7",
