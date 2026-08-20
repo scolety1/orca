@@ -1163,7 +1163,7 @@
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": [
-        "HTTP wiring (extend POST /api/chat to call the bridge), the plan-capsule -> candidateWorkItems mapping, the bridge module itself, the UI Live Work Feed component, and the live fixture dogfood proof are all still pending -- see the design doc's rollout waves."
+        "Real repository-identity resolution, HTTP wiring, the UI Live Work Feed component, an independent review of the bridge, and the live fixture dogfood proof are all still pending -- see the design doc's rollout waves."
       ],
       "priority": "HIGHEST",
       "northStar": "Tim stays inside the TSF UI and says something natural in Planner Chat (\"Fix this,\" \"go ahead,\" \"build that,\" \"do the recommended next step\"). TSF understands the selected project/context, classifies intent and authority, has the planner create a bounded implementation plan, creates a real Orca Run/tasks using the already-adopted M2 orchestration/Keep Going primitives (not a second worker loop), dispatches Codex workers, supervises/retries/recovers via M2, surfaces real progress in TSF, routes genuine questions into Needs You, independently verifies substantive results, and stops consequential work at exact-candidate adoption.",
@@ -1216,6 +1216,16 @@
           "commit": "3802c3c40",
           "status": "IN_PROGRESS",
           "note": "Also fixed pre-existing curly-brace/prefer-template lint findings in chat-responder.mjs (mechanical, no behavior change) -- these were blocking the commit since lint-staged lints whole staged files, not diffs. Next: plan-capsule -> candidateWorkItems mapping (pure, tested) + the core chat-dispatch-bridge.mjs function (stub/fake-store tested, no live Orca calls in unit tests, matching M2's established methodology)."
+        },
+        {
+          "wave": 2,
+          "summary": "Built the plan-capsule mapping layer and the core chat-dispatch-bridge function. tsf/contracts/chat-work-plan-request.schema.v1.json (new): the LLM-facing subset of the existing TSF_PLAN_CAPSULE_V1 schema -- only \"planning judgment\" fields; deliberately excludes missionId/projectId/repository since a zero-tool planner call cannot know the real exact HEAD/tree and must never be asked to guess it. tsf/domain/plan-capsule-mapping.mjs (new, pure): buildPlanCapsule merges the model's work-plan request with caller-supplied real identity/repository into a full validated plan capsule (reusing the existing validate-capsules.mjs validator), always unioning in a mandatory prohibited-action floor (adoption/push-merge/deploy-publish/credentials/money/destructive-ops/major-direction) the model can add to but never remove -- defense in depth against a misbehaving or manipulated planner response, not just trusting its own system-prompt instructions. planCapsuleToCandidateWorkItem maps one capsule to exactly one Keep Going candidateWorkItem, requiring explicit placement, no silent default. tsf/server/chat-dispatch-bridge.mjs (new): planAndDispatchFromChat -- the one code path turning a chat message into a real Orca dispatch. Requires explicit placement + real repository identity before touching anything; reuses an existing ACTIVE run rather than duplicating; refuses to tick a PAUSED/NEEDS_YOU/STALLED run, pointing at M2's own existing recovery affordances instead of inventing a new one; creates a new run via the same withKeepGoingRun/startKeepGoingRun pattern the HTTP routes already use when none exists; dispatches through the real, unmodified tickKeepGoingRun.",
+          "testsAdded": 17,
+          "testsPassing": "266/266 full tsf suite GREEN",
+          "verifier": "SELF (stub/fake-store tested throughout, no live Orca CLI calls in unit tests, matching M2's established methodology); independent review scheduled once HTTP wiring + repository-identity resolution complete the bridge end to end",
+          "commit": "69814148a",
+          "status": "IN_PROGRESS",
+          "note": "Next: real repository-identity resolution (reuse repo-inspector.mjs's snapshotRepository rather than writing new git-shelling code), HTTP wiring (extend POST /api/chat to call the bridge for DISPATCH_REQUEST/FIX_REQUEST messages), then the UI Live Work Feed component."
         }
       ]
     },
@@ -1653,12 +1663,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M3_WAVE_1_RESEARCH_DESIGN_AND_LIVE_WORK_FEED_MAPPING_COMPLETE",
-    "at": "2026-08-20T20:32:05.202Z",
-    "commit": "3802c3c40",
+    "phase": "M3_WAVE_2_PLAN_CAPSULE_MAPPING_AND_DISPATCH_BRIDGE_CORE_COMPLETE",
+    "at": "2026-08-20T20:40:20.279Z",
+    "commit": "69814148a",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "M3 wave 1: research-first source inspection complete, design doc written (docs/tsf/M3_CHAT_DISPATCH_LIVE_WORK_FEED_V1.md), first real pure-logic pieces built and tested -- the Live Work Feed state-mapping function and chat's new DISPATCH_REQUEST intent (with the existing authority gate confirmed to still win over it). 249/249 suite green. Next: plan-capsule -> candidateWorkItems mapping + the core chat-dispatch-bridge.mjs function, stub-tested, no live Orca calls in unit tests."
+    "note": "M3 wave 2: built and tested the plan-capsule mapping layer (buildPlanCapsule/planCapsuleToCandidateWorkItem) and the core chat-dispatch-bridge function (planAndDispatchFromChat) -- the one path from a chat message to a real Orca dispatch through unmodified M2. 266/266 suite green, all stub/fake-store tested. Next: real repository-identity resolution (reuse repo-inspector.mjs), HTTP wiring, UI Live Work Feed component."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1948,5 +1958,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Per Tim's explicit direction, advanced the program from completed/adopted M2 into M3 (Chat -> Dispatch + Live Work Feed). currentMilestone set to M3, M3.status = CURRENT, M2 remains ADOPTED (f65debcb0903be46cf55335def87243ea44b30a8, tsf/main confirmed at 923294edc after the receipt commit), M8 remains on hold (APPROVED_RESEARCH_PLAN_ONLY_NOT_STARTED). Recorded M3's full north star, Live Work Feed state list/rule, chat authority preservation, required real-proof checklist, and the existing-M2-follow-ups policy verbatim from Tim's directive. Next: research-first source inspection of the existing chat/planner/routing code before designing M3's implementation."
+  },
+  "priorDurableCheckpoint30": {
+    "phase": "M3_WAVE_1_RESEARCH_DESIGN_AND_LIVE_WORK_FEED_MAPPING_COMPLETE",
+    "at": "2026-08-20T20:32:05.202Z",
+    "commit": "3802c3c40",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "M3 wave 1: research-first source inspection complete, design doc written (docs/tsf/M3_CHAT_DISPATCH_LIVE_WORK_FEED_V1.md), first real pure-logic pieces built and tested -- the Live Work Feed state-mapping function and chat's new DISPATCH_REQUEST intent (with the existing authority gate confirmed to still win over it). 249/249 suite green. Next: plan-capsule -> candidateWorkItems mapping + the core chat-dispatch-bridge.mjs function, stub-tested, no live Orca calls in unit tests."
   }
 }
