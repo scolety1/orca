@@ -177,10 +177,12 @@ test('startOrchestrationWorker passes --task/--worktree/--agent through for a fr
       agent: 'codex'
     })
     assert.equal(result.ok, true)
-    assert.equal(result.result.status, 'ready')
-    assert.equal(result.result.worker.taskId, 'task-1')
-    assert.equal(result.result.worker.worktree, 'current')
-    assert.equal(result.result.worker.agent, 'codex')
+    // Shape confirmed against a real live call: dispatchId/state/stage are
+    // top-level, not nested under a "worker" key.
+    assert.equal(result.result.state, 'ready')
+    assert.equal(result.result.taskId, 'task-1')
+    assert.ok(result.result.dispatchId)
+    assert.equal(result.result.launch.requested.agent, 'codex')
   })
 })
 
@@ -188,7 +190,9 @@ test('startOrchestrationWorker allows --terminal instead of --worktree/--agent t
   await withEnv(STUBBED, async () => {
     const result = await startOrchestrationWorker({ task: 'task-1', terminal: 'term_abc' })
     assert.equal(result.ok, true)
-    assert.equal(result.result.worker.agentTerminalHandle, 'term_abc')
+    const terminalEffect = result.result.effects.find((e) => e.kind === 'terminal')
+    assert.equal(terminalEffect.id, 'term_abc')
+    assert.equal(terminalEffect.action, 'reused')
   })
 })
 
@@ -214,7 +218,8 @@ test('showOrchestrationWorker passes --dispatch through', async () => {
   await withEnv(STUBBED, async () => {
     const result = await showOrchestrationWorker({ dispatch: 'ctx-1' })
     assert.equal(result.ok, true)
-    assert.equal(result.result.worker.dispatchId, 'ctx-1')
+    assert.equal(result.result.dispatch.id, 'ctx-1')
+    assert.equal(result.result.worker.dispatch_id, 'ctx-1')
   })
 })
 
