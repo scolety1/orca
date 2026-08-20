@@ -61,22 +61,21 @@ async function mutateThroughStore(projectId, controllerFn) {
 }
 
 // Rejects a malformed candidate work item BEFORE it ever reaches
-// tickKeepGoingRun -- planWave (tsf/domain/keep-going.mjs) throws a plain
-// Error (no .code) on a missing id/scope, and that throw happens AFTER
-// dispatchStep's claim() has already taken the tick lock, so an unvalidated
-// item reaching that far would wedge the run in "tick in progress" for
-// minutes before the domain's own stale-tick recovery kicks in (a real
-// review finding -- this HTTP route is the first path that lets untrusted
-// external input reach that call at all). Cheap, fails fast, never touches
-// the lock.
+// tickKeepGoingRun -- planWave's own validation (tsf/domain/keep-going.mjs)
+// throws AFTER dispatchStep's claim() has already taken the tick lock, so
+// an unvalidated item reaching that far would wedge the run in "tick in
+// progress" for minutes before dispatchStep's own catch releases it (a
+// real review finding -- this HTTP route is the first path that lets
+// untrusted external input reach that call at all). Cheap, fails fast,
+// never touches the lock. Mirrors planWave's own `!item.id` check exactly
+// (not a stricter typeof-string/non-blank check an earlier version used)
+// -- a real review finding was that a numeric id, accepted by planWave
+// directly, would be rejected only when routed through this HTTP layer,
+// two validation guards in the same feature silently disagreeing on what
+// "valid" means.
 function findInvalidWorkItem(candidateWorkItems) {
   return candidateWorkItems.find(
-    (item) =>
-      !item ||
-      typeof item.id !== 'string' ||
-      !item.id.trim() ||
-      !Array.isArray(item.scope) ||
-      item.scope.length === 0
+    (item) => !item?.id || !Array.isArray(item.scope) || item.scope.length === 0
   )
 }
 

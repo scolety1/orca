@@ -264,8 +264,12 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     // full dispatchTimeoutMs is what a real review finding caught: the
     // HTTP tick route now validates this shape itself, but this module is
     // also callable directly (scripts, tests) with no such guard in front.
+    // Uses the real error.code (planWave's own TSF_INVALID_WORK_ITEM),
+    // not a hardcoded label -- a real review finding was that hardcoding
+    // it here would misreport an unrelated planWave bug as bad caller
+    // input.
     return commitAbortedDispatch(projectId, store, claimed, clock, {
-      reason: 'INVALID_WORK_ITEM',
+      reason: error.code ?? 'PLAN_WAVE_ERROR',
       detail: error.message
     })
   }

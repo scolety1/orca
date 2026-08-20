@@ -314,7 +314,17 @@ export function planWave(run, candidateWorkItems, clock) {
   }
   for (const item of candidateWorkItems) {
     if (!item.id || !Array.isArray(item.scope) || item.scope.length === 0) {
-      throw new Error(`work item ${item.id ?? '(unknown)'} requires id and a non-empty scope`)
+      // .code lets a caller (keep-going-dispatch-loop.mjs's dispatchStep)
+      // distinguish this specific, expected validation failure from an
+      // unrelated bug elsewhere in this function -- a real review finding:
+      // catching ANY exception here and relabeling it INVALID_WORK_ITEM
+      // would misdiagnose a genuine planning-logic regression as bad
+      // caller input.
+      const error = new Error(
+        `work item ${item.id ?? '(unknown)'} requires id and a non-empty scope`
+      )
+      error.code = 'TSF_INVALID_WORK_ITEM'
+      throw error
     }
   }
   const cap = Math.max(1, run.budget.maxConcurrentWorkers)
