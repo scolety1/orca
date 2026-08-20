@@ -139,6 +139,14 @@
             "tsf/ui page: goal/usage-mode/budget/constraints/stop-conditions form + Start/Pause/Resume buttons + live display, backed by these real endpoints",
             "autonomous server-side wave-dispatch loop (out of scope for tonight)"
           ]
+        },
+        {
+          "wave": 6,
+          "summary": "Evening-sprint wave. UI half of the Keep Going acceptance criterion, closing it out: tsf/ui/src/components/keep-going/KeepGoingPanel.tsx (StartForm + LiveRun) added as a new 'Keep Going' tab on ProjectDetailPage.tsx, wired to the real wave-5 HTTP endpoints via 4 new api.ts client methods. StartForm collects goal, acceptance criteria (one per line), Usage Mode (pulled live from GET /api/routing, not hardcoded), constraints, and stop conditions, and posts to /keep-going/:id/start. LiveRun shows real state badge, phase, goal, acceptance-criteria badges, Usage Mode, waves completed, retry counts, constraints, stop conditions, open Needs You questions, last checkpoint, and a Ready-for-adoption badge -- every field read straight from the server's honest projection, nothing fabricated client-side. Pause/Resume buttons call the real endpoints and only show when the current state allows that transition. tsf/ui/src/lib/keep-going-types.ts added (kept separate from lib/types.ts to avoid pushing that already-over-limit file further past the repo's max-lines cap -- did not touch types.ts's pre-existing debt). tsf/ui had never been npm-installed in this environment (standalone package, deliberately outside the root pnpm workspace per pnpm-workspace.yaml) -- ran `npm install` once (19s, scoped only to tsf/ui, no root/Orca-core impact) to make typecheck/build/dev actually runnable; this surfaced and fixed real pre-existing lint debt in files touched (api.ts, ProjectDetailPage.tsx curly violations) the same way wave 5 did for the backend.",
+          "verification": "npm run typecheck: clean. npm run build: succeeds (vite production build, no errors). oxlint on every changed/new file: clean. oxfmt: clean. Full backend suite still 127/127 GREEN (no regressions from the server-side additions in prior waves). Browser-proven live against the real dev server (vite + the real tsf/server/http-server.mjs mounted as middleware, not a mock): started a real run on the always-present tsf-ui-capability-check fixture project with a real goal/2 criteria, confirmed the live display rendered correctly (ACTIVE, phase RUN_STARTED, waves 0, checkpoint timestamp), clicked Pause -> confirmed PAUSED/OPERATOR_PAUSED with Resume button shown, clicked Resume -> confirmed back to ACTIVE with Pause button shown. Screenshots taken at each step via mcp__claude-in-chrome. Dev server and browser tab both cleanly stopped/closed afterward; the local dev-state file the browser proof wrote (gitignored, never committed) was deleted.",
+          "verifier": "SELF -- evening-sprint pace, but this wave included genuine browser-based functional proof (not just unit tests), which is stronger evidence than waves 1-2/5's pure SELF unit-test verification",
+          "commit": null,
+          "honestScopeNote": "This closes the M2 acceptance criterion's UI text literally (goal/Usage Mode/budget/constraints/stop conditions/Start/Pause/Resume/live phase-gap-worker-retry-verifier-NeedsYou-ReadyForAdoption display all present and real). What remains for full M2 completion: (a) an autonomous wave-dispatch loop so a started run actually progresses through waves on its own (today Start/Pause/Resume are real but a run sits at 0 waves until the domain functions are driven by something -- currently only the fixture and a manual live-dispatch, not the UI-started run itself); (b) a combined live-Orca dogfood mission tying real dispatch to this exact UI flow; (c) independent (non-SELF) verification at the milestone gate. Recorded honestly rather than claiming M2 fully done."
         }
       ],
       "acceptanceCriteria": [
@@ -160,10 +168,10 @@
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": [
+        "no autonomous wave-dispatch loop -- a UI-started run does not yet progress through waves on its own; Start/Pause/Resume are real domain transitions but nothing drives planWave/recordWave for a live run today",
         "no bounded fixture/dogfood mission proving the full orchestration graph (run-create/task-create/dispatch) end to end -- wave 3 used a bare terminal dispatch, not the orchestration adapter's run/task/dispatch calls",
-        "no UI surface yet",
-        "mapOrchestrationFacts not yet wired into keep-going.mjs's detectStall/registerWave call sites",
-        "no candidate packaged yet"
+        "no candidate packaged yet",
+        "independent (non-SELF) verification not yet performed at the milestone-completion gate"
       ]
     },
     {
@@ -250,7 +258,7 @@
   "currentMilestone": "M2",
   "currentCandidate": null,
   "unresolvedGaps": [
-    "M2 UI surface and a real-project-level dogfood proof through the full orchestration graph (run-create/task-create/dispatch) do not exist yet -- waves 1-3 delivered the unit-tested governance module, the unit-tested orchestration adapter, the mapOrchestrationFacts projection, and one real (independently-verified) live Codex dispatch via a bare terminal, but not yet a mission proven end to end through orchestration run/task/dispatch"
+    "M2 has no autonomous wave-dispatch loop yet (a UI-started run does not self-drive through waves) and no real-project-level dogfood proof through the full orchestration graph (run-create/task-create/dispatch). Waves 1-6 delivered: the unit-tested governance module, the unit-tested orchestration adapter, the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal, the server controller + HTTP routes, and a browser-proven UI (Start/Pause/Resume/live display) -- the UI acceptance-criterion text is now genuinely satisfied, but the milestone as a whole still needs the dispatch loop, a combined live dogfood mission, and independent (non-SELF) verification before adoption."
   ],
   "blockers": [],
   "advisories": [
@@ -449,7 +457,7 @@
     "resolvedAt": "2026-08-19T20:22:00Z",
     "resolution": "Resumed per Tim's instruction after a Windows restart. Post-restart safety preflight (see resumePreflight) re-ran the same worker-list/HEAD checks plus a single harmless `codex doctor` probe -- the sandbox crash did not recur and the runtime reported healthy. Treated as cleared; M2 wave 2 proceeded without live Codex dispatch (Codex capacity still NEAR_LIMIT, unrelated to the crash)."
   },
-  "nextSafeAction": "M2 wave 3 (mapOrchestrationFacts) is complete and independently verified -- commit it, then continue with the UI surface (tsf/ui project-level Keep Going / Overnight controls backed by a tsf/server projection), which needs no Codex capacity. Codex is effectively at its expiring-capacity floor for this reset window (see providerCapacityStatus) -- per capacityPolicy.expiringCapacityRule, do not queue further Codex WORKER_* dispatch until either (a) a live re-check of `orca account list --json` plus the in-session TUI signal shows real headroom again, or (b) the weekly reset passes (~2026-08-20T05:20:51Z) and normal worker budget/concurrency is restored. After reset, immediately re-check capacity and reassess whether the bounded fixture/dogfood mission through the full orchestration graph (run-create/task-create/dispatch) is now a good EXPIRING_CAPACITY or normal-budget candidate.",
+  "nextSafeAction": "M2's UI acceptance criterion is now genuinely satisfied and browser-proven (wave 6). Under the executionWindow evening-sprint directive: continue toward the autonomous wave-dispatch loop (something that actually calls planWave/recordWave for a UI-started run against real or fixture work) as the next bounded, sprint-appropriate task -- size it down further as 11:20 PM approaches per capacityPolicy.expiringCapacityRule's shrink-and-stop guidance. Codex remains at its expiring-capacity floor until the ~2026-08-20T05:20:51Z reset (which coincides with the hard operator-return time) -- do not queue further Codex WORKER_* dispatch tonight; continue implementing directly (Claude/Sonnet 5, healthy). Enter RETURN_HANDOFF at ~23:05 local per executionWindow if not already at a clean boundary.",
   "authorityBoundaries": {
     "canAutoAdoptLocally": "Only into tsf/main, only via Section H's 14-condition checklist, ff-only merge, all gates GREEN",
     "cannotDo": [
