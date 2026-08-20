@@ -841,8 +841,8 @@
           },
           {
             "criterion": "UI: project-level 'Keep Going / Overnight' action with Start/Pause/Resume and live display",
-            "status": "PROVEN_HTTP_LEVEL_UI_NOT_CLICKED",
-            "evidence": "Wave 26: tickKeepGoingRun is wired to a real POST /api/keep-going/:projectId/tick route (validated input, tested against a stubbed Orca CLI end-to-end through the real production code path) and a Run now control exists in the actual KeepGoingPanel React UI (KeepGoingTickForm.tsx). Start/Pause/Resume were already real and HTTP-tested. Not yet done: nobody has launched the actual Electron app and clicked the button -- this is proven at the HTTP/production-code-path level (node --test + tsc typecheck), not via a real rendered-UI click-through. The Run now control is also deliberately single-item, not the full batch-planning UI this criterion originally describes. Attempted this session: invoked the $electron skill (per AGENTS.md, the required workflow for rendered Orca UI checks) to click through the new Run now control -- the skill is not available/registered in this environment. AGENTS.md explicitly forbids substituting computer-use for this validation, so no alternative was attempted rather than working around that constraint. This specific gap (an actual rendered-UI click-through of Start/Pause/Resume/Run now) remains genuinely open, disclosed, not fabricated as done."
+            "status": "PROVEN_LIVE",
+            "evidence": "Wave 26: tickKeepGoingRun is wired to a real POST /api/keep-going/:projectId/tick route (validated input, tested against a stubbed Orca CLI end-to-end through the real production code path) and a Run now control exists in the actual KeepGoingPanel React UI (KeepGoingTickForm.tsx). Start/Pause/Resume were already real and HTTP-tested. Not yet done: nobody has launched the actual Electron app and clicked the button -- this is proven at the HTTP/production-code-path level (node --test + tsc typecheck), not via a real rendered-UI click-through. The Run now control is also deliberately single-item, not the full batch-planning UI this criterion originally describes. Attempted this session: invoked the $electron skill (per AGENTS.md, the required workflow for rendered Orca UI checks) to click through the new Run now control -- the skill is not available/registered in this environment. AGENTS.md explicitly forbids substituting computer-use for this validation, so no alternative was attempted rather than working around that constraint. This specific gap (an actual rendered-UI click-through of Start/Pause/Resume/Run now) remains genuinely open, disclosed, not fabricated as done. RESOLVED: Tim performed the manual checklist against the real rendered tsf/ui product surface -- Start/Pause/Resume all PASS, and Run now triggered a real, independently-verified Orca dispatch (task_dd9e9dc6677f). This is the same production code path a cron-triggered or scripted call would use; the manual click-through closes the \"never reachable from the product surface\" gap completely."
           },
           {
             "criterion": "Proven via a bounded fixture/dogfood mission showing multiple waves, a revision, verification, pause/resume, no duplicate settled task, concise summary",
@@ -907,7 +907,29 @@
           }
         ],
         "m2BlockingItemsFound": [],
-        "recommendation": "M2 is not yet ready for Section H adoption. The single remaining acceptance blocker is the UI click-through above, which requires Tim (no compliant automated substitute exists and none should be invented). Nothing else in this review is classified M2_BLOCKING. Once Tim confirms the checklist passes, the packaging/adoption sequence (rerun suite, fresh independent verifier, immutable candidate, HEAD/tree confirmation, Orca-core-delta-0 confirmation, Section H evaluation) should proceed directly."
+        "recommendation": "M2 is not yet ready for Section H adoption. The single remaining acceptance blocker is the UI click-through above, which requires Tim (no compliant automated substitute exists and none should be invented). Nothing else in this review is classified M2_BLOCKING. Once Tim confirms the checklist passes, the packaging/adoption sequence (rerun suite, fresh independent verifier, immutable candidate, HEAD/tree confirmation, Orca-core-delta-0 confirmation, Section H evaluation) should proceed directly.",
+        "manualValidationResult": {
+          "schemaVersion": "TSF_M2_MANUAL_UI_VALIDATION_RESULT_V1",
+          "performedBy": "TIM",
+          "reportedAt": "2026-08-20T17:30:35.537Z",
+          "steps": {
+            "start": "PASS",
+            "pause": "PASS",
+            "resume": "PASS",
+            "runNow": "PASS -- real dispatch confirmed, see runNowEvidence"
+          },
+          "runNowEvidence": {
+            "projectId": "tsf-ui-capability-check",
+            "workItemId": "ui-run-now-smoke",
+            "taskId": "task_dd9e9dc6677f",
+            "dispatchId": "ctx_09caff86dbe2",
+            "orchestrationRunId": "run_5d7254db6a46",
+            "workerTerminalHandle": "term_15ab6262-b301-4e8f-9f73-362ea016fc60",
+            "worktree": "C:/Users/codex-agent/orca/workspaces/TSF_ORCA/tsf-autonomy-program-v1 (this repo -- worktree \"current\" resolved to it since the UI dev server ran from here)",
+            "independentVerification": "Read-only Orca CLI inspection (dispatch-show, task-list, worker-show, check --peek, terminal read) confirmed: task created, real worker-start dispatch (not the defective --inject path), real Codex terminal assigned and running, exactly 1 task on the Run (no duplicate), git status on the worktree clean (no files modified). The worker had not yet completed the trivial task at inspection time -- read the live terminal directly and found it still in Codex's own MCP-server startup phase (cloudflare-api MCP login incomplete), a local Codex/MCP config delay unrelated to TSF/Orca dispatch mechanics, not a dispatch failure. Not redispatched, not artificially settled -- left exactly as-is, a real, harmless, still-in-flight task.",
+            "conclusion": "Dispatch itself is unambiguously confirmed real and successful, satisfying the checklist's own pass criterion (a completed Codex response was explicitly not required). Task completion/settlement was still pending at inspection time and was not forced."
+          }
+        }
       }
     },
     {
