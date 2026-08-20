@@ -361,6 +361,41 @@ addressed the same session before proceeding to dogfood, as required.
 
 171/171 full suite GREEN, oxlint/oxfmt clean.
 
+## Wave 18: `abandonStalledWave` (formalizing a live-discovered recovery)
+
+The first real M2 live dogfood (BEDTIME_UNATTENDED session) hit a genuine
+stall: a real dispatch showed zero terminal activity and zero real file
+changes for 30+ minutes, correctly caught by the run's own stall watchdog.
+Recovery was improvised live by composing `resolveNeedsYou` +
+`recordTaskAttempt('RETRY')` + `settleInFlightWave` (honest
+`ABANDONED_STALLED` outcome) + `checkpointRun` -- all pre-existing, already-
+tested primitives, no new production code at the time. It worked, but
+was ad hoc and untested as a *unit*, and it surfaced a real, disclosed gap:
+`markStalled` alone never touched `retryCounts`, so repeated stalls of the
+same work item were never bounded the way repeated *failures* already are.
+
+`abandonStalledWave(run, reason, clock, expectedRevision)` formalizes that
+exact composition into one adversarially-tested domain function:
+
+- Revision-checked first, then tick-lock-checked (matching the module's
+  established order), then requires a real `inFlightWave`.
+- Consumes retry budget for every work item in the stalled wave via
+  `recordTaskAttempt('RETRY', ...)` -- closing the disclosed gap.
+- If that exhausts any item's budget, escalates to `NEEDS_YOU` (matching
+  the tick's own retry-budget-exceeded pattern) instead of silently
+  returning a run that looks ready to retry the same doomed item forever.
+- Settles the wave honestly (`ABANDONED_STALLED`, never claimed as
+  succeeded or failed) and checkpoints (`STALLED_WAVE_ABANDONED`).
+- Does **not** force the run back to `ACTIVE` -- it leaves `state`
+  untouched (a caller decides separately whether/how to resume), since
+  recovering from a stall and deciding to resume are different judgments.
+
+174/174 full suite GREEN, oxlint/oxfmt clean, max-lines ratchet clean.
+Not yet wired into the tick loop itself (that would mean the loop
+auto-recovers from its own stalls, a larger design decision -- deliberately
+left as a manually-invoked recovery primitive for this wave, consistent
+with the size of change appropriate this late in an unattended session).
+
 ## Correction: `curly` lint is enforced on staged files
 
 Earlier in this wave, `tsf/domain/*.mjs` (including already-adopted files

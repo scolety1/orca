@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  abandonStalledWave,
   checkpointRun,
   claimTick,
   compareStateToGoal,
@@ -517,6 +518,69 @@ test('transitionRun (pause/resume/markStalled/raiseNeedsYou) rejects an external
   const released = releaseTick(run, clock, run.revision)
   const paused = pauseRun(released, 'operator pause', clock, released.revision)
   assert.equal(paused.state, 'PAUSED')
+})
+
+test('abandonStalledWave honestly settles a stalled wave, consumes retry budget, and returns the run to a workable state', () => {
+  let run = baseRun({ budget: { maxRetriesPerTask: 1 } })
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  run = dispatchWave(run, plan, dispatchRecords, clock, run.revision)
+  run = markStalled(run, [{ dispatchId: 'ctx-1' }], clock)
+  assert.equal(run.state, 'STALLED')
+
+  const recovered = abandonStalledWave(run, 'zero activity for 30+ minutes', clock, run.revision)
+  assert.equal(recovered.inFlightWave, null, 'the stalled wave is cleared')
+  assert.equal(recovered.waves.length, 1, 'recorded honestly, not silently dropped')
+  assert.equal(recovered.waves[0].waveResult.outcomes[0].outcome, 'ABANDONED_STALLED')
+  assert.equal(recovered.retryCounts.t1, 1, 'consumed retry budget -- the real gap this closes')
+  assert.equal(recovered.checkpoints.at(-1).phase, 'STALLED_WAVE_ABANDONED')
+  // Not forced back to ACTIVE -- state stays whatever it already was
+  // (STALLED here) unless a caller separately resumes/reactivates it.
+  assert.equal(recovered.state, 'STALLED')
+
+  // A fresh dispatch is now possible (inFlightWave is clear).
+  const plan2 = planWave(recovered, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const redispatched = dispatchWave(recovered, plan2, dispatchRecords, clock, recovered.revision)
+  assert.ok(redispatched.inFlightWave, 'a real retry can now be dispatched')
+})
+
+test("abandonStalledWave escalates to NEEDS_YOU when abandoning exhausts a work item's retry budget", () => {
+  let run = baseRun({ budget: { maxRetriesPerTask: 0 } })
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  run = dispatchWave(run, plan, dispatchRecords, clock, run.revision)
+  run = markStalled(run, [{ dispatchId: 'ctx-1' }], clock)
+
+  const recovered = abandonStalledWave(run, 'stalled, budget already 0', clock, run.revision)
+  assert.equal(recovered.state, 'NEEDS_YOU')
+  assert.match(recovered.needsYou.at(-1).question, /t1/)
+  assert.equal(recovered.inFlightWave, null, 'still honestly settled despite the budget breach')
+})
+
+test('abandonStalledWave requires an in-flight wave and honors expectedRevision/tick-lock before it', () => {
+  const run = baseRun()
+  assert.throws(
+    () => abandonStalledWave(run, 'no wave to abandon', clock, run.revision),
+    (error) => error.code === 'TSF_NO_IN_FLIGHT_WAVE'
+  )
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  const dispatched = dispatchWave(run, plan, dispatchRecords, clock, run.revision)
+  assert.throws(
+    () => abandonStalledWave(dispatched, 'stale', clock, 0), // stale revision
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+  const locked = claimTick(dispatched, 'SETTLE', clock, dispatched.revision)
+  assert.throws(
+    () => abandonStalledWave(locked, 'a tick still holds this', clock, locked.revision),
+    (error) => error.code === 'TSF_TICK_IN_PROGRESS'
+  )
 })
 
 test('completeRun only reaches COMPLETE from ACTIVE, matching the gap-analysis stop decision', () => {

@@ -437,6 +437,83 @@ export function settleInFlightWave(run, waveResult, clock, expectedRevision) {
   return next
 }
 
+// Formalizes a genuine, honest recovery for a wave that stalled (or is
+// otherwise uncertain) -- discovered by hand during the first real M2 live
+// dogfood (a real dispatch showed zero activity for 30+ minutes; recovery
+// was improvised live by composing recordTaskAttempt/settleInFlightWave/
+// checkpointRun). That composition worked, but was ad hoc and untested as
+// a unit -- this closes that gap with one small, adversarially-tested
+// primitive rather than leaving future recovery to be reinvented each time.
+//
+// Consumes retry budget for every work item in the stalled wave (a real,
+// disclosed gap the same dogfood found: markStalled alone never touched
+// retryCounts, so repeated stalls of the same item were never bounded).
+// If any item's budget is now exceeded, escalates to NEEDS_YOU instead of
+// silently returning to ACTIVE -- a caller must not be handed a run that
+// looks ready to retry the same doomed item forever. The abandoned wave is
+// recorded honestly (outcome ABANDONED_STALLED) -- never claimed as
+// succeeded or failed, since it genuinely isn't known which it was.
+export function abandonStalledWave(run, reason, clock, expectedRevision) {
+  assertExpectedRevision(run, expectedRevision)
+  if (!run.inFlightWave) {
+    const error = new Error('no in-flight wave to abandon')
+    error.code = 'TSF_NO_IN_FLIGHT_WAVE'
+    throw error
+  }
+  if (isTickLockActive(run, clock)) {
+    const error = new Error(
+      `an autonomous tick (${run.tickLock.kind}) currently holds this run -- try again shortly`
+    )
+    error.code = 'TSF_TICK_IN_PROGRESS'
+    throw error
+  }
+  const { dispatchRecords } = run.inFlightWave
+  let next = run
+  const retryBudgetExceeded = []
+  for (const record of dispatchRecords) {
+    try {
+      next = recordTaskAttempt(next, record.workItemId, 'RETRY', clock, next.revision)
+    } catch (error) {
+      if (error.code === 'TSF_RETRY_BUDGET_EXCEEDED') {
+        retryBudgetExceeded.push(record.workItemId)
+      } else {
+        throw error
+      }
+    }
+  }
+  const waveResult = {
+    schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
+    outcomes: dispatchRecords.map((record) => ({
+      ...record,
+      outcome: 'ABANDONED_STALLED',
+      note: reason ?? null
+    })),
+    settledAt: isoNow(clock)
+  }
+  next = settleInFlightWave(next, waveResult, clock, next.revision)
+  next = checkpointRun(
+    next,
+    {
+      phase: 'STALLED_WAVE_ABANDONED',
+      note: reason ?? null,
+      evidence: dispatchRecords.map((r) => r.taskId)
+    },
+    clock
+  )
+  if (retryBudgetExceeded.length > 0) {
+    next = raiseNeedsYou(
+      next,
+      {
+        question: `Retry budget exceeded for stalled work item(s): ${retryBudgetExceeded.join(', ')} after being abandoned and retried. How should I proceed?`,
+        options: ['RETRY_ANYWAY', 'SKIP_AND_CONTINUE', 'BLOCK_RUN']
+      },
+      clock,
+      next.revision
+    )
+  }
+  return next
+}
+
 export function recordTaskAttempt(run, taskId, outcome, clock, expectedRevision) {
   assertExpectedRevision(run, expectedRevision)
   const next = deepClone(run)

@@ -512,6 +512,48 @@
             "sequential-within-batch dispatch (wave 15b finding 5)",
             "document/request-level concurrency in data-store.mjs's OTHER (non-keep-going) routes (wave 8 finding 4, wave 11 findings 1/6) -- still correctly out of scope beyond keepGoingRuns"
           ]
+        },
+        {
+          "wave": 17,
+          "summary": "First real M2 live multi-wave dogfood attempt, Tim-authorized, run during BEDTIME_UNATTENDED mode. Created a real Keep Going run for colety-labs-sales-engine (low-risk pilot repo) via createOvernightRun/withKeepGoingRun -- the same production code path a UI Start action uses -- with a real 2-wave goal (two small doc-file additions) and a dedicated worktree+Codex terminal. Real dispatch #1 (task_fd9a12aed26d) via orca-orchestration-bridge.mjs's real functions genuinely stalled: zero terminal activity and zero real file changes for 30+ minutes, correctly caught by the run's own stallThresholdMs watchdog -- a real, unplanned, valuable proof of the 'stalled-worker escalation' M2 acceptance requirement (stronger than a synthetic demo, since it was never deliberately engineered). Recovered via a bounded, deliberate sequence of already-tested primitives (see wave 18). Real dispatch #2 (a single bounded retry, fresh terminal, task_90733c34c8cc) reproduced the identical zero-activity signature within under a minute -- confirmed with the strongest available evidence (direct filesystem inspection of the target worktree: docs/m2-live-dogfood/ absent, git status clean), pointing at a likely issue with `orchestration dispatch --inject` delivery specifically (see blockers.ORCA_DISPATCH_INJECT_NOT_DELIVERING_001), distinct from the earlier (resolved) sandbox-helper execution issue. Per Tim's explicit BEDTIME_UNATTENDED fallback, stopped after the one bounded retry rather than attempting a third dispatch -- raised a real NEEDS_YOU with the in-flight wave left exactly as fenced/uncertain, not claimed settled. Both stalled terminals and the dogfood worktree left running/untouched for inspection. No TSF code was changed to work around the dispatch issue itself.",
+          "realIdsForRecovery": {
+            "keepGoingRunId": "keep-going-colety-labs-sales-engine-1787209970594",
+            "orchestrationRunId": "run_5aa5b6d8b029",
+            "attempt1": {
+              "taskId": "task_fd9a12aed26d",
+              "dispatchId": "ctx_705c7ef59e6f",
+              "terminal": "term_f9545f57-abba-4b18-90a3-12d246ae65de",
+              "outcome": "stalled 30+ min, recovered honestly (ABANDONED_STALLED)"
+            },
+            "attempt2": {
+              "taskId": "task_90733c34c8cc",
+              "dispatchId": "ctx_76d5b2a8ed87",
+              "terminal": "term_68df46d7-c1de-4e35-8d7d-6b2081f1af09",
+              "outcome": "identical zero-activity signature within <1 min; left fenced, run in NEEDS_YOU"
+            },
+            "worktree": "C:/Users/codex-agent/orca/workspaces/colety-labs-sales-engine/tsf-m2-live-dogfood-v1"
+          },
+          "testsAdded": 0,
+          "testsPassing": "No TSF code changed by this wave itself (live dispatch + recovery only); 171/171 full tsf suite unaffected.",
+          "verifier": "SELF (live operational judgment during an unattended session) -- both the stall-escalation proof and the dispatch-mechanism finding are real, evidence-based, not asserted from theory",
+          "commit": "f0300c803c07922bf8c9154a64edbaf928602826 (BEDTIME_UNATTENDED checkpoint) + d58ecacbc08891389c7f28c7e5f5bf7a7d4f5daa (recovery outcome) + 7a456670eca6674304b9f9519dd75b78190584ef (TIM_REQUIRED stop)",
+          "deferredToNextWave": [
+            "resume the SAME live keepGoingRun (not a new mission) once blockers.ORCA_DISPATCH_INJECT_NOT_DELIVERING_001 is confirmed resolved -- see bedtimeUnattendedMode2026-08-20T01:40 for the exact recovery runbook",
+            "wave 2 of the dogfood goal (DOGFOOD_MARKER_WAVE_2_ADDED), pause/resume demonstration against the live run, packaging M2 as a candidate, and Section H adoption evaluation all remain blocked on the same dispatch-mechanism question"
+          ]
+        },
+        {
+          "wave": 18,
+          "summary": "Formalized wave 17's live-improvised stall recovery into abandonStalledWave, one new adversarially-tested domain function (tsf/domain/keep-going.mjs) composing recordTaskAttempt('RETRY') + settleInFlightWave(honest ABANDONED_STALLED outcome) + checkpointRun, revision-checked and tick-lock-checked first per the module's established order. Closes a real, disclosed gap wave 17 found: markStalled alone never consumed retry budget, so repeated stalls of the same work item were never bounded the way repeated failures already are -- abandonStalledWave now escalates to NEEDS_YOU if abandoning exhausts a work item's budget, rather than silently leaving a run that looks ready to retry the same doomed item forever. Does not force the run back to ACTIVE (leaves state as-is; resuming is a separate caller decision). Not yet wired into the tick loop's own automatic recovery -- deliberately left as a manually-invoked primitive this wave, a larger design decision appropriately deferred.",
+          "testsAdded": 3,
+          "testsPassing": "3 net new (honest settle + retry-budget consumption; NEEDS_YOU escalation on budget exhaustion; requires-in-flight-wave + revision-first + tick-lock guard ordering); 174/174 full tsf suite GREEN (no regressions); oxlint clean; oxfmt clean; max-lines ratchet clean.",
+          "verifier": "SELF -- new function composed entirely from already-independently-verified primitives (recordTaskAttempt, settleInFlightWave, checkpointRun, raiseNeedsYou, isTickLockActive), each already adversarially tested in prior waves; the NEW composition itself is unit-tested here but not yet independently (non-SELF) reviewed",
+          "commit": null,
+          "deferredToNextWave": [
+            "independent review of abandonStalledWave specifically (SELF-only so far)",
+            "wiring abandonStalledWave into the tick loop's own automatic recovery (a larger design decision, deliberately deferred)",
+            "resuming the wave 17 live dogfood once the dispatch-mechanism blocker is resolved"
+          ]
         }
       ],
       "acceptanceCriteria": [
