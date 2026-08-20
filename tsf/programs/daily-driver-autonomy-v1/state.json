@@ -1277,6 +1277,16 @@
           "commit": "1fa6d6016",
           "status": "INDEPENDENTLY_VERIFIED_CLEAN",
           "note": "oxlint/oxfmt/tsc/max-lines-ratchet all clean; tsf/ui production build confirmed green post-format. No outstanding findings remain against M3 waves 1-7. Next: prove the remaining also-prove checklist items (a worker question surfacing as Needs You, a bounded revision request, stalled/failed worker recovery reuse) via HTTP-level tests, then the live fixture dogfood proof (real Codex dispatch against tsf-ui-capability-check, checking live capacity via orca account list --json first), then Tim's manual UI acceptance checklist, then final packaging/adoption."
+        },
+        {
+          "wave": 8,
+          "summary": "Closed 2 of the 3 remaining also-prove checklist items, both proven at the HTTP level against the real Keep Going engine (stub Orca CLI, real repository identity), reusing M2's own unmodified mechanisms end to end: (1) a worker exhausting its retry budget escalates to a real Needs You question via recordTaskAttempt/raiseNeedsYou (keep-going-dispatch-loop.mjs, untouched) -- chat's 'what should we do next?' surfaces the exact real question text. Disclosed honestly in the test itself: the chat bridge mints a fresh work-item id per message today (buildPlanCapsule's missionId defaults to a fresh timestamp), so there is no 'retry this exact item' affordance reachable purely by repeating a chat message yet -- the 3-cycle escalation models a caller that resubmits the identical item directly via tickKeepGoingRun, proving the real M2 escalation mechanism rather than reimplementing or faking it. (2) a silently non-progressing worker is detected STALLED by the exact same dispatch-loop stall-detection code (a fake clock forces the 30-minute stallThresholdMs, since no HTTP route exposes a controllable clock -- correctly so), surfaces honestly through chat, and recovers via the real abandon-stalled-wave HTTP route the UI's own button already calls -- after which chat can dispatch fresh work again from the same run.",
+          "testsAdded": 2,
+          "testsPassing": "303/303 full tsf suite GREEN",
+          "verifier": "SELF (HTTP-level tested against the real engine); independent review to be commissioned before the live fixture dogfood proof",
+          "commit": "26166ae26",
+          "status": "IN_PROGRESS",
+          "note": "Also-prove checklist: fully closed except a bounded revision request via chat feedback (last remaining item). Disclosed gap surfaced by wave 8's own test: the chat dispatch bridge has no 'retry the identical work item' affordance today -- every dispatch-worthy chat message mints a fresh missionId/work-item id, so M2's own per-work-item retry-budget escalation is currently only reachable by a caller resubmitting the same item directly (not yet by an operator literally repeating 'try again' in chat). Recorded as a real, disclosed, non-blocking M3 gap -- not silently claimed as solved. Next: prove the bounded-revision-request item, commission an independent review of waves 7-8, then the live fixture dogfood proof, Tim's manual UI acceptance checklist, final packaging/adoption."
         }
       ]
     },
