@@ -524,11 +524,11 @@ this diff is the next step before resuming the live M2 dogfood.
 
 Resuming the parked wave-17 dogfood run through the repaired path failed
 immediately with a real, previously-unknown Orca error: `consumer_fenced`
-("This coordinator terminal is bound to run_X, not run_Y"). A coordinator
+("This coordinator terminal is bound to run*X, not run_Y"). A coordinator
 CLI identity is bound to exactly one Run at a time (confirmed via `orca
 skills get orchestration --full`: a Run is only a durable namespace/inbox,
 and new orchestration messages/tasks belong to whichever Run the
-coordinator is _currently_ bound to) -- this identity had auto-bound to
+coordinator is \_currently* bound to) -- this identity had auto-bound to
 wave 19's disposable proof Run and never rebound. Not caught by wave 19's
 proof because that proof always created a fresh (auto-bound) Run; only
 surfaces when _reusing_ a persisted `orchestrationRunId` from a new CLI
@@ -578,3 +578,25 @@ entries for the full trail and live-proof evidence, including two complete
 live dogfood missions (a resumed parked run reaching `COMPLETE`, and a
 Pause/Resume-under-a-real-in-flight-wave proof) run through the repaired
 path end to end.
+
+## Wave 25: fourth review pass -- the last real bugs in the guard
+
+A fourth review (of wave 24) found the cross-batch fix had introduced its
+own new bug: the id-keyed `Map` lookup silently misrouted a dispatch if
+`candidateWorkItems` ever contained a duplicate id, since nothing
+validated uniqueness. Fixed by going back to carrying `{item, placement}`
+pairs positionally through the whole flow instead of looking them up by
+id afterward. Also fixed `normalizePlacementPath` falsely colliding two
+distinct, case-differing Orca selector forms (`branch:Feature-X` vs
+`branch:feature-x`) by only case/slash-normalizing bare filesystem paths,
+comparing recognized selector prefixes (`branch:`/`name:`/`id:`/`issue:`/
+`path:`) verbatim; and threaded `item.retryOf` through the terminal-reuse
+placement branch too (previously only the fresh-placement branch got it).
+Two gaps remain disclosed, not fixed: a fresh placement and a
+terminal-reuse placement targeting the same physical worktree are never
+cross-checked (no lookup exists from a terminal handle to its current
+worktree), and canonicalizing one Orca selector form against a
+differently-shaped one naming the same place needs Orca-side resolution.
+Per the review's own assessment, neither blocks the live dispatch use
+already proven working this session. Treated as the last review round on
+this code path for tonight.
