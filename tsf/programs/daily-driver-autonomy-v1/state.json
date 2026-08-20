@@ -1146,17 +1146,64 @@
     {
       "id": "M3",
       "name": "Chat -> Dispatch + Live Work Feed",
-      "status": "NOT_STARTED",
+      "status": "CURRENT",
       "acceptanceCriteria": [
-        "Planner Chat can bind a request to selected project, classify intent/authority, get a bounded plan, and create real Orca Run/tasks",
-        "Workers dispatched from chat without Tim opening Orca terminals manually",
-        "Live Work Feed shows only real Orca-sourced states (Working/Waiting/Blocked/Needs You/Verifying/Ready for Adoption/Completed), no fabricated states",
-        "Drill-down/open-in-Orca available for technical detail",
-        "Planner Chat never bypasses authority gates"
+        "Planner Chat can bind a natural-language request to the selected project, classify intent AND authority (AUTO_DECIDE / RECOMMEND_AND_PROCEED / TIM_REQUIRED), and never silently authorize adoption/push/merge/deploy/publish/credentials/paid-services/destructive-ops/major-product-direction decisions",
+        "The planner creates a bounded implementation plan from that classified request -- not a fabricated or unbounded one",
+        "A real Orca Run/tasks are created via the already-adopted M2 orchestration/Keep Going primitives (tickKeepGoingRun / keep-going-dispatch-loop.mjs / the orchestration bridge) -- no second, parallel worker-dispatch loop is invented",
+        "Codex workers are dispatched from chat without Tim manually creating a worktree, starting Codex, or shuttling worker output",
+        "Stalled/failed workers are supervised/retried/recovered using M2's existing mechanisms (stall watchdog, retry budget, abandon-stalled-wave, NEEDS_YOU escalation) -- not a new recovery loop",
+        "The Live Work Feed shows only real, Orca/TSF-sourced states from {PLANNING, WORKING, WAITING, VERIFYING, STALLED, NEEDS_YOU, REVISION, READY_FOR_ADOPTION, COMPLETED} -- no fabricated status -- with drill-down/Open in Orca for raw technical detail",
+        "Genuine worker questions route into Needs You, surfaced through chat/the Work Feed, not silently dropped or auto-answered",
+        "Substantive results are independently verified before being trusted -- no worker self-report treated as done, matching M2's own verification discipline",
+        "Consequential work stops at exact-candidate adoption -- chat cannot itself trigger local adoption; that remains a separate, gated step",
+        "Proven end to end via a safe fixture: natural-language chat request -> governed plan -> real Orca Run/tasks -> real Codex worker -> live Work Feed -> independent verifier -> READY_FOR_ADOPTION, with Tim never manually touching a worktree/terminal/Codex session",
+        "Also proven: a follow-up \"what is it doing?\" chat query returns real state; a worker question appears as Needs You; a bounded revision can be requested via chat feedback; switching projects cannot leak another project's context; no duplicate dispatch; authority interception holds"
       ],
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started; depends on M2 controller existing"]
+      "gaps": ["Research-first source inspection not yet started -- see waves for progress."],
+      "priority": "HIGHEST",
+      "northStar": "Tim stays inside the TSF UI and says something natural in Planner Chat (\"Fix this,\" \"go ahead,\" \"build that,\" \"do the recommended next step\"). TSF understands the selected project/context, classifies intent and authority, has the planner create a bounded implementation plan, creates a real Orca Run/tasks using the already-adopted M2 orchestration/Keep Going primitives (not a second worker loop), dispatches Codex workers, supervises/retries/recovers via M2, surfaces real progress in TSF, routes genuine questions into Needs You, independently verifies substantive results, and stops consequential work at exact-candidate adoption.",
+      "liveWorkFeedStates": [
+        "PLANNING",
+        "WORKING",
+        "WAITING",
+        "VERIFYING",
+        "STALLED",
+        "NEEDS_YOU",
+        "REVISION",
+        "READY_FOR_ADOPTION",
+        "COMPLETED"
+      ],
+      "liveWorkFeedRule": "No fabricated status -- every state shown must be sourced from real Orca/TSF facts (task/dispatch status, run state, checkpoint phase), the same discipline M2 established (projectKeepGoingRun never invents workers/verifierResults it cannot back with real data). Drill-down/Open in Orca available for raw technical detail; Tim should not normally need Orca terminals.",
+      "chatAuthority": {
+        "preserve": ["AUTO_DECIDE", "RECOMMEND_AND_PROCEED", "TIM_REQUIRED"],
+        "chatMustNeverSilentlyAuthorize": [
+          "adoption",
+          "push/merge",
+          "deploy/publication",
+          "credentials",
+          "money/paid services",
+          "destructive operations",
+          "major product-direction decisions"
+        ]
+      },
+      "requiredRealProof": {
+        "fixture": "A safe fixture or similarly bounded low-risk test project -- not NWR, HouseOS, EasyLife, Worldforge, or other important real repos.",
+        "primaryProof": "Tim types a natural-language work request in TSF Planner Chat -> TSF planner creates governed work -> real Orca Run/tasks -> real Codex worker -> live TSF Work Feed -> independent verifier -> exact candidate becomes READY_FOR_ADOPTION. Tim must not manually create a worktree, start Codex, or shuttle worker output.",
+        "alsoProve": [
+          "a follow-up chat message (\"what is it doing?\") receives real state, not a canned/fabricated answer",
+          "a worker question surfaces as a real Needs You entry",
+          "user feedback can request a bounded revision",
+          "project switching cannot leak another project's work/context",
+          "a stalled/failed worker reuses M2 recovery (abandon-stalled-wave / retry-budget / NEEDS_YOU), not a new mechanism",
+          "no duplicate dispatch",
+          "authority interception still works (chat cannot silently authorize the forbidden actions above)"
+        ]
+      },
+      "existingM2FollowUpsPolicy": "Do not reopen M2 merely for its disclosed non-blocking gaps. The two dangling pre-wave-32/38 Orca tasks (task_dd9e9dc6677f, task_897ba46be9b8 on run_5d7254db6a46) remain SAFE_FOLLOWUP/M3_OR_LATER -- clean them only if ownership and safety are proven and doing so materially helps M3, not as a default action.",
+      "waves": []
     },
     {
       "id": "M4",
@@ -1295,7 +1342,7 @@
       ]
     }
   ],
-  "currentMilestone": "M2",
+  "currentMilestone": "M3",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
@@ -1592,12 +1639,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_ADOPTED_INTO_TSF_MAIN",
-    "at": "2026-08-20T20:08:22.756Z",
-    "commit": "f65debcb0903be46cf55335def87243ea44b30a8",
+    "phase": "M3_STARTED_CHARTER_UPDATED",
+    "at": "2026-08-20T20:19:10.846Z",
+    "commit": null,
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "M2 (Keep Going / Overnight V1) locally adopted into tsf/main via git merge --ff-only. Previous tsf/main HEAD de105fb4632d7e8a297d824963f931dcd4eb858e recorded for rollback. An unrelated staged onboarding-revert found in tsf/main's working tree at adoption time was investigated read-only, proven via exact tree/diff hash comparison to be an unattributed, uncorroborated git-revert of the onboarding-v1 commit, backed up in full outside the repo (C:\\TSF_STAGED_CHANGE_RECOVERY), and removed only after Tim's explicit review and authorization. 228/228 suite green post-adoption. No push/PR/deploy/publish. M3 may now begin."
+    "note": "Per Tim's explicit direction, advanced the program from completed/adopted M2 into M3 (Chat -> Dispatch + Live Work Feed). currentMilestone set to M3, M3.status = CURRENT, M2 remains ADOPTED (f65debcb0903be46cf55335def87243ea44b30a8, tsf/main confirmed at 923294edc after the receipt commit), M8 remains on hold (APPROVED_RESEARCH_PLAN_ONLY_NOT_STARTED). Recorded M3's full north star, Live Work Feed state list/rule, chat authority preservation, required real-proof checklist, and the existing-M2-follow-ups policy verbatim from Tim's directive. Next: research-first source inspection of the existing chat/planner/routing code before designing M3's implementation."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1871,5 +1918,13 @@
     "commitTree": "a89a4276678425b608541d30a30d65a38b3a1b3f",
     "workingTreeClean": true,
     "note": "M2 fully GREEN per a fresh holistic independent verifier (all 12 acceptance criteria, 228/228 suite, all mechanical Section H gates confirmed). The immutable candidate is packaged (this exact HEAD/tree). Adoption itself is blocked: C:\\TSF_ORCA (the tsf/main worktree) has a large, unrelated, fully-staged-but-uncommitted change (an onboarding-feature removal, 24 files) that predates and has nothing to do with M2. Did not touch it. TIM_REQUIRED before any git merge --ff-only can be attempted. Do not begin M3."
+  },
+  "priorDurableCheckpoint28": {
+    "phase": "M2_ADOPTED_INTO_TSF_MAIN",
+    "at": "2026-08-20T20:08:22.756Z",
+    "commit": "f65debcb0903be46cf55335def87243ea44b30a8",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "M2 (Keep Going / Overnight V1) locally adopted into tsf/main via git merge --ff-only. Previous tsf/main HEAD de105fb4632d7e8a297d824963f931dcd4eb858e recorded for rollback. An unrelated staged onboarding-revert found in tsf/main's working tree at adoption time was investigated read-only, proven via exact tree/diff hash comparison to be an unattributed, uncorroborated git-revert of the onboarding-v1 commit, backed up in full outside the repo (C:\\TSF_STAGED_CHANGE_RECOVERY), and removed only after Tim's explicit review and authorization. 228/228 suite green post-adoption. No push/PR/deploy/publish. M3 may now begin."
   }
 }
