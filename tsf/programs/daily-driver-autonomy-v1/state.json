@@ -120,7 +120,7 @@
           "testsAdded": 1,
           "testsPassing": "1/1 new; 119/119 full tsf suite (no regressions); oxlint clean; oxfmt clean",
           "verifier": "SELF -- pure fixture composing already-independently-reasoned-about domain/adapter functions; scheduled for a genuine independent pass alongside the milestone-completion gate given the evening-sprint pace",
-          "commit": null,
+          "commit": "c882de645d74b04e610a4e88235902f78c314250",
           "honestScopeNote": "This is a domain+adapter-level fixture proof (synthetic goal, no real Orca worktree/terminal dispatch) -- distinct from wave 3's real live Codex dispatch. Neither wave alone is the full 'bounded fixture/dogfood mission' acceptance criterion as originally scoped (a single mission combining a real multi-wave Orca dispatch loop with this governance proof); together they cover it in spirit but a fully combined live proof remains a gap, recorded honestly rather than overclaimed.",
           "deferredToNextWave": [
             "UI: project-level Keep Going / Overnight controls (tsf/server projection + tsf/ui page)",
@@ -134,7 +134,7 @@
           "testsPassing": "8/8 new (5 controller unit tests + 3 HTTP integration tests); 127/127 full tsf suite (no regressions); oxlint clean; oxfmt clean",
           "lintNote": "The husky pre-commit hook lints the FULL content of any staged file, not just changed lines -- committing touched http-server.mjs/data-store.mjs (both pre-existing LINT-CURLY-001 debt) was rejected outright until every curly/format/prefer-template issue in those two files was fixed, not only the new route blocks. Fixed all of it (pure formatting, zero behavior change) rather than working around the hook. This effectively resolves LINT-CURLY-001 for these two files; other pre-existing tsf/domain/** files remain untouched per that advisory's original scope.",
           "verifier": "SELF -- evening-sprint pace; scheduled for genuine independent verification at the milestone-completion gate",
-          "commit": null,
+          "commit": "eadae6965470cfcff2b230b8b852640f01627349",
           "deferredToNextWave": [
             "tsf/ui page: goal/usage-mode/budget/constraints/stop-conditions form + Start/Pause/Resume buttons + live display, backed by these real endpoints",
             "autonomous server-side wave-dispatch loop (out of scope for tonight)"
@@ -145,7 +145,7 @@
           "summary": "Evening-sprint wave. UI half of the Keep Going acceptance criterion, closing it out: tsf/ui/src/components/keep-going/KeepGoingPanel.tsx (StartForm + LiveRun) added as a new 'Keep Going' tab on ProjectDetailPage.tsx, wired to the real wave-5 HTTP endpoints via 4 new api.ts client methods. StartForm collects goal, acceptance criteria (one per line), Usage Mode (pulled live from GET /api/routing, not hardcoded), constraints, and stop conditions, and posts to /keep-going/:id/start. LiveRun shows real state badge, phase, goal, acceptance-criteria badges, Usage Mode, waves completed, retry counts, constraints, stop conditions, open Needs You questions, last checkpoint, and a Ready-for-adoption badge -- every field read straight from the server's honest projection, nothing fabricated client-side. Pause/Resume buttons call the real endpoints and only show when the current state allows that transition. tsf/ui/src/lib/keep-going-types.ts added (kept separate from lib/types.ts to avoid pushing that already-over-limit file further past the repo's max-lines cap -- did not touch types.ts's pre-existing debt). tsf/ui had never been npm-installed in this environment (standalone package, deliberately outside the root pnpm workspace per pnpm-workspace.yaml) -- ran `npm install` once (19s, scoped only to tsf/ui, no root/Orca-core impact) to make typecheck/build/dev actually runnable; this surfaced and fixed real pre-existing lint debt in files touched (api.ts, ProjectDetailPage.tsx curly violations) the same way wave 5 did for the backend.",
           "verification": "npm run typecheck: clean. npm run build: succeeds (vite production build, no errors). oxlint on every changed/new file: clean. oxfmt: clean. Full backend suite still 127/127 GREEN (no regressions from the server-side additions in prior waves). Browser-proven live against the real dev server (vite + the real tsf/server/http-server.mjs mounted as middleware, not a mock): started a real run on the always-present tsf-ui-capability-check fixture project with a real goal/2 criteria, confirmed the live display rendered correctly (ACTIVE, phase RUN_STARTED, waves 0, checkpoint timestamp), clicked Pause -> confirmed PAUSED/OPERATOR_PAUSED with Resume button shown, clicked Resume -> confirmed back to ACTIVE with Pause button shown. Screenshots taken at each step via mcp__claude-in-chrome. Dev server and browser tab both cleanly stopped/closed afterward; the local dev-state file the browser proof wrote (gitignored, never committed) was deleted.",
           "verifier": "SELF -- evening-sprint pace, but this wave included genuine browser-based functional proof (not just unit tests), which is stronger evidence than waves 1-2/5's pure SELF unit-test verification",
-          "commit": null,
+          "commit": "851ecbe4520b53ef851398eb578b2a336fcc59d2",
           "honestScopeNote": "This closes the M2 acceptance criterion's UI text literally (goal/Usage Mode/budget/constraints/stop conditions/Start/Pause/Resume/live phase-gap-worker-retry-verifier-NeedsYou-ReadyForAdoption display all present and real). What remains for full M2 completion: (a) an autonomous wave-dispatch loop so a started run actually progresses through waves on its own (today Start/Pause/Resume are real but a run sits at 0 waves until the domain functions are driven by something -- currently only the fixture and a manual live-dispatch, not the UI-started run itself); (b) a combined live-Orca dogfood mission tying real dispatch to this exact UI flow; (c) independent (non-SELF) verification at the milestone gate. Recorded honestly rather than claiming M2 fully done."
         },
         {
@@ -154,7 +154,8 @@
           "testsAdded": 1,
           "testsPassing": "1/1 new; 128/128 full tsf suite (no regressions); oxlint/oxfmt clean; UI typecheck clean; UI build succeeds",
           "verifier": "SELF, plus visual browser re-confirmation (screenshot) that the new Gap analysis/Workers/Verifier sections render correctly against the real backend",
-          "commit": null
+          "commit": "5db085a1e19c152b0151b143ca4a8e6a80355be7",
+          "commitNote": "The original wave-6b commit attempt was rejected by the pre-commit hook on a pre-existing http-server.mjs max-lines violation (613 > 600 lines); fixing that required extracting keep-going-http-routes.mjs, which happened alongside the wave-7 review fixes, so this work landed in the same commit as wave 7 rather than its own -- recorded here for an accurate commit trail, not left as a stale 'null'."
         },
         {
           "wave": 7,
@@ -211,7 +212,7 @@
           "summary": "Closed the last piece of finding 5: corrected docs/tsf/M2_KEEP_GOING_DESIGN_V1.md's Division of Responsibility section to match the fixed code comment in keep-going.mjs -- no longer claims literal composition of mission-state.mjs/coordinator.mjs that doesn't exist in code.",
           "testsAdded": 0,
           "verifier": "SELF -- pure documentation edit, no behavior change",
-          "commit": null
+          "commit": "009ed1fef1d0807e296f603aeeb953c25d84340f"
         }
       ],
       "acceptanceCriteria": [
@@ -233,10 +234,10 @@
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": [
-        "no autonomous wave-dispatch loop -- a UI-started run does not yet progress through waves on its own; Start/Pause/Resume are real domain transitions but nothing drives planWave/recordWave for a live run today",
+        "no autonomous wave-dispatch loop -- a UI-started run does not yet progress through waves on its own; Start/Pause/Resume are real domain transitions but nothing drives planWave/recordWave for a live run today. Deliberately not attempted in the evening-sprint window: it needs an async job-execution architecture (background loop + status polling) this program judged too large a new architecture surface to safely land and verify before the cutoff, per the 'do not begin a major new architecture wave close to the cutoff' directive",
         "no bounded fixture/dogfood mission proving the full orchestration graph (run-create/task-create/dispatch) end to end -- wave 3 used a bare terminal dispatch, not the orchestration adapter's run/task/dispatch calls",
         "no candidate packaged yet",
-        "independent (non-SELF) verification not yet performed at the milestone-completion gate"
+        "wave 7 delivered a real independent (non-SELF) review pass over the cumulative diff and fixed everything it found, which is genuine progress on this criterion -- but that was an interim wave-level review, not the final milestone-completion-gate review this criterion still calls for once the remaining gaps above are closed"
       ]
     },
     {
