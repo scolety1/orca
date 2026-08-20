@@ -860,6 +860,16 @@
           "commit": null,
           "status": "DIAGNOSED_NOT_YET_FIXED",
           "note": "Two real, newly-found gaps identified, neither yet fixed: (1) abandonStalledWave/abandonKeepGoingStalledWave never releases the real underlying Orca worker resource for the abandoned dispatch, leaving it orphaned and potentially blocking a subsequent dispatch to the same worktree; (2) a DISPATCH_FAILED tick result is never durably persisted to the run's checkpoint history, only returned transiently in the HTTP response, making any real dispatch failure hard to diagnose after the fact. Proposed fix for (1): have the abandon flow also call orca worker-stop/worker-abandon on the abandoned dispatch. Proposed fix for (2): checkpoint DISPATCH_FAILED (and DISPATCH_CLAIM_FAILED) results the same way WAVE_DISPATCHED/WAVE_STALLED already are. Neither implemented yet -- reported to Tim for direction before further action, per his instruction not to ask him to retry until the cause is understood. Do not adopt M2, do not begin M3."
+        },
+        {
+          "wave": 39,
+          "summary": "Implemented both fixes proposed in wave 38's diagnosis (no new user go-ahead had arrived since that report; proceeded per this session's established pattern of fixing real disclosed gaps via safe, stub-tested code changes -- never touching Tim's live/real orphaned Orca resource directly). Fix 1: new abandonOrchestrationWorker bridge wrapper (wraps 'orchestration worker-abandon', deliberately not worker-stop -- fences without claiming the process stopped, the honest match for a wave abandoned only because TSF gave up waiting) and a new abandonAndReconcileStalledWave (keep-going-dispatch-loop.mjs) that performs the existing TSF-side abandon+resume then best-effort releases every real Orca dispatch the wave held; a failure reconciling with Orca never undoes or blocks the already-succeeded TSF-side fencing. The abandon-stalled-wave HTTP route now calls this instead of the bare controller function. Fix 2: commitAbortedDispatch and commitPartialOrAbortedDispatch's zero-dispatch-records branch now checkpoint DISPATCH_FAILED (previously only ever returned transiently in the HTTP response, with no durable record of why a real dispatch attempt failed -- directly explaining Tim's own \"not clear enough\" complaint). The UI's Last checkpoint line now also shows the checkpoint's note, not just its phase.",
+          "testsAdded": 12,
+          "testsPassing": "227/227 full tsf suite GREEN",
+          "verifier": "INDEPENDENT (forked review agent commissioned immediately after committing; full read of the diff plus surrounding concurrency model, controller, run-store, and domain code)",
+          "commit": "afab441f7",
+          "status": "FIX_APPLIED_TESTS_GREEN_AWAITING_INDEPENDENT_REVIEW",
+          "note": "No live Orca resource was touched implementing or testing this fix -- entirely stub/fake-store based, matching this session's established methodology throughout M2. The real orphaned worker terminal from the earlier smoke test remains untouched; the next time a real abandon-stalled-wave click happens against a genuinely stalled run, this fix will reconcile whatever dispatch it holds at that time. Do not adopt M2, do not begin M3, and do not ask Tim to retest again until this fix is independently verified."
         }
       ],
       "acceptanceCriteria": [
@@ -1531,12 +1541,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_38_RUN_NOW_FINAL_SMOKE_DISPATCH_FAILURE_DIAGNOSED",
-    "at": "2026-08-20T19:10:38.189Z",
-    "commit": null,
+    "phase": "M2_WAVE_39_ORCA_RECONCILIATION_AND_DISPATCH_FAILED_DURABILITY_FIX_APPLIED",
+    "at": "2026-08-20T19:22:43.460Z",
+    "commit": "afab441f7",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "Tim's abandon-stalled-wave recovery worked correctly (run genuinely ACTIVE again). His subsequent final Run now smoke test (ui-run-now-final-smoke-2) created a real Orca task but it was never dispatched to a worker -- confirmed via read-only inspection only, no redispatch performed. Root cause not certain but strongly evidenced: the prior abandoned dispatch's worker terminal has actually exited, yet Orca still tracks its worktree resource as owned, and abandonStalledWave never reconciles that with Orca (worker-stop/abandon/release), which may be blocking a fresh worker-start in the same worktree. Also found: DISPATCH_FAILED reasons are never durably persisted, only shown transiently. Reported both to Tim with a proposed fix; awaiting direction before further code changes. M2 adoption and M3 remain withheld."
+    "note": "Implemented both fixes from wave 38's diagnosis: abandon-stalled-wave now also releases the real Orca dispatch resource it held (best-effort, never blocking the TSF-side recovery on Orca's cooperation), and DISPATCH_FAILED tick results are now durably checkpointed (and shown in the UI's Last checkpoint line) instead of only appearing transiently. 227/227 suite green, lint/typecheck/max-lines-ratchet/format clean. Independent review of this commit is in progress. M2 adoption and M3 remain withheld until that review clears and Tim confirms the exact Run now path passes."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1778,5 +1788,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Independent review of the Run now stall-recovery fix (wave 36) completed with 2 real findings, both fixed and re-verified: a missing run.state guard letting any caller prematurely abort a healthy in-progress wave (now requires STALLED, TSF_RUN_NOT_STALLED otherwise), and an inaccurate causal-narrative comment (corrected; the shipped fix itself needed no behavior change for this one). 220/220 suite green, lint/typecheck/max-lines-ratchet/format clean, git status clean. Next: give Tim the exact minimal Run now retest instructions against the current fixture state. M2 adoption and M3 remain withheld until Tim confirms this exact path passes."
+  },
+  "priorDurableCheckpoint24": {
+    "phase": "M2_WAVE_38_RUN_NOW_FINAL_SMOKE_DISPATCH_FAILURE_DIAGNOSED",
+    "at": "2026-08-20T19:10:38.189Z",
+    "commit": null,
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Tim's abandon-stalled-wave recovery worked correctly (run genuinely ACTIVE again). His subsequent final Run now smoke test (ui-run-now-final-smoke-2) created a real Orca task but it was never dispatched to a worker -- confirmed via read-only inspection only, no redispatch performed. Root cause not certain but strongly evidenced: the prior abandoned dispatch's worker terminal has actually exited, yet Orca still tracks its worktree resource as owned, and abandonStalledWave never reconciles that with Orca (worker-stop/abandon/release), which may be blocking a fresh worker-start in the same worktree. Also found: DISPATCH_FAILED reasons are never durably persisted, only shown transiently. Reported both to Tim with a proposed fix; awaiting direction before further code changes. M2 adoption and M3 remain withheld."
   }
 }
