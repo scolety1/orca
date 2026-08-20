@@ -408,6 +408,40 @@ test('dispatchWave and settleInFlightWave reject a stale expectedRevision', () =
   )
 })
 
+test('dispatchWave/settleInFlightWave check expectedRevision before the in-flight invariant, matching every other mutation in this module', () => {
+  const run = baseRun()
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  const dispatched = dispatchWave(run, plan, dispatchRecords, clock, 0)
+
+  // dispatchWave: a wave IS in flight (invariant would fail) AND the
+  // expectedRevision is stale -- staleness must be reported, not the
+  // invariant error.
+  assert.throws(
+    () => dispatchWave(dispatched, plan, dispatchRecords, clock, 0), // stale -- dispatched.revision is 1
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+  // With the correct revision, the real invariant error still surfaces.
+  assert.throws(
+    () => dispatchWave(dispatched, plan, dispatchRecords, clock, 1),
+    (error) => error.code === 'TSF_WAVE_ALREADY_IN_FLIGHT'
+  )
+
+  // settleInFlightWave: no wave is in flight (invariant would fail) AND the
+  // expectedRevision is stale -- staleness must win here too.
+  assert.throws(
+    () => settleInFlightWave(run, {}, clock, 5), // stale -- run.revision is 0
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+  // With the correct revision, the real invariant error still surfaces.
+  assert.throws(
+    () => settleInFlightWave(run, {}, clock, 0),
+    (error) => error.code === 'TSF_NO_IN_FLIGHT_WAVE'
+  )
+})
+
 test('completeRun only reaches COMPLETE from ACTIVE, matching the gap-analysis stop decision', () => {
   const run = baseRun()
   const completed = completeRun(run, clock)

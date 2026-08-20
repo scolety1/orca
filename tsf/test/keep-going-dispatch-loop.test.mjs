@@ -145,6 +145,58 @@ test('a still-in-flight wave reports WAVE_STILL_IN_FLIGHT and leaves the run unt
   assert.equal(result.opState, dispatched.opState, 'no state change while still in flight')
 })
 
+test('a wave stuck in flight past the stall threshold escalates the run to STALLED instead of looping forever', async () => {
+  const opState = baseOpState({ budget: { stallThresholdMs: 60_000 } })
+  const dispatched = await tickKeepGoingRun(
+    opState,
+    'fixture:proj',
+    oneItem,
+    clock,
+    okOrchestration()
+  )
+  const laterClock = () => new Date('2026-08-20T05:05:00.000Z') // 5 minutes later
+  const result = await tickKeepGoingRun(
+    dispatched.opState,
+    'fixture:proj',
+    oneItem,
+    laterClock,
+    okOrchestration({
+      listOrchestrationTasks: async () => ({
+        ok: true,
+        result: { tasks: [{ id: 'task-t1', status: 'in_progress' }] }
+      })
+    })
+  )
+  assert.equal(result.action, 'WAVE_STALLED')
+  const run = result.opState.keepGoingRuns['fixture:proj']
+  assert.equal(run.state, 'STALLED')
+})
+
+test('a wave still within the stall threshold keeps reporting WAVE_STILL_IN_FLIGHT', async () => {
+  const opState = baseOpState({ budget: { stallThresholdMs: 60_000 } })
+  const dispatched = await tickKeepGoingRun(
+    opState,
+    'fixture:proj',
+    oneItem,
+    clock,
+    okOrchestration()
+  )
+  const soonClock = () => new Date('2026-08-20T05:00:30.000Z') // 30s later -- under threshold
+  const result = await tickKeepGoingRun(
+    dispatched.opState,
+    'fixture:proj',
+    oneItem,
+    soonClock,
+    okOrchestration({
+      listOrchestrationTasks: async () => ({
+        ok: true,
+        result: { tasks: [{ id: 'task-t1', status: 'in_progress' }] }
+      })
+    })
+  )
+  assert.equal(result.action, 'WAVE_STILL_IN_FLIGHT')
+})
+
 test('a completed in-flight wave settles: recorded into waves, inFlightWave cleared, retry count untouched', async () => {
   const opState = baseOpState()
   const dispatched = await tickKeepGoingRun(
@@ -199,7 +251,7 @@ test('a failed in-flight wave settles and records a retry attempt against the wo
   assert.equal(run.retryCounts.t1, 1)
 })
 
-test('exceeding the retry budget during settlement is reported, not thrown, and the wave still settles', async () => {
+test('exceeding the retry budget during settlement escalates to NEEDS_YOU rather than silently re-offering the same doomed work item', async () => {
   const opState = baseOpState({ budget: { maxRetriesPerTask: 0 } })
   const dispatched = await tickKeepGoingRun(
     opState,
@@ -220,13 +272,15 @@ test('exceeding the retry budget during settlement is reported, not thrown, and 
       })
     })
   )
-  assert.equal(result.action, 'WAVE_SETTLED_RETRY_BUDGET_EXCEEDED')
+  assert.equal(result.action, 'WAVE_SETTLED_NEEDS_YOU')
   assert.deepEqual(result.retryBudgetExceeded, ['t1'])
   const run = result.opState.keepGoingRuns['fixture:proj']
   assert.equal(run.inFlightWave, null, 'the wave still settles despite the budget breach')
+  assert.equal(run.state, 'NEEDS_YOU')
+  assert.match(run.needsYou.at(-1).question, /t1/)
 })
 
-test('a dispatch failure with nothing yet dispatched reports DISPATCH_FAILED and leaves opState unchanged', async () => {
+test('a dispatch failure with nothing yet dispatched reports DISPATCH_FAILED and persists a freshly-created orchestrationRunId so it is not orphaned', async () => {
   const opState = baseOpState()
   const result = await tickKeepGoingRun(
     opState,
@@ -238,7 +292,33 @@ test('a dispatch failure with nothing yet dispatched reports DISPATCH_FAILED and
     })
   )
   assert.equal(result.action, 'DISPATCH_FAILED')
-  assert.equal(result.opState, opState)
+  const run = result.opState.keepGoingRuns['fixture:proj']
+  assert.equal(
+    run.orchestrationRunId,
+    'orch-run-1',
+    'the real Run created before the failure must not be forgotten'
+  )
+})
+
+test('a dispatch failure on an already-known orchestrationRunId leaves opState unchanged (nothing new to persist)', async () => {
+  const opState = baseOpState()
+  const withRunId = {
+    ...opState,
+    keepGoingRuns: {
+      'fixture:proj': { ...opState.keepGoingRuns['fixture:proj'], orchestrationRunId: 'orch-run-1' }
+    }
+  }
+  const result = await tickKeepGoingRun(
+    withRunId,
+    'fixture:proj',
+    oneItem,
+    clock,
+    okOrchestration({
+      createOrchestrationTask: async () => ({ ok: false, reason: 'CLI_ERROR', detail: 'boom' })
+    })
+  )
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.opState, withRunId)
 })
 
 test('a mid-wave dispatch failure records only the items actually dispatched, trimming the plan honestly', async () => {

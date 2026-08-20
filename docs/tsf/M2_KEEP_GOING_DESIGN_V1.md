@@ -163,6 +163,53 @@ exactly one bounded, idempotent step for one project's run:
    orchestration fakes); an HTTP "run now" route and/or the automation
    registration itself are the next deferred step.
 
+## Wave 15 follow-up: independent review findings
+
+A forked code-review pass (effort `high`) on wave 15's diff returned 6
+findings, addressed the same session:
+
+1. **Fixed** -- a freshly-created real Orca orchestration Run leaked (never
+   persisted into `run.orchestrationRunId`) when the first `task-create` in
+   a wave failed, so every retrying tick created another orphaned Run.
+   `dispatchStep` now tracks whether the Run was freshly created this tick
+   and persists it even on a total dispatch failure.
+2. **Disclosed, not newly fixed** -- the `expectedRevision` check on
+   `tickKeepGoingRun` only protects against a caller acting on an
+   already-stale read; it cannot protect against a concurrent write landing
+   on the same in-memory run mid-tick (several awaited CLI round-trips are
+   held across one `run` object, and the eventual `dispatchWave`/
+   `settleInFlightWave` calls pass that run's own revision, which trivially
+   matches itself). This is the same still-open per-request atomic
+   read-check-write gap already disclosed for `data-store.mjs` (wave 8
+   finding 4, wave 11 findings 1/6) -- corrected the misleading comment
+   rather than re-solving an already-deferred architectural item.
+3. **Fixed** -- a wave whose task status never reaches a terminal state
+   (cancelled, hung) previously left `WAVE_STILL_IN_FLIGHT` forever with no
+   escalation. `settleStep` now escalates to `STALLED` (via the existing
+   `markStalled`) once the wave has been in flight longer than
+   `budget.stallThresholdMs`, using the wave's own `dispatchedAt` wall-clock
+   timestamp rather than the still-unavailable per-worker heartbeat (wave
+   11 finding 4's limitation stands unchanged).
+4. **Fixed** -- exceeding a work item's retry budget only produced a
+   reported action; nothing stopped the same item from being re-dispatched
+   and re-breaching the budget every tick. `settleStep` now raises a real
+   `NEEDS_YOU` question (via `raiseNeedsYou`) instead, so the run stops and
+   an operator sees it.
+5. **Disclosed, deliberately deferred** -- `planWave`'s conflict-aware
+   batching intends independent items to run in parallel, but `dispatchStep`
+   still dispatches every item in a batch sequentially, costing wall-clock
+   latency (not correctness). Documented in-code; not fixed this pass since
+   correct concurrent partial-failure handling needs more care than the
+   current sequential-with-early-return shape.
+6. **Fixed** -- `dispatchWave`/`settleInFlightWave` checked their own
+   invariant (no wave in flight / a wave in flight) before
+   `assertExpectedRevision`, so a stale-revision caller got
+   `TSF_WAVE_ALREADY_IN_FLIGHT`/`TSF_NO_IN_FLIGHT_WAVE` instead of
+   `TSF_STALE_REVISION`, unlike every other mutation in the module.
+   Reordered to check revision first.
+
+157/157 full suite GREEN after fixes, oxlint/oxfmt clean.
+
 ## Correction: `curly` lint is enforced on staged files
 
 Earlier in this wave, `tsf/domain/*.mjs` (including already-adopted files

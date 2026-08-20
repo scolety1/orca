@@ -288,6 +288,11 @@ export function recordWave(run, wavePlan, waveResult, clock, expectedRevision) {
 // re-checkable (inFlightWave still present) rather than silently losing the
 // wave or double-counting it.
 export function dispatchWave(run, wavePlan, dispatchRecords, clock, expectedRevision) {
+  // Revision checked first, matching every other mutation in this module --
+  // a stale caller must see TSF_STALE_REVISION, not TSF_WAVE_ALREADY_IN_FLIGHT
+  // (a real review finding: checking the invariant first meant a stale-
+  // revision caller racing an already-dispatched wave got the wrong error).
+  assertExpectedRevision(run, expectedRevision)
   if (run.inFlightWave) {
     const error = new Error('a wave is already in flight for this run')
     error.code = 'TSF_WAVE_ALREADY_IN_FLIGHT'
@@ -296,7 +301,6 @@ export function dispatchWave(run, wavePlan, dispatchRecords, clock, expectedRevi
   if (!Array.isArray(dispatchRecords) || dispatchRecords.length === 0) {
     throw new Error('at least one dispatch record is required')
   }
-  assertExpectedRevision(run, expectedRevision)
   const next = deepClone(run)
   next.inFlightWave = {
     wavePlan,
@@ -315,12 +319,13 @@ export function dispatchWave(run, wavePlan, dispatchRecords, clock, expectedRevi
 // is always a real state change here (the wave was, by definition, still
 // out), unlike recordWave's own true no-op replay case.
 export function settleInFlightWave(run, waveResult, clock, expectedRevision) {
+  // Revision checked first -- same reasoning as dispatchWave above.
+  assertExpectedRevision(run, expectedRevision)
   if (!run.inFlightWave) {
     const error = new Error('no in-flight wave to settle')
     error.code = 'TSF_NO_IN_FLIGHT_WAVE'
     throw error
   }
-  assertExpectedRevision(run, expectedRevision)
   const wavePlan = run.inFlightWave.wavePlan
   const digest = sha256({ wavePlan, waveResult })
   const next = deepClone(run)
