@@ -561,7 +561,7 @@
           "testsAdded": 3,
           "testsPassing": "3 net new (tick-lock-checked-before-in-flight-wave ordering; stale-lock clearing; NEEDS_YOU-unreachable-state handled without throwing or discarding the settlement) -- all three would have failed against the pre-fix code; 177/177 full tsf suite GREEN (no regressions); oxlint clean; oxfmt clean; max-lines ratchet clean.",
           "verifier": "VERIFIER_INDEPENDENT (code-review skill, forked execution, separate reasoning context from wave 18's implementation) -- caught two more genuine bugs in SELF-authored code during this unattended session, consistent with wave 16b's own finding that independent review catches real defects a SELF pass misses",
-          "commit": null,
+          "commit": "11480fa531cef85e9e231ce935917eb2a2823c45",
           "deferredToNextWave": [
             "finding 4 (this wave): extracting a shared retry-budget-consumption helper between keep-going.mjs and keep-going-dispatch-loop.mjs",
             "wiring abandonStalledWave into the tick loop's own automatic recovery (a larger design decision, deliberately deferred)",
