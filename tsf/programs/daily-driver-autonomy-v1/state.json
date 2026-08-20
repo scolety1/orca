@@ -73,7 +73,7 @@
     {
       "id": "M2",
       "name": "Keep Going / Overnight V1",
-      "status": "IN_PROGRESS",
+      "status": "ADOPTED",
       "priority": "HIGHEST",
       "waves": [
         {
@@ -892,6 +892,17 @@
           "commit": null,
           "status": "M2_GREEN_ADOPTION_BLOCKED_BY_UNRELATED_DIRTY_ADOPTION_TARGET",
           "note": "M2 itself is genuinely GREEN and ready. The sole remaining blocker is entirely external to M2: the intended adoption target (C:\\TSF_ORCA's tsf/main working tree) has unrelated, large, uncommitted work (an onboarding-feature removal) that must be resolved by Tim -- committed, stashed, or explicitly discarded -- before a safe git merge --ff-only can be attempted. TIM_REQUIRED. Do not begin M3. Do not attempt the merge until Tim confirms how to handle the pending onboarding-removal changes in the shared repo."
+        },
+        {
+          "wave": 42,
+          "summary": "Read-only provenance investigation of the staged onboarding-removal in C:\\TSF_ORCA's tsf/main working tree, per Tim's explicit instruction: (1) recorded exact branch/HEAD/tree/status/staged-file-list/diff-stat; (2) preserved the exact staged diff as a binary-capable patch outside the repository at C:\\TSF_STAGED_CHANGE_RECOVERY\\20260820T195621Z-tsf-main-onboarding-removal-staged.patch, verified twice -- a fresh re-diff hashed identically to the saved file (nothing changed since capture), and applying the saved patch to a clean isolated clone of the baseline commit reproduced the exact staged tree hash bit-for-bit; (3) inspected Orca worktree/terminal state: no terminal is or recently was open in C:/TSF_ORCA itself (its own lastActivityAt predates the M2 baseline), and the repo's other worktrees (featherstar, nixie) and branches show no related or corroborating work; (4) decisive forensic proof: the staged tree hash (34ef75064e...) is byte-for-byte identical to onboarding-v1's own parent commit's tree, and the staged diff hash is byte-for-byte identical to the reverse-diff of the onboarding-v1 commit against its own parent -- i.e. the staged change is EXACTLY a plain, mechanical git-revert of \"feat(tsf): add project onboarding v1\" (de105fb4632d7e8a297d824963f931dcd4eb858e), nothing mixed in, nothing hand-edited. No commit, state.json note, design-doc mention, or other branch/session anywhere corroborates an approved decision to remove onboarding. Verdict: PROVEN_ABANDONED_OR_ACCIDENTAL. Tim reviewed this evidence and explicitly authorized removing the staged revert and proceeding with the M2 merge.",
+          "action": "Cleared the staged revert from C:\\TSF_ORCA via git reset --hard HEAD (the verified backup patch remains preserved outside the repo; HEAD did not move, confirmed back at de105fb4632d7e8a297d824963f931dcd4eb858e, working tree clean). Performed the local M2 adoption: git merge --ff-only f65debcb0903be46cf55335def87243ea44b30a8 in C:\\TSF_ORCA on branch tsf/main. Fast-forward succeeded; tsf/main now points at f65debcb0903be46cf55335def87243ea44b30a8. Re-ran the full TSF test suite directly from the newly-merged tree in C:\\TSF_ORCA: 228/228 GREEN.",
+          "testsAdded": 0,
+          "testsPassing": "228/228 (re-run directly from the adopted tsf/main tree in C:\\TSF_ORCA)",
+          "verifier": "INDEPENDENT (wave 41 holistic verifier, GREEN_READY_FOR_ADOPTION) plus Tim's own explicit review and authorization of the staged-revert removal",
+          "commit": "f65debcb0903be46cf55335def87243ea44b30a8",
+          "status": "M2_ADOPTED",
+          "note": "M2 (Keep Going / Overnight V1) is now locally adopted into tsf/main. No push, PR, deploy, or publish was performed -- purely a local ff-only merge, per Section H. M3 may now begin per Tim's own future direction; M8 remains ON HOLD."
         }
       ],
       "acceptanceCriteria": [
@@ -910,14 +921,10 @@
       ],
       "relatedExistingEvidence": "tsf/fixtures/long-autonomous-runtime-v1/ already proves most of the *domain* loop (planner persistence, wave dispatch, verification, Work Set gate, recovery) at fixture level with a synthetic offline mission board -- M2 must extend this to a real project-level goal + UI surface + durable cross-restart checkpoint, not rebuild the loop from scratch",
       "designDoc": "docs/tsf/M2_KEEP_GOING_DESIGN_V1.md",
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "f65debcb0903be46cf55335def87243ea44b30a8",
+      "adoptedCommit": "f65debcb0903be46cf55335def87243ea44b30a8",
       "gaps": [
-        "wave 15 implemented the autonomous wave-dispatch loop mechanism (tsf/server/keep-going-dispatch-loop.mjs, tickKeepGoingRun); wave 15b (same session) got a genuine independent (forked) review and fixed 4 of 6 real findings (orphaned-Run leak on dispatch failure, no stall escalation, no retry-budget escalation, wrong check-order on stale-revision-vs-invariant errors), disclosed one as the same already-known data-store.mjs concurrency gap, and deferred one (sequential-within-batch dispatch) as a lower-priority efficiency item. 157/157 suite GREEN. Still open: a live dogfood proving it against the real orca CLI (now also blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue, not just capacity), an HTTP/automation trigger to actually invoke it unattended, and a real independent verifier so compareStateToGoal can ever see a non-empty verifiedSatisfied for a live-dispatched run -- see milestones[M2].waves[15] and [15b] for full detail",
-        "wave 11 closed the specific 'bare terminal, not the orchestration adapter's calls' gap -- a real live dispatch through createOrchestrationRun/createOrchestrationTask/dispatchOrchestrationTask against the live orca CLI is now proven (run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b). What remains: a bounded fixture/dogfood mission that also exercises planWave/recordWave/verification against that live dispatch, not just one ad hoc task",
-        "no candidate packaged yet",
-        "two independent review passes now completed (wave 7 fully, from Claude; wave 8 partially, from Claude; wave 11 fully, from Codex -- genuine cross-provider verification). 4 of wave 11's 9 findings were new, not caught by either Claude pass -- real evidence that milestone-completion-gate verification benefits from more than one independent pass. Open findings from all three passes are tracked per-wave above; none are fixed-and-forgotten, all are either fixed with regression tests or explicitly deferred with reasoning",
-        "waves 12-14 closed all 3 fixable wave-11 findings (checkpointRun added to resume; resolveNeedsYou no longer un-pauses a separately-paused run; recordWave/recordTaskAttempt/checkpointRun now bump revision). Remaining open findings from both independent reviews are the ones deliberately judged too large for a single bounded wave (document/request-level concurrency in data-store.mjs) or out of M2's actual scope (onboarding's client-trust gap, UI polish items) -- see waves 8/11 for full detail"
+        "See gapClassification for the 6 disclosed, non-blocking gaps (heartbeat projection precision, lock-release TOCTOU window, per-project lock granularity, HTTP input trust boundary, run-history-overwrite-on-restart, resolveNeedsYou check-order) -- all reconfirmed correctly classified SAFE_FOLLOWUP or M3_OR_LATER by the wave-41 holistic verifier. Two pre-wave-32/38 orphaned Orca tasks remain dangling on run_5d7254db6a46 (task_dd9e9dc6677f, task_897ba46be9b8) -- inert historical residue from already-fixed bugs, deliberately left untouched."
       ],
       "acceptanceStatus2026_08_20": {
         "schemaVersion": "TSF_M2_ACCEPTANCE_STATUS_V1",
@@ -1114,10 +1121,26 @@
         "FOUND AND FIXED (wave 36, commit 61bfcb3e3, pending independent review + Tim retest): a STALLED Keep Going run had no path back to usability through the product UI -- tickKeepGoingRun always re-checks the same stuck wave and silently discards a new Run now work item with zero signal. Live-confirmed via Tims current-code manual acceptance retest (Run now FAIL, state STALLED). Fixed by exposing abandonStalledWave through a new HTTP route + UI button, corrected to also resume the run to ACTIVE."
       ],
       "currentCandidate": {
-        "head": "2a82679a366fa188b90df674b8de28dc1e62261e",
-        "tree": "a89a4276678425b608541d30a30d65a38b3a1b3f",
+        "head": "f65debcb0903be46cf55335def87243ea44b30a8",
+        "tree": null,
         "packagedAt": "2026-08-20T19:52:24.119Z",
-        "status": "IMMUTABLE_CANDIDATE_READY_ADOPTION_BLOCKED_EXTERNALLY"
+        "status": "ADOPTED"
+      },
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M2_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-20T20:08:22.756Z",
+        "adoptedCommit": "f65debcb0903be46cf55335def87243ea44b30a8",
+        "previousTsfMainHead": "de105fb4632d7e8a297d824963f931dcd4eb858e",
+        "mergeMethod": "git merge --ff-only (local, C:\\TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "wave 41 holistic verifier -- GREEN_READY_FOR_ADOPTION across all 12 acceptance criteria; all 6 gapClassification items reconfirmed non-blocking",
+        "postAdoptionTestRun": "228/228 GREEN, re-run directly from the adopted tsf/main tree",
+        "unrelatedFindingResolved": {
+          "description": "A large, unrelated, staged-but-uncommitted onboarding-feature revert was found in tsf/main's working tree at the time of adoption -- investigated read-only, proven via exact tree/diff hash comparison to be a plain, mechanical git-revert of the onboarding-v1 commit with no corroborating decision record anywhere, backed up in full outside the repo, and removed only after Tim's explicit review and authorization.",
+          "backupLocation": "C:\\TSF_STAGED_CHANGE_RECOVERY\\20260820T195621Z-tsf-main-onboarding-removal-staged.patch",
+          "backupVerified": true
+        },
+        "rollback": "To roll back: git -C C:\\TSF_ORCA reset --hard de105fb4632d7e8a297d824963f931dcd4eb858e (previous tsf/main HEAD, recorded above)."
       }
     },
     {
@@ -1569,12 +1592,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_41_GREEN_ADOPTION_BLOCKED_BY_DIRTY_TSF_MAIN",
-    "at": "2026-08-20T19:52:24.119Z",
-    "commit": "2a82679a366fa188b90df674b8de28dc1e62261e",
-    "commitTree": "a89a4276678425b608541d30a30d65a38b3a1b3f",
+    "phase": "M2_ADOPTED_INTO_TSF_MAIN",
+    "at": "2026-08-20T20:08:22.756Z",
+    "commit": "f65debcb0903be46cf55335def87243ea44b30a8",
+    "commitTree": null,
     "workingTreeClean": true,
-    "note": "M2 fully GREEN per a fresh holistic independent verifier (all 12 acceptance criteria, 228/228 suite, all mechanical Section H gates confirmed). The immutable candidate is packaged (this exact HEAD/tree). Adoption itself is blocked: C:\\TSF_ORCA (the tsf/main worktree) has a large, unrelated, fully-staged-but-uncommitted change (an onboarding-feature removal, 24 files) that predates and has nothing to do with M2. Did not touch it. TIM_REQUIRED before any git merge --ff-only can be attempted. Do not begin M3."
+    "note": "M2 (Keep Going / Overnight V1) locally adopted into tsf/main via git merge --ff-only. Previous tsf/main HEAD de105fb4632d7e8a297d824963f931dcd4eb858e recorded for rollback. An unrelated staged onboarding-revert found in tsf/main's working tree at adoption time was investigated read-only, proven via exact tree/diff hash comparison to be an unattributed, uncorroborated git-revert of the onboarding-v1 commit, backed up in full outside the repo (C:\\TSF_STAGED_CHANGE_RECOVERY), and removed only after Tim's explicit review and authorization. 228/228 suite green post-adoption. No push/PR/deploy/publish. M3 may now begin."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1840,5 +1863,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Independent review of the Orca-reconciliation + DISPATCH_FAILED-durability fix (wave 39) completed with one real finding, fixed and re-verified: a read-then-mutate race in abandonAndReconcileStalledWave whose own safety comment overclaimed (assertExpectedRevision is a documented no-op when expectedRevision is omitted). Fixed at the root by capturing dispatchRecords from the atomic mutate's own closure instead of a separate pre-read. 228/228 suite green, lint/typecheck/max-lines-ratchet/format clean, git status clean. No outstanding findings against the full waves 36-40 fix chain. Next: issue Tim the exact minimal Run now retest instructions. M2 adoption and M3 remain withheld."
+  },
+  "priorDurableCheckpoint27": {
+    "phase": "M2_WAVE_41_GREEN_ADOPTION_BLOCKED_BY_DIRTY_TSF_MAIN",
+    "at": "2026-08-20T19:52:24.119Z",
+    "commit": "2a82679a366fa188b90df674b8de28dc1e62261e",
+    "commitTree": "a89a4276678425b608541d30a30d65a38b3a1b3f",
+    "workingTreeClean": true,
+    "note": "M2 fully GREEN per a fresh holistic independent verifier (all 12 acceptance criteria, 228/228 suite, all mechanical Section H gates confirmed). The immutable candidate is packaged (this exact HEAD/tree). Adoption itself is blocked: C:\\TSF_ORCA (the tsf/main worktree) has a large, unrelated, fully-staged-but-uncommitted change (an onboarding-feature removal, 24 files) that predates and has nothing to do with M2. Did not touch it. TIM_REQUIRED before any git merge --ff-only can be attempted. Do not begin M3."
   }
 }
