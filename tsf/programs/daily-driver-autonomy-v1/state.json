@@ -839,6 +839,17 @@
           "commit": "61bfcb3e38bf3edf0ab778381d3a5ad3301ae418",
           "status": "FIX_APPLIED_TESTS_GREEN_AWAITING_INDEPENDENT_REVIEW_THEN_TIM_RETEST",
           "note": "Per Tims explicit instruction: Start/Pause/Resume manual acceptance remain valid (this fix touches none of those code paths). M2 adoption and M3 start remain withheld until this exact Run now path passes manual acceptance against current/clean fixture state. Do not ask Tim to retest until independent review completes."
+        },
+        {
+          "wave": 37,
+          "summary": "Independent review of wave 36 (commit 61bfcb3e3) reported back. No blocking defect in the fix mechanics survived scrutiny (revision threading, state-machine legality, checkpoint history, the regression test itself, route error-code conventions, and the KeepGoingStartForm split were all confirmed correct). Two real findings, both fixed here (commit 743feac3c): (1) MEDIUM -- abandonKeepGoingStalledWave had no run.state guard before calling the domain abandonStalledWave, which itself has no opinion on run state (only checks tick-lock-inactive + inFlightWave present) -- exposing it over HTTP without a guard would have let any caller abort a perfectly healthy, still-in-progress ACTIVE wave and burn real retry budget on tasks that never actually stalled. Fixed by requiring run.state === STALLED first (new TSF_RUN_NOT_STALLED, 422); updated the existing 422 test to match. (2) LOW/MEDIUM, accuracy only -- wave 36s commit message and inline comments inaccurately claimed tickKeepGoingRun \"always routes to settleStep whenever inFlightWave is set (STALLED or not)\". Verified against the actual current code: tickKeepGoingRun checks before.state !== ACTIVE and NOOPs immediately, BEFORE ever looking at inFlightWave -- so an already-STALLED runs tick does not silently re-check anything, it NOOPs with an explicit reason, and the UIs Run now form additionally stops rendering entirely once state leaves ACTIVE (KeepGoingPanel gates the form on run.state === ACTIVE). The real gap the fix correctly closes is narrower and simpler than described: once state reaches STALLED, there was no path back to ACTIVE with the stuck wave cleared through the product surface at all. Corrected the misleading comments; the shipped fix itself required no behavioral change for this finding.",
+          "testsAdded": 0,
+          "testsChanged": 1,
+          "testsPassing": "220/220 full tsf suite GREEN",
+          "verifier": "INDEPENDENT (forked review agent, full read of the diff plus surrounding domain/dispatch-loop/store code and git history)",
+          "commit": "743feac3c",
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "Both findings addressed and re-verified (220/220, oxlint/tsc/max-lines-ratchet/oxfmt clean, git status clean). No outstanding findings remain against the Run now stall-recovery fix. Next: give Tim the exact minimal Run now retest instructions against the current fixture state. Still withholding M2 adoption and M3 start until Tim confirms this exact path passes."
         }
       ],
       "acceptanceCriteria": [
@@ -1054,7 +1065,8 @@
         "rootCause": "Leftover un-fenced inFlightWave from the PRIOR rounds ui-run-now-smoke dispatch, still present in the persisted tsf-ui-capability-check run. tickKeepGoingRun routes to settleStep whenever inFlightWave is set, regardless of run.state, silently discarding any new candidateWorkItems.",
         "fixCommit": "61bfcb3e38bf3edf0ab778381d3a5ad3301ae418",
         "regressionTest": "tsf/test/http-keep-going.test.mjs: \"a stalled in-flight wave silently absorbs a later ticks new work item until abandon-stalled-wave clears it, after which the new item genuinely dispatches\" -- reproduces the exact reported behavior end to end and proves the fix.",
-        "retestInstructionsPending": true
+        "retestInstructionsPending": false,
+        "independentReviewOutcome": "CLEAN after one round of fixes (commit 743feac3c) -- see wave 37. Retest instructions now issued to Tim."
       },
       "m2BlockingItemsFound": [
         "FOUND AND FIXED (wave 36, commit 61bfcb3e3, pending independent review + Tim retest): a STALLED Keep Going run had no path back to usability through the product UI -- tickKeepGoingRun always re-checks the same stuck wave and silently discards a new Run now work item with zero signal. Live-confirmed via Tims current-code manual acceptance retest (Run now FAIL, state STALLED). Fixed by exposing abandonStalledWave through a new HTTP route + UI button, corrected to also resume the run to ACTIVE."
@@ -1509,12 +1521,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_36_RUN_NOW_STALL_RECOVERY_FIX_APPLIED",
-    "at": "2026-08-20T18:48:54.500Z",
-    "commit": "61bfcb3e38bf3edf0ab778381d3a5ad3301ae418",
+    "phase": "M2_WAVE_37_STALL_RECOVERY_FIX_INDEPENDENTLY_VERIFIED",
+    "at": "2026-08-20T18:56:59.555Z",
+    "commit": "743feac3c",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "Diagnosed and fixed the exact Run now FAIL Tim reported against current code: a STALLED runs leftover un-fenced inFlightWave silently absorbed new Run now clicks via settleStep routing, discarding the callers new work item with no signal. Fix exposes abandonStalledWave (waves 18/18b, unmodified) through a new HTTP route + UI button, corrected to also resume the run to ACTIVE afterward (guarded against clobbering a legal NEEDS_YOU escalation). New regression test reproduces the bug end to end and proves the fix. 220/220 suite green, oxlint/tsc/max-lines-ratchet/oxfmt clean. Independent review of this commit commissioned and in progress. Do not adopt M2, do not begin M3, do not ask Tim to retest Run now until that review completes and any findings are resolved."
+    "note": "Independent review of the Run now stall-recovery fix (wave 36) completed with 2 real findings, both fixed and re-verified: a missing run.state guard letting any caller prematurely abort a healthy in-progress wave (now requires STALLED, TSF_RUN_NOT_STALLED otherwise), and an inaccurate causal-narrative comment (corrected; the shipped fix itself needed no behavior change for this one). 220/220 suite green, lint/typecheck/max-lines-ratchet/format clean, git status clean. Next: give Tim the exact minimal Run now retest instructions against the current fixture state. M2 adoption and M3 remain withheld until Tim confirms this exact path passes."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1740,5 +1752,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "The final pre-adoption live multi-wave proof (run_105cb735f98e) reached COMPLETE, exercising every fix from waves 24-33 together in one real run for the first time: explicit-worktree requirement, wave-wide collision guard, async cross-process lock, coordinator rebind, real independent verification. Hash chain re-verified with the real canonical sha256. 217/217 suite unaffected. Next: commission the final holistic independent verifier pass Tim requested for packaging, then package M2 as an immutable candidate, confirm exact HEAD/tree, confirm Orca-core-delta-0, and locally adopt into tsf/main if every Section H precondition holds."
+  },
+  "priorDurableCheckpoint22": {
+    "phase": "M2_WAVE_36_RUN_NOW_STALL_RECOVERY_FIX_APPLIED",
+    "at": "2026-08-20T18:48:54.500Z",
+    "commit": "61bfcb3e38bf3edf0ab778381d3a5ad3301ae418",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Diagnosed and fixed the exact Run now FAIL Tim reported against current code: a STALLED runs leftover un-fenced inFlightWave silently absorbed new Run now clicks via settleStep routing, discarding the callers new work item with no signal. Fix exposes abandonStalledWave (waves 18/18b, unmodified) through a new HTTP route + UI button, corrected to also resume the run to ACTIVE afterward (guarded against clobbering a legal NEEDS_YOU escalation). New regression test reproduces the bug end to end and proves the fix. 220/220 suite green, oxlint/tsc/max-lines-ratchet/oxfmt clean. Independent review of this commit commissioned and in progress. Do not adopt M2, do not begin M3, do not ask Tim to retest Run now until that review completes and any findings are resolved."
   }
 }
