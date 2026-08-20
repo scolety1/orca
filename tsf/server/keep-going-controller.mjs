@@ -7,6 +7,7 @@
 // separate, larger piece of work (see program state.json M2 gaps). This
 // controller's job is only to make the real run lifecycle and its honest
 // current state observable and operable from the UI.
+import { assertExpectedRevision } from '../domain/canonical.mjs'
 import {
   checkpointRun,
   compareStateToGoal,
@@ -19,7 +20,11 @@ export function keepGoingRunFor(opState, projectId) {
   return opState.keepGoingRuns?.[projectId] ?? null
 }
 
-export function startKeepGoingRun(opState, projectId, params, clock) {
+// expectedRevision only matters when a prior (COMPLETE/BLOCKED) run exists --
+// two concurrent "start a new run" requests reading that same stale prior
+// run must not both succeed in silently overwriting each other, the same
+// read-modify-write race pauseKeepGoingRun/resumeKeepGoingRun guard against.
+export function startKeepGoingRun(opState, projectId, params, clock, expectedRevision) {
   const existing = keepGoingRunFor(opState, projectId)
   if (existing && !['COMPLETE', 'BLOCKED'].includes(existing.state)) {
     const error = new Error(
@@ -27,6 +32,9 @@ export function startKeepGoingRun(opState, projectId, params, clock) {
     )
     error.code = 'TSF_RUN_ALREADY_ACTIVE'
     throw error
+  }
+  if (existing) {
+    assertExpectedRevision(existing, expectedRevision)
   }
   let run = createOvernightRun(
     {

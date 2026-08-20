@@ -127,6 +127,7 @@ export const api = {
       budget?: Record<string, number>
       constraints?: string[]
       stopConditions?: string[]
+      expectedRevision?: number
     }
   ) =>
     request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/start`, {

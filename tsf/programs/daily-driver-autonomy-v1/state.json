@@ -213,6 +213,46 @@
           "testsAdded": 0,
           "verifier": "SELF -- pure documentation edit, no behavior change",
           "commit": "009ed1fef1d0807e296f603aeeb953c25d84340f"
+        },
+        {
+          "wave": 8,
+          "summary": "Launched a second independent code-review pass over waves 4-7b (the first review at wave 7 only covered tsf/main...HEAD as of wave 3). The review's coordinator agent hit the Claude session usage limit mid-run ('You've hit your session limit -- resets 9:10pm America/Denver') and did not complete all 8 planned finder angles, but one sub-agent ('Altitude angle scan') finished first and returned 5 real findings before the limit hit. This consumed roughly 2h16m of real wall-clock time (6:55pm to 9:11pm) waiting for the session to reset -- a significant, unplanned capacity event, itself now recorded as evidence for a possible future Claude-session-limit-aware variant of capacityPolicy.expiringCapacityRule (not implemented tonight; time did not allow revisiting that policy layer). Of the 5 findings, 1 was fixed, 1 documented as a real remaining gap without a quick fix available, 2 are legitimate architectural critiques deliberately not addressed (too large for the remaining runway), and all recorded honestly below rather than silently dropped.",
+          "reviewFindings": [
+            {
+              "id": 1,
+              "summary": "startKeepGoingRun (the route that creates rather than transitions a run) had no expectedRevision check at all, even after wave 7 added it to pause/resume -- two concurrent 'start a new run after COMPLETE/BLOCKED' requests could silently overwrite each other, the exact race wave 7 was supposed to close everywhere.",
+              "verdict": "CONFIRMED real bug, wave 7 gap left open",
+              "fix": "Added expectedRevision support to startKeepGoingRun (checked via assertExpectedRevision only when a prior COMPLETE/BLOCKED run exists -- a brand-new first run has nothing to be stale against), threaded through keep-going-http-routes.mjs (start route now also returns 409 TSF_STALE_REVISION), api.ts, and KeepGoingPanel.tsx (the 'Start a new run' flow now sends the finished run's revision). Controller-level regression test added (start-after-COMPLETE race); full suite + lint/format/typecheck/build all GREEN."
+            },
+            {
+              "id": 2,
+              "summary": "raiseNeedsYou's already-NEEDS_YOU early-return branch and resolveNeedsYou's still-open early-return branch both mutate run state directly without going through transitionRun -- neither bumps run.revision nor accepts/checks expectedRevision, unlike every other mutation path in the module.",
+              "verdict": "CONFIRMED real inconsistency, currently zero live exposure (neither function is wired to an HTTP route yet -- confirmed by the reviewer's own grep)",
+              "fix": "Not fixed tonight. Real correctness debt in not-yet-exposed code; lower urgency than finding 1 (which was live). Recorded as an explicit gap for whoever wires raiseNeedsYou/resolveNeedsYou to a route (the autonomous wave-dispatch loop's eventual job) to fix at that time, not silently inherited as if it were already safe."
+            },
+            {
+              "id": 3,
+              "summary": "The keep-going-http-routes.mjs extraction (wave 7, forced by http-server.mjs's max-lines cap) reads as a one-off workaround rather than a generalized pattern -- the file now has two inconsistent conventions for HTTP routes (inline vs. one bespoke extracted module), and the comparably-sized onboarding route block was left inline, so the same problem will recur.",
+              "verdict": "PLAUSIBLE, legitimate architectural critique, not a bug",
+              "fix": "Not addressed -- generalizing to a real router abstraction across all of http-server.mjs's route groups is a genuine refactor, not a bounded fix, and explicitly the kind of new-architecture-surface work this evening-sprint window should not start close to the cutoff. Recorded as a real piece of debt for a dedicated future pass, not hidden."
+            },
+            {
+              "id": 4,
+              "summary": "assertExpectedRevision only guards the keepGoingRun sub-object; saveState() still does a blind whole-document overwrite of all of opState (chatThreads, portfolio, onboardedProjects, fixtureReceipts, usageMode, etc.), so two concurrent requests touching different unrelated slices of opState can still silently drop one write.",
+              "verdict": "PLAUSIBLE, legitimate architectural gap, not a bug in this wave's own scope",
+              "fix": "Not addressed -- general document-level optimistic concurrency across data-store.mjs would touch every feature that reads/writes opState, a substantially larger undertaking than this wave's bounded scope of 'protect the keepGoingRun field specifically.' Recorded honestly: tonight's fix narrows one specific race, it does not generalize to whole-document safety."
+            }
+          ],
+          "testsAdded": 1,
+          "testsPassing": "1/1 new; 133/133 full tsf suite (no regressions); oxlint/oxfmt clean; UI typecheck clean; UI build succeeds; not separately browser-re-verified given time pressure (structurally identical to the already browser-verified pause/resume revision plumbing -- same code paths, same pattern) -- an intentional, disclosed reduction in verification depth as the RETURN_HANDOFF window approaches, not a silent skip.",
+          "verifier": "Partial VERIFIER_INDEPENDENT (one of 8 planned finder-angle sub-agents completed before the coordinator hit a Claude session limit) + SELF for the fix itself",
+          "commit": null,
+          "deferredToNextWave": [
+            "finding 2: revision/expectedRevision support for raiseNeedsYou/resolveNeedsYou, before those functions are ever wired to a live route",
+            "finding 3: generalized HTTP route-module pattern across http-server.mjs",
+            "finding 4: document-level (not just keepGoingRun-level) optimistic concurrency in data-store.mjs",
+            "the remaining 7 of 8 review finder-angles never ran -- a genuinely complete independent review of waves 4-8 still has not happened"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -444,22 +484,24 @@
     }
   },
   "providerCapacityStatus": {
-    "queriedAt": "2026-08-19T20:22:00Z",
-    "source": "orca account list --json (live, trustworthy) -- re-checked at resume-from-checkpoint preflight",
+    "queriedAt": "2026-08-19T21:15:00-06:00",
+    "source": "orca account list --json (live, trustworthy) -- re-checked after the wave-8 Claude session-limit event",
     "claude": {
-      "sessionUsedPercent": 19,
+      "sessionUsedPercent": 12,
       "sessionWindowMinutes": 300,
-      "weeklyUsedPercent": 16,
-      "status": "HEALTHY"
+      "sessionResetsAt": "2026-08-21T02:10:00-06:00",
+      "weeklyUsedPercent": 25,
+      "status": "HEALTHY_AFTER_SESSION_LIMIT_RESET",
+      "sessionLimitIncident": "During wave 8, a code-review coordinator agent (running a multi-sub-agent independent review) hit the Claude session usage limit mid-run ('You've hit your session limit -- resets 9:10pm America/Denver'). This program was blocked waiting on that reset for approximately 2h16m (6:55pm to 9:11pm local) -- unplanned, significant real-time cost against tonight's evening-sprint window. The session has since reset (confirmed live: 12% used, fresh 300min window) and Claude capacity is healthy again, but this is recorded as a real capacity event, not glossed over. Launching another large multi-sub-agent review tonight is being treated cautiously given this just happened once already."
     },
     "codex": {
       "weeklyUsedPercent": 91,
       "rateLimitResetCreditsAvailable": 0,
       "resetsAt": "2026-08-20T05:20:51Z",
       "status": "NEAR_LIMIT_BUT_EXPIRING_SOON",
-      "changeSincePriorCheckpoint": "Account-level percent snapshot still reads 91% (this endpoint appears to update on a lag), but the live Codex TUI itself surfaced an 'approaching rate limits' downgrade prompt after wave 3's dispatch -- treat that in-session signal as the more current one. Effectively near-exhausted now."
+      "changeSincePriorCheckpoint": "Unchanged since wave 3 -- still 91%/0 reset credits, still resets at the same moment as the hard operator-return cutoff."
     },
-    "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Section G was amended 2026-08-19 with the EXPIRING_CAPACITY rule (state.json -> capacityPolicy.expiringCapacityRule): near a known reset, remaining capacity is used for small bounded useful work rather than left idle. Applied once this session (M2 wave 3, see capacityPolicy.expiringCapacityRule.applicationLog) -- one bounded task dispatched and independently verified GREEN. After that task, Codex's own UI signaled it was near its limit again, so per the rule's shrink-and-stop step no further Codex dispatch was queued this wave. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) remains healthy throughout."
+    "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Section G was amended 2026-08-19 with the EXPIRING_CAPACITY rule (state.json -> capacityPolicy.expiringCapacityRule): near a known reset, remaining capacity is used for small bounded useful work rather than left idle. Applied once this session (M2 wave 3, see capacityPolicy.expiringCapacityRule.applicationLog) -- one bounded task dispatched and independently verified GREEN. After that task, Codex's own UI signaled it was near its limit again, so per the rule's shrink-and-stop step no further Codex dispatch was queued this wave. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) is healthy again after the wave-8 session-limit reset, but multi-sub-agent review dispatch is being used more conservatively for the rest of tonight given that incident."
   },
   "lastDurableCheckpoint": {
     "phase": "M2_WAVE_7_COMPLETE_INDEPENDENT_REVIEW_ADDRESSED",

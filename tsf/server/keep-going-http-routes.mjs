@@ -53,7 +53,8 @@ export async function handleKeepGoingRoute(
         opState,
         projectId,
         body,
-        () => new Date()
+        () => new Date(),
+        body.expectedRevision
       )
       saveState(nextState)
       json(
@@ -62,7 +63,11 @@ export async function handleKeepGoingRoute(
         projectKeepGoingRun(run, () => new Date())
       )
     } catch (error) {
-      json(res, 422, { ok: false, error: error.message, code: error.code ?? null })
+      json(res, error.code === 'TSF_STALE_REVISION' ? 409 : 422, {
+        ok: false,
+        error: error.message,
+        code: error.code ?? null
+      })
     }
     return true
   }

@@ -36,7 +36,15 @@ const DEFAULT_BUDGET = {
   stallThresholdMs: 30 * 60 * 1000
 }
 
-function StartForm({ projectId, onStarted }: { projectId: string; onStarted: () => void }) {
+function StartForm({
+  projectId,
+  onStarted,
+  expectedRevision
+}: {
+  projectId: string
+  onStarted: () => void
+  expectedRevision?: number
+}) {
   const { data: routing } = useApi(() => api.routing(), [])
   const [goal, setGoal] = useState('')
   const [criteria, setCriteria] = useState('')
@@ -83,7 +91,8 @@ function StartForm({ projectId, onStarted }: { projectId: string; onStarted: () 
         usageMode,
         constraints: linesOf(constraints),
         stopConditions: linesOf(stopConditions),
-        budget
+        budget,
+        expectedRevision
       })
       onStarted()
     } catch (err) {
@@ -403,6 +412,7 @@ export function KeepGoingPanel({ projectId }: { projectId: string }) {
         setStartingNew(false)
         reload()
       }}
+      expectedRevision={run.started ? run.revision : undefined}
     />
   ) : (
     <LiveRun

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { completeRun } from '../domain/keep-going.mjs'
 import {
   keepGoingRunFor,
   pauseKeepGoingRun,
@@ -47,6 +48,43 @@ test('pauseKeepGoingRun and resumeKeepGoingRun transition the real run and persi
   assert.equal(keepGoingRunFor(paused.opState, 'proj-1').state, 'PAUSED')
   const resumed = resumeKeepGoingRun(paused.opState, 'proj-1', clock)
   assert.equal(resumed.run.state, 'ACTIVE')
+})
+
+test('startKeepGoingRun rejects a stale expectedRevision when starting a new run after a prior one finished', () => {
+  const first = startKeepGoingRun(
+    {},
+    'proj-1',
+    { originalGoal: 'First run.', acceptanceCriteria: ['A_DONE'] },
+    clock
+  )
+  const completed = completeRun(first.run, clock)
+  const opStateWithFinishedRun = {
+    ...first.opState,
+    keepGoingRuns: { ...first.opState.keepGoingRuns, 'proj-1': completed }
+  }
+  // A concurrent request that read the run before it settled must be
+  // rejected, not allowed to silently overwrite the finished run.
+  assert.throws(
+    () =>
+      startKeepGoingRun(
+        opStateWithFinishedRun,
+        'proj-1',
+        { originalGoal: 'Second run (stale).', acceptanceCriteria: ['B_DONE'] },
+        clock,
+        first.run.revision // stale -- completed.revision has since moved on
+      ),
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+  // The correct current revision is accepted and creates a fresh run.
+  const second = startKeepGoingRun(
+    opStateWithFinishedRun,
+    'proj-1',
+    { originalGoal: 'Second run.', acceptanceCriteria: ['B_DONE'] },
+    clock,
+    completed.revision
+  )
+  assert.equal(second.run.state, 'ACTIVE')
+  assert.equal(second.run.originalGoal.statement, 'Second run.')
 })
 
 test('pauseKeepGoingRun rejects a stale expectedRevision from a concurrent request', () => {
