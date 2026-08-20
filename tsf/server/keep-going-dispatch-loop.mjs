@@ -533,6 +533,20 @@ async function settleStep(projectId, clock, orchestration, store) {
   }
   const tasksById = new Map((tasksResult.result?.tasks ?? []).map((t) => [t.id, t]))
 
+  // Disclosed, deliberately not modeled further this wave (found live
+  // reconciling a real stalled smoke dispatch): PENDING here conflates two
+  // genuinely different states -- "worker-start's CLI call succeeded and a
+  // real worker was assigned" (DISPATCH_SUCCEEDED, confirmed the moment
+  // dispatchStep records the dispatchId) versus "the underlying agent
+  // process has actually finished ITS OWN startup and begun the real
+  // task" (AGENT_STARTUP_READY -- an agent can sit in its own startup
+  // phase, e.g. stalled on an unrelated MCP server login, for a long
+  // time after a fully successful dispatch, with Orca's own worker.state
+  // still reporting 'ready'/'running' throughout). Distinguishing them
+  // precisely would need surfacing worker-show's stage/observation
+  // fields into this outcome, a real enhancement judged out of scope for
+  // this milestone; PENDING here should be read as DISPATCH_SUCCEEDED
+  // only, never as evidence the agent is actively working.
   const outcomes = []
   let allTerminal = true
   for (const record of inFlightWave.dispatchRecords) {
