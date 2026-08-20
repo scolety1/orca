@@ -17,9 +17,18 @@ import { validatePlanCapsule } from '../contracts/validate-capsules.mjs'
 // The same forbidden-action vocabulary the authority gate (chat-
 // responder.mjs's TIM_REQUIRED_PATTERNS) and M3's own design doc use.
 // Always present in the merged capsule's prohibitedActions regardless of
-// what the model returned -- a defense-in-depth floor, not a ceiling: the
-// model may add more (e.g. project-specific prohibitions), it may never
-// remove or replace this baseline.
+// what the model returned -- the model may add more (e.g. project-
+// specific prohibitions), it may never remove or replace this baseline.
+// An independent review finding: this is NOT a structural safety gate --
+// nothing in this codebase reads a dispatched task's prohibitedActions to
+// refuse or verify a worker's actual behavior. It only ever reaches a
+// worker as one line of free text in planCapsuleToCandidateWorkItem's
+// spec below, the same way any other instruction in a work item's spec
+// does. The REAL structural protections against the actions this list
+// names (no auto-adoption, no auto-merge, M2's own architecture) remain
+// separately enforced elsewhere regardless of this text; this list is
+// honest, consistent instruction content for the worker, not a technical
+// enforcement boundary in its own right.
 export const MANDATORY_PROHIBITED_ACTIONS = Object.freeze([
   'adoption',
   'push/merge',

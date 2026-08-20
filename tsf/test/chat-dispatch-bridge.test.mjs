@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { planAndDispatchFromChat } from '../server/chat-dispatch-bridge.mjs'
-import { pauseRun } from '../domain/keep-going.mjs'
+import { createOvernightRun, pauseRun } from '../domain/keep-going.mjs'
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 const PROJECT = { id: 'fixture:proj', displayName: 'Fixture Project' }
@@ -133,6 +133,103 @@ test('a project with no Keep Going run yet: creates one and genuinely dispatches
   assert.equal(result.tickResult.dispatchRecords[0].workItemId, result.candidateWorkItem.id)
   assert.equal(store.readRun().state, 'ACTIVE')
   assert.ok(store.readRun().inFlightWave, 'a real wave is genuinely in flight')
+})
+
+test('the loser of a real concurrent run-creation race recovers gracefully instead of throwing uncaught (an independent-review-caught TOCTOU)', async () => {
+  // Deterministically forces the exact race outcome rather than relying on
+  // Promise.all/microtask timing to happen to interleave -- the fake
+  // store's synchronous withRun has no internal yield point, so two
+  // concurrent planAndDispatchFromChat calls never actually overlap at
+  // ensureActiveRun's read/write in practice (confirmed: an earlier,
+  // timing-based version of this test passed even against the unfixed
+  // code, a false positive -- Promise.all does not guarantee genuine
+  // interleaving when neither side's synchronous work actually yields
+  // control at the right point). Simulating startKeepGoingRun itself
+  // throwing TSF_RUN_ALREADY_ACTIVE -- exactly what the real domain
+  // function does when a concurrent winner's run already exists at the
+  // moment the atomic closure runs -- exercises ensureActiveRun's catch
+  // path directly and deterministically. Every unlocked readRun call
+  // (planAndDispatchFromChat's own upfront check, and ensureActiveRun's)
+  // sees null until the atomic closure runs -- nobody has a run according
+  // to any unlocked read -- faithfully simulating "someone else's run
+  // landed between the last unlocked read and the moment this call's own
+  // atomic closure actually acquired the lock."
+  // A real, fully-initialized run (not a hand-crafted partial stub) --
+  // dispatchWave/checkpointRun etc. all read fields (checkpoints, budget,
+  // originalGoal, ...) a minimal object would be missing.
+  const winnerRun = createOvernightRun(
+    {
+      id: 'winner-run',
+      projectId: PROJECT.id,
+      originalGoal: 'A different objective the race winner already started.',
+      acceptanceCriteria: ['CRITERION_A'],
+      usageMode: 'BALANCED'
+    },
+    clock
+  )
+  const raceError = new Error('a Keep Going run is already active for this project')
+  raceError.code = 'TSF_RUN_ALREADY_ACTIVE'
+  let raceResolved = false
+  let raceCurrent = null
+  const raceStore = {
+    readRun: () => (raceResolved ? raceCurrent : null),
+    withRun: (_projectId, mutateFn) => {
+      raceCurrent = winnerRun
+      raceResolved = true
+      return mutateFn(raceCurrent) // throws -- start() below always does
+    }
+  }
+  // Separate, ordinary stateful store for tick() itself -- by the time it
+  // runs, the race is already resolved; it just needs normal read/write
+  // behavior against the winner's run, seeded directly (not via raceStore,
+  // which exists only to exercise ensureActiveRun's one-time catch path).
+  const tickStore = makeFakeStore(winnerRun)
+  const result = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead and add a note',
+    placement,
+    identity,
+    clock,
+    deps: {
+      readKeepGoingRun: raceStore.readRun,
+      withKeepGoingRun: async (projectId, mutateFn) => raceStore.withRun(projectId, mutateFn),
+      tickDeps: { store: tickStore, orchestration: okOrchestration() },
+      invokeLiveStructuredAnalysis: async () => workPlanResponse(),
+      startKeepGoingRun: () => {
+        throw raceError
+      }
+    }
+  })
+  assert.equal(
+    result.ok,
+    true,
+    "recovered gracefully and proceeded to tick the winner's run, not an uncaught throw"
+  )
+  assert.equal(result.tickResult.action, 'WAVE_DISPATCHED')
+})
+
+test('a non-race error from startKeepGoingRun still propagates -- the catch is narrowly scoped to TSF_RUN_ALREADY_ACTIVE only', async () => {
+  const store = makeFakeStore(null)
+  const unrelatedError = new Error('a genuinely different failure')
+  unrelatedError.code = 'TSF_SOMETHING_ELSE'
+  await assert.rejects(
+    () =>
+      planAndDispatchFromChat({
+        project: PROJECT,
+        message: 'go ahead and add a note',
+        placement,
+        identity,
+        clock,
+        deps: {
+          ...baseDeps(store),
+          invokeLiveStructuredAnalysis: async () => workPlanResponse(),
+          startKeepGoingRun: () => {
+            throw unrelatedError
+          }
+        }
+      }),
+    (error) => error.code === 'TSF_SOMETHING_ELSE'
+  )
 })
 
 test('reuses an existing ACTIVE run rather than creating a second one', async () => {

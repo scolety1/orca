@@ -49,6 +49,23 @@ function buildWorkPlanPrompt({ project, message }) {
 // separately below (a new run may start once the old one is done).
 const NON_DISPATCHABLE_ACTIVE_STATES = new Set(['PAUSED', 'NEEDS_YOU', 'STALLED'])
 
+// Names only recovery affordances that genuinely exist in the product
+// today -- an independent review finding was that an earlier version of
+// this message named a fictional "resolve Needs You" action alongside the
+// two real ones (Resume, Abandon stalled wave), neither of which exists
+// as a wired UI/route today (resolveNeedsYou is domain-layer-only, see
+// tsf/domain/keep-going.mjs -- a disclosed, pre-existing M2 gap, not
+// something to silently claim is available from chat).
+function recoveryHintFor(state) {
+  if (state === 'PAUSED') {
+    return 'the existing Keep Going run for this project is PAUSED -- click Resume before dispatching new work'
+  }
+  if (state === 'STALLED') {
+    return 'the existing Keep Going run for this project is STALLED -- click Abandon stalled wave before dispatching new work'
+  }
+  return 'the existing Keep Going run for this project is NEEDS_YOU -- it has an open question recorded on the run (visible in the Keep Going panel); resolving it from chat is not wired up yet'
+}
+
 async function ensureActiveRun(projectId, capsule, clock, deps) {
   const readRun = deps.readKeepGoingRun ?? readKeepGoingRun
   const withRun = deps.withKeepGoingRun ?? withKeepGoingRun
@@ -59,21 +76,41 @@ async function ensureActiveRun(projectId, capsule, clock, deps) {
     return { run: existing, freshlyCreated: false }
   }
 
-  const run = await withRun(projectId, (current) => {
-    const { run: started } = start(
-      { keepGoingRuns: { [projectId]: current } },
-      projectId,
-      {
-        originalGoal: capsule.objective,
-        acceptanceCriteria: capsule.acceptanceCriteria,
-        constraints: capsule.constraints,
-        stopConditions: capsule.stopConditions
-      },
-      clock
-    )
-    return started
-  })
-  return { run, freshlyCreated: true }
+  // The unlocked read above (plus the live planner call before it) leaves
+  // a real window where two concurrent chat dispatch requests for a
+  // project with no run yet can both observe existing===null. The atomic
+  // withRun closure below re-derives `current` from a fresh, lock-held
+  // read, so startKeepGoingRun's own existing-run check still correctly
+  // stops a genuine duplicate from ever being created -- an independent
+  // review finding was that the LOSER of that race got an uncaught
+  // TSF_RUN_ALREADY_ACTIVE instead, propagating to an ungraceful HTTP 500
+  // and dropping that chat turn from history entirely (the exception
+  // escaped before the route's own final chatThreads save). The correct
+  // outcome for the loser isn't an error at all -- it should simply use
+  // the run the winner just created, exactly like a caller that found an
+  // existing run on the very first read above.
+  try {
+    const run = await withRun(projectId, (current) => {
+      const { run: started } = start(
+        { keepGoingRuns: { [projectId]: current } },
+        projectId,
+        {
+          originalGoal: capsule.objective,
+          acceptanceCriteria: capsule.acceptanceCriteria,
+          constraints: capsule.constraints,
+          stopConditions: capsule.stopConditions
+        },
+        clock
+      )
+      return started
+    })
+    return { run, freshlyCreated: true }
+  } catch (error) {
+    if (error.code !== 'TSF_RUN_ALREADY_ACTIVE') {
+      throw error
+    }
+    return { run: readRun(projectId), freshlyCreated: false }
+  }
 }
 
 // The one entry point: classifyDecision must already have ruled out
@@ -120,7 +157,7 @@ export async function planAndDispatchFromChat({
     return {
       ok: false,
       reason: 'RUN_NOT_DISPATCHABLE',
-      detail: `the existing Keep Going run for this project is ${existingRun.state} -- use its own recovery path (Resume / Abandon stalled wave / resolve Needs You) before dispatching new work`,
+      detail: recoveryHintFor(existingRun.state),
       run: existingRun
     }
   }
