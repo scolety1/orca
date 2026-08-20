@@ -489,7 +489,7 @@
           "testsAdded": 11,
           "testsPassing": "11 net new (5 domain lock tests + 6 real-store-backed adversarial concurrency tests) + keep-going-dispatch-loop.test.mjs rewritten for the new interface (15 tests, one new: two-overlapping-ticks-same-process); 168/168 full tsf suite GREEN (no regressions); oxlint clean; oxfmt clean.",
           "verifier": "SELF for implementation; independent review of the concurrency behavior specifically requested and required by Tim before proceeding to dogfood -- see wave 16b",
-          "commit": null,
+          "commit": "83786a9dd1e443cde9fe7f50e8a35fc71d5d96c9",
           "deferredToNextWave": [
             "wave 16b: independent review of this wave's concurrency behavior (Tim-required gate before dogfood)",
             "wiring keep-going-http-routes.mjs's start/pause/resume through keep-going-run-store.mjs (closes wave 11 finding 1 for real, and is needed before tick is exposed over HTTP)",
