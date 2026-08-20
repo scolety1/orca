@@ -4,6 +4,7 @@
 // answers from real recorded project state instead of inventing an LLM
 // persona. The interface (classify + respond) is what a real PLANNER_DEEP
 // route would sit behind later — the UI never hard-codes a vendor.
+import { projectLiveWorkFeedState } from '../domain/live-work-feed.mjs'
 
 const TIM_REQUIRED_PATTERNS = [
   /\b(push|merge|deploy|publish|release to prod|production)\b/i,
@@ -14,7 +15,13 @@ const TIM_REQUIRED_PATTERNS = [
 ]
 
 const INTENTS = [
-  { id: 'STATUS', pattern: /\b(what'?s going on|status|where are we|update me|catch me up)\b/i },
+  {
+    id: 'STATUS',
+    // "what is it doing?" is Tim's own exact north-star follow-up phrasing
+    // (M3 requirements) -- must be recognized, not fall through to GENERAL.
+    pattern:
+      /\b(what'?s going on|status|where are we|update me|catch me up|what (is|'s) it doing)\b/i
+  },
   { id: 'FINISHED', pattern: /\b(is (this|it) (actually )?(done|finished|ready)|are we done)\b/i },
   // M3: the affirmative "go do real work" phrasings Tim's own north star
   // names ("go ahead," "build that," "do the recommended next step") --
@@ -73,6 +80,40 @@ function fmtTests(testsRun) {
         : JSON.stringify(t)
     )
     .join('; ')
+}
+
+// M3: "what is it doing?" (STATUS/NEXT_ACTION) must answer from the real,
+// live Keep Going run once one exists for this project -- the old mission/
+// candidate/release model below predates M2 entirely and has no
+// relationship to a project's actual dispatch state. `gap` is optional
+// (compareStateToGoal's own output, or null) -- see
+// projectLiveWorkFeedState's own honesty guarantee for what happens
+// without it.
+function respondStatusOrNextActionFromRun(intent, project, run, gap) {
+  const feed = projectLiveWorkFeedState(run, gap)
+  const base = `**${project.displayName}** — Keep Going run \`${run.id}\` is **${feed.state}**: ${feed.reason}.`
+  if (intent === 'STATUS') {
+    return base
+  }
+  // NEXT_ACTION: point at the real, existing affordance for each state --
+  // never a fictional one (an independent review finding elsewhere in M3
+  // caught exactly this failure mode in a different message).
+  if (feed.state === 'NEEDS_YOU') {
+    const openQuestion = run.needsYou.find((entry) => !entry.resolvedAt)
+    return openQuestion
+      ? `${base} Open question: ${openQuestion.question}`
+      : `${base} Check the Keep Going panel for the open question.`
+  }
+  if (feed.state === 'STALLED') {
+    return `${base} Use the "Abandon stalled wave" action to recover it.`
+  }
+  if (feed.state === 'PAUSED' || feed.state === 'WAITING') {
+    return `${base} Click Resume to continue it.`
+  }
+  if (feed.state === 'READY_FOR_ADOPTION') {
+    return `${base} Review it on the Adoption surface and decide Adopt / Request Revision / Reject.`
+  }
+  return `${base} No action needed from you right now.`
 }
 
 function respondStatus(project) {
@@ -182,14 +223,20 @@ function respondTimRequired(project) {
   return `That's a **consequential decision** (money, credentials, push/merge/deploy/publish, or adoption authority) — I won't act on it automatically. Tell me explicitly to proceed and I'll surface exactly what would change on **${project?.displayName ?? 'this project'}** before anything happens.`
 }
 
-export function respond(project, message) {
+// `run` (a real Keep Going domain run, or null) and `gap` (compareStateToGoal's
+// output, or null) are both optional -- callers with no live run for this
+// project (or that haven't wired the lookup) get the exact prior
+// behavior, unchanged.
+export function respond(project, message, run = null, gap = null) {
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
   const text = !project
     ? `No project selected — pick one first.`
     : decisionClass === 'TIM_REQUIRED'
       ? respondTimRequired(project)
-      : RESPONDERS[intent](project)
+      : run && (intent === 'STATUS' || intent === 'NEXT_ACTION')
+        ? respondStatusOrNextActionFromRun(intent, project, run, gap)
+        : RESPONDERS[intent](project)
   return {
     intent,
     decisionClass,

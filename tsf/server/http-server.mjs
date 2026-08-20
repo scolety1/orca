@@ -19,7 +19,9 @@ import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { projectOnboardedProject } from './onboarded-project-projection.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
+import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
+import { compareStateToGoal } from '../domain/keep-going.mjs'
 import usageModes from '../routing/usage-modes.v1.json' with { type: 'json' }
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 
@@ -418,6 +420,20 @@ export function createRequestHandler() {
         const dispatchWorthy = intent === 'DISPATCH_REQUEST' || intent === 'FIX_REQUEST'
         const hasExplicitPlacement = !!(body.placement?.worktree || body.placement?.workerTerminal)
 
+        // M3: "what is it doing?" must answer from the real, live Keep
+        // Going run once one exists -- the live conversational planner
+        // call below has zero awareness of Keep Going state (its own
+        // project-context capsule never reads keepGoingRuns), so letting
+        // a STATUS/NEXT_ACTION question through to it would risk an
+        // uninformed or fabricated-sounding answer about work that is
+        // actually, verifiably in progress. respond()'s own live-run path
+        // (chat-responder.mjs) is grounded and deterministic instead.
+        const liveRun = project ? keepGoingRunFor(opState, project.id) : null
+        const liveGap = liveRun
+          ? compareStateToGoal(liveRun, { verifiedSatisfied: [] }, () => new Date())
+          : null
+        const statusWorthy = intent === 'STATUS' || intent === 'NEXT_ACTION'
+
         if (!project) {
           result = respond(project, message)
         } else if (decisionClass === 'TIM_REQUIRED') {
@@ -427,13 +443,19 @@ export function createRequestHandler() {
           // may well be configured and reachable, it was just deliberately
           // not called for this message.
           result = {
-            ...respond(project, message),
+            ...respond(project, message, liveRun, liveGap),
             providerLabel:
               'PLANNER_DEEP · policy refusal — consequential action, no live call made',
             live: false
           }
         } else if (dispatchWorthy && hasExplicitPlacement) {
           result = await dispatchFromChat({ project, message, placement: body.placement })
+        } else if (liveRun && statusWorthy) {
+          result = {
+            ...respond(project, message, liveRun, liveGap),
+            providerLabel: 'PLANNER_DEEP · grounded in the live Keep Going run, no live call made',
+            live: false
+          }
         } else {
           const key = body.projectId
           const history = (opState.chatThreads[key] ?? []).slice(-12)
@@ -459,7 +481,7 @@ export function createRequestHandler() {
             }
           } else {
             result = {
-              ...respond(project, message),
+              ...respond(project, message, liveRun, liveGap),
               providerLabel: fallbackLabel(live.reason),
               live: false,
               unavailableReason: live.reason,

@@ -82,6 +82,26 @@ test('a dispatch-worthy chat message with an explicit placement genuinely dispat
   })
 })
 
+test('a follow-up "what is it doing?" after a real dispatch answers from the live run, not a canned/fabricated reply', async () => {
+  await withServer(async (base) => {
+    const dispatch = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'go ahead and add a bounded doc note',
+      placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+    })
+    assert.equal(dispatch.body.dispatched, true)
+    const followUp = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'what is it doing?'
+    })
+    assert.equal(followUp.body.intent, 'STATUS')
+    assert.equal(followUp.body.live, false)
+    assert.match(followUp.body.providerLabel, /grounded in the live Keep Going run/)
+    assert.match(followUp.body.text, /Keep Going run/)
+    assert.match(followUp.body.text, /WORKING/)
+  })
+})
+
 test('the exact same message WITHOUT a placement keeps the prior conversational behavior unchanged', async () => {
   await withServer(async (base) => {
     const { body } = await chat(base, {
