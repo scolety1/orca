@@ -193,3 +193,49 @@ test('when the TSF-side abandon itself fails (run is not STALLED), no Orca recon
     'a rejected TSF-side commit must not still touch real Orca state'
   )
 })
+
+// An independent review finding: an earlier version captured
+// dispatchRecords via a separate, unlocked store.readRun call BEFORE the
+// atomic mutate, reasoning that expectedRevision would catch anything
+// racing in between -- but assertExpectedRevision is a documented no-op
+// when the caller omits it, so that safety claim did not hold for every
+// caller. Reading from the exact `current` the atomic mutate itself
+// observes closes the gap regardless of whether expectedRevision is
+// supplied.
+test('reconciles the dispatch the atomic mutate actually observed, not a separate, potentially stale outer read', async () => {
+  const stalled = stalledRunWithDispatches([
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-real' }
+  ])
+  // Deliberately different from `stalled` -- if the implementation used
+  // this instead of the closure's own `current`, it would reconcile the
+  // wrong dispatch id.
+  const staleSnapshot = stalledRunWithDispatches([
+    { workItemId: 'stale', scope: ['src/stale.mjs'], taskId: 'task-stale', dispatchId: 'ctx-stale' }
+  ])
+  const store = {
+    readRun: () => staleSnapshot,
+    withRun: (_projectId, mutateFn) => mutateFn(stalled)
+  }
+  const abandonCalls = []
+  const result = await abandonAndReconcileStalledWave(
+    PROJECT_ID,
+    'stalled, recovering',
+    clock,
+    stalled.revision,
+    {
+      store,
+      orchestration: {
+        abandonOrchestrationWorker: async ({ dispatch }) => {
+          abandonCalls.push(dispatch)
+          return { ok: true, result: {} }
+        }
+      }
+    }
+  )
+  assert.deepEqual(
+    abandonCalls,
+    ['ctx-real'],
+    'must reconcile the dispatch actually abandoned, not a stale outer read'
+  )
+  assert.equal(result.orchestrationReconciliation[0].dispatchId, 'ctx-real')
+})

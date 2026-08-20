@@ -793,12 +793,15 @@ export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, dep
 // same worktree (a real, live-confirmed gap: a manual UI acceptance
 // retest hit exactly this after using the abandon button -- the retry's
 // task was created but never dispatched, with zero trace in Orca's own
-// worker-list). Reads dispatchRecords BEFORE the atomic TSF-side mutate
-// -- if that mutate throws (stale revision, no in-flight wave, wrong
-// state), nothing is reconciled with Orca either; if it succeeds, nothing
-// else could have raced the read in between (any intervening change would
-// have failed the revision check the mutate performs).
-// Best-effort past that point: a failure reconciling one dispatch with
+// worker-list). Captures dispatchRecords from the SAME `current` value
+// the atomic mutate below observes, INSIDE the store.withRun closure --
+// not a separate, unlocked pre-read (an independent review finding: this
+// module's own expectedRevision check is a documented no-op when the
+// caller omits it, so a prior version's "nothing could have raced the
+// read" claim was only true for callers that always supply it, not as a
+// module-level guarantee; reading from the exact object the CAS itself
+// observes closes the gap unconditionally instead).
+// Best-effort past the commit: a failure reconciling one dispatch with
 // Orca does not undo or block the TSF-side fencing that already
 // succeeded -- TSF's own state consistency must not depend on Orca's
 // cooperation, matching this module's existing dispatch-failure handling.
@@ -812,12 +815,11 @@ export async function abandonAndReconcileStalledWave(
   const orchestration = deps.orchestration ?? DEFAULT_ORCHESTRATION
   const store = deps.store ?? DEFAULT_STORE
 
-  const before = store.readRun(projectId)
-  const abandonedDispatchIds = (before?.inFlightWave?.dispatchRecords ?? [])
-    .map((record) => record.dispatchId)
-    .filter(Boolean)
-
+  let abandonedDispatchIds = []
   const next = await store.withRun(projectId, (current) => {
+    abandonedDispatchIds = (current?.inFlightWave?.dispatchRecords ?? [])
+      .map((record) => record.dispatchId)
+      .filter(Boolean)
     const { run } = abandonKeepGoingStalledWave(
       { keepGoingRuns: { [projectId]: current } },
       projectId,
