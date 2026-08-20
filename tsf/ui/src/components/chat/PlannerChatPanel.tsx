@@ -9,7 +9,7 @@ import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import type { ChatMessage } from '@/lib/types'
 
-interface Attachment {
+type Attachment = {
   name: string
   size: number
   type: string
@@ -23,7 +23,13 @@ interface Attachment {
 // weight, and hand-rolling keeps zero risk of an unverified API mismatch.
 // The backend contract (POST /api/chat) is what keeps this vendor-neutral —
 // swapping the responder for a real PLANNER_DEEP call changes no UI code.
-export function PlannerChatPanel({ projectId, projectName }: { projectId: string | null; projectName: string | null }) {
+export function PlannerChatPanel({
+  projectId,
+  projectName
+}: {
+  projectId: string | null
+  projectName: string | null
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -31,6 +37,11 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
   const [error, setError] = useState<string | null>(null)
   const [providerLabel, setProviderLabel] = useState<string | null>(null)
   const [live, setLive] = useState<boolean | null>(null)
+  // M3: opt-in worktree for a real chat-triggered dispatch -- empty by
+  // default, so every existing conversational behavior is unchanged unless
+  // Tim deliberately fills this in (chat-dispatch-bridge.mjs's own "no
+  // silent default" invariant, now honored from the UI too).
+  const [dispatchWorktree, setDispatchWorktree] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -39,7 +50,9 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
     setError(null)
     setProviderLabel(null)
     setLive(null)
-    if (!projectId) return
+    if (!projectId) {
+      return
+    }
     api
       .chatHistory(projectId)
       .then(setMessages)
@@ -52,19 +65,41 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
 
   async function send() {
     const text = draft.trim()
-    if (!text || !projectId || sending) return
-    const attachmentNote = attachments.length ? `\n[Attached: ${attachments.map((a) => a.name).join(', ')}]` : ''
+    if (!text || !projectId || sending) {
+      return
+    }
+    const attachmentNote = attachments.length
+      ? `\n[Attached: ${attachments.map((a) => a.name).join(', ')}]`
+      : ''
     setSending(true)
     setError(null)
-    setMessages((prev) => [...prev, { role: 'user', content: text + attachmentNote, at: new Date().toISOString() }])
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', content: text + attachmentNote, at: new Date().toISOString() }
+    ])
     setDraft('')
     setAttachments([])
     const attachmentMeta = attachments.map((a) => ({ name: a.name, type: a.type || 'unknown' }))
+    const worktree = dispatchWorktree.trim()
     try {
-      const result = await api.chat(projectId, text + attachmentNote, attachmentMeta)
+      const result = await api.chat(
+        projectId,
+        text + attachmentNote,
+        attachmentMeta,
+        worktree ? { worktree } : undefined
+      )
       setProviderLabel(result.providerLabel)
       setLive(result.live ?? false)
-      setMessages((prev) => [...prev, { role: 'assistant', content: result.text, at: new Date().toISOString(), decisionClass: result.decisionClass, intent: result.intent }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: result.text,
+          at: new Date().toISOString(),
+          decisionClass: result.decisionClass,
+          intent: result.intent
+        }
+      ])
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the planner right now.')
     } finally {
@@ -73,10 +108,16 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
   }
 
   function onFiles(fileList: FileList | null) {
-    if (!fileList) return
+    if (!fileList) {
+      return
+    }
     Array.from(fileList).forEach((file) => {
       const reader = new FileReader()
-      reader.onload = () => setAttachments((prev) => [...prev, { name: file.name, size: file.size, type: file.type, dataUrl: String(reader.result) }])
+      reader.onload = () =>
+        setAttachments((prev) => [
+          ...prev,
+          { name: file.name, size: file.size, type: file.type, dataUrl: String(reader.result) }
+        ])
       reader.readAsDataURL(file)
     })
   }
@@ -88,76 +129,151 @@ export function PlannerChatPanel({ projectId, projectName }: { projectId: string
           <Sparkles className="size-4 text-primary" />
           <div className="text-sm font-semibold">Planner Chat</div>
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title={providerLabel ?? undefined}>
-          {live !== null && <span className={cn('size-1.5 rounded-full', live ? 'bg-emerald-500' : 'bg-amber-500')} aria-hidden />}
+        <div
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
+          title={providerLabel ?? undefined}
+        >
+          {live !== null && (
+            <span
+              className={cn('size-1.5 rounded-full', live ? 'bg-emerald-500' : 'bg-amber-500')}
+              aria-hidden
+            />
+          )}
           <span>{providerLabel ? `Planner: ${providerLabel}` : 'Planner: PLANNER_DEEP'}</span>
         </div>
       </div>
       <ScrollArea className="tsf-scrollbar flex-1 px-4 py-3">
         {!projectId ? (
-          <div className="py-10 text-center text-xs text-muted-foreground">Select a project to talk with its planner.</div>
+          <div className="py-10 text-center text-xs text-muted-foreground">
+            Select a project to talk with its planner.
+          </div>
         ) : messages.length === 0 ? (
           <div className="py-10 text-center text-xs text-muted-foreground">
-            Ask anything about <span className="text-foreground">{projectName}</span> — status, what's next, whether it's done, or leave feedback.
+            Ask anything about <span className="text-foreground">{projectName}</span> — status,
+            what&apos;s next, whether it&apos;s done, or leave feedback.
           </div>
         ) : (
           <div className="flex flex-col gap-3">
             {messages.map((message, i) => (
-              <div key={i} className={cn('flex flex-col gap-1', message.role === 'user' ? 'items-end' : 'items-start')}>
+              <div
+                key={i}
+                className={cn(
+                  'flex flex-col gap-1',
+                  message.role === 'user' ? 'items-end' : 'items-start'
+                )}
+              >
                 <div
                   className={cn(
                     'max-w-[85%] overflow-hidden rounded-lg px-3 py-2 text-[13px] leading-relaxed [&_p]:m-0 [&_p+p]:mt-2',
-                    message.role === 'user' ? 'whitespace-pre-wrap bg-primary/15 text-foreground' : 'bg-muted text-foreground'
+                    message.role === 'user'
+                      ? 'whitespace-pre-wrap bg-primary/15 text-foreground'
+                      : 'bg-muted text-foreground'
                   )}
                 >
-                  {message.role === 'assistant' ? <Markdown>{message.content}</Markdown> : message.content}
+                  {message.role === 'assistant' ? (
+                    <Markdown>{message.content}</Markdown>
+                  ) : (
+                    message.content
+                  )}
                 </div>
                 {message.decisionClass && <DecisionBadge decisionClass={message.decisionClass} />}
               </div>
             ))}
-            {sending && <div className="text-[11px] text-muted-foreground">Planner is thinking…</div>}
+            {sending && (
+              <div className="text-[11px] text-muted-foreground">Planner is thinking…</div>
+            )}
           </div>
         )}
         <div ref={bottomRef} />
       </ScrollArea>
-      {error && <div className="border-t border-border px-4 py-2 text-[11px] text-destructive">{error}</div>}
+      {error && (
+        <div className="border-t border-border px-4 py-2 text-[11px] text-destructive">{error}</div>
+      )}
       {attachments.length > 0 && (
         <div className="border-t border-border px-4 py-2">
           <div className="flex flex-wrap gap-2">
             {attachments.map((a, i) => (
-              <div key={i} className="flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+              <div
+                key={i}
+                className="flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground"
+              >
                 {a.name}
-                <button onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))} aria-label={`Remove ${a.name}`}>
+                <button
+                  onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                  aria-label={`Remove ${a.name}`}
+                >
                   <X className="size-3" />
                 </button>
               </div>
             ))}
           </div>
-          <div className="mt-1 text-[10px] text-muted-foreground">Filenames are sent as context; contents aren't processed yet.</div>
+          <div className="mt-1 text-[10px] text-muted-foreground">
+            Filenames are sent as context; contents aren&apos;t processed yet.
+          </div>
         </div>
       )}
-      <div className="flex items-end gap-2 border-t border-border p-3">
-        <input ref={fileInputRef} type="file" accept="image/*,.txt,.md,.json,.log" multiple hidden onChange={(e) => onFiles(e.target.files)} />
-        <Button variant="ghost" size="icon-sm" disabled={!projectId} onClick={() => fileInputRef.current?.click()} aria-label="Attach a screenshot or file">
-          <Paperclip className="size-4" />
-        </Button>
-        <Textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              send()
+      <div className="flex flex-col gap-1.5 border-t border-border p-3">
+        {projectId && (
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="dispatch-worktree"
+              className="text-[10px] whitespace-nowrap text-muted-foreground"
+            >
+              Worktree (optional — enables a real dispatch)
+            </label>
+            <input
+              id="dispatch-worktree"
+              type="text"
+              value={dispatchWorktree}
+              onChange={(e) => setDispatchWorktree(e.target.value)}
+              placeholder="e.g. C:/path/to/worktree"
+              className="w-full rounded-md border border-input bg-input px-2 py-1 text-[11px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+        )}
+        <div className="flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.txt,.md,.json,.log"
+            multiple
+            hidden
+            onChange={(e) => onFiles(e.target.files)}
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={!projectId}
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach a screenshot or file"
+          >
+            <Paperclip className="size-4" />
+          </Button>
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send()
+              }
+            }}
+            placeholder={
+              projectId ? "What's going on with this project?" : 'Select a project first'
             }
-          }}
-          placeholder={projectId ? "What's going on with this project?" : 'Select a project first'}
-          disabled={!projectId}
-          rows={1}
-          className="min-h-9"
-        />
-        <Button size="icon-sm" disabled={!projectId || !draft.trim() || sending} onClick={send} aria-label="Send">
-          <SendHorizontal className="size-4" />
-        </Button>
+            disabled={!projectId}
+            rows={1}
+            className="min-h-9"
+          />
+          <Button
+            size="icon-sm"
+            disabled={!projectId || !draft.trim() || sending}
+            onClick={send}
+            aria-label="Send"
+          >
+            <SendHorizontal className="size-4" />
+          </Button>
+        </div>
       </div>
     </div>
   )

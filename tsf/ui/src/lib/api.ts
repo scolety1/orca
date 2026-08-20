@@ -3,6 +3,7 @@ import type {
   KeepGoingRunView,
   KeepGoingTickResult
 } from './keep-going-types'
+import type { ChatPlacement } from './chat-dispatch-types'
 import type {
   AgentEvidence,
   ChatAttachmentMeta,
@@ -91,10 +92,15 @@ export const api = {
       `/candidates/${encodeURIComponent(projectId)}/decision`,
       { method: 'POST', body: JSON.stringify(body) }
     ),
-  chat: (projectId: string | null, message: string, attachments: ChatAttachmentMeta[] = []) =>
+  chat: (
+    projectId: string | null,
+    message: string,
+    attachments: ChatAttachmentMeta[] = [],
+    placement?: ChatPlacement
+  ) =>
     request<ChatResponse>('/chat', {
       method: 'POST',
-      body: JSON.stringify({ projectId, message, attachments })
+      body: JSON.stringify({ projectId, message, attachments, ...(placement ? { placement } : {}) })
     }),
   chatHistory: (projectId: string) =>
     request<ChatMessage[]>(`/chat/${encodeURIComponent(projectId)}`),
