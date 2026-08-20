@@ -5,9 +5,14 @@
 // analysis, conflict-aware wave planning, retry/stall budgets, and the
 // run-level pause/resume/Needs-You/checkpoint state machine that governs
 // it. See docs/tsf/M2_KEEP_GOING_DESIGN_V1.md for the mapping to Orca CLI
-// primitives and tsf/domain/mission-state.mjs + coordinator.mjs for the
-// per-wave Mission state machine this composes.
-import { deepClone, isoNow, sha256 } from './canonical.mjs'
+// primitives. This is a distinct state machine at the overnight-Run level
+// (ACTIVE/NEEDS_YOU/PAUSED/STALLED/COMPLETE/BLOCKED), one level above
+// tsf/domain/mission-state.mjs + coordinator.mjs's per-wave Mission
+// lifecycle (DRAFT/PLANNING/READY/ACTIVE/REVIEW/...) -- it does not import
+// or literally compose that module today; the design doc's "one Mission
+// per wave" language describes the intended future wiring for the
+// autonomous wave-dispatch loop (not yet built), not code that exists now.
+import { assertExpectedRevision, deepClone, isoNow, sha256 } from './canonical.mjs'
 
 export const OVERNIGHT_RUN_STATES = Object.freeze([
   'ACTIVE',
@@ -107,10 +112,11 @@ export function replaceGoal(
   return next
 }
 
-export function transitionRun(run, to, { reason, evidence = [] } = {}, clock) {
+export function transitionRun(run, to, { reason, evidence = [], expectedRevision } = {}, clock) {
   if (!OVERNIGHT_RUN_STATES.includes(to)) {
     throw new Error(`unknown overnight run state: ${to}`)
   }
+  assertExpectedRevision(run, expectedRevision)
   if (!RUN_ALLOWED[run.state]?.includes(to)) {
     const error = new Error(`invalid overnight run transition: ${run.state} -> ${to}`)
     error.code = 'TSF_INVALID_RUN_TRANSITION'
@@ -125,10 +131,15 @@ export function transitionRun(run, to, { reason, evidence = [] } = {}, clock) {
   return next
 }
 
-export const pauseRun = (run, reason, clock) =>
-  transitionRun(run, 'PAUSED', { reason: reason ?? 'OPERATOR_PAUSE' }, clock)
-export const resumeRun = (run, clock) =>
-  transitionRun(run, 'ACTIVE', { reason: 'OPERATOR_RESUME' }, clock)
+// expectedRevision is optional -- omitting it (existing callers, fixtures)
+// skips the check exactly like assertExpectedRevision does elsewhere in
+// this codebase (mission-state.mjs, adoption.mjs). Server callers pass it
+// to catch a stale read-modify-write race on the persisted run (e.g. two
+// concurrent pause/resume requests for the same project).
+export const pauseRun = (run, reason, clock, expectedRevision) =>
+  transitionRun(run, 'PAUSED', { reason: reason ?? 'OPERATOR_PAUSE', expectedRevision }, clock)
+export const resumeRun = (run, clock, expectedRevision) =>
+  transitionRun(run, 'ACTIVE', { reason: 'OPERATOR_RESUME', expectedRevision }, clock)
 export const completeRun = (run, clock) =>
   transitionRun(run, 'COMPLETE', { reason: 'ORIGINAL_GOAL_SATISFIED' }, clock)
 export const blockRun = (run, reason, evidence, clock) =>
@@ -294,8 +305,13 @@ export function raiseNeedsYou(run, { question, options = [], taskId = null }, cl
   }
   const at = isoNow(clock)
   const next = deepClone(run)
+  // Includes the insertion ordinal so two questions with identical
+  // question/taskId text raised in the same clock tick (guaranteed under a
+  // fixed/mocked clock, possible in production at millisecond granularity)
+  // never collide into the same id -- a collision would leave the older
+  // entry permanently unresolvable and the run stuck in NEEDS_YOU forever.
   next.needsYou.push({
-    id: sha256({ question, taskId, at }),
+    id: sha256({ question, taskId, at, ordinal: next.needsYou.length }),
     question,
     options,
     taskId,

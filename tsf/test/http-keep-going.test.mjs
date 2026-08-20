@@ -73,6 +73,8 @@ test('POST start / GET / POST pause / POST resume drive a real Keep Going run en
     assert.equal(started.started, true)
     assert.equal(started.state, 'ACTIVE')
     assert.equal(started.goal, 'Ship the operator UI check.')
+    assert.deepEqual(started.gap.remainingGaps, ['UI_RENDERS'])
+    assert.equal(started.gap.decision, 'CONTINUE')
 
     const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
     const got = await getRes.json()
@@ -82,12 +84,17 @@ test('POST start / GET / POST pause / POST resume drive a real Keep Going run en
     const pauseRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/pause`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ reason: 'CAPACITY_REVIEW' })
+      body: JSON.stringify({ reason: 'CAPACITY_REVIEW', expectedRevision: started.revision })
     })
     assert.equal(pauseRes.status, 200)
-    assert.equal((await pauseRes.json()).state, 'PAUSED')
+    const paused = await pauseRes.json()
+    assert.equal(paused.state, 'PAUSED')
 
-    const resumeRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/resume`, { method: 'POST' })
+    const resumeRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/resume`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedRevision: paused.revision })
+    })
     assert.equal(resumeRes.status, 200)
     assert.equal((await resumeRes.json()).state, 'ACTIVE')
 
@@ -98,5 +105,35 @@ test('POST start / GET / POST pause / POST resume drive a real Keep Going run en
       body: JSON.stringify({ originalGoal: 'Second goal.', acceptanceCriteria: ['X'] })
     })
     assert.equal(restartRes.status, 422)
+  })
+})
+
+test('POST pause with a stale expectedRevision is rejected with 409, not silently applied', async () => {
+  await withServer(async (base) => {
+    const startRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ originalGoal: 'Race the revision check.', acceptanceCriteria: ['X'] })
+    })
+    const started = await startRes.json()
+
+    // First request pauses using the revision it read at start time.
+    const firstPause = await fetch(`${base}/api/keep-going/${PROJECT_ID}/pause`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'first', expectedRevision: started.revision })
+    })
+    assert.equal(firstPause.status, 200)
+
+    // A second, concurrent request still carrying that same pre-pause
+    // revision must be rejected, not silently reapplied on top.
+    const staleResume = await fetch(`${base}/api/keep-going/${PROJECT_ID}/resume`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedRevision: started.revision })
+    })
+    assert.equal(staleResume.status, 409)
+    const body = await staleResume.json()
+    assert.equal(body.code, 'TSF_STALE_REVISION')
   })
 })

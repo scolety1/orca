@@ -133,13 +133,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body)
     }),
-  pauseKeepGoing: (projectId: string, reason?: string) =>
+  pauseKeepGoing: (projectId: string, reason: string | undefined, expectedRevision: number) =>
     request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/pause`, {
       method: 'POST',
-      body: JSON.stringify({ reason })
+      body: JSON.stringify({ reason, expectedRevision })
     }),
-  resumeKeepGoing: (projectId: string) =>
+  resumeKeepGoing: (projectId: string, expectedRevision: number) =>
     request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/resume`, {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify({ expectedRevision })
     })
 }

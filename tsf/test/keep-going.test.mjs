@@ -191,6 +191,25 @@ test('run-level transitions follow an explicit state machine', () => {
   assert.throws(() => transitionRun(run, 'COMPLETE', {}, clock), /invalid overnight run transition/)
 })
 
+test('pauseRun/resumeRun reject a stale expectedRevision instead of silently overwriting a concurrent transition', () => {
+  const run = baseRun()
+  assert.equal(run.revision, 0)
+  // Simulates two concurrent callers who both read the run at revision 0.
+  // The first transition lands and bumps the persisted run to revision 1...
+  const paused = pauseRun(run, 'operator pause', clock, 0)
+  assert.equal(paused.revision, 1)
+  // ...so a second caller acting on the now-current (revision 1) run but
+  // still carrying its stale belief that the revision is 0 must be
+  // rejected, not silently allowed to clobber the first transition.
+  assert.throws(
+    () => resumeRun(paused, clock, 0),
+    (error) => error.code === 'TSF_STALE_REVISION' || /stale revision/.test(error.message)
+  )
+  // The correct current revision is accepted.
+  const resumed = resumeRun(paused, clock, 1)
+  assert.equal(resumed.state, 'ACTIVE')
+})
+
 test('Needs You blocks the run until every open question is resolved, then returns to ACTIVE', () => {
   let run = baseRun()
   run = raiseNeedsYou(
@@ -204,6 +223,20 @@ test('Needs You blocks the run until every open question is resolved, then retur
   run = resolveNeedsYou(secondQuestion, secondQuestion.needsYou[0].id, 'ADOPT', clock)
   assert.equal(run.state, 'NEEDS_YOU', 'still blocked while one question remains open')
   run = resolveNeedsYou(run, run.needsYou[1].id, 'main', clock)
+  assert.equal(run.state, 'ACTIVE')
+})
+
+test('two Needs You questions with identical text and timestamp never collide into the same id', () => {
+  // Same question/taskId under a fixed clock -- exactly the scenario a
+  // content+timestamp-only id would collide on, permanently stranding the
+  // older entry as unresolvable and the run stuck in NEEDS_YOU forever.
+  let run = baseRun()
+  run = raiseNeedsYou(run, { question: 'Retry this task?' }, clock)
+  run = raiseNeedsYou(run, { question: 'Retry this task?' }, clock)
+  assert.equal(run.needsYou.length, 2)
+  assert.notEqual(run.needsYou[0].id, run.needsYou[1].id)
+  run = resolveNeedsYou(run, run.needsYou[0].id, 'yes', clock)
+  run = resolveNeedsYou(run, run.needsYou[1].id, 'yes', clock)
   assert.equal(run.state, 'ACTIVE')
 })
 

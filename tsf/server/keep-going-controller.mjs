@@ -7,7 +7,13 @@
 // separate, larger piece of work (see program state.json M2 gaps). This
 // controller's job is only to make the real run lifecycle and its honest
 // current state observable and operable from the UI.
-import { checkpointRun, createOvernightRun, pauseRun, resumeRun } from '../domain/keep-going.mjs'
+import {
+  checkpointRun,
+  compareStateToGoal,
+  createOvernightRun,
+  pauseRun,
+  resumeRun
+} from '../domain/keep-going.mjs'
 
 export function keepGoingRunFor(opState, projectId) {
   return opState.keepGoingRuns?.[projectId] ?? null
@@ -40,27 +46,32 @@ export function startKeepGoingRun(opState, projectId, params, clock) {
   return { opState: next, run }
 }
 
-export function pauseKeepGoingRun(opState, projectId, reason, clock) {
+// expectedRevision (optional) guards against a stale read-modify-write: two
+// concurrent requests for the same project each load opState before either
+// saves it, so without this check the later save silently drops the
+// earlier transition. Passing the revision the caller last observed makes
+// that race surface as an explicit TSF_STALE_REVISION error instead.
+export function pauseKeepGoingRun(opState, projectId, reason, clock, expectedRevision) {
   const run = keepGoingRunFor(opState, projectId)
   if (!run) {
     const error = new Error('no Keep Going run exists for this project')
     error.code = 'TSF_RUN_NOT_FOUND'
     throw error
   }
-  let paused = pauseRun(run, reason ?? 'OPERATOR_PAUSE', clock)
+  let paused = pauseRun(run, reason ?? 'OPERATOR_PAUSE', clock, expectedRevision)
   paused = checkpointRun(paused, { phase: 'OPERATOR_PAUSED', note: reason ?? null }, clock)
   const next = { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: paused } }
   return { opState: next, run: paused }
 }
 
-export function resumeKeepGoingRun(opState, projectId, clock) {
+export function resumeKeepGoingRun(opState, projectId, clock, expectedRevision) {
   const run = keepGoingRunFor(opState, projectId)
   if (!run) {
     const error = new Error('no Keep Going run exists for this project')
     error.code = 'TSF_RUN_NOT_FOUND'
     throw error
   }
-  const resumed = resumeRun(run, clock)
+  const resumed = resumeRun(run, clock, expectedRevision)
   const next = { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: resumed } }
   return { opState: next, run: resumed }
 }
@@ -70,15 +81,27 @@ export function resumeKeepGoingRun(opState, projectId, clock) {
 // phase/gap/worker/retry/verifier/NeedsYou/ReadyForAdoption state. Every
 // field is read directly off the real run object -- nothing here invents
 // data the domain layer doesn't already have.
-export function projectKeepGoingRun(run) {
+//
+// Gap analysis: no autonomous dispatch loop exists yet (see module header),
+// so nothing has independently verified any criterion for a UI-started run
+// -- verifiedSatisfied is honestly empty until real verifier evidence exists
+// to pass in here. That means every fresh run correctly shows all criteria
+// as remaining rather than a fabricated partial-progress view.
+//
+// Worker/verifier display: no live Orca worker or verifier facts are wired
+// to a UI-started run yet (that also depends on the dispatch loop) -- both
+// are surfaced as an honest empty list rather than invented entries.
+export function projectKeepGoingRun(run, clock) {
   if (!run) {
     return { started: false }
   }
   const lastCheckpoint = run.checkpoints.at(-1) ?? null
   const openNeedsYou = run.needsYou.filter((entry) => !entry.resolvedAt)
+  const gap = compareStateToGoal(run, { verifiedSatisfied: [] }, clock)
   return {
     started: true,
     runId: run.id,
+    revision: run.revision,
     state: run.state,
     phase: lastCheckpoint?.phase ?? 'RUN_STARTED',
     goal: run.originalGoal.statement,
@@ -89,6 +112,13 @@ export function projectKeepGoingRun(run) {
     stopConditions: run.stopConditions,
     wavesCompleted: run.waves.length,
     retryCounts: run.retryCounts,
+    gap: {
+      satisfiedCriteria: gap.satisfiedCriteria,
+      remainingGaps: gap.remainingGaps,
+      decision: gap.decision
+    },
+    workers: [],
+    verifierResults: [],
     openNeedsYou: openNeedsYou.map(({ id, question, options, raisedAt }) => ({
       id,
       question,

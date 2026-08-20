@@ -19,13 +19,7 @@ import { respond, classifyIntent, classifyDecision } from './chat-responder.mjs'
 import { invokeLivePlanner, providerLabel, fallbackLabel } from './live-planner.mjs'
 import { analyzeRepository, commitOnboarding } from './onboarding.mjs'
 import { projectOnboardedProject } from './onboarded-project-projection.mjs'
-import {
-  keepGoingRunFor,
-  pauseKeepGoingRun,
-  projectKeepGoingRun,
-  resumeKeepGoingRun,
-  startKeepGoingRun
-} from './keep-going-controller.mjs'
+import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import usageModes from '../routing/usage-modes.v1.json' with { type: 'json' }
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
@@ -305,89 +299,17 @@ export function createRequestHandler() {
         }
       }
 
-      // GET /api/keep-going/:projectId
-      if (parts[1] === 'keep-going' && parts.length === 3 && req.method === 'GET') {
-        const projectId = parts[2]
-        if (!map.get(projectId)) {
-          return notFound(res, `unknown project: ${projectId}`)
-        }
-        return json(res, 200, projectKeepGoingRun(keepGoingRunFor(opState, projectId)))
-      }
-
-      // POST /api/keep-going/:projectId/start { originalGoal, acceptanceCriteria, usageMode, budget, constraints, stopConditions }
+      // GET/POST /api/keep-going/:projectId[/start|pause|resume] -- see keep-going-http-routes.mjs
       if (
-        parts[1] === 'keep-going' &&
-        parts.length === 4 &&
-        parts[3] === 'start' &&
-        req.method === 'POST'
+        await handleKeepGoingRoute(
+          parts,
+          req,
+          res,
+          { map, opState },
+          { json, notFound, readBody, saveState }
+        )
       ) {
-        const projectId = parts[2]
-        if (!map.get(projectId)) {
-          return notFound(res, `unknown project: ${projectId}`)
-        }
-        const body = await readBody(req)
-        try {
-          const { opState: nextState, run } = startKeepGoingRun(
-            opState,
-            projectId,
-            body,
-            () => new Date()
-          )
-          saveState(nextState)
-          return json(res, 200, projectKeepGoingRun(run))
-        } catch (error) {
-          return json(res, 422, { ok: false, error: error.message, code: error.code ?? null })
-        }
-      }
-
-      // POST /api/keep-going/:projectId/pause { reason }
-      if (
-        parts[1] === 'keep-going' &&
-        parts.length === 4 &&
-        parts[3] === 'pause' &&
-        req.method === 'POST'
-      ) {
-        const projectId = parts[2]
-        if (!map.get(projectId)) {
-          return notFound(res, `unknown project: ${projectId}`)
-        }
-        const body = await readBody(req)
-        try {
-          const { opState: nextState, run } = pauseKeepGoingRun(
-            opState,
-            projectId,
-            body.reason,
-            () => new Date()
-          )
-          saveState(nextState)
-          return json(res, 200, projectKeepGoingRun(run))
-        } catch (error) {
-          return json(res, 422, { ok: false, error: error.message, code: error.code ?? null })
-        }
-      }
-
-      // POST /api/keep-going/:projectId/resume
-      if (
-        parts[1] === 'keep-going' &&
-        parts.length === 4 &&
-        parts[3] === 'resume' &&
-        req.method === 'POST'
-      ) {
-        const projectId = parts[2]
-        if (!map.get(projectId)) {
-          return notFound(res, `unknown project: ${projectId}`)
-        }
-        try {
-          const { opState: nextState, run } = resumeKeepGoingRun(
-            opState,
-            projectId,
-            () => new Date()
-          )
-          saveState(nextState)
-          return json(res, 200, projectKeepGoingRun(run))
-        } catch (error) {
-          return json(res, 422, { ok: false, error: error.message, code: error.code ?? null })
-        }
+        return
       }
 
       // POST /api/chat { projectId, message, attachments? }

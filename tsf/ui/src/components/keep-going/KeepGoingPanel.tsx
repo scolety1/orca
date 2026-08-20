@@ -27,6 +27,15 @@ function linesOf(value: string): string[] {
     .filter(Boolean)
 }
 
+// Mirrors tsf/domain/keep-going.mjs's DEFAULT_BUDGET so the form's starting
+// values match what a run would get if the operator left them untouched.
+const DEFAULT_BUDGET = {
+  maxWaves: 20,
+  maxRetriesPerTask: 2,
+  maxConcurrentWorkers: 2,
+  stallThresholdMs: 30 * 60 * 1000
+}
+
 function StartForm({ projectId, onStarted }: { projectId: string; onStarted: () => void }) {
   const { data: routing } = useApi(() => api.routing(), [])
   const [goal, setGoal] = useState('')
@@ -34,12 +43,30 @@ function StartForm({ projectId, onStarted }: { projectId: string; onStarted: () 
   const [usageMode, setUsageMode] = useState('BALANCED')
   const [constraints, setConstraints] = useState('')
   const [stopConditions, setStopConditions] = useState('')
+  const [budget, setBudget] = useState(DEFAULT_BUDGET)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const availableModes = routing
     ? Object.keys(routing.usageModes).filter((mode) => !routing.reservedModes.includes(mode))
     : ['BALANCED']
+
+  function budgetField(key: keyof typeof DEFAULT_BUDGET, label: string, divisor = 1) {
+    return (
+      <div>
+        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">{label}</label>
+        <input
+          type="number"
+          min={0}
+          className="w-full rounded-md border border-input bg-input px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          value={budget[key] / divisor}
+          onChange={(e) =>
+            setBudget((prev) => ({ ...prev, [key]: Number(e.target.value) * divisor }))
+          }
+        />
+      </div>
+    )
+  }
 
   async function start() {
     const acceptanceCriteria = linesOf(criteria)
@@ -55,7 +82,8 @@ function StartForm({ projectId, onStarted }: { projectId: string; onStarted: () 
         acceptanceCriteria,
         usageMode,
         constraints: linesOf(constraints),
-        stopConditions: linesOf(stopConditions)
+        stopConditions: linesOf(stopConditions),
+        budget
       })
       onStarted()
     } catch (err) {
@@ -115,6 +143,15 @@ function StartForm({ projectId, onStarted }: { projectId: string; onStarted: () 
           </div>
         </div>
         <div>
+          <div className="mb-1 text-[11px] font-medium text-muted-foreground">Budget</div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {budgetField('maxWaves', 'Max waves')}
+            {budgetField('maxRetriesPerTask', 'Max retries/task')}
+            {budgetField('maxConcurrentWorkers', 'Max concurrent workers')}
+            {budgetField('stallThresholdMs', 'Stall threshold (min)', 60 * 1000)}
+          </div>
+        </div>
+        <div>
           <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
             Constraints (one per line, optional)
           </label>
@@ -144,11 +181,13 @@ function StartForm({ projectId, onStarted }: { projectId: string; onStarted: () 
 function LiveRun({
   projectId,
   run,
-  onChanged
+  onChanged,
+  onStartNew
 }: {
   projectId: string
   run: KeepGoingActiveRunView
   onChanged: () => void
+  onStartNew: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -157,7 +196,7 @@ function LiveRun({
     setBusy(true)
     setError(null)
     try {
-      await api.pauseKeepGoing(projectId, 'OPERATOR_PAUSE')
+      await api.pauseKeepGoing(projectId, 'OPERATOR_PAUSE', run.revision)
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not pause the run.')
@@ -170,7 +209,7 @@ function LiveRun({
     setBusy(true)
     setError(null)
     try {
-      await api.resumeKeepGoing(projectId)
+      await api.resumeKeepGoing(projectId, run.revision)
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not resume the run.')
@@ -198,7 +237,10 @@ function LiveRun({
         <div className="text-sm font-medium">{run.goal}</div>
         <div className="flex flex-wrap gap-1">
           {run.acceptanceCriteria.map((criterion) => (
-            <Badge key={criterion} variant="neutral">
+            <Badge
+              key={criterion}
+              variant={run.gap.satisfiedCriteria.includes(criterion) ? 'healthy' : 'neutral'}
+            >
               {criterion}
             </Badge>
           ))}
@@ -225,6 +267,54 @@ function LiveRun({
                 : Object.entries(run.retryCounts)
                     .map(([id, n]) => `${id}:${n}`)
                     .join(', ')}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground">Budget</div>
+            <div>
+              {run.budget.maxWaves ?? '—'} waves · {run.budget.maxConcurrentWorkers ?? '—'} workers
+            </div>
+          </div>
+        </div>
+
+        <div className="text-[12px]">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-muted-foreground">Gap analysis</span>
+            <Badge
+              variant={
+                run.gap.decision === 'STOP_COMPLETE'
+                  ? 'healthy'
+                  : run.gap.decision === 'STOP_BLOCKED'
+                    ? 'blocked'
+                    : 'neutral'
+              }
+            >
+              {run.gap.decision}
+            </Badge>
+          </div>
+          {run.gap.remainingGaps.length === 0 ? (
+            <div className="text-status-healthy">All criteria independently verified.</div>
+          ) : (
+            <div>
+              {run.gap.remainingGaps.length} of {run.acceptanceCriteria.length} criteria remain
+              unverified: {run.gap.remainingGaps.join(', ')}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 text-[12px] sm:grid-cols-2">
+          <div>
+            <div className="text-muted-foreground">Workers</div>
+            <div>
+              {run.workers.length === 0 ? 'none dispatched yet' : `${run.workers.length} active`}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground">Verifier results</div>
+            <div>
+              {run.verifierResults.length === 0
+                ? 'none recorded yet'
+                : `${run.verifierResults.length} recorded`}
             </div>
           </div>
         </div>
@@ -280,6 +370,11 @@ function LiveRun({
               Resume
             </Button>
           )}
+          {(run.state === 'COMPLETE' || run.state === 'BLOCKED') && (
+            <Button size="sm" onClick={onStartNew}>
+              Start a new run
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -288,6 +383,7 @@ function LiveRun({
 
 export function KeepGoingPanel({ projectId }: { projectId: string }) {
   const { data: run, loading, error, reload } = useApi(() => api.keepGoing(projectId), [projectId])
+  const [startingNew, setStartingNew] = useState(false)
 
   if (loading) {
     return <LoadingState label="Loading Keep Going state…" />
@@ -299,9 +395,21 @@ export function KeepGoingPanel({ projectId }: { projectId: string }) {
     return null
   }
 
-  return run.started ? (
-    <LiveRun projectId={projectId} run={run} onChanged={reload} />
+  const showStartForm = !run.started || startingNew
+  return showStartForm ? (
+    <StartForm
+      projectId={projectId}
+      onStarted={() => {
+        setStartingNew(false)
+        reload()
+      }}
+    />
   ) : (
-    <StartForm projectId={projectId} onStarted={reload} />
+    <LiveRun
+      projectId={projectId}
+      run={run}
+      onChanged={reload}
+      onStartNew={() => setStartingNew(true)}
+    />
   )
 }

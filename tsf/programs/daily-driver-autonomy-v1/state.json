@@ -147,6 +147,66 @@
           "verifier": "SELF -- evening-sprint pace, but this wave included genuine browser-based functional proof (not just unit tests), which is stronger evidence than waves 1-2/5's pure SELF unit-test verification",
           "commit": null,
           "honestScopeNote": "This closes the M2 acceptance criterion's UI text literally (goal/Usage Mode/budget/constraints/stop conditions/Start/Pause/Resume/live phase-gap-worker-retry-verifier-NeedsYou-ReadyForAdoption display all present and real). What remains for full M2 completion: (a) an autonomous wave-dispatch loop so a started run actually progresses through waves on its own (today Start/Pause/Resume are real but a run sits at 0 waves until the domain functions are driven by something -- currently only the fixture and a manual live-dispatch, not the UI-started run itself); (b) a combined live-Orca dogfood mission tying real dispatch to this exact UI flow; (c) independent (non-SELF) verification at the milestone gate. Recorded honestly rather than claiming M2 fully done."
+        },
+        {
+          "wave": "6b",
+          "summary": "Follow-up to wave 6: the acceptance criteria explicitly name 'gap' and 'verifier' in the live display, which wave 6 hadn't wired yet (it had phase/waves/retries/NeedsYou/ReadyForAdoption but not gap/workers/verifier). Extended projectKeepGoingRun() to compute a real gap analysis via keep-going.mjs's own compareStateToGoal(run, { verifiedSatisfied: [] }) -- honestly empty verifiedSatisfied since no autonomous verification loop exists yet, so every fresh run correctly shows all criteria as remaining (never fabricates partial progress). Added honest empty workers/verifierResults arrays (both depend on the not-yet-built dispatch loop -- documented as empty rather than invented). UI now shows a Gap analysis panel (decision badge + remaining-criteria count/list, satisfied criteria highlighted green on the acceptance-criteria badges) and Workers/Verifier results counters.",
+          "testsAdded": 1,
+          "testsPassing": "1/1 new; 128/128 full tsf suite (no regressions); oxlint/oxfmt clean; UI typecheck clean; UI build succeeds",
+          "verifier": "SELF, plus visual browser re-confirmation (screenshot) that the new Gap analysis/Workers/Verifier sections render correctly against the real backend",
+          "commit": null
+        },
+        {
+          "wave": 7,
+          "summary": "Genuine independent verification pass: launched the code-review skill (effort 'high') as a forked, separately-reasoning execution over the full M2 diff (tsf/main...HEAD, 22 files, ~3450 insertions) -- the first real VERIFIER_INDEPENDENT-style pass on this milestone's cumulative work, not SELF. It returned 6 findings, all triaged and addressed honestly rather than dismissed:",
+          "reviewFindings": [
+            {
+              "id": 1,
+              "summary": "raiseNeedsYou generated an id as sha256({question, taskId, at}) with no uniqueness guard; two identical questions raised in the same clock tick (guaranteed under a fixed/mocked clock) would collide, permanently stranding the older entry as unresolvable and locking the run in NEEDS_YOU forever.",
+              "verdict": "CONFIRMED real bug",
+              "fix": "Added an insertion-ordinal (next.needsYou.length) to the hash input in tsf/domain/keep-going.mjs. Regression test added in keep-going.test.mjs proving two identical-content questions get distinct ids and both resolve cleanly."
+            },
+            {
+              "id": 2,
+              "summary": "startKeepGoingRun/pauseKeepGoingRun/resumeKeepGoingRun did read-modify-write on persisted operator state with no optimistic-concurrency check, even though the run already carries a revision field and the codebase has an established assertExpectedRevision pattern (mission-state.mjs, adoption.mjs) for exactly this. Two concurrent requests for the same project could silently lose a transition.",
+              "verdict": "CONFIRMED real bug",
+              "fix": "Added expectedRevision support to keep-going.mjs's transitionRun (and thus pauseRun/resumeRun), matching mission-state.mjs's transitionMission pattern exactly (assertExpectedRevision from canonical.mjs, optional param, backward compatible). Threaded expectedRevision through keep-going-controller.mjs, keep-going-http-routes.mjs (now returns 409 TSF_STALE_REVISION on conflict, not 422), api.ts, and KeepGoingPanel.tsx (sends run.revision on every pause/resume). Domain-level, controller-level, and HTTP-level regression tests added; browser-confirmed the happy path still works transparently."
+            },
+            {
+              "id": 3,
+              "summary": "StartForm never collected a budget value even though this program's own wave-6 state.json entry claimed the UI closes the acceptance criterion 'literally (goal/Usage Mode/budget/constraints/stop conditions... all present and real)' -- an overclaim in the program's own durable record, not just a missing feature.",
+              "verdict": "CONFIRMED real bug + overclaim in prior wave's own narrative",
+              "fix": "Added real maxWaves/maxRetriesPerTask/maxConcurrentWorkers/stallThresholdMs inputs to StartForm (defaulting to keep-going.mjs's own DEFAULT_BUDGET), sent as a real budget object to POST start, and displayed on LiveRun. Browser-confirmed the defaults render and a started run carries them."
+            },
+            {
+              "id": 4,
+              "summary": "mapOrchestrationFacts always emits lastHeartbeatAt: null (no real timestamp exists in worker-list output today, by design -- see wave 3), so detectStall (Date.parse(null) => NaN) can never flag a real worker as stalled once this projection is wired into a live run.",
+              "verdict": "PLAUSIBLE, already disclosed",
+              "fix": "No code change -- there is no real timestamp source to use without fabricating one, which the program discipline explicitly forbids. Already documented as a known limitation in the wave-3/wave-4 code comments and state.json entries; strengthened nothing further tonight but leaving this exact limitation as a recorded, open gap rather than silently accepting it as resolved."
+            },
+            {
+              "id": 5,
+              "summary": "keep-going.mjs implements its own independent Run-level state machine instead of importing/composing mission-state.mjs or coordinator.mjs, contradicting docs/tsf/M2_KEEP_GOING_DESIGN_V1.md's explicit prose claim that it 'composes mission-state.mjs/coordinator.mjs (one Mission per wave) rather than reimplementing mission lifecycle' -- a real documentation-accuracy bug, and adjacent to the charter's 'no competing foundation' concern.",
+              "verdict": "CONFIRMED documentation inaccuracy",
+              "fix": "Corrected the module header comment in tsf/domain/keep-going.mjs to state plainly that it is a distinct Run-level state machine one level above the per-wave Mission lifecycle, does not import mission-state.mjs/coordinator.mjs today, and that the design doc's 'one Mission per wave' language describes the intended future wiring for the not-yet-built autonomous wave-dispatch loop, not existing code. docs/tsf/M2_KEEP_GOING_DESIGN_V1.md itself is flagged as needing the same correction -- recorded as a remaining gap rather than edited tonight, to keep this wave bounded."
+            },
+            {
+              "id": 6,
+              "summary": "KeepGoingPanel only rendered StartForm when run.started === false, so a run that reached BLOCKED or COMPLETE had no way to start a new run from the UI even though startKeepGoingRun's own guard explicitly permits starting fresh after either state.",
+              "verdict": "CONFIRMED real UX bug",
+              "fix": "Added a 'Start a new run' button on LiveRun when state is COMPLETE or BLOCKED, toggling KeepGoingPanel back to StartForm. Verified by code inspection (small, low-risk conditional render) plus typecheck; not separately browser-driven tonight since reaching BLOCKED/COMPLETE isn't reachable through the UI yet (no dispatch loop)."
+            }
+          ],
+          "testsAdded": 4,
+          "testsPassing": "4/4 new (1 domain regression x2 scenarios, 1 controller regression, 1 HTTP regression); 132/132 full tsf suite (no regressions -- one transient flake in http-onboarding.test.mjs traced to pre-existing test-isolation fragility (a module-load-time process.env.TSF_UI_STATE_FILE assignment shared across parallel test-runner workers, now exposed by a second HTTP test file using the same pattern), reproduced once then GREEN on retry, not a logic bug); oxlint/oxfmt clean; UI typecheck clean; UI build succeeds; browser re-confirmed the concurrency fix and budget fields end to end against the real backend.",
+          "verifier": "VERIFIER_INDEPENDENT (code-review skill, forked execution, separate reasoning context from the implementation waves) -- the first genuine non-SELF verification pass on this milestone's cumulative work",
+          "commit": null,
+          "advisoryNote": "TEST-ISOLATION-001: http test files that set process.env.TSF_UI_STATE_FILE at module load time can race under node --test's parallel worker execution when multiple such files run concurrently -- observed as one transient failure, not reproduced on retry. Not fixed tonight (would mean auditing/refactoring every http-*.test.mjs file's env-var pattern, out of this wave's bounded scope); recorded for a future dedicated pass.",
+          "deferredToNextWave": [
+            "docs/tsf/M2_KEEP_GOING_DESIGN_V1.md correction to match finding 5's fix in keep-going.mjs",
+            "TEST-ISOLATION-001 fix across http-*.test.mjs",
+            "autonomous wave-dispatch loop, combined live dogfood mission, milestone-completion-gate verification -- unchanged from wave 6's honestScopeNote"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -457,7 +517,7 @@
     "resolvedAt": "2026-08-19T20:22:00Z",
     "resolution": "Resumed per Tim's instruction after a Windows restart. Post-restart safety preflight (see resumePreflight) re-ran the same worker-list/HEAD checks plus a single harmless `codex doctor` probe -- the sandbox crash did not recur and the runtime reported healthy. Treated as cleared; M2 wave 2 proceeded without live Codex dispatch (Codex capacity still NEAR_LIMIT, unrelated to the crash)."
   },
-  "nextSafeAction": "M2's UI acceptance criterion is now genuinely satisfied and browser-proven (wave 6). Under the executionWindow evening-sprint directive: continue toward the autonomous wave-dispatch loop (something that actually calls planWave/recordWave for a UI-started run against real or fixture work) as the next bounded, sprint-appropriate task -- size it down further as 11:20 PM approaches per capacityPolicy.expiringCapacityRule's shrink-and-stop guidance. Codex remains at its expiring-capacity floor until the ~2026-08-20T05:20:51Z reset (which coincides with the hard operator-return time) -- do not queue further Codex WORKER_* dispatch tonight; continue implementing directly (Claude/Sonnet 5, healthy). Enter RETURN_HANDOFF at ~23:05 local per executionWindow if not already at a clean boundary.",
+  "nextSafeAction": "Wave 7's independent code-review pass is complete and all 6 findings addressed (2 real correctness bugs fixed with regression tests, 1 UI gap + prior-wave overclaim fixed, 1 documentation-accuracy bug fixed at the code-comment level (doc file itself still needs the same fix), 1 already-disclosed limitation reconfirmed, 1 UX gap fixed). Under the executionWindow evening-sprint directive, remaining bounded options in priority order: (a) correct docs/tsf/M2_KEEP_GOING_DESIGN_V1.md to match finding 5's fix (quick, bounded, a 'documentation reconciliation' EXPIRING_CAPACITY-style task); (b) the autonomous wave-dispatch loop (larger, only start if there is clearly enough runway left before RETURN_HANDOFF to land it cleanly); (c) if time is short, prefer polishing/hardening what already exists over starting something new. Codex remains at its expiring-capacity floor until the ~2026-08-20T05:20:51Z reset (coincides with the hard operator-return time) -- do not queue further Codex WORKER_* dispatch tonight; continue implementing directly (Claude/Sonnet 5, healthy). Enter RETURN_HANDOFF at ~23:05 local per executionWindow if not already at a clean boundary.",
   "authorityBoundaries": {
     "canAutoAdoptLocally": "Only into tsf/main, only via Section H's 14-condition checklist, ff-only merge, all gates GREEN",
     "cannotDo": [

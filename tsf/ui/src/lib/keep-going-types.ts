@@ -29,11 +29,18 @@ export type KeepGoingNeedsYouEntry = {
   raisedAt: string
 }
 
+export type KeepGoingGapAnalysis = {
+  satisfiedCriteria: string[]
+  remainingGaps: string[]
+  decision: 'CONTINUE' | 'STOP_COMPLETE' | 'STOP_BLOCKED' | 'STOP_BUDGET_EXHAUSTED'
+}
+
 export type KeepGoingRunView =
   | { started: false }
   | {
       started: true
       runId: string
+      revision: number
       state: KeepGoingRunState
       phase: string
       goal: string
@@ -44,6 +51,9 @@ export type KeepGoingRunView =
       stopConditions: string[]
       wavesCompleted: number
       retryCounts: Record<string, number>
+      gap: KeepGoingGapAnalysis
+      workers: unknown[]
+      verifierResults: unknown[]
       openNeedsYou: KeepGoingNeedsYouEntry[]
       lastCheckpoint: KeepGoingCheckpoint | null
       readyForAdoption: boolean

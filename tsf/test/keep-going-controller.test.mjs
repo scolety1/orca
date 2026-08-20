@@ -49,6 +49,25 @@ test('pauseKeepGoingRun and resumeKeepGoingRun transition the real run and persi
   assert.equal(resumed.run.state, 'ACTIVE')
 })
 
+test('pauseKeepGoingRun rejects a stale expectedRevision from a concurrent request', () => {
+  const started = startKeepGoingRun(
+    {},
+    'proj-1',
+    { originalGoal: 'Ship it.', acceptanceCriteria: ['A_DONE'] },
+    clock
+  )
+  // Simulates two concurrent HTTP requests that both read opState before
+  // either saved: the first pause lands (advancing the persisted revision)...
+  const first = pauseKeepGoingRun(started.opState, 'proj-1', 'first', clock, started.run.revision)
+  assert.equal(first.run.state, 'PAUSED')
+  // ...so the second request, still carrying the pre-pause revision it
+  // read, must be rejected rather than silently reapplying on top.
+  assert.throws(
+    () => pauseKeepGoingRun(first.opState, 'proj-1', 'second (stale)', clock, started.run.revision),
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+})
+
 test('pauseKeepGoingRun/resumeKeepGoingRun fail honestly when no run exists', () => {
   assert.throws(
     () => pauseKeepGoingRun({}, 'proj-none', null, clock),
@@ -74,7 +93,7 @@ test('projectKeepGoingRun exposes goal, usage mode, budget, constraints, stop co
     },
     clock
   )
-  const view = projectKeepGoingRun(run)
+  const view = projectKeepGoingRun(run, clock)
   assert.equal(view.started, true)
   assert.equal(view.state, 'ACTIVE')
   assert.equal(view.goal, 'Ship the fixture upgrade.')
@@ -87,4 +106,19 @@ test('projectKeepGoingRun exposes goal, usage mode, budget, constraints, stop co
   assert.equal(view.readyForAdoption, false)
   assert.ok(view.lastCheckpoint)
   assert.equal(view.lastCheckpoint.phase, 'RUN_STARTED')
+})
+
+test('projectKeepGoingRun exposes an honest gap analysis that never treats an unverified criterion as satisfied', () => {
+  const { run } = startKeepGoingRun(
+    {},
+    'proj-1',
+    { originalGoal: 'Ship it.', acceptanceCriteria: ['A_DONE', 'B_DONE'] },
+    clock
+  )
+  const view = projectKeepGoingRun(run, clock)
+  assert.deepEqual(view.gap.satisfiedCriteria, [])
+  assert.deepEqual(view.gap.remainingGaps, ['A_DONE', 'B_DONE'])
+  assert.equal(view.gap.decision, 'CONTINUE')
+  assert.deepEqual(view.workers, [])
+  assert.deepEqual(view.verifierResults, [])
 })
