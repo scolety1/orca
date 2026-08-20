@@ -37,6 +37,7 @@ function baseRun(overrides = {}) {
 
 function okOrchestration(overrides = {}) {
   return {
+    bindOrchestrationRun: async ({ id }) => ({ ok: true, result: { run: { id } } }),
     createOrchestrationRun: async () => ({ ok: true, result: { run: { id: 'orch-run-1' } } }),
     createOrchestrationTask: async ({ taskTitle }) => ({
       ok: true,
@@ -115,6 +116,60 @@ test('tickKeepGoingRun reuses an existing orchestrationRunId instead of creating
   assert.equal(settled.action, 'WAVE_SETTLED')
   await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration, store })
   assert.equal(createOrchestrationRunCalls, 1)
+})
+
+test('tickKeepGoingRun rebinds the coordinator to an existing orchestrationRunId before dispatching into it (not on first creation)', async () => {
+  const store = makeFakeStore(baseRun())
+  let bindCalls = 0
+  const trackingOrchestration = okOrchestration({
+    bindOrchestrationRun: async ({ id }) => {
+      bindCalls += 1
+      return { ok: true, result: { run: { id } } }
+    }
+  })
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: trackingOrchestration,
+    store
+  })
+  assert.equal(bindCalls, 0, 'a freshly-created Run auto-binds -- no separate rebind call needed')
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      listOrchestrationTasks: async () => ({
+        ok: true,
+        result: { tasks: [{ id: 'task-t1', status: 'completed' }] }
+      })
+    }),
+    store
+  })
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: trackingOrchestration,
+    store
+  })
+  assert.equal(bindCalls, 1, 'reusing a persisted orchestrationRunId must rebind first')
+})
+
+test('a failed rebind onto an existing orchestrationRunId (consumer_fenced) reports DISPATCH_FAILED honestly, without attempting task-create', async () => {
+  const withRunId = { ...baseRun(), orchestrationRunId: 'orch-run-1' }
+  const store = makeFakeStore(withRunId)
+  let taskCreateCalls = 0
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      bindOrchestrationRun: async () => ({
+        ok: false,
+        reason: 'CLI_ERROR',
+        detail: 'consumer_fenced'
+      }),
+      createOrchestrationTask: async ({ taskTitle }) => {
+        taskCreateCalls += 1
+        return { ok: true, result: { task: { id: `task-${taskTitle}` } } }
+      }
+    }),
+    store
+  })
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.reason, 'CLI_ERROR')
+  assert.equal(taskCreateCalls, 0, 'a failed rebind must not proceed to dispatch any real work')
+  assert.equal(store.readRun(PROJECT_ID).tickLock, null, 'lock still released on this failure path')
 })
 
 test('a still-in-flight wave reports WAVE_STILL_IN_FLIGHT and releases the lock without settling', async () => {

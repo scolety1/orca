@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import path from 'node:path'
 import {
+  bindOrchestrationRun,
   createOrchestrationGate,
   createOrchestrationRun,
   createOrchestrationTask,
@@ -220,6 +221,30 @@ test('showOrchestrationWorker passes --dispatch through', async () => {
     assert.equal(result.ok, true)
     assert.equal(result.result.dispatch.id, 'ctx-1')
     assert.equal(result.result.worker.dispatch_id, 'ctx-1')
+  })
+})
+
+// --- bindOrchestrationRun (rebind a coordinator identity to an existing Run) ---
+
+test('bindOrchestrationRun rejects a missing id before touching the CLI', async () => {
+  const result = await bindOrchestrationRun({})
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'INVALID_ARGS')
+})
+
+test('bindOrchestrationRun passes --id through', async () => {
+  await withEnv(STUBBED, async () => {
+    const result = await bindOrchestrationRun({ id: 'run-42' })
+    assert.equal(result.ok, true)
+    assert.equal(result.result.run.id, 'run-42')
+  })
+})
+
+test('bindOrchestrationRun surfaces a consumer_fenced-style CLI error honestly', async () => {
+  await withEnv({ ...STUBBED, STUB_ORCA_MODE: 'error' }, async () => {
+    const result = await bindOrchestrationRun({ id: 'run-42' })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'CLI_ERROR')
   })
 })
 

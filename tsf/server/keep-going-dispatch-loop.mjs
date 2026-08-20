@@ -47,6 +47,7 @@
 // claim (a real, confirmed review finding on an earlier version of this
 // module's settle-side commits).
 import {
+  bindOrchestrationRun,
   createOrchestrationRun,
   createOrchestrationTask,
   listOrchestrationTasks,
@@ -68,6 +69,7 @@ import {
 import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
 
 const DEFAULT_ORCHESTRATION = Object.freeze({
+  bindOrchestrationRun,
   createOrchestrationRun,
   createOrchestrationTask,
   listOrchestrationTasks,
@@ -195,6 +197,20 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       })
     }
     orchestrationRunId = runResult.result.run.id
+  } else {
+    // Reusing a persisted Run from a possibly-fresh CLI invocation (a new
+    // process/session, e.g. resuming a run after a restart) -- the calling
+    // coordinator identity may currently be bound to a DIFFERENT Run (or
+    // none), which fails task-create/worker-start with consumer_fenced
+    // rather than silently misdirecting the call. Rebinding first is a
+    // no-op when already correctly bound.
+    const bindResult = await orchestration.bindOrchestrationRun({ id: orchestrationRunId })
+    if (!bindResult.ok) {
+      return commitAbortedDispatch(projectId, store, claimed, clock, {
+        reason: bindResult.reason,
+        detail: bindResult.detail
+      })
+    }
   }
 
   // Batches themselves must stay sequential (planWave puts conflicting

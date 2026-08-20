@@ -41,6 +41,12 @@ if (args[0] === 'repo' && args[1] === 'list') {
   ok({
     run: { id: 'stub-run-id', objective: objectiveIndex === -1 ? null : args[objectiveIndex + 1] }
   })
+} else if (args[0] === 'orchestration' && args[1] === 'run-use') {
+  const idIndex = args.indexOf('--id')
+  ok({
+    run: { id: idIndex === -1 ? null : args[idIndex + 1] },
+    binding: { consumerGeneration: 1 }
+  })
 } else if (args[0] === 'orchestration' && args[1] === 'task-create') {
   const specIndex = args.indexOf('--spec')
   const runIndex = args.indexOf('--run')

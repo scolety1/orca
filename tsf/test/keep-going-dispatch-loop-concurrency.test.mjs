@@ -48,6 +48,7 @@ function seedRun(overrides = {}) {
 
 function okOrchestration(overrides = {}) {
   return {
+    bindOrchestrationRun: async ({ id }) => ({ ok: true, result: { run: { id } } }),
     createOrchestrationRun: async () => ({ ok: true, result: { run: { id: 'orch-run-1' } } }),
     createOrchestrationTask: async ({ taskTitle }) => ({
       ok: true,
