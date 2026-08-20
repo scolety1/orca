@@ -83,12 +83,13 @@ milestone. Summary:
 | # | Milestone | Status |
 |---|---|---|
 | M1 | Project Onboarding V1 | `ACCEPTED_PRE_EXISTING` (adopted at `de105fb46` before this program started) |
-| M2 | Keep Going / Overnight V1 | `IN_PROGRESS` (wave 9, evening sprint 2026-08-19) — **current, highest priority** |
+| M2 | Keep Going / Overnight V1 | `IN_PROGRESS` (wave 10 + live orchestration-bridge dogfood, evening sprint 2026-08-19) — **current, highest priority** |
 | M3 | Chat → Dispatch + Live Work Feed | `NOT_STARTED` |
 | M4 | Run Journal + Recovery | `NOT_STARTED` |
 | M5 | Capacity-Aware Routing | `NOT_STARTED` |
 | M6 | Desktop TSF | `NOT_STARTED` |
 | M7 | Project Memory V2 | `NOT_STARTED` |
+| M8 | Project Estimator + Delivery Planner | `APPROVED_RESEARCH_PLAN_ONLY_NOT_STARTED` — Tim-approved addition beyond the original seven (see `state.json` → `milestones[M8]` for the full source-harvest plan); not started, does not interrupt M2 |
 
 M1 was verified present at the expected baseline HEAD per program Section B
 ("Verify it, mark it completed in program state, and do not rebuild it")
