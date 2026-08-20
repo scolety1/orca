@@ -554,6 +554,19 @@
             "wiring abandonStalledWave into the tick loop's own automatic recovery (a larger design decision, deliberately deferred)",
             "resuming the wave 17 live dogfood once the dispatch-mechanism blocker is resolved"
           ]
+        },
+        {
+          "wave": "18b",
+          "summary": "Independent verification of wave 18: a forked code-review pass (effort high) on the wave 18 diff returned 5 findings, 2 of them genuine confirmed bugs in the new function, fixed the same session. Finding 1 (CONFIRMED): the NEEDS_YOU escalation on retry-budget exhaustion assumed the run could always legally reach NEEDS_YOU, but RUN_ALLOWED forbids it from PAUSED/BLOCKED/COMPLETE -- since pauseRun never checks inFlightWave, a run can genuinely be PAUSED with a real stalled wave, and calling abandonStalledWave on it would have thrown TSF_INVALID_RUN_TRANSITION from inside raiseNeedsYou, discarding the already-computed settlement/checkpoint (worse than the recovery this function was meant to replace). Fixed by checking RUN_ALLOWED[next.state] first; when illegal, records the fact in a checkpoint (RETRY_BUDGET_EXCEEDED_ESCALATION_SKIPPED) instead, preserving the honest settlement either way. Finding 2 (CONFIRMED): the in-flight-wave requirement was checked BEFORE the tick-lock check, the reverse of transitionRun's established order and this function's own doc comment -- a tick that claimed the lock but hadn't dispatched yet (inFlightWave still null) would make a concurrent call report the wrong error class (TSF_NO_IN_FLIGHT_WAVE instead of TSF_TICK_IN_PROGRESS), the exact bug class wave 15b finding 6 already fixed once elsewhere in this module, reintroduced here in reverse. Reordered to match. Finding 3 (real, minor): a stale tickLock object was left on the run after recovery even though isTickLockActive correctly treated it as inactive -- fixed by clearing it explicitly (safe, since reaching that point already proved inactivity). Finding 4 (disclosed, deliberately deferred): the retry-budget-consumption loop duplicates the near-identical one in keep-going-dispatch-loop.mjs's settleStep -- a real DRY concern, not a bug; not extracted into a shared helper this pass since it would mean touching keep-going-dispatch-loop.mjs a third time this session (already through two rounds of critical-bug fixes) for a maintainability improvement, judged not worth the added risk this late in an unattended session. Finding 5 (fixed): the function's header comment was multi-paragraph, against AGENTS.md's concise-comments rule -- trimmed to four lines.",
+          "testsAdded": 3,
+          "testsPassing": "3 net new (tick-lock-checked-before-in-flight-wave ordering; stale-lock clearing; NEEDS_YOU-unreachable-state handled without throwing or discarding the settlement) -- all three would have failed against the pre-fix code; 177/177 full tsf suite GREEN (no regressions); oxlint clean; oxfmt clean; max-lines ratchet clean.",
+          "verifier": "VERIFIER_INDEPENDENT (code-review skill, forked execution, separate reasoning context from wave 18's implementation) -- caught two more genuine bugs in SELF-authored code during this unattended session, consistent with wave 16b's own finding that independent review catches real defects a SELF pass misses",
+          "commit": null,
+          "deferredToNextWave": [
+            "finding 4 (this wave): extracting a shared retry-budget-consumption helper between keep-going.mjs and keep-going-dispatch-loop.mjs",
+            "wiring abandonStalledWave into the tick loop's own automatic recovery (a larger design decision, deliberately deferred)",
+            "resuming the wave 17 live dogfood once blockers.ORCA_DISPATCH_INJECT_NOT_DELIVERING_001 is resolved"
+          ]
         }
       ],
       "acceptanceCriteria": [

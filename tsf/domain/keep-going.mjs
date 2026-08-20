@@ -437,29 +437,16 @@ export function settleInFlightWave(run, waveResult, clock, expectedRevision) {
   return next
 }
 
-// Formalizes a genuine, honest recovery for a wave that stalled (or is
-// otherwise uncertain) -- discovered by hand during the first real M2 live
-// dogfood (a real dispatch showed zero activity for 30+ minutes; recovery
-// was improvised live by composing recordTaskAttempt/settleInFlightWave/
-// checkpointRun). That composition worked, but was ad hoc and untested as
-// a unit -- this closes that gap with one small, adversarially-tested
-// primitive rather than leaving future recovery to be reinvented each time.
-//
-// Consumes retry budget for every work item in the stalled wave (a real,
-// disclosed gap the same dogfood found: markStalled alone never touched
-// retryCounts, so repeated stalls of the same item were never bounded).
-// If any item's budget is now exceeded, escalates to NEEDS_YOU instead of
-// silently returning to ACTIVE -- a caller must not be handed a run that
-// looks ready to retry the same doomed item forever. The abandoned wave is
-// recorded honestly (outcome ABANDONED_STALLED) -- never claimed as
-// succeeded or failed, since it genuinely isn't known which it was.
+// Formalizes the stall recovery improvised live during the first M2 dogfood
+// (see wave 18 notes): consumes retry budget per work item, escalates to
+// NEEDS_YOU if exhausted (state permitting), settles the wave honestly as
+// ABANDONED_STALLED (never claimed succeeded/failed), checkpoints.
 export function abandonStalledWave(run, reason, clock, expectedRevision) {
   assertExpectedRevision(run, expectedRevision)
-  if (!run.inFlightWave) {
-    const error = new Error('no in-flight wave to abandon')
-    error.code = 'TSF_NO_IN_FLIGHT_WAVE'
-    throw error
-  }
+  // Tick-lock checked before the in-flight-wave requirement, matching
+  // transitionRun's order -- otherwise a tick that claimed the lock but
+  // hasn't dispatched yet (inFlightWave still null) would surface
+  // TSF_NO_IN_FLIGHT_WAVE instead of the correct TSF_TICK_IN_PROGRESS.
   if (isTickLockActive(run, clock)) {
     const error = new Error(
       `an autonomous tick (${run.tickLock.kind}) currently holds this run -- try again shortly`
@@ -467,8 +454,19 @@ export function abandonStalledWave(run, reason, clock, expectedRevision) {
     error.code = 'TSF_TICK_IN_PROGRESS'
     throw error
   }
+  if (!run.inFlightWave) {
+    const error = new Error('no in-flight wave to abandon')
+    error.code = 'TSF_NO_IN_FLIGHT_WAVE'
+    throw error
+  }
   const { dispatchRecords } = run.inFlightWave
   let next = run
+  // Any tickLock here is necessarily stale (an active one would already
+  // have thrown above) -- clear it rather than leaving stale metadata for
+  // a future truthy (not isTickLockActive-gated) reader to misinterpret.
+  if (next.tickLock) {
+    next = { ...next, tickLock: null }
+  }
   const retryBudgetExceeded = []
   for (const record of dispatchRecords) {
     try {
@@ -501,15 +499,31 @@ export function abandonStalledWave(run, reason, clock, expectedRevision) {
     clock
   )
   if (retryBudgetExceeded.length > 0) {
-    next = raiseNeedsYou(
-      next,
-      {
-        question: `Retry budget exceeded for stalled work item(s): ${retryBudgetExceeded.join(', ')} after being abandoned and retried. How should I proceed?`,
-        options: ['RETRY_ANYWAY', 'SKIP_AND_CONTINUE', 'BLOCK_RUN']
-      },
-      clock,
-      next.revision
-    )
+    // NEEDS_YOU is not reachable from every state (RUN_ALLOWED forbids it
+    // from PAUSED/BLOCKED/COMPLETE) -- a run can end up PAUSED with a real
+    // in-flight wave (pauseRun doesn't check inFlightWave). Escalating
+    // unconditionally would throw TSF_INVALID_RUN_TRANSITION here and
+    // discard the settlement/checkpoint already computed above, which
+    // would be worse than the ad hoc recovery this function replaces.
+    next = RUN_ALLOWED[next.state]?.includes('NEEDS_YOU')
+      ? raiseNeedsYou(
+          next,
+          {
+            question: `Retry budget exceeded for stalled work item(s): ${retryBudgetExceeded.join(', ')} after being abandoned and retried. How should I proceed?`,
+            options: ['RETRY_ANYWAY', 'SKIP_AND_CONTINUE', 'BLOCK_RUN']
+          },
+          clock,
+          next.revision
+        )
+      : checkpointRun(
+          next,
+          {
+            phase: 'RETRY_BUDGET_EXCEEDED_ESCALATION_SKIPPED',
+            note: `Retry budget exceeded for ${retryBudgetExceeded.join(', ')}, but run state ${next.state} cannot transition to NEEDS_YOU -- recorded here instead.`,
+            evidence: retryBudgetExceeded
+          },
+          clock
+        )
   }
   return next
 }

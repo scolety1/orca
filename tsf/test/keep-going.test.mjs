@@ -583,6 +583,62 @@ test('abandonStalledWave requires an in-flight wave and honors expectedRevision/
   )
 })
 
+test('abandonStalledWave checks the tick lock before the in-flight-wave requirement (a locked, not-yet-dispatched run reports TSF_TICK_IN_PROGRESS, not TSF_NO_IN_FLIGHT_WAVE)', () => {
+  const run = baseRun()
+  const locked = claimTick(run, 'DISPATCH', clock, run.revision) // locked, no wave dispatched yet
+  assert.equal(locked.inFlightWave, null)
+  assert.throws(
+    () => abandonStalledWave(locked, 'locked before dispatch', clock, locked.revision),
+    (error) => error.code === 'TSF_TICK_IN_PROGRESS'
+  )
+})
+
+test('abandonStalledWave clears a stale tickLock left over from an abandoned tick', () => {
+  let run = baseRun()
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  run = dispatchWave(run, plan, dispatchRecords, clock, run.revision)
+  const claimed = claimTick(run, 'SETTLE', clock, run.revision) // claimed but never released
+  const muchLater = () => new Date('2026-08-19T19:00:00.000Z') // past TICK_LOCK_TIMEOUT_MS
+  const recovered = abandonStalledWave(claimed, 'abandoned mid-tick', muchLater, claimed.revision)
+  assert.equal(
+    recovered.tickLock,
+    null,
+    'stale tickLock metadata is cleared, not just treated as inactive'
+  )
+})
+
+test("abandonStalledWave's NEEDS_YOU escalation on budget exhaustion does not throw or discard the settlement when the run's state cannot legally reach NEEDS_YOU", () => {
+  let run = baseRun({ budget: { maxRetriesPerTask: 0 } })
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  run = dispatchWave(run, plan, dispatchRecords, clock, run.revision)
+  // A run can be PAUSED with a real in-flight wave -- pauseRun does not
+  // check inFlightWave. RUN_ALLOWED forbids PAUSED -> NEEDS_YOU.
+  run = pauseRun(run, 'operator pause', clock, run.revision)
+  assert.equal(run.state, 'PAUSED')
+  assert.ok(run.inFlightWave)
+
+  const recovered = abandonStalledWave(
+    run,
+    'stalled while paused, budget already 0',
+    clock,
+    run.revision
+  )
+  assert.equal(recovered.state, 'PAUSED', 'state is left as-is, not forced or thrown')
+  assert.equal(
+    recovered.inFlightWave,
+    null,
+    'still honestly settled despite being unable to escalate'
+  )
+  assert.equal(recovered.waves[0].waveResult.outcomes[0].outcome, 'ABANDONED_STALLED')
+  assert.equal(recovered.checkpoints.at(-1).phase, 'RETRY_BUDGET_EXCEEDED_ESCALATION_SKIPPED')
+})
+
 test('completeRun only reaches COMPLETE from ACTIVE, matching the gap-analysis stop decision', () => {
   const run = baseRun()
   const completed = completeRun(run, clock)

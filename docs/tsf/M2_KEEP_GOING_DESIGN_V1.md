@@ -396,6 +396,54 @@ auto-recovers from its own stalls, a larger design decision -- deliberately
 left as a manually-invoked recovery primitive for this wave, consistent
 with the size of change appropriate this late in an unattended session).
 
+## Wave 18b: independent review of `abandonStalledWave`, findings fixed
+
+A forked code-review pass (effort `high`) on wave 18's diff returned 5
+findings. Two were genuine, confirmed bugs in the new function itself:
+
+1. **Fixed (real bug)** -- the `NEEDS_YOU` escalation on retry-budget
+   exhaustion assumed the run could always legally transition there, but
+   `RUN_ALLOWED` forbids it from `PAUSED`/`BLOCKED`/`COMPLETE`. Since
+   `pauseRun` never checks `inFlightWave`, a run can genuinely be `PAUSED`
+   with a real stalled wave still in flight -- calling `abandonStalledWave`
+   on it would throw `TSF_INVALID_RUN_TRANSITION` from inside
+   `raiseNeedsYou`, discarding the settlement/checkpoint already computed
+   moments earlier (worse than the ad hoc recovery this function replaced).
+   Fixed by checking `RUN_ALLOWED[next.state]?.includes('NEEDS_YOU')`
+   first; when the transition isn't legal, the exceeded-budget fact is
+   recorded in a checkpoint (`RETRY_BUDGET_EXCEEDED_ESCALATION_SKIPPED`)
+   instead, and the already-honest settlement is preserved either way.
+2. **Fixed (real bug)** -- the in-flight-wave requirement was checked
+   *before* the tick-lock check, the reverse of both `transitionRun`'s
+   established order and this function's own doc comment. A tick that had
+   claimed the lock but not yet dispatched (`inFlightWave` still `null`)
+   would make a concurrent `abandonStalledWave` call report
+   `TSF_NO_IN_FLIGHT_WAVE` instead of `TSF_TICK_IN_PROGRESS` -- the exact
+   wrong-error-class bug wave 15b finding 6 already fixed once elsewhere in
+   this module, reintroduced here in reverse. Reordered to match.
+3. **Fixed (real, minor)** -- a tick lock past `TICK_LOCK_TIMEOUT_MS` is
+   correctly treated as inactive, but the stale `tickLock` object itself
+   was left on the run. Harmless today (nothing reads it except via
+   `isTickLockActive`), but disclosed and fixed by clearing it explicitly
+   during recovery (safe: reaching that point already proved the lock was
+   inactive).
+4. **Disclosed, deliberately deferred** -- the retry-budget-consumption
+   loop here duplicates the near-identical one in
+   `keep-going-dispatch-loop.mjs`'s `settleStep`. A real DRY concern, not a
+   bug; not extracted into a shared helper this pass, since doing so means
+   touching `keep-going-dispatch-loop.mjs` a third time (already through
+   two rounds of critical-bug fixes this session) for a maintainability
+   improvement, not a correctness one -- judged not worth the added risk
+   this late in an unattended session.
+5. **Fixed** -- the function's header comment was multi-paragraph and
+   walked through the code step by step, against `AGENTS.md`'s concise-
+   comments rule. Trimmed to four lines.
+
+Added 3 regression tests (tick-lock-before-in-flight-wave ordering, stale
+lock clearing, NEEDS_YOU-unreachable-state handling) -- all three would
+have failed against the pre-fix code. 177/177 full suite GREEN, oxlint/
+oxfmt/max-lines-ratchet clean.
+
 ## Correction: `curly` lint is enforced on staged files
 
 Earlier in this wave, `tsf/domain/*.mjs` (including already-adopted files
