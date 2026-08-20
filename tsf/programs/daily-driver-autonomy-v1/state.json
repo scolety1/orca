@@ -456,6 +456,14 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Section G was amended 2026-08-19 with the EXPIRING_CAPACITY rule (state.json -> capacityPolicy.expiringCapacityRule): near a known reset, remaining capacity is used for small bounded useful work rather than left idle. Applied once this session (M2 wave 3, see capacityPolicy.expiringCapacityRule.applicationLog) -- one bounded task dispatched and independently verified GREEN. After that task, Codex's own UI signaled it was near its limit again, so per the rule's shrink-and-stop step no further Codex dispatch was queued this wave. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) remains healthy throughout."
   },
   "lastDurableCheckpoint": {
+    "phase": "M2_WAVE_7_COMPLETE_INDEPENDENT_REVIEW_ADDRESSED",
+    "at": "2026-08-19T18:44:00-06:00",
+    "commit": "5db085a1e19c152b0151b143ca4a8e6a80355be7",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Evening-sprint waves 4-7: fixture/dogfood domain proof, server controller + HTTP routes, browser-proven UI (Start/Pause/Resume/live display), gap/worker/verifier wiring, and a genuine independent code-review pass with all 6 findings addressed (2 real bugs fixed with regression tests, 1 UI+overclaim fixed, 1 doc-accuracy bug fixed at the code-comment level, 1 already-disclosed limitation reconfirmed, 1 UX bug fixed). 132/132 full tsf suite GREEN, UI typecheck/build clean. Verified intact via git cat-file immediately after commit; same pre-existing geometric-repack housekeeping failure as prior waves (GIT-HYGIENE-001), non-blocking."
+  },
+  "priorDurableCheckpoint3": {
     "phase": "M2_WAVE_3_COMPLETE_EXPIRING_CAPACITY_APPLIED",
     "at": "2026-08-19T23:52:00Z",
     "commit": "d9af00f424d9c9ebb12c91d37348ee9acdec912f",
