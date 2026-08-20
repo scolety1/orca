@@ -16,9 +16,27 @@ const TIM_REQUIRED_PATTERNS = [
 const INTENTS = [
   { id: 'STATUS', pattern: /\b(what'?s going on|status|where are we|update me|catch me up)\b/i },
   { id: 'FINISHED', pattern: /\b(is (this|it) (actually )?(done|finished|ready)|are we done)\b/i },
+  // M3: the affirmative "go do real work" phrasings Tim's own north star
+  // names ("go ahead," "build that," "do the recommended next step") --
+  // deliberately a SEPARATE intent from FIX_REQUEST (which stays scoped to
+  // "something is wrong, correct it") rather than folded into it, since the
+  // two read differently even though both currently route to the same
+  // RECOMMEND_AND_PROCEED dispatch path below. Checked BEFORE NEXT_ACTION:
+  // "do the recommended next step" is an imperative dispatch request, not
+  // the question "what's the next step?" that NEXT_ACTION's own pattern
+  // means to catch -- ordering (first match wins) is what keeps these two
+  // correctly distinguished rather than the "next step" substring colliding.
+  {
+    id: 'DISPATCH_REQUEST',
+    pattern:
+      /\b(go ahead|go for it|please proceed|proceed with (it|that|this)|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i
+  },
   { id: 'NEXT_ACTION', pattern: /\b(what should we do next|next step|what'?s next|what now)\b/i },
   { id: 'RATIONALE', pattern: /\b(why (did you|was)|what'?s the reasoning|why choose)\b/i },
-  { id: 'CRITIQUE', pattern: /\b(looks like (shit|garbage|crap)|don'?t like|ugly|ugh|ew|hate this|sucks)\b/i },
+  {
+    id: 'CRITIQUE',
+    pattern: /\b(looks like (shit|garbage|crap)|don'?t like|ugly|ugh|ew|hate this|sucks)\b/i
+  },
   { id: 'FIX_REQUEST', pattern: /\b(fix (this|it)|change (this|it)|redo|make it)\b/i },
   { id: 'RESEARCH', pattern: /\b(research|look into|compare|investigate|explore options)\b/i },
   { id: 'HEALTH', pattern: /\b(health|is it healthy|any (issues|problems|blockers))\b/i },
@@ -26,19 +44,35 @@ const INTENTS = [
 ]
 
 export function classifyIntent(message) {
-  for (const { id, pattern } of INTENTS) if (pattern.test(message)) return id
+  for (const { id, pattern } of INTENTS) {
+    if (pattern.test(message)) {
+      return id
+    }
+  }
   return 'GENERAL'
 }
 
 export function classifyDecision(message, intent) {
-  if (TIM_REQUIRED_PATTERNS.some((p) => p.test(message))) return 'TIM_REQUIRED'
-  if (['FIX_REQUEST', 'RESEARCH', 'CRITIQUE'].includes(intent)) return 'RECOMMEND_AND_PROCEED'
+  if (TIM_REQUIRED_PATTERNS.some((p) => p.test(message))) {
+    return 'TIM_REQUIRED'
+  }
+  if (['FIX_REQUEST', 'DISPATCH_REQUEST', 'RESEARCH', 'CRITIQUE'].includes(intent)) {
+    return 'RECOMMEND_AND_PROCEED'
+  }
   return 'AUTO_DECIDE'
 }
 
 function fmtTests(testsRun) {
-  if (!testsRun?.length) return 'no recorded test run'
-  return testsRun.map((t) => (t.command ? `${t.command}: ${t.passed ?? '?'}/${(t.passed ?? 0) + (t.failed ?? 0)}` : JSON.stringify(t))).join('; ')
+  if (!testsRun?.length) {
+    return 'no recorded test run'
+  }
+  return testsRun
+    .map((t) =>
+      t.command
+        ? `${t.command}: ${t.passed ?? '?'}/${(t.passed ?? 0) + (t.failed ?? 0)}`
+        : JSON.stringify(t)
+    )
+    .join('; ')
 }
 
 function respondStatus(project) {
@@ -50,11 +84,18 @@ function respondStatus(project) {
 
 function respondFinished(project) {
   const adopted = project.release.adoption?.startsWith('ADOPTED')
-  if (adopted) return `Yes — this candidate is **ADOPTED**. Verifier verdict GREEN, tests: ${fmtTests(project.candidate?.testsRun)}. Stable is at \`${(project.release.stable.head ?? '').slice(0, 10)}\`.`
-  if (project.mission.state === 'BLOCKED' || project.mission.state === 'BLOCKED_ARCHITECTURAL_CONFLICT') {
+  if (adopted) {
+    return `Yes — this candidate is **ADOPTED**. Verifier verdict GREEN, tests: ${fmtTests(project.candidate?.testsRun)}. Stable is at \`${(project.release.stable.head ?? '').slice(0, 10)}\`.`
+  }
+  if (
+    project.mission.state === 'BLOCKED' ||
+    project.mission.state === 'BLOCKED_ARCHITECTURAL_CONFLICT'
+  ) {
     return `No — it's **blocked**: ${project.mission.blockedReason ?? project.health.findings?.[0]?.summary ?? 'see Health for details'}. Not safe to resume without a decision from you.`
   }
-  if (project.candidate?.state === 'READY_FOR_ADOPTION') return `The candidate is verifier-GREEN and **ready for your adoption decision** — it isn't adopted yet.`
+  if (project.candidate?.state === 'READY_FOR_ADOPTION') {
+    return `The candidate is verifier-GREEN and **ready for your adoption decision** — it isn't adopted yet.`
+  }
   return `Not yet — current mission state is **${project.mission.state}**.`
 }
 
@@ -66,16 +107,22 @@ function respondNextAction(project) {
     case 'ADOPTED':
       return `Nothing pending — Stable is settled at the adopted candidate. Next mission would need a new objective from you or the planner.`
     default:
-      if (project.candidate?.state === 'READY_FOR_ADOPTION') return `Review the candidate on the Adoption surface and decide Adopt / Request Revision / Reject.`
+      if (project.candidate?.state === 'READY_FOR_ADOPTION') {
+        return `Review the candidate on the Adoption surface and decide Adopt / Request Revision / Reject.`
+      }
       return `No active work item recorded for this project right now.`
   }
 }
 
 function respondRationale(project) {
   const sm = project.evidence?.selectedMission
-  if (sm?.rationale) return `**${sm.title ?? 'Selected mission'}** — ${sm.rationale}`
+  if (sm?.rationale) {
+    return `**${sm.title ?? 'Selected mission'}** — ${sm.rationale}`
+  }
   const summary = project.evidence?.resultCapsules?.at(-1)?.implementationSummary
-  if (summary) return summary
+  if (summary) {
+    return summary
+  }
   return `No recorded rationale for this project yet.`
 }
 
@@ -89,17 +136,32 @@ function respondResearch(project) {
 }
 
 function respondHealth(project) {
-  if (!project.health.findings?.length) return `**${project.displayName}** is healthy — no findings.`
-  return `**${project.displayName}** health: ${project.health.status}. ` + project.health.findings.map((f) => `${f.code}: ${f.summary}`).join(' ')
+  if (!project.health.findings?.length) {
+    return `**${project.displayName}** is healthy — no findings.`
+  }
+  const findings = project.health.findings.map((f) => `${f.code}: ${f.summary}`).join(' ')
+  return `**${project.displayName}** health: ${project.health.status}. ${findings}`
 }
 
 function respondAdoption(project) {
-  if (!project.candidate) return `No candidate recorded for ${project.displayName}.`
+  if (!project.candidate) {
+    return `No candidate recorded for ${project.displayName}.`
+  }
   return `Candidate \`${(project.candidate.head ?? '').slice(0, 10)}\` is **${project.candidate.state}**. ${project.candidate.implementationSummary ?? ''}`.trim()
 }
 
 function respondGeneral(project) {
   return `I have recorded state for **${project.displayName}** (mission ${project.mission.state}, health ${project.health.status}) but that phrasing didn't match a specific question I can ground an answer in. Try asking about status, whether it's finished, what's next, why a choice was made, or its health.`
+}
+
+// M3's real dispatch bridge (chat-dispatch-bridge.mjs, still being built)
+// intercepts DISPATCH_REQUEST before it ever reaches this fallback --
+// this stays as the honest degraded answer for when that bridge itself is
+// unavailable or hasn't decided to act, matching respondCritiqueOrFix's own
+// "not wired yet" honesty rather than fabricating a dispatch that didn't
+// happen.
+function respondDispatchRequest(project) {
+  return `Got it — I can't dispatch a live Orca worker from this reply path yet (the chat-dispatch bridge is still being built). I've logged this as a request on **${project.displayName}**; once wired, this exact phrasing will be enough to create a bounded plan and a real dispatch without you opening a terminal.`
 }
 
 const RESPONDERS = {
@@ -109,6 +171,7 @@ const RESPONDERS = {
   RATIONALE: respondRationale,
   CRITIQUE: (p) => respondCritiqueOrFix(p, 'CRITIQUE'),
   FIX_REQUEST: (p) => respondCritiqueOrFix(p, 'FIX_REQUEST'),
+  DISPATCH_REQUEST: respondDispatchRequest,
   RESEARCH: respondResearch,
   HEALTH: respondHealth,
   ADOPTION: respondAdoption,
@@ -122,12 +185,17 @@ function respondTimRequired(project) {
 export function respond(project, message) {
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
-  const text = !project ? `No project selected — pick one first.` : decisionClass === 'TIM_REQUIRED' ? respondTimRequired(project) : RESPONDERS[intent](project)
+  const text = !project
+    ? `No project selected — pick one first.`
+    : decisionClass === 'TIM_REQUIRED'
+      ? respondTimRequired(project)
+      : RESPONDERS[intent](project)
   return {
     intent,
     decisionClass,
     text,
     plannerRole: 'PLANNER_DEEP',
-    providerLabel: 'No live provider configured — rule-based fallback grounded in recorded project state'
+    providerLabel:
+      'No live provider configured — rule-based fallback grounded in recorded project state'
   }
 }
