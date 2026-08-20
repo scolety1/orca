@@ -14,6 +14,8 @@ import {
 import { loadState, saveState } from './data-store.mjs'
 import { respond, classifyIntent, classifyDecision } from './chat-responder.mjs'
 import { invokeLivePlanner, providerLabel, fallbackLabel } from './live-planner.mjs'
+import { planAndDispatchFromChat } from './chat-dispatch-bridge.mjs'
+import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { projectOnboardedProject } from './onboarded-project-projection.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
@@ -26,6 +28,84 @@ const FOUNDATION = Object.freeze({
   upstreamVersion: 'v1.4.184',
   upstreamCoreFilesModified: 0
 })
+
+// M3: turns a dispatch-worthy chat message with an explicit placement into
+// a real Orca dispatch via chat-dispatch-bridge.mjs, returning the SAME
+// {intent, decisionClass, text, ...} response shape every other chat
+// branch already produces. Requires placement.worktree specifically (not
+// yet workerTerminal-only) -- the plan capsule's repository binding needs
+// a real filesystem path to resolve identity from; reusing an existing
+// terminal's own known worktree is a follow-up wiring wave, not yet built.
+async function dispatchFromChat({ project, message, placement }) {
+  const intent = classifyIntent(message)
+  const decisionClass = classifyDecision(message, intent)
+  if (!placement.worktree) {
+    return {
+      intent,
+      decisionClass,
+      text: `I need an exact worktree path to dispatch into -- reusing an existing terminal for a chat-triggered dispatch isn't wired up yet, please supply a worktree.`,
+      providerLabel: 'PLANNER_DEEP · dispatch attempted, no repository binding available',
+      live: false,
+      dispatched: false
+    }
+  }
+  const resolved = await resolveRepositoryIdentity(placement.worktree)
+  if (!resolved.ok) {
+    const reasonText =
+      resolved.reason === 'REPOSITORY_UNAVAILABLE'
+        ? 'that worktree path does not exist'
+        : resolved.reason === 'NOT_A_GIT_REPOSITORY'
+          ? 'that path is not a git repository'
+          : 'the repository could not be inspected'
+    return {
+      intent,
+      decisionClass,
+      text: `I can't dispatch this: ${reasonText} (${resolved.detail}).`,
+      providerLabel: 'PLANNER_DEEP · dispatch attempted, repository resolution failed',
+      live: false,
+      dispatched: false
+    }
+  }
+
+  const dispatch = await planAndDispatchFromChat({
+    project,
+    message,
+    placement,
+    identity: { repository: resolved.identity },
+    clock: () => new Date()
+  })
+
+  if (!dispatch.ok) {
+    const detailText = dispatch.detail ? ` (${dispatch.detail})` : ''
+    return {
+      intent,
+      decisionClass,
+      text: `I couldn't dispatch this on **${project.displayName}**: ${dispatch.reason}${detailText}.`,
+      providerLabel: 'PLANNER_DEEP · dispatch attempted, did not complete',
+      live: false,
+      dispatched: false,
+      dispatchReason: dispatch.reason,
+      dispatchDetail: dispatch.detail
+    }
+  }
+
+  const items = dispatch.tickResult.dispatchRecords ?? []
+  const dispatchedText =
+    items.length > 0
+      ? `Dispatched **${dispatch.candidateWorkItem.id}** on **${project.displayName}** (task ${items[0].taskId}) -- real Orca worker, no terminal opened by hand.`
+      : `Started work on **${project.displayName}**: ${dispatch.tickResult.action}.`
+  return {
+    intent,
+    decisionClass,
+    text: dispatchedText,
+    providerLabel: 'PLANNER_DEEP · real dispatch via Keep Going',
+    live: true,
+    dispatched: true,
+    tickResult: dispatch.tickResult,
+    candidateWorkItem: dispatch.candidateWorkItem,
+    planCapsule: dispatch.planCapsule
+  }
+}
 
 function projectsById() {
   const real = loadRealPilotProjects()
@@ -329,6 +409,15 @@ export function createRequestHandler() {
         let result
         let plannerSessions = opState.plannerSessions
 
+        // M3: real dispatch is opt-in per request via an explicit
+        // `placement` field (worktree/workerTerminal + optional agent) --
+        // no silent default, matching every other M2 dispatch path. Until
+        // the UI itself gathers this (a later wave), existing callers that
+        // never send `placement` keep the exact prior conversational
+        // behavior below, unchanged.
+        const dispatchWorthy = intent === 'DISPATCH_REQUEST' || intent === 'FIX_REQUEST'
+        const hasExplicitPlacement = !!(body.placement?.worktree || body.placement?.workerTerminal)
+
         if (!project) {
           result = respond(project, message)
         } else if (decisionClass === 'TIM_REQUIRED') {
@@ -343,6 +432,8 @@ export function createRequestHandler() {
               'PLANNER_DEEP · policy refusal — consequential action, no live call made',
             live: false
           }
+        } else if (dispatchWorthy && hasExplicitPlacement) {
+          result = await dispatchFromChat({ project, message, placement: body.placement })
         } else {
           const key = body.projectId
           const history = (opState.chatThreads[key] ?? []).slice(-12)
@@ -377,7 +468,22 @@ export function createRequestHandler() {
           }
         }
 
-        const threads = { ...opState.chatThreads }
+        // Re-read fresh right before saving -- `opState` was captured once
+        // at the very top of this request, before this route's own work
+        // (M3's dispatch path in particular) may have mutated OTHER state
+        // fields through their own properly-locked writes. A blind save
+        // from that stale snapshot would silently revert those -- a real,
+        // live-confirmed bug: a chat-triggered dispatch's freshly-created
+        // Keep Going run vanished the instant this route's own
+        // chatThreads save ran, because it saved `{...opState, ...}` with
+        // opState.keepGoingRuns still empty from before the dispatch.
+        const freshState = loadState()
+        const plannerSessionChanged =
+          project && plannerSessions[project.id] !== opState.plannerSessions[project.id]
+        const nextPlannerSessions = plannerSessionChanged
+          ? { ...freshState.plannerSessions, [project.id]: plannerSessions[project.id] }
+          : freshState.plannerSessions
+        const threads = { ...freshState.chatThreads }
         const key = body.projectId ?? '__none__'
         const attachmentSummary = attachments.length
           ? { attachmentCount: attachments.length, attachmentNames: attachments.map((a) => a.name) }
@@ -393,7 +499,7 @@ export function createRequestHandler() {
             intent: result.intent
           }
         ].slice(-200)
-        saveState({ ...opState, chatThreads: threads, plannerSessions })
+        saveState({ ...freshState, chatThreads: threads, plannerSessions: nextPlannerSessions })
         return json(res, 200, result)
       }
 

@@ -30,7 +30,13 @@ if (mode === 'malformed') {
 }
 
 if (mode === 'provider-error') {
-  process.stdout.write(JSON.stringify({ is_error: true, result: 'deliberate stub provider error', session_id: sessionId }))
+  process.stdout.write(
+    JSON.stringify({
+      is_error: true,
+      result: 'deliberate stub provider error',
+      session_id: sessionId
+    })
+  )
   process.exit(0)
 }
 
@@ -43,20 +49,47 @@ if (resume && resume !== sessionId) {
 const prompt = argValue('-p') || ''
 const jsonSchema = argValue('--json-schema')
 
-// When --json-schema is passed (structured one-shot analysis calls, e.g.
-// onboarding direction analysis), emit a result matching the shape those
-// callers expect instead of the plain chat-style text.
-const structured = jsonSchema
-  ? {
-      purpose: `stub-answer-for::${prompt}`.slice(0, 4000),
-      completedSummary: 'stub completed summary',
-      unfinishedSummary: 'stub unfinished summary',
-      alignment: 'ALIGNED',
-      alignmentRationale: 'stub alignment rationale',
-      recommendedNextMission: { title: 'stub next mission', rationale: 'stub rationale' },
-      upgradeCandidates: []
+// When --json-schema is passed (structured one-shot analysis calls), emit
+// a result shaped for WHICHEVER schema was actually requested -- inspected
+// by its schemaVersion const, not guessed by call order -- so this one
+// stub serves every structured caller (onboarding direction analysis, M3's
+// chat work-plan-request) without needing a separate stub per schema.
+function structuredResponseFor(schemaJson, prompt) {
+  let schema
+  try {
+    schema = JSON.parse(schemaJson)
+  } catch {
+    return null
+  }
+  const schemaVersion = schema?.properties?.schemaVersion?.const
+  if (schemaVersion === 'TSF_CHAT_WORK_PLAN_REQUEST_V1') {
+    return {
+      schemaVersion: 'TSF_CHAT_WORK_PLAN_REQUEST_V1',
+      objective: `stub-plan-for::${prompt}`.slice(0, 4000),
+      decisions: [],
+      allowedScope: ['docs/stub-work-plan-target.md'],
+      constraints: [],
+      prohibitedActions: [],
+      relevantComponents: [],
+      acceptanceCriteria: ['stub acceptance criterion'],
+      requiredTests: [],
+      stopConditions: ['stub stop condition']
     }
-  : null
+  }
+  // Falls back to the onboarding direction-analysis shape (the only other
+  // structured caller today).
+  return {
+    purpose: `stub-answer-for::${prompt}`.slice(0, 4000),
+    completedSummary: 'stub completed summary',
+    unfinishedSummary: 'stub unfinished summary',
+    alignment: 'ALIGNED',
+    alignmentRationale: 'stub alignment rationale',
+    recommendedNextMission: { title: 'stub next mission', rationale: 'stub rationale' },
+    upgradeCandidates: []
+  }
+}
+
+const structured = jsonSchema ? structuredResponseFor(jsonSchema, prompt) : null
 
 process.stdout.write(
   JSON.stringify({
