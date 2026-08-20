@@ -603,7 +603,18 @@
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented and unit-tested (wave 15, tsf/server/keep-going-dispatch-loop.mjs) but not yet: live-dogfooded against the real orca CLI, independently reviewed, wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-15 delivered: the unit-tested governance module (now including in-flight-wave tracking), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes, a browser-proven UI (Start/Pause/Resume/live display), and now the dispatch-loop mechanism itself -- the milestone still needs a live dogfood of the loop, independent (non-SELF) verification of it, and a real verifier hookup before this milestone can honestly be called complete/adopted."
   ],
-  "blockers": [],
+  "blockers": [
+    {
+      "id": "CODEX_SANDBOX_HELPER_MISSING_001",
+      "severity": "PROVIDER_RUNTIME_FAILURE",
+      "observedAt": "2026-08-19T23:39:00-06:00",
+      "summary": "Codex's CLI wrapper is healthy (`codex doctor`: 0 fail; `codex --version`: 0.148.0), but real command execution inside a Codex session is currently broken: a harmless capacity-check probe (opened a bare `codex` terminal, no real task) had a shell-escaping accident cause Codex to attempt `git status` on its own, which failed twice with Codex's own error message: \"Orca's Windows sandbox helper (codex-windows-sandbox-setup.exe) is missing, so no terminal process can start. The Git path itself wasn't reached. Restarting or repairing the Orca/Codex runtime should restore command execution.\" This is the same component named in the earlier WINDOWS_SANDBOX_CRASH_001 incident (which manifested as an Application Error crash, 0xc0000142) -- it now manifests as the file being reported entirely absent rather than crashing.",
+      "impact": "Any real Codex dispatch that needs to execute a shell command (i.e. any real implementation/test/verification task -- the normal case) will very likely fail identically. This blocks Codex-side WORKER_* dispatch for M2 wave 15's live dogfood and any other Codex work until repaired. Claude-side work is unaffected.",
+      "verifiedNotAffecting": "No TSF code or program state was touched by this probe. The probe terminal was closed cleanly (orca terminal close --tab) without any file changes; git status in this worktree remains clean.",
+      "actionTaken": "Probe terminal closed. No retry attempted, no further Codex terminals opened, no work dispatched to Codex. Recorded here and the autonomous loop paused pending Tim's review, per program Section I (provider/auth failure that cannot be safely checkpointed) rather than continuing to push Codex-side work that would likely fail the same way.",
+      "recommendedNextStep": "Tim (or whoever last worked on the Codex/Orca runtime install) should confirm whether codex-windows-sandbox-setup.exe is genuinely missing from the expected install location and repair/reinstall it. Once confirmed present, this program should re-probe with a deliberately harmless command (not accidentally-triggered `git status`) before resuming any live Codex dispatch."
+    }
+  ],
   "advisories": [
     {
       "id": "GIT-HYGIENE-001",
