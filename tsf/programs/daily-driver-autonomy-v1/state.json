@@ -732,6 +732,20 @@
             "the disclosed residual risk in stale-lock reclaim (mtime-only, no liveness heartbeat)",
             "packaging M2 as an immutable candidate and evaluating local auto-adoption per Section H"
           ]
+        },
+        {
+          "wave": 29,
+          "summary": "A dual-pass independent review (direct analysis plus two forked sub-agents, cross-checked and deduplicated) of wave 28s async lock redesign and duplicate-dispatch fix concluded: the routing-decision re-validation correctly closes the race with no false-positive risk, and the async conversion has no missed-await or broken error-propagation anywhere in its call graph. Overall verdict: non-blocking for continued live dispatch use at current scale. Fixed 3 of 10 findings: (1) planWaves validation error now carries .code=TSF_INVALID_WORK_ITEM so dispatchSteps catch reacts to that specific failure rather than reclassifying ANY planWave exception as bad caller input; (2) findInvalidWorkItem in the HTTP tick route now mirrors planWaves own !item.id check exactly instead of a stricter, silently-disagreeing typeof-string check; (3) added a dedicated 7-test file for cross-process-file-lock.mjs directly exercising acquire/release/stale-reclaim/reentrancy-guard/parent-directory-creation, closing a real gap where the token-ownership check (this features headline safety property) had zero dedicated coverage. Disclosed, deliberately deferred per the reviews own fast-follow-up framing: the release-path TOCTOU between reading and unlinking the lock file; deriving kind directly from the lock-protected read inside claim() rather than re-validating a pre-lock guess after the fact (a larger structural change that would remove this bug class by construction); the single global lock file serializing unrelated projects Keep Going operations; withWindowsRetry duplicating two existing Windows retry implementations elsewhere in the repo. 213/213 full tsf suite GREEN, oxlint/max-lines-ratchet clean.",
+          "testsAdded": 7,
+          "testsPassing": "213/213 full tsf suite GREEN",
+          "verifier": "INDEPENDENT (dual-pass: direct review plus two forked sub-agents, findings cross-checked and deduplicated); concluded non-blocking for continued live dispatch use",
+          "commit": "a90770fdaa3e628f110e130d7953d8e6bbe3a6ee",
+          "deferredToNextWave": [
+            "release-path TOCTOU in cross-process-file-lock.mjs (disclosed, low-probability given the fast in-memory-only critical section)",
+            "deriving kind from the lock-protected read directly rather than re-validating after the fact (structural improvement, not urgent)",
+            "per-project lock granularity (currently one global lock file serializes all projects)",
+            "packaging M2 as an immutable candidate and evaluating local auto-adoption per Section H"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -1282,12 +1296,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_28_ASYNC_LOCK_AND_DUPLICATE_DISPATCH_FIX",
-    "at": "2026-08-20T10:20:14.728Z",
-    "commit": "cdfaf7333ec2fb679858cdc24dcc6e720a42233f",
+    "phase": "M2_WAVE_29_DUAL_PASS_REVIEW_ADDRESSED",
+    "at": "2026-08-20T10:44:43.948Z",
+    "commit": "a90770fdaa3e628f110e130d7953d8e6bbe3a6ee",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "The most severe bug of this entire session was found and fixed this wave: the async cross-process lock (wave 27, itself fixing a real cross-process race) reopened a timing window letting two near-simultaneous ticks each create a genuine duplicate Orca task -- reproduced live, fixed by re-validating the dispatch-vs-settle routing decision under the lock, reproduced-fixed confirmed live again. This is exactly the kind of subtle, compounding correctness risk the programs discipline of live-proving fixes (not just trusting unit tests) exists to catch. 206/206 suite GREEN, stable across repeated runs. Given the severity, an independent review of this wave specifically is recommended before treating the dispatch-loop concurrency model as settled -- not yet launched. Next: decide whether to commission that review now or proceed to assess overall M2 readiness for Section H packaging with this now-fixed, disclosed history intact."
+    "note": "The dispatch-loop repair (waves 19-29: root cause found, worker-start wired in, coordinator-binding fix, 3 rounds of placement-collision hardening, HTTP/UI wiring, async cross-process lock, a severe duplicate-dispatch bug found and fixed via live testing, and a dual-pass review of that fix) is now independently judged non-blocking for continued live dispatch use. 213/213 suite GREEN throughout, stable across repeated runs. Two live end-to-end dogfood missions from earlier this session (resumed-parked-run completion; pause/resume-under-a-real-in-flight-wave) remain valid, unaffected evidence. M2's own acceptance-status self-assessment (see m2.acceptanceStatus2026_08_20) still needs a final refresh incorporating waves 26-29's HTTP/UI wiring and cross-process-safety work before a Section H packaging decision. Next: refresh that assessment, then decide on packaging/adoption, or produce a session summary if capacity/time favors stopping here."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1465,5 +1479,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Both concrete, actionable gaps the holistic independent verifier pass identified are now addressed: tickKeepGoingRun is wired to a real HTTP route + UI control (wave 26), and keep-going-run-store.mjs now has a real, adversarially-proven cross-process lock (wave 27). The acceptanceStatus2026_08_20 self-assessment's overclaim (concurrent multi-worker dispatch never live-tested) has been corrected in place rather than left standing. detectStall dead-code remains open and disclosed, not yet fixed -- a code-quality/consistency issue, not a correctness bug (settleStep's own inline stall check is real and tested, just duplicative of a function that is never called). An independent review of waves 26+27 is in flight. Next: act on that review, then decide whether M2 is ready for Section H packaging or needs one more pass."
+  },
+  "priorDurableCheckpoint16": {
+    "phase": "M2_WAVE_28_ASYNC_LOCK_AND_DUPLICATE_DISPATCH_FIX",
+    "at": "2026-08-20T10:20:14.728Z",
+    "commit": "cdfaf7333ec2fb679858cdc24dcc6e720a42233f",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "The most severe bug of this entire session was found and fixed this wave: the async cross-process lock (wave 27, itself fixing a real cross-process race) reopened a timing window letting two near-simultaneous ticks each create a genuine duplicate Orca task -- reproduced live, fixed by re-validating the dispatch-vs-settle routing decision under the lock, reproduced-fixed confirmed live again. This is exactly the kind of subtle, compounding correctness risk the programs discipline of live-proving fixes (not just trusting unit tests) exists to catch. 206/206 suite GREEN, stable across repeated runs. Given the severity, an independent review of this wave specifically is recommended before treating the dispatch-loop concurrency model as settled -- not yet launched. Next: decide whether to commission that review now or proceed to assess overall M2 readiness for Section H packaging with this now-fixed, disclosed history intact."
   }
 }
