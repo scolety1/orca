@@ -256,6 +256,52 @@
     }
   ],
   "retriesUsed": 0,
+  "executionWindow": {
+    "id": "EVENING_SPRINT_2026-08-19",
+    "setAt": "2026-08-19T23:59:22Z",
+    "setBy": "TIM",
+    "mode": "EVENING_SPRINT_NOT_UNLIMITED_OVERNIGHT",
+    "hardOperatorReturnLocal": "2026-08-19T23:20:00-06:00",
+    "hardOperatorReturnUtc": "2026-08-20T05:20:00Z",
+    "rationale": "Tim intends to actively work on TSF again immediately after the Codex weekly reset at 11:20 PM local -- the two deadlines coincide exactly (see providerCapacityStatus.codex.resetsAt).",
+    "returnHandoffTriggerLocal": "2026-08-19T23:05:00-06:00",
+    "directives": [
+      "Continue autonomously without routine check-ins for the remainder of this window.",
+      "Prioritize completing M2 Keep Going / Overnight V1 to a genuinely GREEN, verified, locally-adopted state if safely possible.",
+      "If M2 finishes with substantial time remaining, proceed into M3 per the existing program charter.",
+      "Aggressively use otherwise-expiring Claude/Codex capacity on useful bounded work that can safely finish before the cutoff (extends capacityPolicy.expiringCapacityRule for this window specifically).",
+      "Do not manufacture work merely to consume tokens.",
+      "Preserve only a small reserve sufficient to finish, verify, fence, and checkpoint active work.",
+      "Shrink task size as 11:20 PM approaches.",
+      "Do not begin a major new architecture wave close to the cutoff if it cannot reasonably settle before Tim returns.",
+      "Do not pause early merely to conserve capacity -- maximum useful safe progress before 11:20 PM, then a clean handoff."
+    ],
+    "returnHandoffModeRequirements": [
+      "Stop spawning new workers.",
+      "Allow safely finishable active bounded work to settle.",
+      "Fence/record anything uncertain.",
+      "Run the appropriate tests/checks for completed work.",
+      "Commit/checkpoint all valid program-state changes.",
+      "Update tsf/programs/daily-driver-autonomy-v1/state.json.",
+      "Record current provider capacity/reset state if trustworthy.",
+      "Leave no unnecessary dev servers/heavy workers running.",
+      "Preserve any candidate awaiting adoption exactly.",
+      "Produce a concise operator-return brief."
+    ],
+    "operatorReturnBriefMustCover": [
+      "milestones completed/adopted tonight",
+      "current milestone/wave",
+      "exact HEAD/tree/checkpoint",
+      "what changed",
+      "tests/verifier state",
+      "active/settled/blocked work",
+      "remaining gaps",
+      "provider state after reset if observable",
+      "the single best next action for Tim",
+      "exact prompt/instruction to resume autonomous mode later if desired"
+    ],
+    "preservedConstraints": "All existing architecture, authority, Windows-safety, real-project, and local-adoption rules (Sections B/F/G/H/I) remain in force unchanged -- this window sets pacing and priority only, not new authority."
+  },
   "capacityPolicy": {
     "expiringCapacityRule": {
       "id": "EXPIRING_CAPACITY",
