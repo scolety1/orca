@@ -793,6 +793,28 @@
             "final targeted verification result (in flight)",
             "Section H packaging, gated on that result"
           ]
+        },
+        {
+          "wave": 34,
+          "summary": "Final pre-adoption live multi-wave proof, run against the fully-fixed code (waves 24-33: cross-batch/case-insensitive collision guard, async cross-process lock, the duplicate-dispatch fix, and the placement-safety fix all exercised together for the first time in one live run). Created a fresh Keep Going run for colety-labs-sales-engine (the same low-risk pilot repo used throughout this session), dispatched 2 real waves with EXPLICIT worktrees (now required by the placement-safety fix -- no more silent default), both real Codex dispatches completed genuinely (task_e6f759319510 in ~85s, task_7d9566872277 in ~105s), both independently verified by reading the actual marker files on disk directly, no duplicate tasks, no unintended file changes (git status showed only the intended untracked directory each time). Both waves settled through the real production tick path; gap analysis with both criteria genuinely verifiedSatisfied reached STOP_COMPLETE; the run transitioned to COMPLETE (revision 20). Checkpoint hash chain independently re-verified using the real canonical sha256 (not a naive reimplementation) -- intact. 217/217 full tsf suite unaffected (no code changed, this was a live/production-path proof only). This closes Tim's explicit \"rerun the relevant live multi-wave proof\" requirement for final M2 packaging.",
+          "testsAdded": 0,
+          "testsPassing": "217/217 full tsf suite GREEN (unaffected -- live proof only, no code changed)",
+          "verifier": "INDEPENDENT (Claude read every marker file directly from disk and recomputed the real checkpoint hash chain before treating any criterion as verifiedSatisfied)",
+          "commit": null,
+          "liveProofEvidence": {
+            "runId": "run_105cb735f98e",
+            "keepGoingRunId": "keep-going-colety-labs-sales-engine-1787249068093",
+            "tasks": [
+              "task_e6f759319510/ctx_2a4e64c32777 (final-proof-marker-1)",
+              "task_7d9566872277/ctx_d738e963a8b3 (final-proof-marker-2)"
+            ],
+            "finalState": "COMPLETE",
+            "finalRevision": 20
+          },
+          "deferredToNextWave": [
+            "final holistic independent verifier pass for Section H packaging",
+            "package/confirm HEAD+tree/confirm Orca-core-delta-0/local adopt if GREEN"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -1439,12 +1461,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_33_SAFETY_FIX_REVIEW_ADDRESSED",
-    "at": "2026-08-20T17:58:09.987Z",
-    "commit": "40449f05262a9dd61573d2fe8fc965518bbf045f",
+    "phase": "M2_WAVE_34_FINAL_LIVE_PROOF_COMPLETE",
+    "at": "2026-08-20T18:10:48.412Z",
+    "commit": null,
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "The placement-safety fix (silent current-worktree-default removal) has now been through 2 full independent review rounds, all findings addressed each time, with a 3rd final targeted verification in flight -- the last gate before Section H packaging. 217/217 suite GREEN throughout, stable across repeated runs. Next: act on the final verification result, then proceed to the full packaging/adoption sequence if GREEN (rerun acceptance suite, confirm HEAD/tree, confirm Orca-core-delta-0, evaluate Section H)."
+    "note": "The final pre-adoption live multi-wave proof (run_105cb735f98e) reached COMPLETE, exercising every fix from waves 24-33 together in one real run for the first time: explicit-worktree requirement, wave-wide collision guard, async cross-process lock, coordinator rebind, real independent verification. Hash chain re-verified with the real canonical sha256. 217/217 suite unaffected. Next: commission the final holistic independent verifier pass Tim requested for packaging, then package M2 as an immutable candidate, confirm exact HEAD/tree, confirm Orca-core-delta-0, and locally adopt into tsf/main if every Section H precondition holds."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1654,5 +1676,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Reconciled the live smoke-test dispatch honestly (STALLED, checkpointed, evidence preserved, no redispatch) and, in doing so and via a fresh independent verifier pass, found and fixed a real M2_BLOCKING safety gap: the Run now path's silent 'current' worktree default, proven live to land a real dispatch in the wrong directory. Fixed everywhere it existed (server validation, HTTP validation, UI default). 215/215 suite GREEN. An independent review of this specific fix is in flight before treating M2 as ready for Section H packaging. External Codex/MCP configuration issue recorded separately, explicitly out of TSF scope, not repaired. Next: act on the review, then proceed to final packaging if GREEN."
+  },
+  "priorDurableCheckpoint20": {
+    "phase": "M2_WAVE_33_SAFETY_FIX_REVIEW_ADDRESSED",
+    "at": "2026-08-20T17:58:09.987Z",
+    "commit": "40449f05262a9dd61573d2fe8fc965518bbf045f",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "The placement-safety fix (silent current-worktree-default removal) has now been through 2 full independent review rounds, all findings addressed each time, with a 3rd final targeted verification in flight -- the last gate before Section H packaging. 217/217 suite GREEN throughout, stable across repeated runs. Next: act on the final verification result, then proceed to the full packaging/adoption sequence if GREEN (rerun acceptance suite, confirm HEAD/tree, confirm Orca-core-delta-0, evaluate Section H)."
   }
 }
