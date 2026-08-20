@@ -683,6 +683,42 @@
             "a dedicated holistic M2 verifier pass against the full acceptance-criteria list (see m2.acceptanceStatus2026_08_20)",
             "packaging M2 as an immutable candidate and evaluating local auto-adoption per Section H"
           ]
+        },
+        {
+          "wave": "holistic-verifier-pass",
+          "summary": "A dedicated, holistic INDEPENDENT VERIFIER pass (distinct from the 4 code-diff review rounds on the dispatch-loop repair) checked M2 against its own recorded acceptanceCriteria and the acceptanceStatus2026_08_20 self-assessment, independently re-confirming rather than trusting: every referenced commit hash exists; test counts reproduce exactly at HEAD (201/201) and at two earlier waves checked out in disposable worktrees (168/168 at wave 16, 185/185 at wave 19); live task IDs/statuses for both dogfood runs against the real, still-live Orca CLI; the on-disk marker files byte-for-byte; and the checkpoint hash chain recomputed with the REAL canonical sha256 (all 3 checkpoints on the persisted run validate). Verdict: the self-assessment is unusually honest and holds up well -- no fabricated evidence, no commit that does not exist, no test-count claim that does not reproduce. Found real things the self-assessment missed or softened: (1) row 3/6 PROVEN_LIVE_AND_HARDENED overclaims -- both live dogfood runs used maxConcurrentWorkers:1, so genuine concurrent multi-worker dispatch was NEVER live-tested, only unit-tested; (2) detectStall (tsf/domain/keep-going.mjs) is dead code in production -- settleStep uses its own inline dispatchedAt-based check instead of ever calling it; (3) row 11 (UI) technically-true-but-understated -- tickKeepGoingRun was wired to ZERO HTTP routes and the UI had no tick/run-now control at all, meaning the autonomous dispatch loop had never once been reachable from the actual product surface, in any session, not just tonight; (4) a genuinely NEW, previously-undisclosed correctness concern: the CAS concurrency models atomicity argument only holds within one OS process -- data-store.mjs has no cross-process file lock, directly in the path of the explicitly-planned next feature (a cron automation trigger). Recommendation: not yet ready for Section H adoption; fix the cross-process gap before any unattended/cron use, and wire tickKeepGoingRun to at least one real UI/HTTP entry point before calling the UI criterion done.",
+          "testsAdded": 0,
+          "testsPassing": "201/201 (independently re-run and confirmed by the verifier itself, plus 2 historical wave checkouts)",
+          "verifier": "INDEPENDENT (a separate forked pass, explicitly instructed to judge each criterion on its own inspection regardless of the self-assessments claims)",
+          "commit": null,
+          "deferredToNextWave": [
+            "wire tickKeepGoingRun to a real HTTP route + UI control (addressed: wave 26)",
+            "add cross-process protection to keep-going-run-store.mjs/data-store.mjs before any unattended/cron use (addressed: wave 27)",
+            "correct the acceptanceStatus2026_08_20 overclaim on concurrent-dispatch live-testing",
+            "address detectStall dead-code finding (not yet done -- disclosed, deferred)"
+          ]
+        },
+        {
+          "wave": 26,
+          "summary": "Closed the verifiers most severe finding: tickKeepGoingRun was reachable only from raw Node scripts, never from any HTTP route or UI control, in any session ever. Added POST /api/keep-going/:projectId/tick (keep-going-http-routes.mjs) -- the manual Run now entry point the dispatch loops own module header comment already named as the intended trigger until a cron automation is separately authorized. Never fabricates a plan: candidateWorkItems must come from the request body. Uses tickKeepGoingRuns own default deps (the real orchestration bridge + the real synchronous store), so a call here performs genuine Orca dispatch/settlement. 3 new tests (NOOP with no candidates, a real dispatch via the stubbed Orca CLI verified against persisted state, 404 for an unknown project). Added a Run now control to the actual Electron UI (KeepGoingTickForm.tsx, split out of KeepGoingPanel.tsx to stay under the max-lines cap): a minimal single-work-item form (id, file scope, optional spec, worktree, agent) rendered only while a run is ACTIVE. Deliberately kept to one item at a time rather than a full multi-item batch editor -- proving the real click-path end to end tonight, not building a scheduler UI. 204/204 full tsf suite GREEN, oxlint clean, tsc --noEmit -p config/tsconfig.tc.web.json clean, max-lines-ratchet clean.",
+          "testsAdded": 3,
+          "testsPassing": "204/204 full tsf suite GREEN",
+          "verifier": "SELF; an independent review of waves 26+27 combined is in flight",
+          "commit": "0a4f0930f4985b0afa71055e31566d9509d048af",
+          "deferredToNextWave": ["independent review of this wiring (in flight)"]
+        },
+        {
+          "wave": 27,
+          "summary": "Closed the verifiers second real finding: keep-going-run-store.mjs's atomicity argument only held within one OS process; data-store.mjs's loadState/saveState have no file lock, no PID check. Added cross-process-file-lock.mjs: a synchronous cross-process mutex using atomic exclusive file creation ('wx', the one primitive genuinely atomic across processes on every supported platform), bounded acquire (10s default, never blocks forever), 30s stale-lock reclaim (mirrors keep-going.mjs's own TICK_LOCK_TIMEOUT_MS reasoning), and a real synchronous sleep between retries via Atomics.wait (not a busy-spin). Wired into withKeepGoingRun, wrapping the load-mutate-save critical section (readKeepGoingRun stays lock-free, matching its existing read-only contract). data-store.mjs gained getStateFilePath() so the lock path derives correctly under the same TSF_UI_STATE_FILE test-isolation override. Proof: a new test spawns two GENUINELY SEPARATE node child processes (not same-process fakes) racing 25 real withKeepGoingRun increments each against the SAME real state file -- all 50 land, none lost. Manually verified the negative case too (temporarily bypassing the lock, confirming real corruption -- the state file did not even survive -- then reverting), confirming this is a real, serious risk, not theoretical. 205/205 full tsf suite GREEN, oxlint/oxfmt/max-lines-ratchet clean.",
+          "testsAdded": 1,
+          "testsPassing": "205/205 full tsf suite GREEN",
+          "verifier": "SELF, with a real adversarial cross-process test and a manually-verified negative control; an independent review of waves 26+27 combined is in flight",
+          "commit": "9539d638cf3922c7448bfcba62c00d795a1ead7e",
+          "deferredToNextWave": [
+            "independent review of this locking mechanism (in flight)",
+            "detectStall dead-code finding remains open, disclosed, deferred",
+            "the acceptanceStatus2026_08_20 overclaim correction"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -726,8 +762,8 @@
           },
           {
             "criterion": "Bounded, conflict-aware work waves dispatched to non-conflicting Orca workers",
-            "status": "PROVEN_LIVE_AND_HARDENED",
-            "evidence": "planWave used in every live dispatch tonight; the wave-20 rewiring introduced a same-worktree placement-collision gap, found and fixed across 2 further review rounds (waves 22, 24) with new regression tests -- now checked wave-wide, not just within one batch, and Windows-path-normalized"
+            "status": "PARTIALLY_PROVEN_CORRECTED",
+            "evidence": "planWave used in every live dispatch tonight; the wave-20 rewiring introduced a same-worktree placement-collision gap, found and fixed across 2 further review rounds (waves 22, 24) with new regression tests -- now checked wave-wide, not just within one batch, and Windows-path-normalized -- CORRECTION (per independent holistic verifier pass): this was overclaimed as PROVEN_LIVE_AND_HARDENED. Both live dogfood runs used maxConcurrentWorkers:1, so genuine CONCURRENT multi-worker dispatch (the actual point of batching) was never live-tested, only unit-tested. The collision-guard mechanism itself is real and hardened across 4 review rounds; concurrent live dispatch specifically is not."
           },
           {
             "criterion": "Independent verification per wave; no worker self-report treated as done",
@@ -766,8 +802,8 @@
           },
           {
             "criterion": "UI: project-level 'Keep Going / Overnight' action with Start/Pause/Resume and live display",
-            "status": "NOT_EXERCISED_THIS_SESSION",
-            "evidence": "This session drove every run entirely through the same server-side production code paths (keep-going-run-store.mjs / keep-going-dispatch-loop.mjs / keep-going.mjs) a UI action would call, via Node scripts, not by clicking the actual Electron UI -- a genuine, disclosed gap, not claimed as proven"
+            "status": "PARTIALLY_ADDRESSED",
+            "evidence": "RESOLVED (wave 26): tickKeepGoingRun is now wired to a real POST /api/keep-going/:projectId/tick route and a Run now control in the actual KeepGoingPanel UI. Start/Pause/Resume were already real; the dispatch loop itself is now reachable from the product surface too (previously it was reachable from NEITHER an HTTP route NOR any UI control, in any session -- worse than this entry originally disclosed). Not yet done: the Run now control has not been exercised by actually launching the Electron app and clicking it (still a raw-HTTP-level proof, via node --test and tsc typecheck), and it is deliberately single-item, not the full batch-planning UI the criterion describes."
           },
           {
             "criterion": "Proven via a bounded fixture/dogfood mission showing multiple waves, a revision, verification, pause/resume, no duplicate settled task, concise summary",
@@ -1233,12 +1269,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_25_THIRD_REVIEW_ADDRESSED",
-    "at": "2026-08-20T09:31:04.154Z",
-    "commit": "1428af46cb8821b026b4d90f89283e5445a12f5b",
+    "phase": "M2_WAVES_26_27_VERIFIER_FINDINGS_ADDRESSED",
+    "at": "2026-08-20T09:54:51.533Z",
+    "commit": "9539d638cf3922c7448bfcba62c00d795a1ead7e",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "Four consecutive independent-review rounds on the repaired dispatch path (waves 20 -> 21/22 -> 24 -> 25) have each found and fixed real bugs, converging to a point the reviewer itself judged as not blocking further live use. 201/201 suite GREEN throughout. Two real, disclosed, deliberately-deferred gaps remain (mixed terminal/fresh-worktree collision detection; full Orca selector-form canonicalization) -- documented, not urgent. Two live end-to-end dogfood missions (resumed-parked-run completion; pause/resume-under-a-live-wave) remain valid evidence, unaffected by these fixes (the reviewer confirmed nothing here retroactively invalidates what was already proven live under the current single-worker dogfood config). Next: either continue toward a dedicated holistic M2 verifier pass and Section H packaging, or produce the session summary if capacity/time favors stopping here."
+    "note": "Both concrete, actionable gaps the holistic independent verifier pass identified are now addressed: tickKeepGoingRun is wired to a real HTTP route + UI control (wave 26), and keep-going-run-store.mjs now has a real, adversarially-proven cross-process lock (wave 27). The acceptanceStatus2026_08_20 self-assessment's overclaim (concurrent multi-worker dispatch never live-tested) has been corrected in place rather than left standing. detectStall dead-code remains open and disclosed, not yet fixed -- a code-quality/consistency issue, not a correctness bug (settleStep's own inline stall check is real and tested, just duplicative of a function that is never called). An independent review of waves 26+27 is in flight. Next: act on that review, then decide whether M2 is ready for Section H packaging or needs one more pass."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1400,5 +1436,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Three consecutive independent-review rounds on the repaired dispatch path (waves 20 -> 21/22 -> 24) have each found and fixed real bugs, converging: this round fixed the most significant one yet (a cross-batch collision gap that made the previous same-batch guard permanently inert under the live dogfood runs own maxConcurrentWorkers:1 config). A further review of wave 24 specifically is in flight and intended as the last pass on this code path tonight. 198/198 suite GREEN throughout. Next: act on that review, then move to the remaining M2 acceptance items (a literal killed/restarted poller daemon, provider-capacity pause/fallback) and packaging M2 as a candidate for Section H local adoption."
+  },
+  "priorDurableCheckpoint14": {
+    "phase": "M2_WAVE_25_THIRD_REVIEW_ADDRESSED",
+    "at": "2026-08-20T09:31:04.154Z",
+    "commit": "1428af46cb8821b026b4d90f89283e5445a12f5b",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Four consecutive independent-review rounds on the repaired dispatch path (waves 20 -> 21/22 -> 24 -> 25) have each found and fixed real bugs, converging to a point the reviewer itself judged as not blocking further live use. 201/201 suite GREEN throughout. Two real, disclosed, deliberately-deferred gaps remain (mixed terminal/fresh-worktree collision detection; full Orca selector-form canonicalization) -- documented, not urgent. Two live end-to-end dogfood missions (resumed-parked-run completion; pause/resume-under-a-live-wave) remain valid evidence, unaffected by these fixes (the reviewer confirmed nothing here retroactively invalidates what was already proven live under the current single-worker dogfood config). Next: either continue toward a dedicated holistic M2 verifier pass and Section H packaging, or produce the session summary if capacity/time favors stopping here."
   }
 }
