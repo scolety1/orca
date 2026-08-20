@@ -239,7 +239,15 @@ test('a wave stuck in flight past the stall threshold escalates the run to STALL
     store
   })
   assert.equal(result.action, 'WAVE_STALLED')
-  assert.equal(store.readRun(PROJECT_ID).state, 'STALLED')
+  const run = store.readRun(PROJECT_ID)
+  assert.equal(run.state, 'STALLED')
+  // A real, confirmed gap found live (reconciling an actual stalled
+  // dispatch): this was the only phase transition in this module with no
+  // explicit checkpoint of its own -- the durable audit trail (and
+  // summarizeRun/the UI's "last checkpoint" display) would keep showing
+  // the pre-stall phase with no record of why/when the stall was detected.
+  assert.equal(run.checkpoints.at(-1).phase, 'WAVE_STALLED')
+  assert.equal(run.checkpoints.at(-1).evidence[0], 'task-t1')
 })
 
 test('a wave still within the stall threshold keeps reporting WAVE_STILL_IN_FLIGHT', async () => {

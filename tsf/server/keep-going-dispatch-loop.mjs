@@ -559,7 +559,12 @@ async function settleStep(projectId, clock, orchestration, store) {
     if (silentForMs > claimed.budget.stallThresholdMs) {
       try {
         const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
-          const stalled = markStalled(
+          const stalledWorkItemIds = inFlightWave.dispatchRecords
+            .filter((r) =>
+              outcomes.some((o) => o.workItemId === r.workItemId && o.outcome === 'PENDING')
+            )
+            .map((r) => r.taskId)
+          let stalled = markStalled(
             current,
             inFlightWave.dispatchRecords.filter((r) =>
               outcomes.some((o) => o.workItemId === r.workItemId && o.outcome === 'PENDING')
@@ -567,6 +572,22 @@ async function settleStep(projectId, clock, orchestration, store) {
             clock,
             true, // tickInternal -- this tick still holds the lock it is releasing
             expectedRevision
+          )
+          // A real, confirmed gap found live: this branch was the only run-
+          // level phase transition in this module with no explicit
+          // checkpoint of its own -- state.transitions correctly recorded
+          // the STALLED transition, but summarizeRun/the UI's "last
+          // checkpoint" display would keep showing the pre-stall phase
+          // (still WAVE_DISPATCHED) with no durable record of *why* or
+          // *when* the stall was actually detected.
+          stalled = checkpointRun(
+            stalled,
+            {
+              phase: 'WAVE_STALLED',
+              note: `silent for ${silentForMs}ms`,
+              evidence: stalledWorkItemIds
+            },
+            clock
           )
           return releaseTick(stalled, clock, stalled.revision)
         })
