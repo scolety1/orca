@@ -1295,8 +1295,18 @@
           "testsPassing": "304/304 full tsf suite GREEN",
           "verifier": "SELF (HTTP-level tested against the real engine); independent review of waves 7-9 to be commissioned before the live fixture dogfood proof",
           "commit": "9aa5baec6",
-          "status": "IN_PROGRESS",
-          "note": "Tim's entire M3 also-prove checklist is now fully closed: no duplicate dispatch, authority interception, follow-up status query, project-switching isolation, a worker question surfacing as Needs You, stalled/failed worker recovery reuse, and a bounded revision request. The disclosed retry-item-id gap from wave 8 remains open (non-blocking). Next: commission an independent review of waves 7-9, then the live fixture dogfood proof (real Codex dispatch against tsf-ui-capability-check, checking live capacity via orca account list --json first), then Tim's manual UI acceptance checklist, then final packaging/adoption."
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "Tim's entire M3 also-prove checklist is now fully closed: no duplicate dispatch, authority interception, follow-up status query, project-switching isolation, a worker question surfacing as Needs You, stalled/failed worker recovery reuse, and a bounded revision request. The disclosed retry-item-id gap from wave 8 remains open (non-blocking)."
+        },
+        {
+          "wave": 10,
+          "summary": "Independent review of M3 waves 7-9 (commits 1fa6d6016, 26166ae26, 9aa5baec6) reported back with zero confirmed findings. Verified by direct code inspection (not prior context): isTickLockActive/dispatchTickActive correctly honor the lock's own stored timeoutMs; isLiveRunRelevantFor correctly gates on run truthiness/intent/non-terminal state; recordTaskAttempt's real per-work-item retry-budget escalation genuinely exceeds budget on the 3rd cycle and raises a real Needs You question; the abandon-stalled-wave route usage matches the real HTTP contract; the stub planner's objective genuinely embeds Tim's real message text (not coincidental). Mutation-tested 2 of the 3 commits directly: reverted wave 7's chat-responder.mjs/http-server.mjs fix and confirmed all 3 new tests failed with the exact expected wrong output before restoring; disabled the stall-threshold check in keep-going-dispatch-loop.mjs and confirmed the STALLED test failed exactly as expected before restoring. Full suite reconfirmed 304/304 GREEN independently; oxlint/tsc/max-lines-ratchet all clean. One apparent oxfmt --check flag on 2 files turned out to be pure CRLF/LF churn with zero content diff, not a real formatting defect. No fictional affordances or dishonest comments found -- the wave 8 retry-item-id gap remains accurately disclosed in both code comments and state.json, not overclaimed.",
+          "testsAdded": 0,
+          "testsPassing": "304/304 full tsf suite GREEN (independently re-run)",
+          "verifier": "INDEPENDENT (forked review agent; full code inspection plus genuine mutation testing on 2 of 3 commits)",
+          "commit": null,
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "No outstanding findings remain against M3 waves 1-9. Working tree confirmed clean after the review's own mutation-testing revert/restore cycles. Next: the live fixture dogfood proof itself -- check live Codex capacity via orca account list --json (already confirmed healthy/authenticated), then prove natural-language chat -> real Orca Run/task -> real Codex worker -> Live Work Feed -> independent verification -> READY_FOR_ADOPTION against the safe tsf-ui-capability-check fixture. Then Tim's manual UI acceptance checklist, then final packaging/adoption."
         }
       ]
     },
