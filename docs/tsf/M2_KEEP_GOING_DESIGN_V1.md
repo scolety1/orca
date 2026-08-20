@@ -7,22 +7,22 @@ runtime reachable, app 1.4.185) exposes a full native orchestration graph
 through `orca orchestration <cmd>` and `orca automations <cmd>` that was not
 previously inventoried in `docs/tsf/TSF_OVERLAY_ARCHITECTURE.md` (that doc's
 "plugin API v1 does not yet expose the complete Run/task/dispatch graph"
-statement is about the sandboxed *plugin* API specifically — the CLI is a
+statement is about the sandboxed _plugin_ API specifically — the CLI is a
 separate, fuller supported surface). Per the program's implementation
 hierarchy, this sits above "TSF overlay module" and must be used instead of
 a parallel scheduler:
 
-| M2 need | Orca-native primitive |
-|---|---|
-| A run/mission namespace | `orchestration run-create/run-list/run-show` |
-| Bounded work items | `orchestration task-create/task-list/task-update` |
-| Dispatch a work item to a worker | `orchestration dispatch`, `orchestration worker-start` |
-| Worker heartbeat / resource accounting | `orchestration worker-list` (`--terminal-state`) |
-| Stall handling — fence without claiming success | `orchestration worker-abandon` |
-| Clean stop of a dispatch | `orchestration worker-stop` |
-| Needs You / human decision gate | `orchestration gate-create/gate-resolve/gate-list` |
-| Inter-agent messaging (planner ↔ worker) | `orchestration send/check/ask/reply/inbox` |
-| Genuinely scheduled/recurring overnight trigger | `automations create --trigger cron|rrule|preset [--precheck <cmd>] [--workspace-mode existing|new-per-run]`, `automations run`, `automations runs` |
+| M2 need                                         | Orca-native primitive                                  |
+| ----------------------------------------------- | ------------------------------------------------------ | ----- | ---------------------------------------------------- | ---------------------------------------------------- |
+| A run/mission namespace                         | `orchestration run-create/run-list/run-show`           |
+| Bounded work items                              | `orchestration task-create/task-list/task-update`      |
+| Dispatch a work item to a worker                | `orchestration dispatch`, `orchestration worker-start` |
+| Worker heartbeat / resource accounting          | `orchestration worker-list` (`--terminal-state`)       |
+| Stall handling — fence without claiming success | `orchestration worker-abandon`                         |
+| Clean stop of a dispatch                        | `orchestration worker-stop`                            |
+| Needs You / human decision gate                 | `orchestration gate-create/gate-resolve/gate-list`     |
+| Inter-agent messaging (planner ↔ worker)        | `orchestration send/check/ask/reply/inbox`             |
+| Genuinely scheduled/recurring overnight trigger | `automations create --trigger cron                     | rrule | preset [--precheck <cmd>] [--workspace-mode existing | new-per-run]`, `automations run`, `automations runs` |
 
 `tsf/adapters/orca-cli-bridge.mjs` already establishes the pattern (spawn
 `orca ... --json`, fail honestly on `CLI_UNAVAILABLE`/`TIMEOUT`/`CLI_ERROR`,
@@ -35,7 +35,7 @@ engine.
 - **Orca (native, via CLI)**: creates the Run, tasks, dispatches workers to
   terminals/worktrees, tracks worker/terminal resource state, blocks a task
   on a gate, and can trigger the whole cycle on a schedule.
-- **TSF (`tsf/domain/keep-going.mjs`, this wave)**: the *governance* layer
+- **TSF (`tsf/domain/keep-going.mjs`, this wave)**: the _governance_ layer
   Orca has no opinion on — the immutable original goal, acceptance
   criteria, gap analysis that never trusts a worker's own "done" claim,
   conflict-aware wave batching by declared file scope, retry/stall
@@ -130,7 +130,7 @@ exactly one bounded, idempotent step for one project's run:
   dispatched (trimmed plan), never silently orphaning a real Orca task with
   no TSF-side record.
 - **A wave is out** (`run.inFlightWave` set): polls `orchestration
-  task-list` (not `worker-list` — wave 11's dogfood found `worker-list` only
+task-list` (not `worker-list` — wave 11's dogfood found `worker-list` only
   tracks `worker-start`-launched workers, not tasks dispatched into a
   pre-existing terminal) for each dispatched task's status. Still pending →
   `WAVE_STILL_IN_FLIGHT`, no state change. All terminal → records a
@@ -148,12 +148,12 @@ exactly one bounded, idempotent step for one project's run:
    `projectKeepGoingRun`'s gap analysis still honestly passes
    `verifiedSatisfied: []` until a real independent verifier pass exists;
    wiring one in is separate future work.
-2. **No candidate-work-item generation.** Deciding *what* work items exist
+2. **No candidate-work-item generation.** Deciding _what_ work items exist
    for the current gap is a planning judgment, still supplied by the
    caller (today: an operator or planner session) — this loop refuses to
    plan a wave when none are given rather than fabricating one.
 3. **No registered recurring trigger.** `automations create --trigger
-   cron|rrule|preset` (the native primitive named at wave 1) is the
+cron|rrule|preset` (the native primitive named at wave 1) is the
    intended way to fire `tickKeepGoingRun` unattended, but registering a
    standing, always-firing local automation is a separate decision with
    its own interval/safety tradeoffs (how often, what stop conditions, what
@@ -231,7 +231,7 @@ one small synchronous compare-and-swap primitive, not a broad
   actually provides atomicity, not the revision check alone.
 - `tsf/domain/keep-going.mjs` gains `tickLock` (`{ kind, claimedAt }` or
   `null`) on the run, plus `claimTick`/`releaseTick`. A tick claims the
-  lock via one CAS *before* doing any real CLI work (preventing two ticks
+  lock via one CAS _before_ doing any real CLI work (preventing two ticks
   from both starting real duplicate dispatch -- a plain "check revision
   once at the end" cannot prevent that, since by the time either tick
   reaches its own end-of-tick check both may already have created real,
@@ -245,7 +245,7 @@ one small synchronous compare-and-swap primitive, not a broad
   (`TSF_TICK_IN_PROGRESS`), so a pause request racing an in-flight tick is
   cleanly rejected -- not silently dropped, not silently overwritten by the
   tick's eventual commit -- and simply succeeds once retried after the
-  (short-lived) lock clears. A `tickInternal` flag lets the tick's *own*
+  (short-lived) lock clears. A `tickInternal` flag lets the tick's _own_
   internal escalations (`markStalled`, the retry-budget `NEEDS_YOU`) pass
   through the same lock they are themselves releasing, without being
   rejected by it.
@@ -271,7 +271,7 @@ one small synchronous compare-and-swap primitive, not a broad
 start/pause/resume (`keep-going-http-routes.mjs`) still capture `opState`
 before `await readBody(req)` (wave 11 finding 1) rather than routing
 through `keep-going-run-store.mjs`. The adversarial tests below prove pause
-correctly rejects while locked using the *same* store primitive a hardened
+correctly rejects while locked using the _same_ store primitive a hardened
 route would use, but wiring the actual HTTP routes to it is the necessary
 next step before the tick is ever exposed over HTTP -- recorded as a
 follow-up, not done in this bounded wave.
@@ -293,7 +293,7 @@ follow-up, not done in this bounded wave.
   wave, a pause arriving mid-tick (rejected, then verified to still
   succeed once the lock clears, and that a full tick completes unaffected
   by the rejected pause attempt), and a tick that loses its lock to
-  abandonment-recovery *after* creating real Orca resources -- proving the
+  abandonment-recovery _after_ creating real Orca resources -- proving the
   stale commit fails loudly and the winner's persisted state is never
   corrupted.
 
@@ -318,7 +318,7 @@ addressed the same session before proceeding to dogfood, as required.
    making the omission structurally harder to repeat (this also directly
    answers finding 6 below).
 2. **Fixed (critical)** -- the `WAVE_STALLED` path's `markStalled` call had
-   *no* `expectedRevision` parameter at all (zero protection, not even the
+   _no_ `expectedRevision` parameter at all (zero protection, not even the
    tautological kind), and `tickInternal:true` bypassed the lock-check
    unconditionally regardless of whose lock was actually held. Fixed by
    adding `expectedRevision` to `markStalled` and threading the claim-time
@@ -333,7 +333,7 @@ addressed the same session before proceeding to dogfood, as required.
    itself (`tickLock.timeoutMs`, defaulting to the constant for backward
    compatibility), with `dispatchStep` requesting a wave-size-scaled
    timeout (`TICK_LOCK_TIMEOUT_MS + candidateWorkItems.length *
-   PER_ITEM_LOCK_TIMEOUT_MS`) before claiming.
+PER_ITEM_LOCK_TIMEOUT_MS`) before claiming.
 4. **Fixed** -- `keep-going-http-routes.mjs`'s start/pause/resume routes
    still captured `opState` before `await readBody(req)` (wave 11 finding
    1), so a pause request with a stale pre-await snapshot never saw an
@@ -370,9 +370,9 @@ Recovery was improvised live by composing `resolveNeedsYou` +
 `recordTaskAttempt('RETRY')` + `settleInFlightWave` (honest
 `ABANDONED_STALLED` outcome) + `checkpointRun` -- all pre-existing, already-
 tested primitives, no new production code at the time. It worked, but
-was ad hoc and untested as a *unit*, and it surfaced a real, disclosed gap:
+was ad hoc and untested as a _unit_, and it surfaced a real, disclosed gap:
 `markStalled` alone never touched `retryCounts`, so repeated stalls of the
-same work item were never bounded the way repeated *failures* already are.
+same work item were never bounded the way repeated _failures_ already are.
 
 `abandonStalledWave(run, reason, clock, expectedRevision)` formalizes that
 exact composition into one adversarially-tested domain function:
@@ -414,7 +414,7 @@ findings. Two were genuine, confirmed bugs in the new function itself:
    recorded in a checkpoint (`RETRY_BUDGET_EXCEEDED_ESCALATION_SKIPPED`)
    instead, and the already-honest settlement is preserved either way.
 2. **Fixed (real bug)** -- the in-flight-wave requirement was checked
-   *before* the tick-lock check, the reverse of both `transitionRun`'s
+   _before_ the tick-lock check, the reverse of both `transitionRun`'s
    established order and this function's own doc comment. A tick that had
    claimed the lock but not yet dispatched (`inFlightWave` still `null`)
    would make a concurrent `abandonStalledWave` call report
@@ -459,3 +459,63 @@ clause and passes `oxlint`/`oxfmt --check` cleanly. The pre-existing
 sibling files remain non-compliant until they are next touched; that gap is
 recorded as advisory `LINT-CURLY-001` in program state for whoever decides
 to reformat them, not something this wave changed.
+
+## Wave 19: root cause of `ORCA_DISPATCH_INJECT_NOT_DELIVERING_001`
+
+Read-only investigation of Orca's own bundled `orchestration` skill guide
+(`orca skills get orchestration --full`) found the answer directly:
+`dispatch --inject` (what `dispatchOrchestrationTask` wrapped) is
+documented as the low-level path, kept only for custom argv/topology that
+`worker-start` doesn't express. `orchestration worker-start` is documented
+as "the normal supervised path" that composes worktree/terminal/readiness/
+dispatch itself and "exits 0 only for ready," reporting real
+`stage`/`effects`/`residualResources` diagnostics on failure.
+`dispatch-show` on both of wave 17's failed dispatches confirmed this:
+`contract_version 1`, `launch_token_hash` present, but
+`last_heartbeat_at: null` and `failure_count: 0` on both -- the dispatch
+was accepted at the CLI level, but the target agent never engaged with it,
+with zero diagnostic signal from `--inject` itself. Verdict: TSF adapter
+misuse (the wrong Orca-native primitive for real automated dispatch), not
+an Orca defect, version issue, or Codex-terminal problem.
+
+Added `startOrchestrationWorker`/`showOrchestrationWorker` to
+`orca-orchestration-bridge.mjs` (wrapping `worker-start`/`worker-show`),
+stub-CLI tested first, then proved with one tiny disposable live task: a
+fresh Run+Task dispatched via `worker-start` into the existing dogfood
+worktree with a fresh agent terminal. Codex engaged within seconds (unlike
+`--inject`'s silent zero-signal dispatch); a real `worker_done` arrived
+~1m27s later; independently verified by reading the actual file on disk
+(not trusting the worker's own claim) and confirming `task-list`
+auto-transitioned to `completed`; cleanly released and the disposable
+proof file deleted. Full detail and the exact evidence trail are in
+`state.json`'s `milestones[M2].waves[19].liveProofEvidence` and
+`resolvedBlockers`, not duplicated here.
+
+One self-caught mistake worth recording: the first version of the
+`worker-start` stub CLI and its tests guessed a nested result shape
+(`result.worker.dispatchId`) without checking real output. The live proof
+showed `dispatchId`/`state`/`stage` are top-level, not nested under a
+`worker` key -- both the stub and the tests were corrected to match before
+this wave was considered done.
+
+## Wave 20: wiring the repaired primitive into the real dispatch loop
+
+Wave 19 proved `startOrchestrationWorker` correct but only added it as an
+available adapter function -- the real autonomous loop
+(`keep-going-dispatch-loop.mjs`'s `dispatchStep`) still called the
+defective `dispatchOrchestrationTask`. This wave replaces that call: fresh
+work items dispatch via `worker-start` with `worktree`+`agent` (agent
+defaults to `codex`); items carrying `item.workerTerminal` reuse that
+terminal via `--terminal` instead. `dispatchId` is now read from the
+confirmed-real top-level `result.dispatchId`, not the old (and, for
+`worker-start`, simply wrong) `result.dispatch.id`.
+
+`settleStep` was deliberately left untouched: wave 19's live proof already
+confirmed `task-list` polling reflects `worker-start`-dispatched task
+completion identically to the old path, so there is no settle-side gap to
+close. Both dispatch-loop test files' `okOrchestration()` stand-ins were
+updated to the corrected shape; no test needed a per-test override of the
+old primitive, since every dispatch-failure test already injects failure
+via `createOrchestrationTask`, not the dispatch call itself. 185/185 full
+suite GREEN, oxlint/oxfmt/max-lines-ratchet clean. An independent review of
+this diff is the next step before resuming the live M2 dogfood.
