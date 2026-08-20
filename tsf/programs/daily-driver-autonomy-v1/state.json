@@ -1255,7 +1255,8 @@
           "testsPassing": "292/292 full tsf suite GREEN",
           "verifier": "SELF; tsf/ui production build confirmed to succeed",
           "commit": "b98dc74c1",
-          "status": "IN_PROGRESS"
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "Superseded finding from the wave 5-6 independent review (wave 7): live-work-feed.ts had no analog for the domain function's dispatch-tick WAITING branch. Fixed in wave 7."
         },
         {
           "wave": 6,
@@ -1264,8 +1265,18 @@
           "testsPassing": "297/297 full tsf suite GREEN",
           "verifier": "SELF (stub/HTTP-level tested); independent review of waves 5-6 to be commissioned before the live dogfood proof",
           "commit": "4044c6f6b",
-          "status": "IN_PROGRESS",
-          "note": "Also-prove checklist progress: done -- no duplicate dispatch, authority interception, follow-up status query, project-switching isolation. Remaining -- a worker question surfacing as Needs You, a bounded revision request, stalled/failed worker recovery reuse (all can likely be proven via HTTP-level tests without needing Tim's manual click-through, matching the same methodology). Then: independent review, the live fixture dogfood proof itself (real Codex dispatch, matching M2's own live-dogfood discipline -- check live capacity via orca account list --json first), Tim's manual UI acceptance checklist (mirroring M2's own investigation: no compliant automated mechanism exists for tsf/ui's own rendered UI), final packaging/adoption."
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "Also-prove checklist progress: done -- no duplicate dispatch, authority interception, follow-up status query, project-switching isolation. Remaining -- a worker question surfacing as Needs You, a bounded revision request, stalled/failed worker recovery reuse. Superseded finding from the wave 5-6 independent review (wave 7): this wave's own respond()/statusWorthy change let a run, once ever created, permanently shadow STATUS/NEXT_ACTION/FINISHED even long after COMPLETE/BLOCKED. Fixed in wave 7."
+        },
+        {
+          "wave": 7,
+          "summary": "Independent review of M3 waves 5-6 (commits b98dc74c1, 20a6541bd, 4044c6f6b) reported back. Found 3 issues, all fixed: (1) MODERATE-HIGH -- tsf/ui's live-work-feed.ts had no analog for the domain function's tickLock.kind === 'DISPATCH' -> WAITING branch, a real reachable window (claim() persists the tick lock in its own write, before the eventual WAVE_DISPATCHED commit) where a concurrent load of the panel (a second tab, a refresh) showed a stale PLANNING/WORKING guess instead of the honest WAITING. Exported isTickLockActive from keep-going.mjs (was a private function), added dispatchTickActive to keep-going-controller.mjs's projectKeepGoingRun view model and the KeepGoingRunView TS type, and added the WAITING branch to live-work-feed.ts. (2) MODERATE-HIGH -- a Keep Going run, once ever created, permanently shadowed STATUS/NEXT_ACTION/FINISHED for that project forever, even long COMPLETE/BLOCKED and forgotten, since nothing clears keepGoingRuns keyed by projectId -- discarding the old mission/candidate/release model's own more-relevant answer at that point. Added exported isLiveRunRelevantFor(intent, run) to chat-responder.mjs (relevant only while run.state is not COMPLETE/BLOCKED), wired both respond() and http-server.mjs's statusWorthy computation through it, and wired FINISHED to answer honestly from a live non-terminal run ('No, not yet -- ...'). (3) MINOR -- live-work-feed-ui.test.mjs's run() fixture was missing orchestrationRunId/dispatchTickActive, invisible since .mjs test files and Node's native TS stripping perform no type-checking. Fixed the fixture and added a WAITING/dispatchTickActive test plus 3 new chat-responder tests (COMPLETE does not shadow STATUS, BLOCKED does not shadow NEXT_ACTION, FINISHED on a non-terminal run answers honestly).",
+          "testsAdded": 4,
+          "testsPassing": "301/301 full tsf suite GREEN",
+          "verifier": "INDEPENDENT (forked review agent; full read of the diffs plus surrounding domain/controller/UI code)",
+          "commit": "1fa6d6016",
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "oxlint/oxfmt/tsc/max-lines-ratchet all clean; tsf/ui production build confirmed green post-format. No outstanding findings remain against M3 waves 1-7. Next: prove the remaining also-prove checklist items (a worker question surfacing as Needs You, a bounded revision request, stalled/failed worker recovery reuse) via HTTP-level tests, then the live fixture dogfood proof (real Codex dispatch against tsf-ui-capability-check, checking live capacity via orca account list --json first), then Tim's manual UI acceptance checklist, then final packaging/adoption."
         }
       ]
     },
