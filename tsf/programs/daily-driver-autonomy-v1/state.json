@@ -1163,7 +1163,7 @@
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": [
-        "Real repository-identity resolution, HTTP wiring, the UI Live Work Feed component, an independent review of the bridge, and the live fixture dogfood proof are all still pending -- see the design doc's rollout waves."
+        "An independent review of the dispatch bridge + HTTP wiring, the UI Live Work Feed component, and the live fixture dogfood proof (with all \"also prove\" items) are still pending -- see the design doc's rollout waves."
       ],
       "priority": "HIGHEST",
       "northStar": "Tim stays inside the TSF UI and says something natural in Planner Chat (\"Fix this,\" \"go ahead,\" \"build that,\" \"do the recommended next step\"). TSF understands the selected project/context, classifies intent and authority, has the planner create a bounded implementation plan, creates a real Orca Run/tasks using the already-adopted M2 orchestration/Keep Going primitives (not a second worker loop), dispatches Codex workers, supervises/retries/recovers via M2, surfaces real progress in TSF, routes genuine questions into Needs You, independently verifies substantive results, and stops consequential work at exact-candidate adoption.",
@@ -1226,6 +1226,17 @@
           "commit": "69814148a",
           "status": "IN_PROGRESS",
           "note": "Next: real repository-identity resolution (reuse repo-inspector.mjs's snapshotRepository rather than writing new git-shelling code), HTTP wiring (extend POST /api/chat to call the bridge for DISPATCH_REQUEST/FIX_REQUEST messages), then the UI Live Work Feed component."
+        },
+        {
+          "wave": 3,
+          "summary": "Built real repository-identity resolution (tsf/server/repository-identity.mjs, new) -- resolveRepositoryIdentity resolves the REAL current root/worktree/branch/head/tree for a worktree path via targeted read-only git calls, deliberately narrower than repo-inspector.mjs's full onboarding analysis since this runs on every chat dispatch. Wired the HTTP layer: POST /api/chat now accepts an explicit placement field (worktree + optional agent); when a DISPATCH_REQUEST/FIX_REQUEST message supplies one, it resolves real repository identity and calls chat-dispatch-bridge.mjs instead of the conversational planner path -- opt-in via an explicit new field, zero behavior change for existing callers without one. Made the shared stub-planner-cli.mjs test fixture schema-aware (inspects the requested --json-schema's schemaVersion) so it serves both onboarding's existing structured-analysis schema and M3's new chat-work-plan-request schema from one stub.",
+          "found": "A REAL, live bug via genuine HTTP-level integration testing (not just unit tests): POST /api/chat's final saveState call used opState captured once at the very top of the request, before this route's own new dispatch path (chat-dispatch-bridge.mjs's properly-locked withKeepGoingRun writes) could mutate keepGoingRuns. The chat route's own blind saveState({...opState, chatThreads, plannerSessions}) silently reverted a freshly-created Keep Going run back to nothing, the instant the SAME request's own chat-thread-saving code ran afterward. This was harmless before M3 (chat never touched keepGoingRuns), but became a live, reproducible correctness bug the moment dispatch capability existed. Caught specifically because the regression test read the real post-dispatch persisted run state, not just the HTTP response body which looked successful. Fixed by re-reading fresh state right before the final save and merging chatThreads/plannerSessions onto that fresh read instead of the stale snapshot.",
+          "testsAdded": 9,
+          "testsPassing": "275/275 full tsf suite GREEN",
+          "verifier": "SELF; independent review of this wave (given the real bug found and fixed) commissioned next",
+          "commit": "c2d9544ae",
+          "status": "IN_PROGRESS",
+          "note": "The end-to-end chat -> real dispatch path now genuinely works over HTTP, proven against the real Keep Going engine (stubbed Orca CLI, real repository identity against this actual repo). Next: independent review of this wave, then the UI Live Work Feed component, then the live fixture dogfood proof."
         }
       ]
     },
@@ -1663,12 +1674,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M3_WAVE_2_PLAN_CAPSULE_MAPPING_AND_DISPATCH_BRIDGE_CORE_COMPLETE",
-    "at": "2026-08-20T20:40:20.279Z",
-    "commit": "69814148a",
+    "phase": "M3_WAVE_3_REAL_REPOSITORY_IDENTITY_AND_HTTP_WIRING_COMPLETE",
+    "at": "2026-08-20T20:57:03.466Z",
+    "commit": "c2d9544ae",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "M3 wave 2: built and tested the plan-capsule mapping layer (buildPlanCapsule/planCapsuleToCandidateWorkItem) and the core chat-dispatch-bridge function (planAndDispatchFromChat) -- the one path from a chat message to a real Orca dispatch through unmodified M2. 266/266 suite green, all stub/fake-store tested. Next: real repository-identity resolution (reuse repo-inspector.mjs), HTTP wiring, UI Live Work Feed component."
+    "note": "M3 wave 3: real repository-identity resolution + HTTP wiring for chat -> dispatch, opt-in via an explicit placement field. Found and fixed a real bug (a stale opState snapshot in POST /api/chat silently erasing a freshly-created Keep Going run) via genuine HTTP-level integration testing. 275/275 suite green. Next: independent review, then the UI Live Work Feed component, then the live fixture dogfood proof."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1966,5 +1977,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "M3 wave 1: research-first source inspection complete, design doc written (docs/tsf/M3_CHAT_DISPATCH_LIVE_WORK_FEED_V1.md), first real pure-logic pieces built and tested -- the Live Work Feed state-mapping function and chat's new DISPATCH_REQUEST intent (with the existing authority gate confirmed to still win over it). 249/249 suite green. Next: plan-capsule -> candidateWorkItems mapping + the core chat-dispatch-bridge.mjs function, stub-tested, no live Orca calls in unit tests."
+  },
+  "priorDurableCheckpoint31": {
+    "phase": "M3_WAVE_2_PLAN_CAPSULE_MAPPING_AND_DISPATCH_BRIDGE_CORE_COMPLETE",
+    "at": "2026-08-20T20:40:20.279Z",
+    "commit": "69814148a",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "M3 wave 2: built and tested the plan-capsule mapping layer (buildPlanCapsule/planCapsuleToCandidateWorkItem) and the core chat-dispatch-bridge function (planAndDispatchFromChat) -- the one path from a chat message to a real Orca dispatch through unmodified M2. 266/266 suite green, all stub/fake-store tested. Next: real repository-identity resolution (reuse repo-inspector.mjs), HTTP wiring, UI Live Work Feed component."
   }
 }
