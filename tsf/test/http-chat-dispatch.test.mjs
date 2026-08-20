@@ -102,6 +102,40 @@ test('a follow-up "what is it doing?" after a real dispatch answers from the liv
   })
 })
 
+test('project switching cannot leak one project\'s Keep Going dispatch state into another\'s "what is it doing?" answer', async () => {
+  await withServer(async (base) => {
+    // Dispatch real work on the fixture project only.
+    const dispatch = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'go ahead and add a bounded doc note',
+      placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+    })
+    assert.equal(dispatch.body.dispatched, true)
+
+    // A completely different, real project id -- never touched by the
+    // dispatch above -- must show no trace of it.
+    const OTHER_PROJECT_ID = 'weird-talent-marketplace'
+    const otherStatus = await chat(base, {
+      projectId: OTHER_PROJECT_ID,
+      message: 'what is it doing?'
+    })
+    assert.doesNotMatch(otherStatus.body.text, /Keep Going run/)
+    assert.doesNotMatch(JSON.stringify(otherStatus.body), /WORKING/)
+
+    // The original project's own status is still correctly live.
+    const ownStatus = await chat(base, { projectId: PROJECT_ID, message: 'what is it doing?' })
+    assert.match(ownStatus.body.text, /Keep Going run/)
+    assert.match(ownStatus.body.text, /WORKING/)
+
+    // Chat history for each project stays separate too (the existing
+    // per-project chatThreads keying, unaffected by the dispatch path).
+    const ownHistory = await (await fetch(`${base}/api/chat/${PROJECT_ID}`)).json()
+    const otherHistory = await (await fetch(`${base}/api/chat/${OTHER_PROJECT_ID}`)).json()
+    assert.doesNotMatch(JSON.stringify(otherHistory), /bounded doc note/)
+    assert.ok(JSON.stringify(ownHistory).includes('bounded doc note'))
+  })
+})
+
 test('the exact same message WITHOUT a placement keeps the prior conversational behavior unchanged', async () => {
   await withServer(async (base) => {
     const { body } = await chat(base, {
