@@ -463,7 +463,7 @@
           "testsAdded": 5,
           "testsPassing": "5 net new + 2 existing tests rewritten to match corrected behavior (WAVE_SETTLED_NEEDS_YOU action name, orchestrationRunId persistence on total dispatch failure); 157/157 full tsf suite GREEN (no regressions); oxlint clean; oxfmt clean.",
           "verifier": "VERIFIER_INDEPENDENT (code-review skill, forked execution, separate reasoning context from wave 15's implementation) -- genuine non-SELF verification of this wave's own new code, not deferred to a later milestone-completion gate",
-          "commit": null,
+          "commit": "b051b80f8d58d0583c6c1a8b2daccf4230aa50ac",
           "deferredToNextWave": [
             "finding 5 (this wave): sequential-within-batch dispatch, a real but lower-priority efficiency gap",
             "a live dogfood proving tickKeepGoingRun against the real orca CLI (still gated on Codex capacity -- see blockers.CODEX_SANDBOX_HELPER_MISSING_001, a separate provider-runtime issue discovered this session)",
@@ -864,6 +864,14 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
+    "phase": "M2_WAVE_15B_INDEPENDENT_REVIEW_ADDRESSED",
+    "at": "2026-08-19T23:52:00-06:00",
+    "commit": "b051b80f8d58d0583c6c1a8b2daccf4230aa50ac",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Session recovery after the previous terminal closed post-RETURN_HANDOFF (see resumePreflight2). Wave 15 implemented and unit-tested the autonomous wave-dispatch loop mechanism (tickKeepGoingRun); wave 15b got a genuine independent (forked) code-review pass on that diff and fixed 4 of 6 real findings (orphaned-Run leak on dispatch failure, no stall escalation, no retry-budget escalation, stale-revision-vs-invariant check order), disclosed one as the same already-known data-store.mjs concurrency gap, deferred one (sequential-within-batch dispatch) as lower-priority. 157/157 full tsf suite GREEN, oxlint/oxfmt clean. Verified intact via git cat-file immediately after commit; same pre-existing geometric-repack housekeeping failure as prior waves (GIT-HYGIENE-001), non-blocking. During this session a real Codex provider-runtime blocker was also discovered and recorded (blockers.CODEX_SANDBOX_HELPER_MISSING_001) via a harmless capacity probe -- no live Codex dispatch was attempted or is currently safe until Tim confirms the sandbox helper is repaired. The dispatch-loop mechanism is now implemented, tested, AND independently reviewed, but still not live-dogfooded, not wired to an unattended trigger, and not paired with a real verifier; see milestones[M2].waves[15]/[15b] and nextSafeAction."
+  },
+  "priorDurableCheckpoint6": {
     "phase": "M2_WAVE_15_DISPATCH_LOOP_IMPLEMENTED",
     "at": "2026-08-19T23:30:00-06:00",
     "commit": "fcf1fa327b4ca4e93a17edbdc86bf250c533804b",
