@@ -45,9 +45,14 @@ test('pauseKeepGoingRun and resumeKeepGoingRun transition the real run and persi
   )
   const paused = pauseKeepGoingRun(started.opState, 'proj-1', 'CAPACITY_REVIEW', clock)
   assert.equal(paused.run.state, 'PAUSED')
+  assert.equal(paused.run.checkpoints.at(-1).phase, 'OPERATOR_PAUSED')
   assert.equal(keepGoingRunFor(paused.opState, 'proj-1').state, 'PAUSED')
   const resumed = resumeKeepGoingRun(paused.opState, 'proj-1', clock)
   assert.equal(resumed.run.state, 'ACTIVE')
+  // Regression (wave 11 review finding 4): resume must also checkpoint,
+  // matching pause -- otherwise the UI's "Last checkpoint" stays stuck on
+  // OPERATOR_PAUSED after a resume.
+  assert.equal(resumed.run.checkpoints.at(-1).phase, 'RUN_RESUMED')
 })
 
 test('startKeepGoingRun rejects a stale expectedRevision when starting a new run after a prior one finished', () => {

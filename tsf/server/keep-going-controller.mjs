@@ -79,7 +79,11 @@ export function resumeKeepGoingRun(opState, projectId, clock, expectedRevision) 
     error.code = 'TSF_RUN_NOT_FOUND'
     throw error
   }
-  const resumed = resumeRun(run, clock, expectedRevision)
+  let resumed = resumeRun(run, clock, expectedRevision)
+  // Matches pauseKeepGoingRun's own checkpoint -- without this, the UI's
+  // "Last checkpoint" kept showing OPERATOR_PAUSED after a resume (real
+  // review finding, wave 11).
+  resumed = checkpointRun(resumed, { phase: 'RUN_RESUMED' }, clock)
   const next = { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: resumed } }
   return { opState: next, run: resumed }
 }
