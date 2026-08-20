@@ -1,5 +1,8 @@
-// Synchronous compare-and-swap over exactly one project's keepGoingRun.
-// loadState()/saveState() (data-store.mjs) are both synchronous fs calls
+// Compare-and-swap over exactly one project's keepGoingRun. withKeepGoingRun
+// is async (it awaits the cross-process lock acquire below), but the actual
+// read-mutate-write critical section stays synchronous once the lock is
+// held. loadState()/saveState() (data-store.mjs) are both synchronous fs
+// calls
 // (readFileSync/writeFileSync), so a function with no `await` between them
 // cannot be interleaved by any other request's code WITHIN one OS process
 // -- Node's single-threaded event loop only yields control at an await.
@@ -41,8 +44,9 @@ export function readKeepGoingRun(projectId) {
 // TSF_STALE_REVISION, TSF_TICK_IN_PROGRESS, TSF_RUN_NOT_FOUND) to abort --
 // nothing is persisted if it throws. No `await` may appear inside mutateFn
 // or between the load and save below, or the atomicity guarantee this
-// module exists for is lost.
-export function withKeepGoingRun(projectId, mutateFn) {
+// module exists for is lost. Async now (awaits the cross-process lock
+// acquire) -- every caller must await this.
+export async function withKeepGoingRun(projectId, mutateFn) {
   return withFileLock(lockPath(), undefined, () => {
     const opState = loadState()
     const current = keepGoingRunFor(opState, projectId)

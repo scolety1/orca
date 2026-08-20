@@ -94,6 +94,36 @@ test('tickKeepGoingRun dispatches the next wave, creating the orchestration run 
   assert.equal(run.inFlightWave.dispatchRecords[0].taskId, 'task-t1')
 })
 
+test("a stale dispatch-vs-settle routing decision is rejected before touching orchestration (a real bug found live: the cross-process lock's async acquire reopened a window where two near-simultaneous ticks could each create a genuine duplicate Orca task)", async () => {
+  // tickKeepGoingRun's own routing check (dispatchStep vs settleStep) reads
+  // the run once, before the lock is ever acquired. Simulates that read
+  // going stale: readRun sees no in-flight wave (so tickKeepGoingRun picks
+  // dispatchStep), but by the time claim()'s lock-protected mutateFn
+  // actually runs, another tick has already dispatched one.
+  const runWithoutWave = baseRun()
+  const runWithWave = {
+    ...runWithoutWave,
+    inFlightWave: { wavePlan: {}, dispatchRecords: [{ workItemId: 'other', taskId: 'task-other' }] }
+  }
+  const racingStore = {
+    readRun: () => runWithoutWave,
+    withRun: (_projectId, mutateFn) => mutateFn(runWithWave)
+  }
+  let taskCreateCalls = 0
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      createOrchestrationTask: async ({ taskTitle }) => {
+        taskCreateCalls += 1
+        return { ok: true, result: { task: { id: `task-${taskTitle}` } } }
+      }
+    }),
+    store: racingStore
+  })
+  assert.equal(result.action, 'DISPATCH_CLAIM_FAILED')
+  assert.equal(result.reason, 'TSF_STALE_ROUTING_DECISION')
+  assert.equal(taskCreateCalls, 0, 'no real Orca task may be created on a stale routing decision')
+})
+
 test('tickKeepGoingRun reuses an existing orchestrationRunId instead of creating a second Run', async () => {
   const store = makeFakeStore(baseRun())
   let createOrchestrationRunCalls = 0

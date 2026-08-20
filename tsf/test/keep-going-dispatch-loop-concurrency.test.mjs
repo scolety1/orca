@@ -30,7 +30,7 @@ const { tickKeepGoingRun } = await import('../server/keep-going-dispatch-loop.mj
 const PROJECT_ID = 'fixture:concurrency-proj'
 const clock = () => new Date('2026-08-20T06:00:00.000Z')
 
-function seedRun(overrides = {}) {
+async function seedRun(overrides = {}) {
   const run = createOvernightRun(
     {
       id: 'run-concurrency-1',
@@ -42,7 +42,7 @@ function seedRun(overrides = {}) {
     },
     clock
   )
-  withKeepGoingRun(PROJECT_ID, () => run)
+  await withKeepGoingRun(PROJECT_ID, () => run)
   return run
 }
 
@@ -74,7 +74,7 @@ test.afterEach(() => {
 // --- Requirement: test two ticks attempting to act on the same run ---
 
 test('two ticks racing the real store: the second is rejected before touching orchestration, no duplicate dispatch', async () => {
-  seedRun()
+  await seedRun()
   let taskCreateCalls = 0
   const orchestration = okOrchestration({
     createOrchestrationTask: async ({ taskTitle }) => {
@@ -82,16 +82,23 @@ test('two ticks racing the real store: the second is rejected before touching or
       return { ok: true, result: { task: { id: `task-${taskTitle}` } } }
     }
   })
-  // Both calls' synchronous claim step runs against the SAME real store
-  // before either's first await -- calling tickA (not yet awaited) already
-  // lands its claim via the real synchronous loadState/saveState, so tickB
-  // deterministically sees the lock held, not a 50/50 race.
+  // The cross-process file lock's acquire phase is async (a real review
+  // finding: the old fully-synchronous claim path made tickB's ordering
+  // relative to tickA deterministic; the async lock reopened a real
+  // timing window where tickB's claim could run AFTER tickA's entire
+  // dispatch already committed, not just while tickA's lock was still
+  // held). Either honest rejection reason is acceptable here -- what this
+  // test actually requires is that exactly ONE real Orca task is ever
+  // created, never two.
   const tickA = tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration })
   const resultB = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration })
   const resultA = await tickA
 
   assert.equal(resultB.action, 'DISPATCH_CLAIM_FAILED')
-  assert.equal(resultB.reason, 'TSF_TICK_IN_PROGRESS')
+  assert.ok(
+    resultB.reason === 'TSF_TICK_IN_PROGRESS' || resultB.reason === 'TSF_STALE_ROUTING_DECISION',
+    `expected an honest claim rejection, got reason=${resultB.reason}`
+  )
   assert.equal(resultA.action, 'WAVE_DISPATCHED')
   assert.equal(taskCreateCalls, 1, 'only the winning tick ever created a real Orca task')
 
@@ -101,7 +108,7 @@ test('two ticks racing the real store: the second is rejected before touching or
 })
 
 test('two SETTLE ticks racing an already-in-flight wave: only one processes the real worker result', async () => {
-  seedRun()
+  await seedRun()
   await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration() })
   let taskListCalls = 0
   const orchestration = okOrchestration({
@@ -110,12 +117,19 @@ test('two SETTLE ticks racing an already-in-flight wave: only one processes the 
       return { ok: true, result: { tasks: [{ id: 'task-t1', status: 'completed' }] } }
     }
   })
+  // Either honest rejection reason is acceptable (see the DISPATCH-side
+  // test above for why the async lock reopened this timing window) --
+  // what actually matters is that only one tick ever polls task-list and
+  // records the settlement.
   const tickA = tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration })
   const resultB = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration })
   const resultA = await tickA
 
   assert.equal(resultB.action, 'SETTLE_CLAIM_FAILED')
-  assert.equal(resultB.reason, 'TSF_TICK_IN_PROGRESS')
+  assert.ok(
+    resultB.reason === 'TSF_TICK_IN_PROGRESS' || resultB.reason === 'TSF_STALE_ROUTING_DECISION',
+    `expected an honest claim rejection, got reason=${resultB.reason}`
+  )
   assert.equal(resultA.action, 'WAVE_SETTLED')
   assert.equal(taskListCalls, 1, 'only the winning tick ever polled task-list')
 
@@ -126,18 +140,21 @@ test('two SETTLE ticks racing an already-in-flight wave: only one processes the 
 // --- Requirement: test pause arriving mid-tick ---
 
 test('a pause request arriving while a tick holds the lock is rejected, not silently dropped or silently overridden', async () => {
-  seedRun()
+  await seedRun()
   // Claim the lock the same way dispatchStep's first step does, simulating
   // a tick that is mid-flight (holding the lock while awaiting real CLI
   // round-trips it hasn't finished yet).
-  const claimed = withKeepGoingRun(PROJECT_ID, (current) =>
+  const claimed = await withKeepGoingRun(PROJECT_ID, (current) =>
     claimTick(current, 'DISPATCH', clock, current.revision)
   )
 
   // A pause request landing on the SAME real store while the lock is held
   // -- simulating what a hardened pause endpoint does: fresh read, apply
   // pauseRun, write back, all through the one synchronous CAS primitive.
-  assert.throws(
+  // withKeepGoingRun is async (the cross-process lock acquire), so the
+  // domain-level TSF_TICK_IN_PROGRESS rejection now surfaces as a rejected
+  // promise, not a synchronous throw -- assert.rejects, not assert.throws.
+  await assert.rejects(
     () =>
       withKeepGoingRun(PROJECT_ID, (current) =>
         pauseRun(current, 'operator pause', clock, current.revision)
@@ -154,26 +171,26 @@ test('a pause request arriving while a tick holds the lock is rejected, not sile
   )
 
   // The tick can still complete normally and release the lock afterward.
-  const released = withKeepGoingRun(PROJECT_ID, (current) =>
+  const released = await withKeepGoingRun(PROJECT_ID, (current) =>
     releaseTick(current, clock, current.revision)
   )
   assert.equal(released.tickLock, null)
 
   // Now that the lock is clear, the SAME pause request succeeds -- it was
   // rejected, not permanently lost.
-  const paused = withKeepGoingRun(PROJECT_ID, (current) =>
+  const paused = await withKeepGoingRun(PROJECT_ID, (current) =>
     pauseRun(current, 'operator pause', clock, current.revision)
   )
   assert.equal(paused.state, 'PAUSED')
 })
 
 test('a full tick still completes correctly even after a concurrent pause attempt was rejected mid-flight', async () => {
-  seedRun()
+  await seedRun()
   const orchestration = okOrchestration({
     createOrchestrationTask: async ({ taskTitle }) => {
       // Simulate a pause request arriving WHILE this tick's real CLI work
       // is in flight -- must be rejected without disturbing the tick.
-      assert.throws(
+      await assert.rejects(
         () =>
           withKeepGoingRun(PROJECT_ID, (current) =>
             pauseRun(current, 'operator pause', clock, current.revision)
@@ -198,13 +215,13 @@ test('a full tick still completes correctly even after a concurrent pause attemp
 // been created, so cleanup/persistence remains correct ---
 
 test("a tick that loses its lock to abandonment-recovery after creating real Orca resources reports the conflict honestly without corrupting the winner's state", async () => {
-  seedRun()
+  await seedRun()
   const clockA = clock
   // Tick A claims the lock and (conceptually) goes on to do real CLI work
   // -- simulated here directly via the exported primitives, since we need
   // to hold A's claimed revision open across a controlled clock jump
   // rather than letting a real orchestration call resolve immediately.
-  const claimedA = withKeepGoingRun(PROJECT_ID, (current) =>
+  const claimedA = await withKeepGoingRun(PROJECT_ID, (current) =>
     claimTick(current, 'DISPATCH', clockA, current.revision)
   )
   const wavePlan = planWave({ ...claimedA, waves: [] }, oneItem, clockA)
@@ -215,7 +232,7 @@ test("a tick that loses its lock to abandonment-recovery after creating real Orc
   // A's lock is now old enough to be treated as abandoned -- tick B
   // legitimately recovers it (a crashed/hung-tick recovery, not a bug).
   const muchLater = () => new Date('2026-08-20T06:10:00.000Z') // 10 minutes later
-  const claimedB = withKeepGoingRun(PROJECT_ID, (current) =>
+  const claimedB = await withKeepGoingRun(PROJECT_ID, (current) =>
     claimTick(current, 'DISPATCH', muchLater, current.revision)
   )
   assert.ok(claimedB.revision > claimedA.revision)
@@ -224,7 +241,7 @@ test("a tick that loses its lock to abandonment-recovery after creating real Orc
   // the revision IT claimed -- this must fail loudly (not silently
   // overwrite tick B's now-current claim), and must not touch persisted
   // state at all.
-  assert.throws(
+  await assert.rejects(
     () =>
       withKeepGoingRun(PROJECT_ID, (current) =>
         dispatchWave(current, wavePlan, dispatchRecordsA, clockA, claimedA.revision)
@@ -246,7 +263,7 @@ test("a tick that loses its lock to abandonment-recovery after creating real Orc
 })
 
 test('tickKeepGoingRun itself reports a *_LOST_LOCK result (not a thrown exception) when its own commit loses the CAS race', async () => {
-  seedRun()
+  await seedRun()
   // Drive a real tick, but have its orchestration fake steal the lock out
   // from under it mid-flight (simulating an abnormally slow tick whose
   // lock timed out and was recovered by another actor before this tick's
@@ -254,7 +271,7 @@ test('tickKeepGoingRun itself reports a *_LOST_LOCK result (not a thrown excepti
   const orchestration = okOrchestration({
     createOrchestrationTask: async ({ taskTitle }) => {
       const muchLater = () => new Date('2026-08-20T06:10:00.000Z')
-      withKeepGoingRun(PROJECT_ID, (current) =>
+      await withKeepGoingRun(PROJECT_ID, (current) =>
         claimTick(current, 'DISPATCH', muchLater, current.revision)
       )
       return { ok: true, result: { task: { id: `task-${taskTitle}` } } }
@@ -280,13 +297,13 @@ test('tickKeepGoingRun itself reports a *_LOST_LOCK result (not a thrown excepti
 // self-consistent revision instead of the claim-time revision, which is a
 // tautology that can never catch this exact scenario.
 test('a SETTLE tick that loses its lock to abandonment-recovery reports *_LOST_LOCK instead of silently completing a stale settlement', async () => {
-  seedRun()
+  await seedRun()
   await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration() })
 
   const orchestration = okOrchestration({
     listOrchestrationTasks: async () => {
       const muchLater = () => new Date('2026-08-20T06:10:00.000Z')
-      withKeepGoingRun(PROJECT_ID, (current) =>
+      await withKeepGoingRun(PROJECT_ID, (current) =>
         claimTick(current, 'SETTLE', muchLater, current.revision)
       )
       return { ok: true, result: { tasks: [{ id: 'task-t1', status: 'completed' }] } }
@@ -312,14 +329,14 @@ test('a SETTLE tick that loses its lock to abandonment-recovery reports *_LOST_L
 // had no expectedRevision parameter at all (zero protection, not even the
 // tautological self-check the other paths had).
 test("a stall escalation that loses its lock to abandonment-recovery reports *_LOST_LOCK instead of stealing the recovering tick's lock", async () => {
-  seedRun({ budget: { stallThresholdMs: 60_000 } })
+  await seedRun({ budget: { stallThresholdMs: 60_000 } })
   await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration() })
 
   const laterClock = () => new Date('2026-08-20T06:05:00.000Z') // past the stall threshold
   const orchestration = okOrchestration({
     listOrchestrationTasks: async () => {
       const muchLater = () => new Date('2026-08-20T06:10:00.000Z')
-      withKeepGoingRun(PROJECT_ID, (current) =>
+      await withKeepGoingRun(PROJECT_ID, (current) =>
         claimTick(current, 'SETTLE', muchLater, current.revision)
       )
       return { ok: true, result: { tasks: [{ id: 'task-t1', status: 'in_progress' }] } }

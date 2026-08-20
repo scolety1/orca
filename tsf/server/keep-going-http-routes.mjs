@@ -27,7 +27,17 @@ import {
 import { tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
 import { withKeepGoingRun } from './keep-going-run-store.mjs'
 
-const CONFLICT_CODES = new Set(['TSF_STALE_REVISION', 'TSF_TICK_IN_PROGRESS'])
+// TSF_STATE_LOCK_TIMEOUT (cross-process-file-lock.mjs, via
+// keep-going-run-store.mjs) is a transient contention failure, not a
+// permanent client error -- treated as a 409 (retryable) like the other
+// two, not the 422 an earlier version of this route left it as (a real
+// review finding: without this, a client keying retry logic on 409 would
+// treat brief lock contention as a permanent failure).
+const CONFLICT_CODES = new Set([
+  'TSF_STALE_REVISION',
+  'TSF_TICK_IN_PROGRESS',
+  'TSF_STATE_LOCK_TIMEOUT'
+])
 
 function respondError(res, json, error) {
   json(res, CONFLICT_CODES.has(error.code) ? 409 : 422, {
@@ -43,11 +53,31 @@ function respondError(res, json, error) {
 // without needing to break their existing callers (the dogfood fixture,
 // keep-going-controller.test.mjs) while still committing through the real
 // atomic primitive.
-function mutateThroughStore(projectId, controllerFn) {
+async function mutateThroughStore(projectId, controllerFn) {
   return withKeepGoingRun(projectId, (current) => {
     const { run } = controllerFn({ keepGoingRuns: { [projectId]: current } })
     return run
   })
+}
+
+// Rejects a malformed candidate work item BEFORE it ever reaches
+// tickKeepGoingRun -- planWave (tsf/domain/keep-going.mjs) throws a plain
+// Error (no .code) on a missing id/scope, and that throw happens AFTER
+// dispatchStep's claim() has already taken the tick lock, so an unvalidated
+// item reaching that far would wedge the run in "tick in progress" for
+// minutes before the domain's own stale-tick recovery kicks in (a real
+// review finding -- this HTTP route is the first path that lets untrusted
+// external input reach that call at all). Cheap, fails fast, never touches
+// the lock.
+function findInvalidWorkItem(candidateWorkItems) {
+  return candidateWorkItems.find(
+    (item) =>
+      !item ||
+      typeof item.id !== 'string' ||
+      !item.id.trim() ||
+      !Array.isArray(item.scope) ||
+      item.scope.length === 0
+  )
 }
 
 // Returns true and writes the response if this request matched a Keep
@@ -89,7 +119,7 @@ export async function handleKeepGoingRoute(
   if (parts[3] === 'start') {
     const body = await readBody(req)
     try {
-      const run = mutateThroughStore(projectId, (fakeOpState) =>
+      const run = await mutateThroughStore(projectId, (fakeOpState) =>
         startKeepGoingRun(fakeOpState, projectId, body, () => new Date(), body.expectedRevision)
       )
       json(
@@ -106,7 +136,7 @@ export async function handleKeepGoingRoute(
   if (parts[3] === 'pause') {
     const body = await readBody(req)
     try {
-      const run = mutateThroughStore(projectId, (fakeOpState) =>
+      const run = await mutateThroughStore(projectId, (fakeOpState) =>
         pauseKeepGoingRun(
           fakeOpState,
           projectId,
@@ -129,7 +159,7 @@ export async function handleKeepGoingRoute(
   if (parts[3] === 'resume') {
     const body = await readBody(req)
     try {
-      const run = mutateThroughStore(projectId, (fakeOpState) =>
+      const run = await mutateThroughStore(projectId, (fakeOpState) =>
         resumeKeepGoingRun(fakeOpState, projectId, () => new Date(), body.expectedRevision)
       )
       json(
@@ -154,12 +184,18 @@ export async function handleKeepGoingRoute(
   // performs genuine Orca dispatch/settlement, not a simulation.
   if (parts[3] === 'tick') {
     const body = await readBody(req)
+    const candidateWorkItems = Array.isArray(body.candidateWorkItems) ? body.candidateWorkItems : []
+    const invalidItem = findInvalidWorkItem(candidateWorkItems)
+    if (invalidItem !== undefined) {
+      json(res, 422, {
+        ok: false,
+        error: 'every candidate work item requires a non-empty id and a non-empty scope array',
+        code: 'TSF_INVALID_WORK_ITEM'
+      })
+      return true
+    }
     try {
-      const result = await tickKeepGoingRun(
-        projectId,
-        Array.isArray(body.candidateWorkItems) ? body.candidateWorkItems : [],
-        () => new Date()
-      )
+      const result = await tickKeepGoingRun(projectId, candidateWorkItems, () => new Date())
       json(res, 200, result)
     } catch (error) {
       respondError(res, json, error)

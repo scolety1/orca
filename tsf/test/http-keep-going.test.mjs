@@ -178,7 +178,7 @@ test('POST pause is rejected with 409 over the real HTTP layer while an autonomo
     // and is mid-flight -- via the SAME synchronous store the route now
     // uses, not a stale pre-captured opState.
     const clock = () => new Date()
-    const claimed = withKeepGoingRun(PROJECT_ID, (current) =>
+    const claimed = await withKeepGoingRun(PROJECT_ID, (current) =>
       claimTick(current, 'DISPATCH', clock, current.revision)
     )
 

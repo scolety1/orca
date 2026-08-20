@@ -154,13 +154,37 @@ function runNotFoundError() {
   return error
 }
 
-// Claims the tick lock via one synchronous CAS. Throws (never silently
-// no-ops) on any conflict -- the caller turns that into a clean, no-CLI-
-// work-attempted result.
-function claim(projectId, kind, clock, store, timeoutMs = TICK_LOCK_TIMEOUT_MS) {
+// Claims the tick lock via one CAS (async only in the cross-process lock
+// acquire -- the actual read-mutate-write stays synchronous once held).
+// Throws (never silently no-ops) on any conflict -- the caller turns that
+// into a clean, no-CLI-work-attempted result.
+//
+// `kind` was decided by tickKeepGoingRun's own routing check
+// (inFlightWave ? SETTLE : DISPATCH) against a read taken BEFORE this
+// lock was ever acquired -- with the lock's acquire phase now async (the
+// cross-process fix), real wall-clock time can pass between that stale
+// read and this claim actually running, wide enough for another tick to
+// fully claim+dispatch+commit in between. Re-validating kind against the
+// FRESH, lock-protected read here -- rather than trusting the caller's
+// now-possibly-stale routing decision -- is what closes that window: a
+// real, confirmed review finding (two near-simultaneous ticks could each
+// create a genuine duplicate Orca task before either reached its own
+// commit, defeating this module's core "reject before touching
+// orchestration" guarantee, which held only by coincidence when the old
+// claim path was fully synchronous with no real await before it).
+async function claim(projectId, kind, clock, store, timeoutMs = TICK_LOCK_TIMEOUT_MS) {
   return store.withRun(projectId, (current) => {
     if (!current) {
       throw runNotFoundError()
+    }
+    const actuallyInFlight = !!current.inFlightWave
+    const expectedInFlight = kind === 'SETTLE'
+    if (actuallyInFlight !== expectedInFlight) {
+      const error = new Error(
+        `stale routing decision: this ${kind} claim expected inFlightWave=${expectedInFlight}, but the current run has inFlightWave=${actuallyInFlight} -- another tick changed it first`
+      )
+      error.code = 'TSF_STALE_ROUTING_DECISION'
+      throw error
     }
     return claimTick(current, kind, clock, current.revision, timeoutMs)
   })
@@ -179,7 +203,7 @@ function claim(projectId, kind, clock, store, timeoutMs = TICK_LOCK_TIMEOUT_MS) 
 // repeat. Subsequent mutations within the SAME closure may use the
 // just-produced value's own revision safely (nothing else can run between
 // them -- this whole closure is one synchronous unit).
-function commitClaimed(projectId, store, claimed, mutateFn) {
+async function commitClaimed(projectId, store, claimed, mutateFn) {
   return store.withRun(projectId, (current) => mutateFn(current, claimed.revision))
 }
 
@@ -219,7 +243,7 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
 
   let claimed
   try {
-    claimed = claim(projectId, 'DISPATCH', clock, store, dispatchTimeoutMs)
+    claimed = await claim(projectId, 'DISPATCH', clock, store, dispatchTimeoutMs)
   } catch (error) {
     // Another tick already holds the lock, or the run is no longer
     // ACTIVE/found -- no CLI work is attempted, so no duplicate dispatch.
@@ -230,7 +254,21 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     }
   }
 
-  const wavePlan = planWave(claimed, candidateWorkItems, clock)
+  let wavePlan
+  try {
+    wavePlan = planWave(claimed, candidateWorkItems, clock)
+  } catch (error) {
+    // A malformed candidateWorkItem (missing id/scope) throws here, AFTER
+    // the tick lock above was already claimed -- releasing it honestly
+    // rather than leaving the run wedged in "tick in progress" for the
+    // full dispatchTimeoutMs is what a real review finding caught: the
+    // HTTP tick route now validates this shape itself, but this module is
+    // also callable directly (scripts, tests) with no such guard in front.
+    return commitAbortedDispatch(projectId, store, claimed, clock, {
+      reason: 'INVALID_WORK_ITEM',
+      detail: error.message
+    })
+  }
 
   // Tracked separately from claimed.orchestrationRunId: a freshly-created
   // real Orca orchestration Run must be persisted even if every task-
@@ -375,9 +413,9 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
 // just release the lock; persist a freshly-created orchestrationRunId if
 // there somehow is one (there shouldn't be on this path, but mirrors the
 // partial-dispatch helper's own safety net for symmetry).
-function commitAbortedDispatch(projectId, store, claimed, clock, failure) {
+async function commitAbortedDispatch(projectId, store, claimed, clock, failure) {
   try {
-    const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) =>
+    const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) =>
       releaseTick(current, clock, expectedRevision)
     )
     return { action: 'DISPATCH_FAILED', run: next, ...failure }
@@ -390,7 +428,7 @@ function commitAbortedDispatch(projectId, store, claimed, clock, failure) {
 // real Orca tasks running -- silently dropping them would orphan live work
 // with no TSF-side record. Records exactly what was actually dispatched
 // (trimmed to only the successful items), not the full original plan.
-function commitPartialOrAbortedDispatch(
+async function commitPartialOrAbortedDispatch(
   projectId,
   store,
   claimed,
@@ -403,7 +441,7 @@ function commitPartialOrAbortedDispatch(
 ) {
   if (dispatchRecords.length === 0) {
     try {
-      const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
+      const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
         let n = current
         // Nothing dispatched, but if this tick just created a new real
         // Orca orchestration Run, persist it even on a total failure --
@@ -435,7 +473,7 @@ function commitPartialOrAbortedDispatch(
   )
 }
 
-function commitDispatchedWave(
+async function commitDispatchedWave(
   projectId,
   store,
   claimed,
@@ -447,7 +485,7 @@ function commitDispatchedWave(
   failure = null
 ) {
   try {
-    const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
+    const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
       let n = dispatchWave(current, wavePlan, dispatchRecords, clock, expectedRevision)
       n = { ...n, orchestrationRunId }
       n = checkpointRun(
@@ -472,7 +510,7 @@ function commitDispatchedWave(
 async function settleStep(projectId, clock, orchestration, store) {
   let claimed
   try {
-    claimed = claim(projectId, 'SETTLE', clock, store)
+    claimed = await claim(projectId, 'SETTLE', clock, store)
   } catch (error) {
     return {
       action: 'SETTLE_CLAIM_FAILED',
@@ -516,7 +554,7 @@ async function settleStep(projectId, clock, orchestration, store) {
     const silentForMs = Date.parse(isoNow(clock)) - Date.parse(inFlightWave.dispatchedAt)
     if (silentForMs > claimed.budget.stallThresholdMs) {
       try {
-        const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
+        const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
           const stalled = markStalled(
             current,
             inFlightWave.dispatchRecords.filter((r) =>
@@ -543,7 +581,7 @@ async function settleStep(projectId, clock, orchestration, store) {
   // the saved state.
   let retryBudgetExceededOut = []
   try {
-    const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
+    const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
       let n = current
       const retryBudgetExceeded = []
       outcomes.forEach((outcome, index) => {
@@ -620,9 +658,9 @@ async function settleStep(projectId, clock, orchestration, store) {
   }
 }
 
-function commitReleaseOnly(projectId, store, claimed, clock, action, outcomes, extra = {}) {
+async function commitReleaseOnly(projectId, store, claimed, clock, action, outcomes, extra = {}) {
   try {
-    const next = commitClaimed(projectId, store, claimed, (current, expectedRevision) =>
+    const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) =>
       releaseTick(current, clock, expectedRevision)
     )
     return { action, run: next, ...(outcomes ? { outcomes } : {}), ...extra }

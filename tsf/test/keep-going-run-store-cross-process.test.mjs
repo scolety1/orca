@@ -24,11 +24,19 @@ const STATE_FILE = path.join(
 )
 const WORKER = path.join(HERE, 'fixtures', 'cross-process-lock-worker.mjs')
 const PROJECT_ID = 'fixture:cross-process'
+const START_MARKER_A = `${STATE_FILE}.worker-a.start`
+const START_MARKER_B = `${STATE_FILE}.worker-b.start`
+// Overlap window loose enough for real process-spawn jitter on a loaded
+// CI runner, tight enough that two processes started sequentially (one
+// finishing before the other begins) could never satisfy it.
+const OVERLAP_WINDOW_MS = 2_000
 
 test.afterEach(() => {
   rmSync(STATE_FILE, { force: true })
   rmSync(`${STATE_FILE}.tmp`, { force: true })
   rmSync(`${STATE_FILE}.lock`, { force: true })
+  rmSync(START_MARKER_A, { force: true })
+  rmSync(START_MARKER_B, { force: true })
 })
 
 test(
@@ -36,15 +44,33 @@ test(
   { timeout: 60_000 },
   async () => {
     const env = { ...process.env, TSF_UI_STATE_FILE: STATE_FILE }
-    const perProcess = 25
+    // Enough iterations that, combined with the lock's own retry interval,
+    // real overlap is overwhelmingly likely rather than merely possible --
+    // a real review finding against a smaller count that could pass even
+    // without genuine contention.
+    const perProcess = 200
 
     // Both processes start "at the same time" -- real OS scheduling, not
     // simulated interleaving -- so this genuinely exercises the lock
     // rather than relying on one process happening to finish first.
     await Promise.all([
-      execFileAsync(process.execPath, [WORKER, PROJECT_ID, String(perProcess)], { env }),
-      execFileAsync(process.execPath, [WORKER, PROJECT_ID, String(perProcess)], { env })
+      execFileAsync(process.execPath, [WORKER, PROJECT_ID, String(perProcess), START_MARKER_A], {
+        env
+      }),
+      execFileAsync(process.execPath, [WORKER, PROJECT_ID, String(perProcess), START_MARKER_B], {
+        env
+      })
     ])
+
+    // Confirms genuine overlap rather than accidental serialization by
+    // process-spawn timing (a real review finding: the prior version had
+    // no instrumentation proving the two processes actually raced).
+    const startedA = Number(readFileSync(START_MARKER_A, 'utf8'))
+    const startedB = Number(readFileSync(START_MARKER_B, 'utf8'))
+    assert.ok(
+      Math.abs(startedA - startedB) < OVERLAP_WINDOW_MS,
+      `the two worker processes must genuinely overlap to exercise the lock (started ${Math.abs(startedA - startedB)}ms apart)`
+    )
 
     const finalState = JSON.parse(readFileSync(STATE_FILE, 'utf8'))
     assert.equal(
