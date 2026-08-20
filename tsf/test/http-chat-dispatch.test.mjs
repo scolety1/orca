@@ -23,6 +23,7 @@ process.env.TSF_ORCA_CLI_COMMAND = ORCA_STUB
 process.env.STUB_ORCA_MODE = 'success'
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
+const { tickKeepGoingRun } = await import('../server/keep-going-dispatch-loop.mjs')
 
 async function withServer(fn) {
   const handler = createRequestHandler()
@@ -207,5 +208,132 @@ test('a second dispatch request while the first wave is still in flight is repor
       secondDispatchedIds.every((id) => id === firstWorkItemId || secondDispatchedIds.length === 0),
       'any dispatch record present must belong to the original in-flight wave, not a duplicate'
     )
+  })
+})
+
+// Remaining "also prove" checklist items: a worker question surfacing as
+// Needs You, and a stalled/failed worker reusing M2's own recovery rather
+// than a new one invented for M3. Both proven purely through repeated real
+// chat calls (or, for wall-clock-bound stall detection, a direct call into
+// the exact same tickKeepGoingRun this whole bridge already reuses) plus
+// the real abandon-stalled-wave HTTP route the UI's own button already
+// calls -- no new recovery mechanism exists anywhere in this diff.
+test("a failed worker exhausting its retry budget escalates to a real Needs You question via M2's own recordTaskAttempt/raiseNeedsYou mechanism -- not a new one -- and chat surfaces the exact question honestly", async () => {
+  await withServer(async (base) => {
+    const dispatch = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'go ahead and add a bounded doc note',
+      placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+    })
+    assert.equal(dispatch.body.dispatched, true)
+    assert.equal(dispatch.body.tickResult.action, 'WAVE_DISPATCHED')
+    const workItemId = dispatch.body.candidateWorkItem.id
+
+    // recordTaskAttempt's real per-work-item retry count (keep-going.mjs,
+    // maxRetriesPerTask: 2) only accumulates against the SAME work item id
+    // across dispatch cycles -- a disclosed, real limitation of the chat
+    // bridge as built: it mints a fresh missionId (and therefore work item
+    // id) on every chat message, with no "retry this exact item" affordance
+    // yet, so a chat operator repeating "try again" cannot itself trigger
+    // this escalation today. Modeling an operator/future caller that DOES
+    // resubmit the identical item (retryItem, same id/scope/spec/placement
+    // dispatch.body.candidateWorkItem itself produced) isolates and proves
+    // the real escalation mechanism itself -- unmodified M2 code this
+    // bridge only ever consumes, never reimplements -- via the same
+    // tickKeepGoingRun this whole bridge already reuses.
+    const retryItem = { ...dispatch.body.candidateWorkItem }
+    const clock = () => new Date()
+
+    try {
+      process.env.STUB_ORCA_TASKS = JSON.stringify([{ id: 'stub-task-id', status: 'failed' }])
+
+      const settle1 = await tickKeepGoingRun(PROJECT_ID, [], clock)
+      assert.equal(settle1.action, 'WAVE_SETTLED')
+
+      const redispatch2 = await tickKeepGoingRun(PROJECT_ID, [retryItem], clock)
+      assert.equal(redispatch2.action, 'WAVE_DISPATCHED')
+
+      const settle2 = await tickKeepGoingRun(PROJECT_ID, [], clock)
+      assert.equal(settle2.action, 'WAVE_SETTLED')
+
+      const redispatch3 = await tickKeepGoingRun(PROJECT_ID, [retryItem], clock)
+      assert.equal(redispatch3.action, 'WAVE_DISPATCHED')
+
+      // Third failure: count exceeds maxRetriesPerTask -- caught by
+      // settleStep's own try/catch and escalated to a real Needs You
+      // question (keep-going-dispatch-loop.mjs), not a new one.
+      const settle3 = await tickKeepGoingRun(PROJECT_ID, [], clock)
+      assert.equal(settle3.action, 'WAVE_SETTLED_NEEDS_YOU')
+      assert.deepEqual(settle3.retryBudgetExceeded, [workItemId])
+    } finally {
+      delete process.env.STUB_ORCA_TASKS
+    }
+
+    const nextAction = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'what should we do next?'
+    })
+    assert.match(nextAction.body.text, /NEEDS_YOU/)
+    assert.match(
+      nextAction.body.text,
+      new RegExp(`Retry budget exceeded for work item\\(s\\): ${workItemId}`)
+    )
+  })
+})
+
+test("a silently non-progressing worker is detected STALLED by M2's own dispatch-loop stall detection (not a new mechanism), surfaces honestly through chat, and M2's existing abandon+reconcile HTTP route recovers it so chat can dispatch fresh work again", async () => {
+  await withServer(async (base) => {
+    const dispatch = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'go ahead and add a bounded doc note',
+      placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+    })
+    assert.equal(dispatch.body.dispatched, true)
+    assert.equal(dispatch.body.tickResult.action, 'WAVE_DISPATCHED')
+
+    // Forces the exact same stall-detection code path settleStep already
+    // uses (keep-going-dispatch-loop.mjs) via a direct call into the same
+    // tickKeepGoingRun this whole bridge reuses -- a fake clock 31 minutes
+    // past the real dispatch time (past the default 30-minute
+    // stallThresholdMs), with the stub CLI reporting no matching task (an
+    // "unknown"/PENDING status forever), exactly what a worker that never
+    // reports back looks like to this exact production code. No HTTP route
+    // exposes a controllable clock (nor should one), so this one step is
+    // proven at the module level rather than pretending to wait 31 real
+    // minutes.
+    const futureClock = () => new Date(Date.now() + 31 * 60 * 1000)
+    const tickResult = await tickKeepGoingRun(PROJECT_ID, [], futureClock)
+    assert.equal(tickResult.action, 'WAVE_STALLED')
+
+    const status = await chat(base, { projectId: PROJECT_ID, message: 'what is it doing?' })
+    assert.match(status.body.text, /STALLED/)
+
+    const nextAction = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'what should we do next?'
+    })
+    assert.match(nextAction.body.text, /Abandon stalled wave/)
+
+    // Recovers via the SAME real HTTP route the UI's own "Abandon stalled
+    // wave" button calls (keep-going-http-routes.mjs) -- not a new,
+    // chat-invented recovery mechanism.
+    const before = await (await fetch(`${base}/api/keep-going/${PROJECT_ID}`)).json()
+    const abandonRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/abandon-stalled-wave`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'test recovery', expectedRevision: before.revision })
+    })
+    assert.equal(abandonRes.status, 200)
+
+    // Chat can dispatch fresh work again -- the exact same M2 recovery
+    // used everywhere else, now proven reachable end to end starting from
+    // a chat-originated run.
+    const redispatch = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'go ahead and add yet another bounded doc note',
+      placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+    })
+    assert.equal(redispatch.body.dispatched, true)
+    assert.equal(redispatch.body.tickResult.action, 'WAVE_DISPATCHED')
   })
 })
