@@ -1287,6 +1287,16 @@
           "commit": "26166ae26",
           "status": "IN_PROGRESS",
           "note": "Also-prove checklist: fully closed except a bounded revision request via chat feedback (last remaining item). Disclosed gap surfaced by wave 8's own test: the chat dispatch bridge has no 'retry the identical work item' affordance today -- every dispatch-worthy chat message mints a fresh missionId/work-item id, so M2's own per-work-item retry-budget escalation is currently only reachable by a caller resubmitting the same item directly (not yet by an operator literally repeating 'try again' in chat). Recorded as a real, disclosed, non-blocking M3 gap -- not silently claimed as solved. Next: prove the bounded-revision-request item, commission an independent review of waves 7-8, then the live fixture dogfood proof, Tim's manual UI acceptance checklist, final packaging/adoption."
+        },
+        {
+          "wave": 9,
+          "summary": "Closed the final also-prove checklist item: a bounded revision request via chat feedback. After wave 1 dispatches and settles (task genuinely completed via the stub, not failed/stalled), the run stays ACTIVE with no in-flight wave. Tim's feedback phrased as a fix request ('fix this: the note format was wrong, use ISO dates instead') goes through the exact same dispatch-worthy chat path every other message takes -- no new revision-specific code exists, nor was any needed. Proven: the revision lands on the SAME run id (not a new run), is its own distinct bounded work item (not a repeat of the original), and the planner-produced objective genuinely reflects Tim's specific feedback text (the stub planner echoes the real prompt it was given, so this is not a canned response).",
+          "testsAdded": 1,
+          "testsPassing": "304/304 full tsf suite GREEN",
+          "verifier": "SELF (HTTP-level tested against the real engine); independent review of waves 7-9 to be commissioned before the live fixture dogfood proof",
+          "commit": "9aa5baec6",
+          "status": "IN_PROGRESS",
+          "note": "Tim's entire M3 also-prove checklist is now fully closed: no duplicate dispatch, authority interception, follow-up status query, project-switching isolation, a worker question surfacing as Needs You, stalled/failed worker recovery reuse, and a bounded revision request. The disclosed retry-item-id gap from wave 8 remains open (non-blocking). Next: commission an independent review of waves 7-9, then the live fixture dogfood proof (real Codex dispatch against tsf-ui-capability-check, checking live capacity via orca account list --json first), then Tim's manual UI acceptance checklist, then final packaging/adoption."
         }
       ]
     },
