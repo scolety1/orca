@@ -881,6 +881,17 @@
           "commit": "33c447429",
           "status": "INDEPENDENTLY_VERIFIED_CLEAN",
           "note": "No outstanding findings remain against the Orca-reconciliation + DISPATCH_FAILED-durability fix chain (waves 36-40). 228/228 suite green, oxlint/tsc/max-lines-ratchet/oxfmt clean, git status clean. Next: give Tim the exact minimal Run now retest instructions against the current fixture state (using the Abandon stalled wave button, which now both resumes the run AND releases the real Orca resource). Do not adopt M2, do not begin M3, until Tim confirms this exact path passes."
+        },
+        {
+          "wave": 41,
+          "summary": "A fresh, holistic independent verifier (commissioned after Tim's final Run now retest independently confirmed genuine -- task_8f877ce19300 \"ui-run-now-final-acceptance\", real worker-start dispatch, status completed, worker report verified against actual README.md content, clean git status) reviewed all 12 M2 acceptance criteria against real evidence (re-reading code directly, not trusting prior self-reports) and re-ran the full test suite itself (228/228, independently confirmed). Verdict: GREEN_READY_FOR_ADOPTION -- no M2_BLOCKING item remains; all 6 gapClassification items reconfirmed correctly non-blocking; waves 36-40's four fixes (stall-recovery, Orca-reconciliation, DISPATCH_FAILED durability, read-then-mutate race) all independently confirmed actually present in current code, not just claimed. All mechanical Section H gates (test/typecheck-node/cli/web/build/diff, no unrelated dirty files, no paid dependency, no credentials, ff-only ancestor, Orca core delta 0) directly confirmed by Claude immediately beforehand. Noted, not blocking: two pre-wave-32/38 orphaned tasks remain dangling on run_5d7254db6a46 (task_dd9e9dc6677f, task_897ba46be9b8) -- inert historical residue from already-fixed bugs, deliberately left untouched per Tim's own \"do not redispatch\" instructions.",
+          "packagingResult": "Proceeded to package the exact current HEAD (2a82679a366fa188b90df674b8de28dc1e62261e, tree a89a4276678425b608541d30a30d65a38b3a1b3f) as the immutable M2 candidate and confirmed the adoption target (C:\\TSF_ORCA, branch tsf/main, currently at de105fb4632d7e8a297d824963f931dcd4eb858e -- the exact baseline). ADOPTION HALTED before any merge was attempted: C:\\TSF_ORCA's working tree is NOT clean -- it has a large, fully-staged (not committed), unrelated change: a wholesale removal of the \"onboarding\" feature (24 files, 2704 deletions/44 insertions -- tsf/domain/onboarding.mjs, tsf/server/onboarding.mjs, tsf/server/onboarded-project-projection.mjs, tsf/server/repo-inspector.mjs, tsf/adapters/orca-cli-bridge.mjs, tsf/test/onboarding.test.mjs, tsf/test/http-onboarding.test.mjs, tsf/ui/src/pages/AddProjectPage.tsx and related onboarding UI/lib files all deleted; http-server.mjs/live-planner.mjs/api.ts/types.ts/data-store.mjs/App.tsx/ProjectDetailPage.tsx/ProjectsPage.tsx modified to remove onboarding references). This is unrelated to M2, was not created by this session, and predates this specific check -- the baseline.workingTreeCleanAtStart:true confirmation was from 2026-08-19T00:00:00Z, before tsf/main's own de105fb4632 \"add project onboarding v1\" commit was even made (2026-08-19 14:29:32), so the shared repo has plainly moved since baseline capture. This is a genuine Section I hard-stop (\"unexplained dirty files appear\", \"canonical source becomes ambiguous\") -- did not touch, stash, reset, discard, or commit through this staged work under any circumstances.",
+          "testsAdded": 0,
+          "testsPassing": "228/228 (independently re-confirmed by the fresh verifier)",
+          "verifier": "INDEPENDENT (forked holistic verifier covering all 12 acceptance criteria + full mechanical gate re-check)",
+          "commit": null,
+          "status": "M2_GREEN_ADOPTION_BLOCKED_BY_UNRELATED_DIRTY_ADOPTION_TARGET",
+          "note": "M2 itself is genuinely GREEN and ready. The sole remaining blocker is entirely external to M2: the intended adoption target (C:\\TSF_ORCA's tsf/main working tree) has unrelated, large, uncommitted work (an onboarding-feature removal) that must be resolved by Tim -- committed, stashed, or explicitly discarded -- before a safe git merge --ff-only can be attempted. TIM_REQUIRED. Do not begin M3. Do not attempt the merge until Tim confirms how to handle the pending onboarding-removal changes in the shared repo."
         }
       ],
       "acceptanceCriteria": [
@@ -1101,7 +1112,13 @@
       },
       "m2BlockingItemsFound": [
         "FOUND AND FIXED (wave 36, commit 61bfcb3e3, pending independent review + Tim retest): a STALLED Keep Going run had no path back to usability through the product UI -- tickKeepGoingRun always re-checks the same stuck wave and silently discards a new Run now work item with zero signal. Live-confirmed via Tims current-code manual acceptance retest (Run now FAIL, state STALLED). Fixed by exposing abandonStalledWave through a new HTTP route + UI button, corrected to also resume the run to ACTIVE."
-      ]
+      ],
+      "currentCandidate": {
+        "head": "2a82679a366fa188b90df674b8de28dc1e62261e",
+        "tree": "a89a4276678425b608541d30a30d65a38b3a1b3f",
+        "packagedAt": "2026-08-20T19:52:24.119Z",
+        "status": "IMMUTABLE_CANDIDATE_READY_ADOPTION_BLOCKED_EXTERNALLY"
+      }
     },
     {
       "id": "M3",
@@ -1552,12 +1569,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_40_ORCA_RECONCILIATION_FIX_INDEPENDENTLY_VERIFIED",
-    "at": "2026-08-20T19:30:49.070Z",
-    "commit": "33c447429",
-    "commitTree": null,
+    "phase": "M2_WAVE_41_GREEN_ADOPTION_BLOCKED_BY_DIRTY_TSF_MAIN",
+    "at": "2026-08-20T19:52:24.119Z",
+    "commit": "2a82679a366fa188b90df674b8de28dc1e62261e",
+    "commitTree": "a89a4276678425b608541d30a30d65a38b3a1b3f",
     "workingTreeClean": true,
-    "note": "Independent review of the Orca-reconciliation + DISPATCH_FAILED-durability fix (wave 39) completed with one real finding, fixed and re-verified: a read-then-mutate race in abandonAndReconcileStalledWave whose own safety comment overclaimed (assertExpectedRevision is a documented no-op when expectedRevision is omitted). Fixed at the root by capturing dispatchRecords from the atomic mutate's own closure instead of a separate pre-read. 228/228 suite green, lint/typecheck/max-lines-ratchet/format clean, git status clean. No outstanding findings against the full waves 36-40 fix chain. Next: issue Tim the exact minimal Run now retest instructions. M2 adoption and M3 remain withheld."
+    "note": "M2 fully GREEN per a fresh holistic independent verifier (all 12 acceptance criteria, 228/228 suite, all mechanical Section H gates confirmed). The immutable candidate is packaged (this exact HEAD/tree). Adoption itself is blocked: C:\\TSF_ORCA (the tsf/main worktree) has a large, unrelated, fully-staged-but-uncommitted change (an onboarding-feature removal, 24 files) that predates and has nothing to do with M2. Did not touch it. TIM_REQUIRED before any git merge --ff-only can be attempted. Do not begin M3."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1815,5 +1832,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Implemented both fixes from wave 38's diagnosis: abandon-stalled-wave now also releases the real Orca dispatch resource it held (best-effort, never blocking the TSF-side recovery on Orca's cooperation), and DISPATCH_FAILED tick results are now durably checkpointed (and shown in the UI's Last checkpoint line) instead of only appearing transiently. 227/227 suite green, lint/typecheck/max-lines-ratchet/format clean. Independent review of this commit is in progress. M2 adoption and M3 remain withheld until that review clears and Tim confirms the exact Run now path passes."
+  },
+  "priorDurableCheckpoint26": {
+    "phase": "M2_WAVE_40_ORCA_RECONCILIATION_FIX_INDEPENDENTLY_VERIFIED",
+    "at": "2026-08-20T19:30:49.070Z",
+    "commit": "33c447429",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Independent review of the Orca-reconciliation + DISPATCH_FAILED-durability fix (wave 39) completed with one real finding, fixed and re-verified: a read-then-mutate race in abandonAndReconcileStalledWave whose own safety comment overclaimed (assertExpectedRevision is a documented no-op when expectedRevision is omitted). Fixed at the root by capturing dispatchRecords from the atomic mutate's own closure instead of a separate pre-read. 228/228 suite green, lint/typecheck/max-lines-ratchet/format clean, git status clean. No outstanding findings against the full waves 36-40 fix chain. Next: issue Tim the exact minimal Run now retest instructions. M2 adoption and M3 remain withheld."
   }
 }
