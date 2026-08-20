@@ -622,6 +622,8 @@
     "setAt": "2026-08-19T23:59:22Z",
     "setBy": "TIM",
     "mode": "EVENING_SPRINT_NOT_UNLIMITED_OVERNIGHT",
+    "returnHandoffEnteredAt": "2026-08-19T22:10:00-06:00",
+    "returnHandoffEnteredReason": "Entered ~55 minutes ahead of the 11:05 PM trigger, not at the trigger itself -- all fixable findings from both independent reviews were closed (waves 12-14) and no further safe bounded M2 work remained queued that wouldn't require starting a genuinely new architecture surface (autonomous wave-dispatch loop) or a broad cross-cutting refactor (document-level concurrency in data-store.mjs), both explicitly judged too large for the remaining window per the 'do not begin a major new architecture wave close to the cutoff' directive. Consistent with 'do not pause early merely to conserve capacity' -- this is not conserving capacity, it is having run out of genuinely useful bounded work at a clean wave boundary.",
     "hardOperatorReturnLocal": "2026-08-19T23:20:00-06:00",
     "hardOperatorReturnUtc": "2026-08-20T05:20:00Z",
     "rationale": "Tim intends to actively work on TSF again immediately after the Codex weekly reset at 11:20 PM local -- the two deadlines coincide exactly (see providerCapacityStatus.codex.resetsAt).",
@@ -745,32 +747,32 @@
     }
   },
   "providerCapacityStatus": {
-    "queriedAt": "2026-08-19T21:15:00-06:00",
-    "source": "orca account list --json (live, trustworthy) -- re-checked after the wave-8 Claude session-limit event",
+    "queriedAt": "2026-08-19T22:10:00-06:00",
+    "source": "orca account list --json (live, trustworthy) -- final re-check entering RETURN_HANDOFF",
     "claude": {
-      "sessionUsedPercent": 12,
+      "sessionUsedPercent": 32,
       "sessionWindowMinutes": 300,
       "sessionResetsAt": "2026-08-21T02:10:00-06:00",
-      "weeklyUsedPercent": 25,
-      "status": "HEALTHY_AFTER_SESSION_LIMIT_RESET",
-      "sessionLimitIncident": "During wave 8, a code-review coordinator agent (running a multi-sub-agent independent review) hit the Claude session usage limit mid-run ('You've hit your session limit -- resets 9:10pm America/Denver'). This program was blocked waiting on that reset for approximately 2h16m (6:55pm to 9:11pm local) -- unplanned, significant real-time cost against tonight's evening-sprint window. The session has since reset (confirmed live: 12% used, fresh 300min window) and Claude capacity is healthy again, but this is recorded as a real capacity event, not glossed over. Launching another large multi-sub-agent review tonight is being treated cautiously given this just happened once already."
+      "weeklyUsedPercent": 27,
+      "status": "HEALTHY",
+      "sessionLimitIncident": "During wave 8, a code-review coordinator agent (running a multi-sub-agent independent review) hit the Claude session usage limit mid-run ('You've hit your session limit -- resets 9:10pm America/Denver'). This program was blocked waiting on that reset for approximately 2h16m (6:55pm to 9:11pm local) -- unplanned, significant real-time cost against tonight's evening-sprint window. The session reset and Claude capacity has remained healthy for the rest of the night (now 32% session / 27% weekly)."
     },
     "codex": {
       "weeklyUsedPercent": 91,
       "rateLimitResetCreditsAvailable": 0,
       "resetsAt": "2026-08-20T05:20:51Z",
-      "status": "NEAR_LIMIT_BUT_EXPIRING_SOON",
-      "changeSincePriorCheckpoint": "Unchanged since wave 3 -- still 91%/0 reset credits, still resets at the same moment as the hard operator-return cutoff."
+      "status": "AT_EXPIRING_CAPACITY_SAFETY_RESERVE",
+      "changeSincePriorCheckpoint": "Account-level snapshot still lags at 91% (same value all night), but the live in-session TUI signaled 'approaching rate limits' again after wave 11's dispatch -- treated as the trustworthy real-time signal (same pattern as wave 3). Per Tim's tonightCodexWindowOverride, this is the safety-reserve threshold: no further Codex dispatch queued after wave 11. Resets at the same moment as the hard operator-return cutoff (11:20 PM)."
     },
-    "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Section G was amended 2026-08-19 with the EXPIRING_CAPACITY rule (state.json -> capacityPolicy.expiringCapacityRule): near a known reset, remaining capacity is used for small bounded useful work rather than left idle. Applied once this session (M2 wave 3, see capacityPolicy.expiringCapacityRule.applicationLog) -- one bounded task dispatched and independently verified GREEN. After that task, Codex's own UI signaled it was near its limit again, so per the rule's shrink-and-stop step no further Codex dispatch was queued this wave. Claude/Sonnet 5 (PLANNER_DEEP, currently in use) is healthy again after the wave-8 session-limit reset, but multi-sub-agent review dispatch is being used more conservatively for the rest of tonight given that incident."
+    "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_9_COMPLETE",
-    "at": "2026-08-19T21:24:41-06:00",
-    "commit": "050edbe5ce33ea2f4bdc2467a05ced5bf1cbfb2b",
+    "phase": "M2_EVENING_SPRINT_RETURN_HANDOFF",
+    "at": "2026-08-19T22:10:00-06:00",
+    "commit": "33a05424f28e49d299052a3790f47ef531c21edb",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "Evening-sprint waves 4-9: fixture/dogfood domain proof, server controller + HTTP routes, browser-proven UI (Start/Pause/Resume/live display, gap/worker/verifier wiring), two independent code-review passes (first fully completed with 6 findings all addressed; second partial -- coordinator hit a Claude session limit after 1 of 8 finder-angle sub-agents completed, that one returned 4 more findings, 2 fixed [startKeepGoingRun revision race, raiseNeedsYou/resolveNeedsYou revision consistency] with regression tests, 2 documented as legitimate but too-large-for-tonight architectural gaps). 134/134 full tsf suite GREEN, UI typecheck/build clean, browser-reverified after each UI-affecting change. Verified intact via git cat-file immediately after commit; same pre-existing geometric-repack housekeeping failure as prior waves (GIT-HYGIENE-001), non-blocking."
+    "note": "Evening-sprint waves 4-14 plus the live orchestration-bridge dispatch dogfood: fixture/dogfood domain proof, server controller + HTTP routes, browser-proven UI (Start/Pause/Resume/live display, gap/worker/verifier wiring, budget form, start-a-new-run affordance), a real live Codex dispatch through the actual orchestration-bridge adapter (not a bare terminal), two full independent code-review passes (Claude wave 7, all 6 findings fixed; cross-provider Codex wave 11, all 3 fixable findings fixed across waves 12-14) plus one partial Claude review (wave 8, findings addressed where safe), an HTTP route-extraction refactor (onboarding), and Tim's approved M8 roadmap recorded. 136/136 full tsf suite GREEN, UI typecheck/build clean, browser-reverified after every UI-affecting or runtime-behavior-affecting change. Verified intact via git cat-file immediately after commit; same pre-existing geometric-repack housekeeping failure as prior waves (GIT-HYGIENE-001), non-blocking. Entering RETURN_HANDOFF ~55 minutes ahead of the 11:05 PM trigger -- no further safe bounded M2 work queued that wouldn't require a fresh time/capacity assessment."
   },
   "priorDurableCheckpoint4": {
     "phase": "M2_WAVE_7_COMPLETE_INDEPENDENT_REVIEW_ADDRESSED",
