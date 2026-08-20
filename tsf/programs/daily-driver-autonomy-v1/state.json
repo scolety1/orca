@@ -870,6 +870,17 @@
           "commit": "afab441f7",
           "status": "FIX_APPLIED_TESTS_GREEN_AWAITING_INDEPENDENT_REVIEW",
           "note": "No live Orca resource was touched implementing or testing this fix -- entirely stub/fake-store based, matching this session's established methodology throughout M2. The real orphaned worker terminal from the earlier smoke test remains untouched; the next time a real abandon-stalled-wave click happens against a genuinely stalled run, this fix will reconcile whatever dispatch it holds at that time. Do not adopt M2, do not begin M3, and do not ask Tim to retest again until this fix is independently verified."
+        },
+        {
+          "wave": 40,
+          "summary": "Independent review of wave 39 (commit afab441f7) reported back. Best-effort reconciliation semantics, checkpoint correctness, route error-classification wiring, and test quality were all confirmed correct. One real, medium-severity finding survived scrutiny: abandonAndReconcileStalledWave's own comment claimed \"nothing could have raced the read\" between its separate, unlocked store.readRun call (capturing dispatchRecords) and the atomic store.withRun mutate that followed -- but that claim relied on expectedRevision actually being supplied, and assertExpectedRevision (tsf/domain/canonical.mjs) is a documented, intentional no-op when a caller omits it (used the same way throughout keep-going.mjs). Not reachable through the shipped UI today (KeepGoingPanel always passes run.revision), but a real latent gap in a function whose comment made a blanket guarantee it did not keep -- exactly the kind of race the rest of this module goes out of its way to close elsewhere.",
+          "fix": "Fixed at the root rather than by making expectedRevision mandatory: dispatchRecords are now captured from the exact \"current\" run object the atomic store.withRun mutate closure itself observes, not a separate pre-read -- this closes the race unconditionally regardless of whether expectedRevision is supplied. Corrected the misleading comment. New regression test proves it directly: a fake store whose readRun returns a deliberately stale/different run than what withRun's closure receives must still reconcile the dispatch the closure actually observed, not the stale outer read.",
+          "testsAdded": 1,
+          "testsPassing": "228/228 full tsf suite GREEN",
+          "verifier": "INDEPENDENT (forked review agent; full read of the diff plus the concurrency model, controller, run-store, and domain code)",
+          "commit": "33c447429",
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "No outstanding findings remain against the Orca-reconciliation + DISPATCH_FAILED-durability fix chain (waves 36-40). 228/228 suite green, oxlint/tsc/max-lines-ratchet/oxfmt clean, git status clean. Next: give Tim the exact minimal Run now retest instructions against the current fixture state (using the Abandon stalled wave button, which now both resumes the run AND releases the real Orca resource). Do not adopt M2, do not begin M3, until Tim confirms this exact path passes."
         }
       ],
       "acceptanceCriteria": [
@@ -1541,12 +1552,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_39_ORCA_RECONCILIATION_AND_DISPATCH_FAILED_DURABILITY_FIX_APPLIED",
-    "at": "2026-08-20T19:22:43.460Z",
-    "commit": "afab441f7",
+    "phase": "M2_WAVE_40_ORCA_RECONCILIATION_FIX_INDEPENDENTLY_VERIFIED",
+    "at": "2026-08-20T19:30:49.070Z",
+    "commit": "33c447429",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "Implemented both fixes from wave 38's diagnosis: abandon-stalled-wave now also releases the real Orca dispatch resource it held (best-effort, never blocking the TSF-side recovery on Orca's cooperation), and DISPATCH_FAILED tick results are now durably checkpointed (and shown in the UI's Last checkpoint line) instead of only appearing transiently. 227/227 suite green, lint/typecheck/max-lines-ratchet/format clean. Independent review of this commit is in progress. M2 adoption and M3 remain withheld until that review clears and Tim confirms the exact Run now path passes."
+    "note": "Independent review of the Orca-reconciliation + DISPATCH_FAILED-durability fix (wave 39) completed with one real finding, fixed and re-verified: a read-then-mutate race in abandonAndReconcileStalledWave whose own safety comment overclaimed (assertExpectedRevision is a documented no-op when expectedRevision is omitted). Fixed at the root by capturing dispatchRecords from the atomic mutate's own closure instead of a separate pre-read. 228/228 suite green, lint/typecheck/max-lines-ratchet/format clean, git status clean. No outstanding findings against the full waves 36-40 fix chain. Next: issue Tim the exact minimal Run now retest instructions. M2 adoption and M3 remain withheld."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1796,5 +1807,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Tim's abandon-stalled-wave recovery worked correctly (run genuinely ACTIVE again). His subsequent final Run now smoke test (ui-run-now-final-smoke-2) created a real Orca task but it was never dispatched to a worker -- confirmed via read-only inspection only, no redispatch performed. Root cause not certain but strongly evidenced: the prior abandoned dispatch's worker terminal has actually exited, yet Orca still tracks its worktree resource as owned, and abandonStalledWave never reconciles that with Orca (worker-stop/abandon/release), which may be blocking a fresh worker-start in the same worktree. Also found: DISPATCH_FAILED reasons are never durably persisted, only shown transiently. Reported both to Tim with a proposed fix; awaiting direction before further code changes. M2 adoption and M3 remain withheld."
+  },
+  "priorDurableCheckpoint25": {
+    "phase": "M2_WAVE_39_ORCA_RECONCILIATION_AND_DISPATCH_FAILED_DURABILITY_FIX_APPLIED",
+    "at": "2026-08-20T19:22:43.460Z",
+    "commit": "afab441f7",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Implemented both fixes from wave 38's diagnosis: abandon-stalled-wave now also releases the real Orca dispatch resource it held (best-effort, never blocking the TSF-side recovery on Orca's cooperation), and DISPATCH_FAILED tick results are now durably checkpointed (and shown in the UI's Last checkpoint line) instead of only appearing transiently. 227/227 suite green, lint/typecheck/max-lines-ratchet/format clean. Independent review of this commit is in progress. M2 adoption and M3 remain withheld until that review clears and Tim confirms the exact Run now path passes."
   }
 }
