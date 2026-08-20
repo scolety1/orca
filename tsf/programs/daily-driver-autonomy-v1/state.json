@@ -781,6 +781,18 @@
             "independent review of this safety fix (in flight)",
             "final Section H packaging decision, gated on that review"
           ]
+        },
+        {
+          "wave": 33,
+          "summary": "Review of the placement-safety fix (commit ed0b7db07, wave 32) returned 7 findings, all addressed: (1&2) requireExplicitPlacement and findInvalidWorkItem both used item.worktree?.trim(), which throws a TypeError for any truthy non-string worktree -- reachable from untrusted HTTP input, exactly the path this fix was meant to harden. Fixed by extracting one shared, type-safe hasExplicitPlacement(item) predicate (exported from keep-going-dispatch-loop.mjs, imported by keep-going-http-routes.mjs), closing the crash and the duplication (finding 4) in one fix. (3) The HTTP routes 422 response always reported the stale TSF_INVALID_WORK_ITEM code/message even for a missing-placement failure -- findInvalidWorkItem now returns {item, reason}, distinguishing TSF_INVALID_WORK_ITEM from TSF_MISSING_PLACEMENT with matching messages. (5) Strengthened the existing missing-placement test to also assert createOrchestrationRun is never called. (6) Added an HTTP-level test exercising the missing-placement rejection through the real POST /tick route, plus a unit test for the non-string-worktree crash. (7) Trimmed 3 near-duplicate verbose comments to one full explanation plus one-line pointers. Split keep-going-dispatch-loop.test.mjs's placement/collision test block into its own file (keep-going-dispatch-loop-placement.test.mjs) -- the new tests pushed the original file over the max-lines cap. 217/217 full tsf suite GREEN, stable across repeated runs, oxlint/tsc/max-lines-ratchet clean. A final, targeted verification of this specific fix (its 3rd review round) is in flight -- the last gate before Section H packaging.",
+          "testsAdded": 2,
+          "testsPassing": "217/217 full tsf suite GREEN, stable across 3+ repeated runs",
+          "verifier": "SELF (addressing a review pass); a final targeted verification is in flight",
+          "commit": "40449f05262a9dd61573d2fe8fc965518bbf045f",
+          "deferredToNextWave": [
+            "final targeted verification result (in flight)",
+            "Section H packaging, gated on that result"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -1427,12 +1439,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVES_31_32_RECONCILIATION_AND_SAFETY_FIX",
-    "at": "2026-08-20T17:46:55.523Z",
-    "commit": "ed0b7db07",
+    "phase": "M2_WAVE_33_SAFETY_FIX_REVIEW_ADDRESSED",
+    "at": "2026-08-20T17:58:09.987Z",
+    "commit": "40449f05262a9dd61573d2fe8fc965518bbf045f",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "Reconciled the live smoke-test dispatch honestly (STALLED, checkpointed, evidence preserved, no redispatch) and, in doing so and via a fresh independent verifier pass, found and fixed a real M2_BLOCKING safety gap: the Run now path's silent 'current' worktree default, proven live to land a real dispatch in the wrong directory. Fixed everywhere it existed (server validation, HTTP validation, UI default). 215/215 suite GREEN. An independent review of this specific fix is in flight before treating M2 as ready for Section H packaging. External Codex/MCP configuration issue recorded separately, explicitly out of TSF scope, not repaired. Next: act on the review, then proceed to final packaging if GREEN."
+    "note": "The placement-safety fix (silent current-worktree-default removal) has now been through 2 full independent review rounds, all findings addressed each time, with a 3rd final targeted verification in flight -- the last gate before Section H packaging. 217/217 suite GREEN throughout, stable across repeated runs. Next: act on the final verification result, then proceed to the full packaging/adoption sequence if GREEN (rerun acceptance suite, confirm HEAD/tree, confirm Orca-core-delta-0, evaluate Section H)."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1634,5 +1646,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "Investigated automated UI-validation options per Tim's explicit M2 Acceptance Closure directive. Confirmed no compliant repository-supported automated mechanism exists for TSF's own UI surface (the real Playwright/Electron e2e harness tests Orca core, which has zero TSF integration; tsf/ui has no test tooling of its own). Did not invent a new framework, per explicit instruction. Prepared the smallest exact manual checklist (4 steps, ~5 min, against the safe fixture project) instead -- see milestones[M2].acceptanceClosure2026_08_20. Classified the three remaining disclosed gaps: none are M2_BLOCKING (heartbeat projection and lock TOCTOU are SAFE_FOLLOWUP; per-project lock granularity is M3_OR_LATER). The single remaining M2 acceptance blocker is the manual UI checklist, which requires Tim to perform. Packaging/adoption sequence intentionally not run yet -- it is gated on that checklist passing."
+  },
+  "priorDurableCheckpoint19": {
+    "phase": "M2_WAVES_31_32_RECONCILIATION_AND_SAFETY_FIX",
+    "at": "2026-08-20T17:46:55.523Z",
+    "commit": "ed0b7db07",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Reconciled the live smoke-test dispatch honestly (STALLED, checkpointed, evidence preserved, no redispatch) and, in doing so and via a fresh independent verifier pass, found and fixed a real M2_BLOCKING safety gap: the Run now path's silent 'current' worktree default, proven live to land a real dispatch in the wrong directory. Fixed everywhere it existed (server validation, HTTP validation, UI default). 215/215 suite GREEN. An independent review of this specific fix is in flight before treating M2 as ready for Section H packaging. External Codex/MCP configuration issue recorded separately, explicitly out of TSF scope, not repaired. Next: act on the review, then proceed to final packaging if GREEN."
   }
 }
