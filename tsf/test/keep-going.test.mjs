@@ -162,6 +162,39 @@ test('recordWave is idempotent — replaying a settled wave never duplicates it'
   assert.equal(run.waves.length, 1)
 })
 
+test('recordWave, recordTaskAttempt, and checkpointRun bump revision and honor expectedRevision, but a replayed wave does not', () => {
+  let run = baseRun()
+  assert.equal(run.revision, 0)
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const result = { outcome: 'SUCCEEDED', verifierVerdict: 'GREEN' }
+
+  run = recordWave(run, plan, result, clock, 0)
+  assert.equal(run.revision, 1)
+  assert.throws(
+    () => recordWave(run, { ...plan, waveNumber: 2 }, result, clock, 0), // stale
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+  // A genuine replay (same plan+result digest) is idempotent and does not
+  // touch revision at all, regardless of a stale expectedRevision -- it
+  // was never going to write.
+  const replayed = recordWave(run, plan, result, clock, 0)
+  assert.equal(replayed.revision, 1)
+
+  run = recordTaskAttempt(run, 'flaky', 'RETRY', clock, 1)
+  assert.equal(run.revision, 2)
+  assert.throws(
+    () => recordTaskAttempt(run, 'flaky', 'RETRY', clock, 1), // stale
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+
+  run = checkpointRun(run, { phase: 'MID_WAVE' }, clock, 2)
+  assert.equal(run.revision, 3)
+  assert.throws(
+    () => checkpointRun(run, { phase: 'MID_WAVE_AGAIN' }, clock, 2), // stale
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+})
+
 test('bounded retry budget rejects a task past its retry limit', () => {
   let run = baseRun({ budget: { maxRetriesPerTask: 1 } })
   run = recordTaskAttempt(run, 'flaky-task', 'RETRY', clock)

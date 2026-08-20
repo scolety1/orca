@@ -259,18 +259,26 @@ export function planWave(run, candidateWorkItems, clock) {
 // Idempotent by (plan, result) digest — replaying the same settled wave
 // never appends a duplicate, matching coordinator.mjs's registerWorkerResult
 // pattern and the "no duplicate settled work" acceptance criterion.
-export function recordWave(run, wavePlan, waveResult, clock) {
+// expectedRevision (optional, same convention as transitionRun) is only
+// checked on the real-write path -- a replayed wave (matching digest)
+// returns the unchanged run before any staleness check, since a genuine
+// idempotent replay needs no revision protection: it was never going to
+// write regardless of what the caller believed the revision was.
+export function recordWave(run, wavePlan, waveResult, clock, expectedRevision) {
   const digest = sha256({ wavePlan, waveResult })
   if (run.waves.some((wave) => wave.digest === digest)) {
     return deepClone(run)
   }
+  assertExpectedRevision(run, expectedRevision)
   const next = deepClone(run)
   next.waves.push({ digest, wavePlan, waveResult, recordedAt: isoNow(clock) })
+  next.revision += 1
   next.updatedAt = isoNow(clock)
   return next
 }
 
-export function recordTaskAttempt(run, taskId, outcome, clock) {
+export function recordTaskAttempt(run, taskId, outcome, clock, expectedRevision) {
+  assertExpectedRevision(run, expectedRevision)
   const next = deepClone(run)
   const priorCount = next.retryCounts[taskId] ?? 0
   const count = outcome === 'RETRY' ? priorCount + 1 : priorCount
@@ -282,6 +290,7 @@ export function recordTaskAttempt(run, taskId, outcome, clock) {
     throw error
   }
   next.retryCounts[taskId] = count
+  next.revision += 1
   next.updatedAt = isoNow(clock)
   return next
 }
@@ -374,16 +383,23 @@ export function resolveNeedsYou(run, needsYouId, resolution, clock, expectedRevi
 
 // Durable, hash-chained checkpoint after each meaningful phase — the
 // anti-drift anchor a resumed/rehydrated run reads before continuing.
-export function checkpointRun(run, { phase, note = null, evidence = [] } = {}, clock) {
+export function checkpointRun(
+  run,
+  { phase, note = null, evidence = [] } = {},
+  clock,
+  expectedRevision
+) {
   if (!phase?.trim()) {
     throw new Error('a phase label is required to checkpoint')
   }
+  assertExpectedRevision(run, expectedRevision)
   const at = isoNow(clock)
   const record = { phase, note, evidence, waveCount: run.waves.length, state: run.state, at }
   const previousHash = run.checkpoints.at(-1)?.hash ?? null
   const hash = sha256({ previousHash, record })
   const next = deepClone(run)
   next.checkpoints.push({ ...record, previousHash, hash })
+  next.revision += 1
   next.updatedAt = at
   return next
 }
