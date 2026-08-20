@@ -258,6 +258,32 @@ test('POST tick with real candidate work items dispatches a wave through the rea
   })
 })
 
+test('POST tick with a work item missing both worktree and workerTerminal is rejected with 422 before any real dispatch (a real, live-confirmed safety finding)', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ originalGoal: 'Placement guard proof.', acceptanceCriteria: ['X'] })
+    })
+    const tickRes = await withStubOrca('success', () =>
+      fetch(`${base}/api/keep-going/${PROJECT_ID}/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ candidateWorkItems: [{ id: 't1', scope: ['docs/x.md'] }] })
+      })
+    )
+    assert.equal(tickRes.status, 422)
+    const body = await tickRes.json()
+    assert.equal(body.code, 'TSF_MISSING_PLACEMENT')
+
+    // The run must still be untouched/dispatchable afterward -- the
+    // rejection must not have consumed the tick lock or left any trace.
+    const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
+    const got = await getRes.json()
+    assert.equal(got.phase, 'RUN_STARTED')
+  })
+})
+
 test('POST tick on an unknown project 404s, same as the other routes', async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/api/keep-going/does-not-exist/tick`, {

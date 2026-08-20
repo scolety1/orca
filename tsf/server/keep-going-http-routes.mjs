@@ -24,7 +24,7 @@ import {
   resumeKeepGoingRun,
   startKeepGoingRun
 } from './keep-going-controller.mjs'
-import { tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
+import { hasExplicitPlacement, tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
 import { withKeepGoingRun } from './keep-going-run-store.mjs'
 
 // TSF_STATE_LOCK_TIMEOUT (cross-process-file-lock.mjs, via
@@ -61,33 +61,27 @@ async function mutateThroughStore(projectId, controllerFn) {
 }
 
 // Rejects a malformed candidate work item BEFORE it ever reaches
-// tickKeepGoingRun -- planWave's own validation (tsf/domain/keep-going.mjs)
-// throws AFTER dispatchStep's claim() has already taken the tick lock, so
-// an unvalidated item reaching that far would wedge the run in "tick in
-// progress" for minutes before dispatchStep's own catch releases it (a
-// real review finding -- this HTTP route is the first path that lets
-// untrusted external input reach that call at all). Cheap, fails fast,
-// never touches the lock. Mirrors planWave's own `!item.id` check exactly
-// (not a stricter typeof-string/non-blank check an earlier version used)
-// -- a real review finding was that a numeric id, accepted by planWave
-// directly, would be rejected only when routed through this HTTP layer,
-// two validation guards in the same feature silently disagreeing on what
-// "valid" means.
-// Also requires an explicit worktree or workerTerminal, matching
-// dispatchStep's own requireExplicitPlacement -- a real, live-confirmed
-// safety finding was that a missing worktree silently defaulted to
-// 'current' (the Orca coordinator's own working directory, not anything
-// scoped to the project being operated on); a real manual UI validation
-// run left the form's worktree field at that old default and the
-// resulting live dispatch landed directly in this program's own repo.
+// tickKeepGoingRun -- a bad item reaching dispatchStep's claim() would
+// wedge the run in "tick in progress" for minutes before its own catch
+// releases the lock (a real review finding: this route is the first path
+// letting untrusted external input reach that call at all). Cheap, fails
+// fast, never touches the lock. Two independently-classified reasons
+// (matching dispatchStep's own two checks, planWave's id/scope validation
+// and requireExplicitPlacement) so the two failure classes stay
+// distinguishable end to end, not collapsed into one generic error (a
+// real review finding).
 function findInvalidWorkItem(candidateWorkItems) {
-  return candidateWorkItems.find(
-    (item) =>
-      !item?.id ||
-      !Array.isArray(item.scope) ||
-      item.scope.length === 0 ||
-      (!item.workerTerminal && !item.worktree?.trim())
+  const badShape = candidateWorkItems.find(
+    (item) => !item?.id || !Array.isArray(item.scope) || item.scope.length === 0
   )
+  if (badShape) {
+    return { item: badShape, reason: 'TSF_INVALID_WORK_ITEM' }
+  }
+  const unplaced = candidateWorkItems.find((item) => !hasExplicitPlacement(item))
+  if (unplaced) {
+    return { item: unplaced, reason: 'TSF_MISSING_PLACEMENT' }
+  }
+  return null
 }
 
 // Returns true and writes the response if this request matched a Keep
@@ -195,16 +189,19 @@ export async function handleKeepGoingRoute(
   if (parts[3] === 'tick') {
     const body = await readBody(req)
     const candidateWorkItems = Array.isArray(body.candidateWorkItems) ? body.candidateWorkItems : []
-    const invalidItem = findInvalidWorkItem(candidateWorkItems)
-    if (invalidItem !== undefined) {
-      json(res, 422, {
-        ok: false,
-        error: 'every candidate work item requires a non-empty id and a non-empty scope array',
-        code: 'TSF_INVALID_WORK_ITEM'
-      })
-      return true
-    }
     try {
+      const invalid = findInvalidWorkItem(candidateWorkItems)
+      if (invalid) {
+        json(res, 422, {
+          ok: false,
+          error:
+            invalid.reason === 'TSF_MISSING_PLACEMENT'
+              ? `work item ${invalid.item?.id ?? '(unknown)'} requires an explicit worktree or workerTerminal -- there is no safe default`
+              : 'every candidate work item requires a non-empty id and a non-empty scope array',
+          code: invalid.reason
+        })
+        return true
+      }
       const result = await tickKeepGoingRun(projectId, candidateWorkItems, () => new Date())
       json(res, 200, result)
     } catch (error) {

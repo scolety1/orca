@@ -97,21 +97,10 @@ const FAILED_STATUSES = new Set(['failed', 'error'])
 // one listOrchestrationTasks call, so it keeps the base timeout.
 const PER_ITEM_LOCK_TIMEOUT_MS = 45_000
 
-// Resolves one work item's worker-start placement: reuse an existing
-// terminal verbatim, or launch fresh into the caller's own explicit
-// item.worktree with item.agent (default codex). Callers must supply an
-// explicit worktree or workerTerminal -- requireExplicitPlacement (called
-// before this, in dispatchStep) guarantees it, so there is no silent
-// 'current' fallback here anymore. A real, live-confirmed safety finding:
-// 'current' resolves to the Orca *coordinator process's own working
-// directory*, not anything scoped to the project a Keep Going run
-// belongs to -- a real manual UI validation run left every worktree field
-// at its old pre-filled 'current' default and the dispatch landed
-// directly in this program's own repository, not the intended low-risk
-// fixture location (which has no real backing directory to fall back to
-// at all). 'current' is still a legitimate value an operator can type
-// deliberately (Orca's own --worktree grammar supports it); what changed
-// is that nothing defaults to it silently anymore.
+// No silent worktree default (removed after a real, live-confirmed
+// safety gap: 'current' resolved to the coordinator's own working
+// directory, not the project's -- see hasExplicitPlacement). 'current'
+// is still a legitimate value an operator types deliberately.
 function resolveWorkerPlacement(item) {
   if (item.workerTerminal) {
     return { terminal: item.workerTerminal, ...(item.retryOf ? { retryOf: item.retryOf } : {}) }
@@ -123,12 +112,23 @@ function resolveWorkerPlacement(item) {
   }
 }
 
+// Shared with keep-going-http-routes.mjs's own validation (imported, not
+// duplicated -- a real review finding was that two independently-typed
+// copies of this same rule had already diverged in behavior). Type-safe:
+// a non-string worktree (number/object/etc, reachable from untrusted
+// HTTP input) must be treated as absent, not thrown on.
+export function hasExplicitPlacement(item) {
+  return (
+    Boolean(item.workerTerminal) ||
+    (typeof item.worktree === 'string' && item.worktree.trim() !== '')
+  )
+}
+
 // A work item with neither an explicit worktree nor an existing terminal
 // to reuse must be refused honestly before any CLI call, not silently
-// defaulted -- see resolveWorkerPlacement's comment for why the old
-// 'current' default was a real, live-confirmed safety gap.
+// defaulted.
 function requireExplicitPlacement(candidateWorkItems) {
-  return candidateWorkItems.find((item) => !item.workerTerminal && !item.worktree?.trim())
+  return candidateWorkItems.find((item) => !hasExplicitPlacement(item))
 }
 
 // Orca's --worktree grammar mixes case-sensitive selector forms

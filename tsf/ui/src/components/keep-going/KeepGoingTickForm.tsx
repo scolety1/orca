@@ -26,13 +26,7 @@ export function KeepGoingTickForm({
   const [workItemId, setWorkItemId] = useState('')
   const [scope, setScope] = useState('')
   const [spec, setSpec] = useState('')
-  // No pre-filled default -- a real, live-confirmed safety finding was
-  // that a default of 'current' here (the Orca coordinator's own working
-  // directory, not anything scoped to this project) let an operator
-  // click through without realizing where a real dispatch would land; a
-  // real manual validation run did exactly that and it landed in this
-  // program's own repository. The operator must now type an explicit
-  // target every time.
+  // No pre-filled default -- see hasExplicitPlacement (keep-going-dispatch-loop.mjs).
   const [worktree, setWorktree] = useState('')
   const [agent, setAgent] = useState('codex')
   const [submitting, setSubmitting] = useState(false)
