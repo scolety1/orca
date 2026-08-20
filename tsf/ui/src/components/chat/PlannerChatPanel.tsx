@@ -50,6 +50,12 @@ export function PlannerChatPanel({
     setError(null)
     setProviderLabel(null)
     setLive(null)
+    // A real, caught-before-commit gap: leaving a project's worktree in
+    // this field would silently attach it to whatever project is selected
+    // next -- a genuine cross-project dispatch leak, not just stale UI
+    // state. Must clear on every project switch, same as the other fields
+    // above.
+    setDispatchWorktree('')
     if (!projectId) {
       return
     }
