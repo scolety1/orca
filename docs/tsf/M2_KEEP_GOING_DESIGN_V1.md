@@ -41,8 +41,16 @@ engine.
   conflict-aware wave batching by declared file scope, retry/stall
   budgets, and the run-level ACTIVE/NEEDS_YOU/PAUSED/STALLED/COMPLETE/
   BLOCKED state machine with hash-chained checkpoints and a summary
-  generator. It composes `mission-state.mjs`/`coordinator.mjs` (one Mission
-  per wave) rather than reimplementing mission lifecycle.
+  generator. **Correction (wave 7, post independent review):** this is a
+  distinct state machine at the overnight-Run level, one level above
+  `mission-state.mjs`/`coordinator.mjs`'s per-wave Mission lifecycle
+  (`DRAFT`/`PLANNING`/`READY`/`ACTIVE`/`REVIEW`/...) — it does not import
+  or literally compose that module today. "One Mission per wave" below
+  describes the intended future wiring for the autonomous wave-dispatch
+  loop (not yet built), not code that exists now. The original wording
+  here overclaimed composition that hadn't been implemented; corrected
+  after an independent code-review pass caught the discrepancy against
+  `tsf/domain/keep-going.mjs`'s actual imports.
 - **Adapter (next wave, not yet built)**: `tsf/adapters/orca-orchestration-bridge.mjs`
   maps a TSF wave plan into `orchestration task-create` + `dispatch`/
   `worker-start` calls, and maps `worker-list`/`task-list`/`gate-list`

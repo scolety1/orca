@@ -203,10 +203,16 @@
           "commit": null,
           "advisoryNote": "TEST-ISOLATION-001: http test files that set process.env.TSF_UI_STATE_FILE at module load time can race under node --test's parallel worker execution when multiple such files run concurrently -- observed as one transient failure, not reproduced on retry. Not fixed tonight (would mean auditing/refactoring every http-*.test.mjs file's env-var pattern, out of this wave's bounded scope); recorded for a future dedicated pass.",
           "deferredToNextWave": [
-            "docs/tsf/M2_KEEP_GOING_DESIGN_V1.md correction to match finding 5's fix in keep-going.mjs",
             "TEST-ISOLATION-001 fix across http-*.test.mjs",
             "autonomous wave-dispatch loop, combined live dogfood mission, milestone-completion-gate verification -- unchanged from wave 6's honestScopeNote"
           ]
+        },
+        {
+          "wave": "7b",
+          "summary": "Closed the last piece of finding 5: corrected docs/tsf/M2_KEEP_GOING_DESIGN_V1.md's Division of Responsibility section to match the fixed code comment in keep-going.mjs -- no longer claims literal composition of mission-state.mjs/coordinator.mjs that doesn't exist in code.",
+          "testsAdded": 0,
+          "verifier": "SELF -- pure documentation edit, no behavior change",
+          "commit": null
         }
       ],
       "acceptanceCriteria": [
