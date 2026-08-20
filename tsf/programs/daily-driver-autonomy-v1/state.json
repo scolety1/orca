@@ -1162,7 +1162,9 @@
       ],
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["Research-first source inspection not yet started -- see waves for progress."],
+      "gaps": [
+        "HTTP wiring (extend POST /api/chat to call the bridge), the plan-capsule -> candidateWorkItems mapping, the bridge module itself, the UI Live Work Feed component, and the live fixture dogfood proof are all still pending -- see the design doc's rollout waves."
+      ],
       "priority": "HIGHEST",
       "northStar": "Tim stays inside the TSF UI and says something natural in Planner Chat (\"Fix this,\" \"go ahead,\" \"build that,\" \"do the recommended next step\"). TSF understands the selected project/context, classifies intent and authority, has the planner create a bounded implementation plan, creates a real Orca Run/tasks using the already-adopted M2 orchestration/Keep Going primitives (not a second worker loop), dispatches Codex workers, supervises/retries/recovers via M2, surfaces real progress in TSF, routes genuine questions into Needs You, independently verifies substantive results, and stops consequential work at exact-candidate adoption.",
       "liveWorkFeedStates": [
@@ -1203,7 +1205,19 @@
         ]
       },
       "existingM2FollowUpsPolicy": "Do not reopen M2 merely for its disclosed non-blocking gaps. The two dangling pre-wave-32/38 Orca tasks (task_dd9e9dc6677f, task_897ba46be9b8 on run_5d7254db6a46) remain SAFE_FOLLOWUP/M3_OR_LATER -- clean them only if ownership and safety are proven and doing so materially helps M3, not as a default action.",
-      "waves": []
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Research-first source inspection: read chat-responder.mjs (deterministic classifyIntent/classifyDecision, TIM_REQUIRED_PATTERNS already covering push/merge/deploy/publish/production, pay/credentials, delete-repo, adopt/approve), live-planner.mjs (a REAL, working live LLM bridge: invokeLivePlanner for conversational replies with session affinity, and invokeLiveStructuredAnalysis, a one-shot JSON-schema-validated structured-output call already used by onboarding), tsf/contracts/plan-capsule.schema.v1.json (an already-designed, already-used TSF_PLAN_CAPSULE_V1 schema for exactly a bounded mission plan), and the UI (KeepGoingPanel and PlannerChatPanel already both mounted on ProjectDetailPage.tsx, side by side, zero integration). Confirmed chat's own fallback text already anticipates this exact gap: \"I can't dispatch a live Orca worker from this chat yet -- that path (Wave 5 Run/task/dispatch integration) is still pending.\" Wrote the M3 design doc (docs/tsf/M3_CHAT_DISPATCH_LIVE_WORK_FEED_V1.md) mapping what already exists/is reusable against what M3 actually needs (the chat-dispatch-bridge, plan-capsule -> candidateWorkItems mapping, Live Work Feed state mapping + UI component), the fixture proof plan (tsf-ui-capability-check, not a real repo), and 8 bounded rollout waves matching M2's own review/test/adoption discipline.",
+          "built": "tsf/domain/live-work-feed.mjs (new, pure): projectLiveWorkFeedState(run, gap) maps a real Keep Going run into one of the 9 Live Work Feed states -- every branch traceable to a real field (run.state, inFlightWave, tickLock, checkpoints, needsYou, waves.length, an optional gap analysis), no fabrication. chat-responder.mjs: new DISPATCH_REQUEST intent recognizes \"go ahead\"/\"build that\"/\"do the recommended next step\" (the exact north-star phrasings) as dispatch-worthy, distinct from FIX_REQUEST, ordered before NEXT_ACTION to avoid a \"next step\" substring collision; classifies RECOMMEND_AND_PROCEED like FIX_REQUEST/RESEARCH/CRITIQUE; the existing TIM_REQUIRED gate is untouched and verified to still win even when consequential wording is phrased as a dispatch request (\"go ahead and push to production\" -> TIM_REQUIRED, not RECOMMEND_AND_PROCEED). An honest placeholder responder is in place since the real bridge (wave 2/3) does not exist yet.",
+          "testsAdded": 21,
+          "testsPassing": "249/249 full tsf suite GREEN",
+          "verifier": "SELF (design + first pure-logic wave; independent review scheduled once the dispatch bridge itself exists, matching M2's own per-change review cadence rather than reviewing scaffolding alone)",
+          "commit": "3802c3c40",
+          "status": "IN_PROGRESS",
+          "note": "Also fixed pre-existing curly-brace/prefer-template lint findings in chat-responder.mjs (mechanical, no behavior change) -- these were blocking the commit since lint-staged lints whole staged files, not diffs. Next: plan-capsule -> candidateWorkItems mapping (pure, tested) + the core chat-dispatch-bridge.mjs function (stub/fake-store tested, no live Orca calls in unit tests, matching M2's established methodology)."
+        }
+      ]
     },
     {
       "id": "M4",
@@ -1639,12 +1653,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M3_STARTED_CHARTER_UPDATED",
-    "at": "2026-08-20T20:19:10.846Z",
-    "commit": null,
+    "phase": "M3_WAVE_1_RESEARCH_DESIGN_AND_LIVE_WORK_FEED_MAPPING_COMPLETE",
+    "at": "2026-08-20T20:32:05.202Z",
+    "commit": "3802c3c40",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "Per Tim's explicit direction, advanced the program from completed/adopted M2 into M3 (Chat -> Dispatch + Live Work Feed). currentMilestone set to M3, M3.status = CURRENT, M2 remains ADOPTED (f65debcb0903be46cf55335def87243ea44b30a8, tsf/main confirmed at 923294edc after the receipt commit), M8 remains on hold (APPROVED_RESEARCH_PLAN_ONLY_NOT_STARTED). Recorded M3's full north star, Live Work Feed state list/rule, chat authority preservation, required real-proof checklist, and the existing-M2-follow-ups policy verbatim from Tim's directive. Next: research-first source inspection of the existing chat/planner/routing code before designing M3's implementation."
+    "note": "M3 wave 1: research-first source inspection complete, design doc written (docs/tsf/M3_CHAT_DISPATCH_LIVE_WORK_FEED_V1.md), first real pure-logic pieces built and tested -- the Live Work Feed state-mapping function and chat's new DISPATCH_REQUEST intent (with the existing authority gate confirmed to still win over it). 249/249 suite green. Next: plan-capsule -> candidateWorkItems mapping + the core chat-dispatch-bridge.mjs function, stub-tested, no live Orca calls in unit tests."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1926,5 +1940,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "M2 (Keep Going / Overnight V1) locally adopted into tsf/main via git merge --ff-only. Previous tsf/main HEAD de105fb4632d7e8a297d824963f931dcd4eb858e recorded for rollback. An unrelated staged onboarding-revert found in tsf/main's working tree at adoption time was investigated read-only, proven via exact tree/diff hash comparison to be an unattributed, uncorroborated git-revert of the onboarding-v1 commit, backed up in full outside the repo (C:\\TSF_STAGED_CHANGE_RECOVERY), and removed only after Tim's explicit review and authorization. 228/228 suite green post-adoption. No push/PR/deploy/publish. M3 may now begin."
+  },
+  "priorDurableCheckpoint29": {
+    "phase": "M3_STARTED_CHARTER_UPDATED",
+    "at": "2026-08-20T20:19:10.846Z",
+    "commit": null,
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Per Tim's explicit direction, advanced the program from completed/adopted M2 into M3 (Chat -> Dispatch + Live Work Feed). currentMilestone set to M3, M3.status = CURRENT, M2 remains ADOPTED (f65debcb0903be46cf55335def87243ea44b30a8, tsf/main confirmed at 923294edc after the receipt commit), M8 remains on hold (APPROVED_RESEARCH_PLAN_ONLY_NOT_STARTED). Recorded M3's full north star, Live Work Feed state list/rule, chat authority preservation, required real-proof checklist, and the existing-M2-follow-ups policy verbatim from Tim's directive. Next: research-first source inspection of the existing chat/planner/routing code before designing M3's implementation."
   }
 }
