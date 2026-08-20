@@ -1,0 +1,174 @@
+// M3: the ONLY new code path that turns a Planner Chat message into a real
+// Orca dispatch. Everything downstream of this module is unmodified M2
+// (tickKeepGoingRun / startKeepGoingRun / the orchestration bridge) -- this
+// module never invents a second worker loop, never fabricates a plan, and
+// never bypasses the existing authority gate (chat-responder.mjs's
+// classifyDecision must already have cleared TIM_REQUIRED before this is
+// ever called). See docs/tsf/M3_CHAT_DISPATCH_LIVE_WORK_FEED_V1.md.
+import chatWorkPlanRequestSchema from '../contracts/chat-work-plan-request.schema.v1.json' with { type: 'json' }
+import {
+  buildPlanCapsule,
+  planCapsuleToCandidateWorkItem
+} from '../domain/plan-capsule-mapping.mjs'
+import { invokeLiveStructuredAnalysis } from './live-planner.mjs'
+import { startKeepGoingRun } from './keep-going-controller.mjs'
+import { tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
+import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
+
+const WORK_PLAN_SYSTEM_PROMPT = [
+  'You are the TSF (Thousand Sunny Fleet) Planner producing a BOUNDED, SAFE',
+  'implementation plan from a chat request. Respond only with the requested',
+  'JSON shape -- no prose, no markdown fences.',
+  '',
+  'Hard rules:',
+  '- allowedScope must list only files/paths genuinely relevant to the request.',
+  '- Never include adoption, push, merge, deploy, publish, credentials, money/',
+  '  paid services, destructive operations, or major product-direction changes',
+  '  as something this plan will do -- those require a human decision outside',
+  '  this plan entirely, not a work item.',
+  '- acceptanceCriteria and stopConditions must each have at least one entry.',
+  '- If the request is too vague to bound safely, say so honestly in objective',
+  '  and keep allowedScope/acceptanceCriteria minimal and conservative rather',
+  '  than guessing at scope you were not given.'
+].join('\n')
+
+function buildWorkPlanPrompt({ project, message }) {
+  return [
+    `Project: ${project.displayName} (${project.id})`,
+    `Tim's request: "${message}"`,
+    '',
+    'Produce a bounded work-plan-request JSON object for this request.'
+  ].join('\n')
+}
+
+// Real, live-confirmed states a Keep Going run can be in where ticking it
+// would either NOOP (tickKeepGoingRun itself refuses anything but ACTIVE)
+// or actively be wrong to layer a brand-new plan onto (PAUSED/NEEDS_YOU/
+// STALLED all need an operator decision or the existing M2 recovery path
+// first, never a fresh dispatch on top). COMPLETE/BLOCKED are handled
+// separately below (a new run may start once the old one is done).
+const NON_DISPATCHABLE_ACTIVE_STATES = new Set(['PAUSED', 'NEEDS_YOU', 'STALLED'])
+
+async function ensureActiveRun(projectId, capsule, clock, deps) {
+  const readRun = deps.readKeepGoingRun ?? readKeepGoingRun
+  const withRun = deps.withKeepGoingRun ?? withKeepGoingRun
+  const start = deps.startKeepGoingRun ?? startKeepGoingRun
+
+  const existing = readRun(projectId)
+  if (existing) {
+    return { run: existing, freshlyCreated: false }
+  }
+
+  const run = await withRun(projectId, (current) => {
+    const { run: started } = start(
+      { keepGoingRuns: { [projectId]: current } },
+      projectId,
+      {
+        originalGoal: capsule.objective,
+        acceptanceCriteria: capsule.acceptanceCriteria,
+        constraints: capsule.constraints,
+        stopConditions: capsule.stopConditions
+      },
+      clock
+    )
+    return started
+  })
+  return { run, freshlyCreated: true }
+}
+
+// The one entry point: classifyDecision must already have ruled out
+// TIM_REQUIRED before this is ever invoked (the caller's job, unchanged) --
+// this function itself re-derives nothing about authority, it only acts.
+//
+// `placement` ({worktree|workerTerminal, agent}) is caller-supplied and
+// required -- there is no safe default, matching every other M2 dispatch
+// path. `identity` ({missionId?, repository}) supplies the real,
+// already-known repository binding (root/worktree/branch/head/tree) -- a
+// zero-tool LLM call has no way to discover this itself, so it is never
+// asked to; fabricating a plausible-looking one here would be exactly the
+// kind of thing this program refuses everywhere else.
+export async function planAndDispatchFromChat({
+  project,
+  message,
+  placement,
+  identity,
+  clock,
+  deps = {}
+}) {
+  if (!placement?.worktree && !placement?.workerTerminal) {
+    return {
+      ok: false,
+      reason: 'TSF_MISSING_PLACEMENT',
+      detail: 'an explicit worktree or workerTerminal is required -- there is no safe default'
+    }
+  }
+  if (!identity?.repository) {
+    return {
+      ok: false,
+      reason: 'TSF_MISSING_REPOSITORY_IDENTITY',
+      detail:
+        'a real repository binding (root/worktree/branch/head/tree) is required -- the planner call cannot supply its own'
+    }
+  }
+
+  const readRun = deps.readKeepGoingRun ?? readKeepGoingRun
+  const invokeStructured = deps.invokeLiveStructuredAnalysis ?? invokeLiveStructuredAnalysis
+  const tick = deps.tickKeepGoingRun ?? tickKeepGoingRun
+
+  const existingRun = readRun(project.id)
+  if (existingRun && NON_DISPATCHABLE_ACTIVE_STATES.has(existingRun.state)) {
+    return {
+      ok: false,
+      reason: 'RUN_NOT_DISPATCHABLE',
+      detail: `the existing Keep Going run for this project is ${existingRun.state} -- use its own recovery path (Resume / Abandon stalled wave / resolve Needs You) before dispatching new work`,
+      run: existingRun
+    }
+  }
+
+  const planResult = await invokeStructured({
+    systemPrompt: WORK_PLAN_SYSTEM_PROMPT,
+    prompt: buildWorkPlanPrompt({ project, message }),
+    jsonSchema: chatWorkPlanRequestSchema
+  })
+  if (!planResult.ok) {
+    return { ok: false, reason: planResult.reason, detail: planResult.detail }
+  }
+
+  let capsule
+  try {
+    capsule = buildPlanCapsule(planResult.data, {
+      missionId: identity.missionId ?? `chat-${project.id}-${clock().getTime()}`,
+      projectId: project.id,
+      repository: identity.repository
+    })
+  } catch (error) {
+    return { ok: false, reason: 'TSF_INVALID_PLAN_CAPSULE', detail: error.message }
+  }
+
+  let candidateWorkItem
+  try {
+    candidateWorkItem = planCapsuleToCandidateWorkItem(capsule, placement)
+  } catch (error) {
+    return { ok: false, reason: error.code ?? 'TSF_PLACEMENT_ERROR', detail: error.message }
+  }
+
+  const { run: activeRun } = await ensureActiveRun(project.id, capsule, clock, deps)
+  if (activeRun.state !== 'ACTIVE') {
+    // A COMPLETE/BLOCKED existing run cannot be ticked -- ensureActiveRun
+    // only creates a NEW run when none exists at all; a finished one needs
+    // its own explicit "start a new run" action, same as the UI's own rule.
+    return {
+      ok: false,
+      reason: 'RUN_NOT_DISPATCHABLE',
+      detail: `the existing Keep Going run for this project is ${activeRun.state} -- start a new run for further work`,
+      run: activeRun
+    }
+  }
+
+  // tickDeps ({orchestration, store}) lets a caller stub the underlying
+  // Orca bridge/store without replacing tickKeepGoingRun wholesale --
+  // separate from `deps.tickKeepGoingRun` above, which replaces the tick
+  // function itself for tests that don't want to exercise it at all.
+  const tickResult = await tick(project.id, [candidateWorkItem], clock, deps.tickDeps ?? {})
+  return { ok: true, planCapsule: capsule, candidateWorkItem, tickResult }
+}

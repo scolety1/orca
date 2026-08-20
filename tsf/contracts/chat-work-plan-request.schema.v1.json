@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tsf.local/contracts/chat-work-plan-request.schema.v1.json",
+  "title": "TSF Chat Work Plan Request V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "objective",
+    "decisions",
+    "allowedScope",
+    "constraints",
+    "prohibitedActions",
+    "relevantComponents",
+    "acceptanceCriteria",
+    "requiredTests",
+    "stopConditions"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "TSF_CHAT_WORK_PLAN_REQUEST_V1" },
+    "objective": { "type": "string", "minLength": 1, "maxLength": 8192 },
+    "decisions": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 4096 },
+      "maxItems": 64
+    },
+    "allowedScope": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 256
+    },
+    "constraints": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
+    "prohibitedActions": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
+    "relevantComponents": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
+    "acceptanceCriteria": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 256
+    },
+    "requiredTests": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
+    "stopConditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 256
+    }
+  }
+}
