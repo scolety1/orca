@@ -61,6 +61,29 @@ if (args[0] === 'repo' && args[1] === 'list') {
       terminal: toIndex === -1 ? null : args[toIndex + 1]
     }
   })
+} else if (args[0] === 'orchestration' && args[1] === 'worker-start') {
+  const taskIndex = args.indexOf('--task')
+  const worktreeIndex = args.indexOf('--worktree')
+  const agentIndex = args.indexOf('--agent')
+  const terminalIndex = args.indexOf('--terminal')
+  ok({
+    status: 'ready',
+    worker: {
+      taskId: taskIndex === -1 ? null : args[taskIndex + 1],
+      dispatchId: 'stub-worker-dispatch-id',
+      worktree: worktreeIndex === -1 ? null : args[worktreeIndex + 1],
+      agent: agentIndex === -1 ? null : args[agentIndex + 1],
+      agentTerminalHandle: terminalIndex === -1 ? 'stub-fresh-terminal' : args[terminalIndex + 1]
+    }
+  })
+} else if (args[0] === 'orchestration' && args[1] === 'worker-show') {
+  const dispatchIndex = args.indexOf('--dispatch')
+  ok({
+    worker: {
+      dispatchId: dispatchIndex === -1 ? null : args[dispatchIndex + 1],
+      status: 'ready'
+    }
+  })
 } else if (args[0] === 'orchestration' && args[1] === 'worker-list') {
   ok({ workers: seededWorkers })
 } else if (args[0] === 'orchestration' && args[1] === 'task-list') {

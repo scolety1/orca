@@ -196,6 +196,84 @@ export async function dispatchOrchestrationTask({ task, to, run, from, inject, d
   return runOrca(args)
 }
 
+// The preferred, supervised dispatch path (per Orca's own bundled
+// `orchestration` skill guide): composes worktree/terminal/readiness/
+// dispatch itself and reports real success/failure with diagnostics
+// (stage/effects/residualResources on a nonzero exit), unlike the
+// low-level `dispatch --inject` path (createOrchestrationTask +
+// dispatchOrchestrationTask above), which only records that a CLI call
+// succeeded, not that the target agent actually engaged with the task --
+// a real M2 live dogfood found two consecutive `--inject` dispatches sit
+// at status 'dispatched' forever (last_heartbeat_at: null, zero real
+// file changes) with no diagnostic signal at all. worker-start is now the
+// primitive the autonomous wave-dispatch loop uses for real dispatch.
+export async function startOrchestrationWorker({
+  task,
+  worktree,
+  agent,
+  terminal,
+  run,
+  model,
+  effort,
+  timeoutMs,
+  retryOf,
+  from
+} = {}) {
+  if (!task) {
+    return { ok: false, reason: 'INVALID_ARGS', detail: 'task is required' }
+  }
+  if (!worktree && !terminal) {
+    return { ok: false, reason: 'INVALID_ARGS', detail: 'worktree or terminal is required' }
+  }
+  if (!agent && !terminal) {
+    return {
+      ok: false,
+      reason: 'INVALID_ARGS',
+      detail: 'agent is required unless terminal is given'
+    }
+  }
+  const args = ['orchestration', 'worker-start', '--task', task]
+  if (worktree) {
+    args.push('--worktree', worktree)
+  }
+  if (agent) {
+    args.push('--agent', agent)
+  }
+  if (terminal) {
+    args.push('--terminal', terminal)
+  }
+  if (run) {
+    args.push('--run', run)
+  }
+  if (model) {
+    args.push('--model', model)
+  }
+  if (effort) {
+    args.push('--effort', effort)
+  }
+  if (timeoutMs) {
+    args.push('--timeout-ms', String(timeoutMs))
+  }
+  if (retryOf) {
+    args.push('--retry-of', retryOf)
+  }
+  if (from) {
+    args.push('--from', from)
+  }
+  return runOrca(args)
+}
+
+// Inspects one supervised worker Dispatch (started via worker-start) --
+// the documented status/diagnostics surface for that path, distinct from
+// listOrchestrationTasks (which serves the --inject path's task-status
+// polling above).
+export async function showOrchestrationWorker({ dispatch } = {}) {
+  if (!dispatch) {
+    return { ok: false, reason: 'INVALID_ARGS', detail: 'dispatch is required' }
+  }
+  return runOrca(['orchestration', 'worker-show', '--dispatch', dispatch])
+}
+
 // Terminal state is process/resource accounting, reported separately from
 // task status (a completed task can still own a live terminal) -- feeds
 // keep-going.mjs's detectStall via the caller's own heartbeat projection.

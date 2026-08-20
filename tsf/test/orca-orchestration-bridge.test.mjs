@@ -7,7 +7,9 @@ import {
   createOrchestrationTask,
   dispatchOrchestrationTask,
   listOrchestrationTasks,
-  listOrchestrationWorkers
+  listOrchestrationWorkers,
+  showOrchestrationWorker,
+  startOrchestrationWorker
 } from '../adapters/orca-orchestration-bridge.mjs'
 
 const HERE = import.meta.dirname
@@ -144,6 +146,75 @@ test('listOrchestrationTasks fails honestly when the forced CLI override does no
     const result = await listOrchestrationTasks({ run: 'run-1' })
     assert.equal(result.ok, false)
     assert.equal(result.reason, 'SPAWN_ERROR')
+  })
+})
+
+// --- startOrchestrationWorker (the preferred, supervised dispatch path) ---
+
+test('startOrchestrationWorker rejects a missing task before touching the CLI', async () => {
+  const result = await startOrchestrationWorker({ worktree: 'current', agent: 'codex' })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'INVALID_ARGS')
+})
+
+test('startOrchestrationWorker rejects neither worktree nor terminal given', async () => {
+  const result = await startOrchestrationWorker({ task: 'task-1', agent: 'codex' })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'INVALID_ARGS')
+})
+
+test('startOrchestrationWorker rejects agent missing when terminal is not given either', async () => {
+  const result = await startOrchestrationWorker({ task: 'task-1', worktree: 'current' })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'INVALID_ARGS')
+})
+
+test('startOrchestrationWorker passes --task/--worktree/--agent through for a fresh agent terminal', async () => {
+  await withEnv(STUBBED, async () => {
+    const result = await startOrchestrationWorker({
+      task: 'task-1',
+      worktree: 'current',
+      agent: 'codex'
+    })
+    assert.equal(result.ok, true)
+    assert.equal(result.result.status, 'ready')
+    assert.equal(result.result.worker.taskId, 'task-1')
+    assert.equal(result.result.worker.worktree, 'current')
+    assert.equal(result.result.worker.agent, 'codex')
+  })
+})
+
+test('startOrchestrationWorker allows --terminal instead of --worktree/--agent to reuse an existing terminal', async () => {
+  await withEnv(STUBBED, async () => {
+    const result = await startOrchestrationWorker({ task: 'task-1', terminal: 'term_abc' })
+    assert.equal(result.ok, true)
+    assert.equal(result.result.worker.agentTerminalHandle, 'term_abc')
+  })
+})
+
+test('startOrchestrationWorker surfaces a nonzero-exit failure honestly rather than fabricating readiness', async () => {
+  await withEnv({ ...STUBBED, STUB_ORCA_MODE: 'error' }, async () => {
+    const result = await startOrchestrationWorker({
+      task: 'task-1',
+      worktree: 'current',
+      agent: 'codex'
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'CLI_ERROR')
+  })
+})
+
+test('showOrchestrationWorker rejects a missing dispatch before touching the CLI', async () => {
+  const result = await showOrchestrationWorker({})
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'INVALID_ARGS')
+})
+
+test('showOrchestrationWorker passes --dispatch through', async () => {
+  await withEnv(STUBBED, async () => {
+    const result = await showOrchestrationWorker({ dispatch: 'ctx-1' })
+    assert.equal(result.ok, true)
+    assert.equal(result.result.worker.dispatchId, 'ctx-1')
   })
 })
 
