@@ -39,6 +39,20 @@ const DEFAULT_BUDGET = Object.freeze({
   stallThresholdMs: 30 * 60 * 1000
 })
 
+// How long a claimed tick lock is honored before it is treated as
+// abandoned (a crashed/hung tick that never released). Generous relative
+// to the orchestration bridge's own 15s CLI timeout so a normal tick
+// (a few sequential CLI round-trips) never trips it; small enough that a
+// genuinely stuck tick doesn't permanently wedge the run.
+export const TICK_LOCK_TIMEOUT_MS = 2 * 60 * 1000
+
+function isTickLockActive(run, clock) {
+  if (!run.tickLock) {
+    return false
+  }
+  return Date.parse(isoNow(clock)) - Date.parse(run.tickLock.claimedAt) <= TICK_LOCK_TIMEOUT_MS
+}
+
 function freezeGoal(statement, acceptanceCriteria) {
   if (!statement?.trim()) {
     throw new Error('goal statement is required')
@@ -80,6 +94,7 @@ export function createOvernightRun(
     revision: 0,
     waves: [],
     inFlightWave: null,
+    tickLock: null,
     orchestrationRunId: null,
     retryCounts: {},
     needsYou: [],
@@ -114,11 +129,33 @@ export function replaceGoal(
   return next
 }
 
-export function transitionRun(run, to, { reason, evidence = [], expectedRevision } = {}, clock) {
+export function transitionRun(
+  run,
+  to,
+  { reason, evidence = [], expectedRevision, tickInternal = false } = {},
+  clock
+) {
   if (!OVERNIGHT_RUN_STATES.includes(to)) {
     throw new Error(`unknown overnight run state: ${to}`)
   }
   assertExpectedRevision(run, expectedRevision)
+  // A live tick lock means an autonomous wave-dispatch tick currently owns
+  // this run's dispatch/settle mutations (see claimTick/releaseTick below).
+  // An external transition (operator pause/resume/etc.) while locked would
+  // race the tick's own eventual commit -- reject it outright rather than
+  // risk silently overwriting or being overwritten (a real, adversarially-
+  // tested gap: see docs/tsf/M2_KEEP_GOING_DESIGN_V1.md's concurrency
+  // hardening wave). tickInternal:true is set only by the tick's own
+  // in-progress calls (markStalled, the retry-budget NEEDS_YOU escalation)
+  // that are themselves part of the same commit releasing the lock -- they
+  // must not be rejected by the lock they are about to clear.
+  if (!tickInternal && isTickLockActive(run, clock)) {
+    const error = new Error(
+      `an autonomous tick (${run.tickLock.kind}) currently holds this run -- try again shortly`
+    )
+    error.code = 'TSF_TICK_IN_PROGRESS'
+    throw error
+  }
   if (!RUN_ALLOWED[run.state]?.includes(to)) {
     const error = new Error(`invalid overnight run transition: ${run.state} -> ${to}`)
     error.code = 'TSF_INVALID_RUN_TRANSITION'
@@ -146,13 +183,67 @@ export const completeRun = (run, clock) =>
   transitionRun(run, 'COMPLETE', { reason: 'ORIGINAL_GOAL_SATISFIED' }, clock)
 export const blockRun = (run, reason, evidence, clock) =>
   transitionRun(run, 'BLOCKED', { reason, evidence }, clock)
-export const markStalled = (run, stalledWorkers, clock) =>
+// tickInternal defaults false (an operator/external STALLED declaration is
+// blocked while a tick holds the lock, same as pause/resume) -- the tick's
+// own settleStep passes tickInternal:true since it is escalating STALLED
+// as part of releasing its own lock, not racing it.
+export const markStalled = (run, stalledWorkers, clock, tickInternal = false) =>
   transitionRun(
     run,
     'STALLED',
-    { reason: 'STALL_WATCHDOG_TRIGGERED', evidence: stalledWorkers.map((w) => w.dispatchId) },
+    {
+      reason: 'STALL_WATCHDOG_TRIGGERED',
+      evidence: stalledWorkers.map((w) => w.dispatchId),
+      tickInternal
+    },
     clock
   )
+
+// Claims exclusive ownership of this run's dispatch/settle mutations for
+// the duration of one tick's real Orca CLI round-trips (which can each
+// take up to the orchestration bridge's own timeout). Must happen in a
+// single synchronous read-check-write with the persisted store (see
+// tsf/server/keep-going-run-store.mjs) -- that is what actually prevents
+// two ticks from both starting real duplicate dispatch work, not this
+// function alone. A stale/abandoned lock (past TICK_LOCK_TIMEOUT_MS) is
+// treated as absent so a crashed tick cannot permanently wedge the run.
+export function claimTick(run, kind, clock, expectedRevision) {
+  assertExpectedRevision(run, expectedRevision)
+  if (run.state !== 'ACTIVE') {
+    const error = new Error(`cannot start a tick on a run that is ${run.state}, not ACTIVE`)
+    error.code = 'TSF_RUN_NOT_ACTIVE'
+    throw error
+  }
+  if (isTickLockActive(run, clock)) {
+    const error = new Error(`an autonomous tick (${run.tickLock.kind}) is already in progress`)
+    error.code = 'TSF_TICK_IN_PROGRESS'
+    throw error
+  }
+  const next = deepClone(run)
+  next.tickLock = { kind, claimedAt: isoNow(clock) }
+  next.revision += 1
+  next.updatedAt = isoNow(clock)
+  return next
+}
+
+// Releases a held tick lock. expectedRevision should be the revision the
+// caller's own commit just produced (self-consistent, not a fresh-read
+// check) -- callers combine this with their real domain mutation
+// (dispatchWave/settleInFlightWave/markStalled/raiseNeedsYou) inside one
+// synchronous store commit, not as a separate write.
+export function releaseTick(run, clock, expectedRevision) {
+  assertExpectedRevision(run, expectedRevision)
+  if (!run.tickLock) {
+    const error = new Error('no tick lock is held on this run')
+    error.code = 'TSF_NO_TICK_LOCK_HELD'
+    throw error
+  }
+  const next = deepClone(run)
+  next.tickLock = null
+  next.revision += 1
+  next.updatedAt = isoNow(clock)
+  return next
+}
 
 // A worker claiming "done" is never sufficient — verifiedSatisfied/blockers
 // must come from independently-verified evidence (VERIFIER_INDEPENDENT
@@ -378,7 +469,8 @@ export function raiseNeedsYou(
   run,
   { question, options = [], taskId = null },
   clock,
-  expectedRevision
+  expectedRevision,
+  tickInternal = false
 ) {
   if (!question?.trim()) {
     throw new Error('a question is required to raise Needs You')
@@ -413,7 +505,7 @@ export function raiseNeedsYou(
   return transitionRun(
     next,
     'NEEDS_YOU',
-    { reason: 'HUMAN_DECISION_REQUIRED', evidence: taskId ? [taskId] : [] },
+    { reason: 'HUMAN_DECISION_REQUIRED', evidence: taskId ? [taskId] : [], tickInternal },
     clock
   )
 }

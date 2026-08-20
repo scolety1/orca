@@ -21,23 +21,40 @@
 // current gap. That is a planning judgment (today: the operator or a
 // planner session), supplied by the caller -- this module refuses to
 // fabricate a plan when none is given.
+//
+// Concurrency model: every tick claims exclusive ownership of the run
+// (claimTick, tsf/domain/keep-going.mjs) via ONE synchronous compare-and-
+// swap (tsf/server/keep-going-run-store.mjs, atomic because loadState/
+// saveState are synchronous fs calls -- Node's single-threaded event loop
+// only yields at an await) *before* doing any real Orca CLI work, then
+// commits via a second synchronous CAS keyed on the revision the claim
+// produced. This is what actually prevents two overlapping ticks from both
+// starting real duplicate dispatch work (a plain "check revision once at
+// the end" cannot: by the time either tick reaches its own commit, both
+// may already have created real, duplicate Orca tasks). transitionRun
+// itself rejects external state changes (operator pause/resume/etc.)
+// while a tick holds the lock, so a pause request racing an in-flight tick
+// is cleanly rejected (409-shaped, retryable) rather than silently
+// dropped or silently overwritten by the tick's eventual commit.
 import {
   createOrchestrationRun,
   createOrchestrationTask,
   dispatchOrchestrationTask,
   listOrchestrationTasks
 } from '../adapters/orca-orchestration-bridge.mjs'
-import { assertExpectedRevision, isoNow } from '../domain/canonical.mjs'
+import { isoNow } from '../domain/canonical.mjs'
 import {
   checkpointRun,
+  claimTick,
   dispatchWave,
   markStalled,
   planWave,
   raiseNeedsYou,
   recordTaskAttempt,
+  releaseTick,
   settleInFlightWave
 } from '../domain/keep-going.mjs'
-import { keepGoingRunFor } from './keep-going-controller.mjs'
+import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
 
 const DEFAULT_ORCHESTRATION = Object.freeze({
   createOrchestrationRun,
@@ -46,8 +63,59 @@ const DEFAULT_ORCHESTRATION = Object.freeze({
   listOrchestrationTasks
 })
 
+const DEFAULT_STORE = Object.freeze({
+  readRun: readKeepGoingRun,
+  withRun: withKeepGoingRun
+})
+
 const COMPLETED_STATUSES = new Set(['completed', 'succeeded'])
 const FAILED_STATUSES = new Set(['failed', 'error'])
+
+function runNotFoundError() {
+  const error = new Error('no Keep Going run for this project')
+  error.code = 'TSF_RUN_NOT_FOUND'
+  return error
+}
+
+// Claims the tick lock via one synchronous CAS. Throws (never silently
+// no-ops) on any conflict -- the caller turns that into a clean, no-CLI-
+// work-attempted result.
+function claim(projectId, kind, clock, store) {
+  return store.withRun(projectId, (current) => {
+    if (!current) {
+      throw runNotFoundError()
+    }
+    return claimTick(current, kind, clock, current.revision)
+  })
+}
+
+// Commits the tick's real mutation via a second synchronous CAS, keyed on
+// the exact revision the claim produced -- if that no longer matches (the
+// lock was recovered as abandoned by another tick; see
+// TICK_LOCK_TIMEOUT_MS), the commit throws rather than silently clobbering
+// whatever the current holder has since done. mutateFn receives the FRESH
+// current run and must itself call releaseTick as its final step alongside
+// whatever domain mutation it applies.
+function commit(projectId, store, mutateFn) {
+  return store.withRun(projectId, mutateFn)
+}
+
+// A commit lost the CAS race (lock timed out and was recovered by another
+// tick, or some other conflict) -- report it honestly rather than retrying
+// unboundedly or silently discarding real Orca side effects already made.
+// Known, disclosed limitation: an orchestrationRunId/dispatchRecords
+// created by the losing tick are not automatically merged onto whatever
+// the winning tick produced (that would risk clobbering the winner's own,
+// already-persisted reference) -- they are surfaced here for an operator
+// or a future reconciliation pass, not silently lost from observability.
+function lostLockResult(action, error, orphaned) {
+  return {
+    action: `${action}_LOST_LOCK`,
+    reason: error.code ?? 'CONCURRENT_MODIFICATION',
+    detail: error.message,
+    ...orphaned
+  }
+}
 
 function trimPlanToDispatched(wavePlan, dispatchedWorkItemIds) {
   const dispatched = new Set(dispatchedWorkItemIds)
@@ -57,41 +125,43 @@ function trimPlanToDispatched(wavePlan, dispatchedWorkItemIds) {
   return { ...wavePlan, batches }
 }
 
-function saveRun(opState, projectId, run) {
-  return { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } }
-}
-
-async function dispatchStep(opState, projectId, run, candidateWorkItems, clock, orchestration) {
+async function dispatchStep(projectId, candidateWorkItems, clock, orchestration, store) {
   if (!Array.isArray(candidateWorkItems) || candidateWorkItems.length === 0) {
-    return { opState, action: 'NOOP', reason: 'no candidate work items available to plan a wave' }
+    return { action: 'NOOP', reason: 'no candidate work items available to plan a wave' }
   }
-  const wavePlan = planWave(run, candidateWorkItems, clock)
 
-  // Tracked separately from run.orchestrationRunId: a freshly-created real
-  // Orca orchestration Run must be persisted even if every task-create in
-  // this wave then fails, or it leaks -- forgotten by TSF but still real in
-  // Orca -- and gets recreated (another orphan) on every retrying tick.
-  let orchestrationRunId = run.orchestrationRunId
-  let workingRun = run
+  let claimed
+  try {
+    claimed = claim(projectId, 'DISPATCH', clock, store)
+  } catch (error) {
+    // Another tick already holds the lock, or the run is no longer
+    // ACTIVE/found -- no CLI work is attempted, so no duplicate dispatch.
+    return {
+      action: 'DISPATCH_CLAIM_FAILED',
+      reason: error.code ?? 'CLAIM_FAILED',
+      detail: error.message
+    }
+  }
+
+  const wavePlan = planWave(claimed, candidateWorkItems, clock)
+
+  // Tracked separately from claimed.orchestrationRunId: a freshly-created
+  // real Orca orchestration Run must be persisted even if every task-
+  // create in this wave then fails, or it leaks -- forgotten by TSF but
+  // still real in Orca -- and gets recreated on every retrying tick.
+  let orchestrationRunId = claimed.orchestrationRunId
   const orchestrationRunFreshlyCreated = !orchestrationRunId
   if (!orchestrationRunId) {
     const runResult = await orchestration.createOrchestrationRun({
-      objective: run.originalGoal.statement
+      objective: claimed.originalGoal.statement
     })
     if (!runResult.ok) {
-      return {
-        opState,
-        action: 'DISPATCH_FAILED',
+      return commitAbortedDispatch(projectId, store, claimed, clock, {
         reason: runResult.reason,
         detail: runResult.detail
-      }
+      })
     }
     orchestrationRunId = runResult.result.run.id
-    workingRun = checkpointRun(
-      { ...run, orchestrationRunId },
-      { phase: 'ORCHESTRATION_RUN_CREATED', evidence: [orchestrationRunId] },
-      clock
-    )
   }
 
   // Batches themselves must stay sequential (planWave puts conflicting
@@ -102,8 +172,7 @@ async function dispatchStep(opState, projectId, run, candidateWorkItems, clock, 
   // intent (it costs wall-clock dispatch latency, not correctness).
   // Deliberately not fixed this wave: correctly handling partial failure
   // among concurrently-dispatched items needs more care than the current
-  // sequential-with-early-return shape, and this bounded pass prioritized
-  // the correctness findings above it.
+  // sequential-with-early-return shape.
   const dispatchRecords = []
   for (const batch of wavePlan.batches) {
     for (const item of batch) {
@@ -113,20 +182,16 @@ async function dispatchStep(opState, projectId, run, candidateWorkItems, clock, 
         taskTitle: item.id
       })
       if (!taskResult.ok) {
-        return settlePartialDispatch(
-          opState,
-          workingRun,
+        return commitPartialOrAbortedDispatch(
+          projectId,
+          store,
+          claimed,
+          clock,
           wavePlan,
           dispatchRecords,
           orchestrationRunId,
           orchestrationRunFreshlyCreated,
-          {
-            failedItem: item.id,
-            reason: taskResult.reason,
-            detail: taskResult.detail
-          },
-          clock,
-          projectId
+          { failedItem: item.id, reason: taskResult.reason, detail: taskResult.detail }
         )
       }
       const taskId = taskResult.result.task.id
@@ -136,20 +201,16 @@ async function dispatchStep(opState, projectId, run, candidateWorkItems, clock, 
         run: orchestrationRunId
       })
       if (!dispatchResult.ok) {
-        return settlePartialDispatch(
-          opState,
-          workingRun,
+        return commitPartialOrAbortedDispatch(
+          projectId,
+          store,
+          claimed,
+          clock,
           wavePlan,
           dispatchRecords,
           orchestrationRunId,
           orchestrationRunFreshlyCreated,
-          {
-            failedItem: item.id,
-            reason: dispatchResult.reason,
-            detail: dispatchResult.detail
-          },
-          clock,
-          projectId
+          { failedItem: item.id, reason: dispatchResult.reason, detail: dispatchResult.detail }
         )
       }
       dispatchRecords.push({
@@ -161,102 +222,135 @@ async function dispatchStep(opState, projectId, run, candidateWorkItems, clock, 
     }
   }
 
-  return recordDispatchedWave(
-    opState,
+  return commitDispatchedWave(
     projectId,
-    workingRun,
+    store,
+    claimed,
+    clock,
     wavePlan,
     dispatchRecords,
     orchestrationRunId,
-    clock,
     'WAVE_DISPATCHED'
   )
+}
+
+// Nothing was dispatched at all (createOrchestrationRun itself failed) --
+// just release the lock; persist a freshly-created orchestrationRunId if
+// there somehow is one (there shouldn't be on this path, but mirrors the
+// partial-dispatch helper's own safety net for symmetry).
+function commitAbortedDispatch(projectId, store, claimed, clock, failure) {
+  try {
+    const next = commit(projectId, store, (current) =>
+      releaseTick(current, clock, claimed.revision)
+    )
+    return { action: 'DISPATCH_FAILED', run: next, ...failure }
+  } catch (error) {
+    return lostLockResult('DISPATCH_FAILED', error, {})
+  }
 }
 
 // A dispatch failure partway through a wave still leaves already-dispatched
 // real Orca tasks running -- silently dropping them would orphan live work
 // with no TSF-side record. Records exactly what was actually dispatched
 // (trimmed to only the successful items), not the full original plan.
-function settlePartialDispatch(
-  opState,
-  run,
+function commitPartialOrAbortedDispatch(
+  projectId,
+  store,
+  claimed,
+  clock,
   wavePlan,
   dispatchRecords,
   orchestrationRunId,
   orchestrationRunFreshlyCreated,
-  failure,
-  clock,
-  projectId
+  failure
 ) {
   if (dispatchRecords.length === 0) {
-    // Nothing dispatched, but if this tick just created a new real Orca
-    // orchestration Run, it must be persisted even on a total failure --
-    // otherwise it leaks (forgotten by TSF but still real in Orca) and gets
-    // recreated on every retrying tick. Reusing an already-known Run needs
-    // no new write here.
-    return orchestrationRunFreshlyCreated
-      ? { opState: saveRun(opState, projectId, run), action: 'DISPATCH_FAILED', run, ...failure }
-      : { opState, action: 'DISPATCH_FAILED', ...failure }
+    try {
+      const next = commit(projectId, store, (current) => {
+        let n = current
+        // Nothing dispatched, but if this tick just created a new real
+        // Orca orchestration Run, persist it even on a total failure --
+        // otherwise it leaks and gets recreated on every retrying tick.
+        if (orchestrationRunFreshlyCreated) {
+          n = { ...n, orchestrationRunId }
+        }
+        return releaseTick(n, clock, claimed.revision)
+      })
+      return { action: 'DISPATCH_FAILED', run: next, ...failure }
+    } catch (error) {
+      return lostLockResult('DISPATCH_FAILED', error, { orchestrationRunId })
+    }
   }
   const trimmedPlan = trimPlanToDispatched(
     wavePlan,
     dispatchRecords.map((r) => r.workItemId)
   )
-  return recordDispatchedWave(
-    opState,
+  return commitDispatchedWave(
     projectId,
-    run,
+    store,
+    claimed,
+    clock,
     trimmedPlan,
     dispatchRecords,
     orchestrationRunId,
-    clock,
     'WAVE_DISPATCHED_PARTIAL',
     failure
   )
 }
 
-function recordDispatchedWave(
-  opState,
+function commitDispatchedWave(
   projectId,
-  run,
+  store,
+  claimed,
+  clock,
   wavePlan,
   dispatchRecords,
   orchestrationRunId,
-  clock,
   action,
   failure = null
 ) {
-  let next = dispatchWave(run, wavePlan, dispatchRecords, clock, run.revision)
-  next = { ...next, orchestrationRunId }
-  next = checkpointRun(
-    next,
-    {
-      phase: action,
-      note: failure ? `stopped after failure on ${failure.failedItem}: ${failure.reason}` : null,
-      evidence: dispatchRecords.map((r) => r.taskId)
-    },
-    clock
-  )
-  return {
-    opState: saveRun(opState, projectId, next),
-    action,
-    run: next,
-    wavePlan,
-    dispatchRecords,
-    ...(failure ? { failure } : {})
+  try {
+    const next = commit(projectId, store, (current) => {
+      let n = dispatchWave(current, wavePlan, dispatchRecords, clock, claimed.revision)
+      n = { ...n, orchestrationRunId }
+      n = checkpointRun(
+        n,
+        {
+          phase: action,
+          note: failure
+            ? `stopped after failure on ${failure.failedItem}: ${failure.reason}`
+            : null,
+          evidence: dispatchRecords.map((r) => r.taskId)
+        },
+        clock
+      )
+      return releaseTick(n, clock, n.revision)
+    })
+    return { action, run: next, wavePlan, dispatchRecords, ...(failure ? { failure } : {}) }
+  } catch (error) {
+    return lostLockResult(action, error, { orchestrationRunId, dispatchRecords, wavePlan })
   }
 }
 
-async function settleStep(opState, projectId, run, clock, orchestration) {
-  const { inFlightWave, orchestrationRunId } = run
+async function settleStep(projectId, clock, orchestration, store) {
+  let claimed
+  try {
+    claimed = claim(projectId, 'SETTLE', clock, store)
+  } catch (error) {
+    return {
+      action: 'SETTLE_CLAIM_FAILED',
+      reason: error.code ?? 'CLAIM_FAILED',
+      detail: error.message
+    }
+  }
+
+  const { inFlightWave, orchestrationRunId } = claimed
   const tasksResult = await orchestration.listOrchestrationTasks({ run: orchestrationRunId })
   if (!tasksResult.ok) {
-    return {
-      opState,
-      action: 'SETTLE_CHECK_FAILED',
+    return commitReleaseOnly(projectId, store, claimed, clock, 'SETTLE_CHECK_FAILED', undefined, {
       reason: tasksResult.reason,
       detail: tasksResult.detail
-    }
+    })
   }
   const tasksById = new Map((tasksResult.result?.tasks ?? []).map((t) => [t.id, t]))
 
@@ -283,123 +377,135 @@ async function settleStep(opState, projectId, run, clock, orchestration) {
     // operator sees it, rather than looping WAVE_STILL_IN_FLIGHT forever
     // with no way out.
     const silentForMs = Date.parse(isoNow(clock)) - Date.parse(inFlightWave.dispatchedAt)
-    if (silentForMs > run.budget.stallThresholdMs) {
-      const stalled = markStalled(
-        run,
-        inFlightWave.dispatchRecords.filter((r) =>
-          outcomes.some((o) => o.workItemId === r.workItemId && o.outcome === 'PENDING')
-        ),
+    if (silentForMs > claimed.budget.stallThresholdMs) {
+      try {
+        const next = commit(projectId, store, (current) => {
+          const stalled = markStalled(
+            current,
+            inFlightWave.dispatchRecords.filter((r) =>
+              outcomes.some((o) => o.workItemId === r.workItemId && o.outcome === 'PENDING')
+            ),
+            clock,
+            true // tickInternal -- this tick still holds the lock it is releasing
+          )
+          return releaseTick(stalled, clock, stalled.revision)
+        })
+        return { action: 'WAVE_STALLED', run: next, outcomes }
+      } catch (error) {
+        return lostLockResult('WAVE_STALLED', error, {})
+      }
+    }
+    return commitReleaseOnly(projectId, store, claimed, clock, 'WAVE_STILL_IN_FLIGHT', outcomes)
+  }
+
+  // Captured by the mutateFn closure below rather than stashed on the run
+  // object itself -- the run returned from mutateFn is exactly what gets
+  // persisted (JSON.stringify'd), so any out-of-band signal must live
+  // outside it, not as a throwaway property that would otherwise leak into
+  // the saved state.
+  let retryBudgetExceededOut = []
+  try {
+    const next = commit(projectId, store, (current) => {
+      let n = current
+      const retryBudgetExceeded = []
+      for (const outcome of outcomes) {
+        try {
+          n = recordTaskAttempt(
+            n,
+            outcome.workItemId,
+            outcome.outcome === 'FAILED' ? 'RETRY' : 'COMPLETED',
+            clock,
+            n.revision
+          )
+        } catch (error) {
+          if (error.code === 'TSF_RETRY_BUDGET_EXCEEDED') {
+            retryBudgetExceeded.push(outcome.workItemId)
+          } else {
+            throw error
+          }
+        }
+      }
+
+      const waveResult = {
+        schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
+        outcomes,
+        settledAt: null
+      }
+      n = settleInFlightWave(n, { ...waveResult, settledAt: n.updatedAt }, clock, n.revision)
+      n = checkpointRun(
+        n,
+        { phase: 'WAVE_SETTLED', evidence: outcomes.map((o) => o.taskId) },
         clock
       )
-      return {
-        opState: saveRun(opState, projectId, stalled),
-        action: 'WAVE_STALLED',
-        run: stalled,
-        outcomes
+
+      if (retryBudgetExceeded.length > 0) {
+        // Reporting the breach alone doesn't stop anything: nothing
+        // prevents the caller from handing the same exhausted work item
+        // back in on the very next tick, immediately re-triggering the
+        // same breach forever. Escalate to a real NEEDS_YOU question so an
+        // operator actually sees it and the run stops silently spinning.
+        n = raiseNeedsYou(
+          n,
+          {
+            question: `Retry budget exceeded for work item(s): ${retryBudgetExceeded.join(', ')}. How should I proceed?`,
+            options: ['RETRY_ANYWAY', 'SKIP_AND_CONTINUE', 'BLOCK_RUN']
+          },
+          clock,
+          n.revision,
+          true // tickInternal
+        )
+        n = checkpointRun(
+          n,
+          { phase: 'RETRY_BUDGET_NEEDS_YOU', evidence: retryBudgetExceeded },
+          clock
+        )
       }
+      retryBudgetExceededOut = retryBudgetExceeded
+      return releaseTick(n, clock, n.revision)
+    })
+    return {
+      action: retryBudgetExceededOut.length > 0 ? 'WAVE_SETTLED_NEEDS_YOU' : 'WAVE_SETTLED',
+      run: next,
+      outcomes,
+      ...(retryBudgetExceededOut.length > 0 ? { retryBudgetExceeded: retryBudgetExceededOut } : {})
     }
-    return { opState, action: 'WAVE_STILL_IN_FLIGHT', outcomes }
+  } catch (error) {
+    return lostLockResult('WAVE_SETTLED', error, {})
   }
+}
 
-  let next = run
-  const retryBudgetExceeded = []
-  for (const outcome of outcomes) {
-    try {
-      next = recordTaskAttempt(
-        next,
-        outcome.workItemId,
-        outcome.outcome === 'FAILED' ? 'RETRY' : 'COMPLETED',
-        clock,
-        next.revision
-      )
-    } catch (error) {
-      if (error.code === 'TSF_RETRY_BUDGET_EXCEEDED') {
-        retryBudgetExceeded.push(outcome.workItemId)
-      } else {
-        throw error
-      }
-    }
-  }
-
-  const waveResult = { schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1', outcomes, settledAt: null }
-  next = settleInFlightWave(
-    next,
-    { ...waveResult, settledAt: next.updatedAt },
-    clock,
-    next.revision
-  )
-  next = checkpointRun(
-    next,
-    { phase: 'WAVE_SETTLED', evidence: outcomes.map((o) => o.taskId) },
-    clock
-  )
-
-  if (retryBudgetExceeded.length > 0) {
-    // Reporting the breach alone doesn't stop anything: nothing prevents
-    // the caller from handing the same exhausted work item back in on the
-    // very next tick, immediately re-triggering the same breach forever.
-    // Escalate to a real NEEDS_YOU question so an operator actually sees it
-    // and the run stops silently spinning.
-    next = raiseNeedsYou(
-      next,
-      {
-        question: `Retry budget exceeded for work item(s): ${retryBudgetExceeded.join(', ')}. How should I proceed?`,
-        options: ['RETRY_ANYWAY', 'SKIP_AND_CONTINUE', 'BLOCK_RUN']
-      },
-      clock
+function commitReleaseOnly(projectId, store, claimed, clock, action, outcomes, extra = {}) {
+  try {
+    const next = commit(projectId, store, (current) =>
+      releaseTick(current, clock, claimed.revision)
     )
-    next = checkpointRun(
-      next,
-      { phase: 'RETRY_BUDGET_NEEDS_YOU', evidence: retryBudgetExceeded },
-      clock
-    )
-  }
-
-  return {
-    opState: saveRun(opState, projectId, next),
-    action: retryBudgetExceeded.length > 0 ? 'WAVE_SETTLED_NEEDS_YOU' : 'WAVE_SETTLED',
-    run: next,
-    outcomes,
-    ...(retryBudgetExceeded.length > 0 ? { retryBudgetExceeded } : {})
+    return { action, run: next, ...(outcomes ? { outcomes } : {}), ...extra }
+  } catch (error) {
+    return lostLockResult(action, error, {})
   }
 }
 
 // Performs exactly one bounded step for one project's run: dispatch the next
 // wave, check an in-flight wave for settlement, or no-op. Never blocks
 // waiting for a worker to finish -- callers (an HTTP route, a manual
-// trigger, a future scheduled automation) invoke this repeatedly.
-//
-// expectedRevision (optional) is checked once, up front, against the
-// revision the caller observed before calling tick -- it catches a caller
-// acting on an already-stale read (an HTTP route racing another request
-// that landed first). It does NOT protect against a change landing on the
-// SAME in-memory run mid-tick: dispatchStep/settleStep hold that one `run`
-// object across several awaited real CLI round-trips (each up to the
-// bridge's own timeout), and the eventual dispatchWave/settleInFlightWave
-// calls pass the run's own (by-then-current-to-itself) revision, which
-// trivially always matches. Real protection against a concurrent write
-// landing mid-tick needs per-request atomic read-check-write at the
-// persistence layer -- the same still-open architectural gap already
-// disclosed for data-store.mjs (wave 8 finding 4, wave 11 findings 1/6),
-// not something this module solves on its own.
-export async function tickKeepGoingRun(
-  opState,
-  projectId,
-  candidateWorkItems,
-  clock,
-  orchestration = DEFAULT_ORCHESTRATION,
-  expectedRevision
-) {
-  const run = keepGoingRunFor(opState, projectId)
-  if (!run) {
-    return { opState, action: 'NOOP', reason: 'no Keep Going run for this project' }
+// trigger, a future scheduled automation) invoke this repeatedly. Always
+// operates on the CURRENT persisted run (via `store`, defaulting to the
+// real synchronous data-store-backed one) rather than a caller-supplied
+// snapshot -- see the module header for why that is what actually makes
+// concurrent ticks/pauses safe.
+export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, deps = {}) {
+  const orchestration = deps.orchestration ?? DEFAULT_ORCHESTRATION
+  const store = deps.store ?? DEFAULT_STORE
+
+  const before = store.readRun(projectId)
+  if (!before) {
+    return { action: 'NOOP', reason: 'no Keep Going run for this project' }
   }
-  assertExpectedRevision(run, expectedRevision)
-  if (run.state !== 'ACTIVE') {
-    return { opState, action: 'NOOP', reason: `run state is ${run.state}, not ACTIVE` }
+  if (before.state !== 'ACTIVE') {
+    return { action: 'NOOP', reason: `run state is ${before.state}, not ACTIVE` }
   }
-  if (run.inFlightWave) {
-    return settleStep(opState, projectId, run, clock, orchestration)
+  if (before.inFlightWave) {
+    return settleStep(projectId, clock, orchestration, store)
   }
-  return dispatchStep(opState, projectId, run, candidateWorkItems, clock, orchestration)
+  return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store)
 }

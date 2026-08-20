@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   checkpointRun,
+  claimTick,
   compareStateToGoal,
   completeRun,
   createOvernightRun,
@@ -13,6 +14,7 @@ import {
   raiseNeedsYou,
   recordTaskAttempt,
   recordWave,
+  releaseTick,
   replaceGoal,
   resolveNeedsYou,
   resumeRun,
@@ -440,6 +442,81 @@ test('dispatchWave/settleInFlightWave check expectedRevision before the in-fligh
     () => settleInFlightWave(run, {}, clock, 0),
     (error) => error.code === 'TSF_NO_IN_FLIGHT_WAVE'
   )
+})
+
+test('claimTick grants exclusive ownership; a second claim while active is rejected', () => {
+  let run = baseRun()
+  const locked = claimTick(run, 'DISPATCH', clock, 0)
+  assert.equal(locked.revision, 1)
+  assert.equal(locked.tickLock.kind, 'DISPATCH')
+  assert.throws(
+    () => claimTick(locked, 'SETTLE', clock, 1),
+    (error) => error.code === 'TSF_TICK_IN_PROGRESS'
+  )
+  const released = releaseTick(locked, clock, 1)
+  assert.equal(released.tickLock, null)
+  assert.equal(released.revision, 2)
+  // Once released, a fresh claim succeeds again.
+  const reclaimed = claimTick(released, 'DISPATCH', clock, 2)
+  assert.equal(reclaimed.tickLock.kind, 'DISPATCH')
+})
+
+test('claimTick only accepts an ACTIVE run and honors expectedRevision before the invariant', () => {
+  const run = baseRun()
+  const paused = pauseRun(run, 'operator pause', clock)
+  assert.throws(
+    () => claimTick(paused, 'DISPATCH', clock, paused.revision),
+    (error) => error.code === 'TSF_RUN_NOT_ACTIVE'
+  )
+  assert.throws(
+    () => claimTick(run, 'DISPATCH', clock, 99),
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+})
+
+test('a stale (abandoned) tick lock is treated as absent past TICK_LOCK_TIMEOUT_MS', () => {
+  const run = baseRun()
+  const locked = claimTick(run, 'DISPATCH', clock, 0)
+  const muchLater = () => new Date('2026-08-19T18:10:00.000Z') // 10 minutes later
+  // A fresh claim under the abandoned lock succeeds instead of throwing
+  // TSF_TICK_IN_PROGRESS -- a crashed tick must not permanently wedge the run.
+  const recovered = claimTick(locked, 'SETTLE', muchLater, 1)
+  assert.equal(recovered.tickLock.kind, 'SETTLE')
+})
+
+test('releaseTick requires a lock to actually be held', () => {
+  const run = baseRun()
+  assert.throws(
+    () => releaseTick(run, clock, 0),
+    (error) => error.code === 'TSF_NO_TICK_LOCK_HELD'
+  )
+})
+
+test('transitionRun (pause/resume/markStalled/raiseNeedsYou) rejects an external caller while a tick holds the lock', () => {
+  let run = baseRun()
+  run = claimTick(run, 'DISPATCH', clock, 0)
+  assert.throws(
+    () => pauseRun(run, 'operator pause', clock, run.revision),
+    (error) => error.code === 'TSF_TICK_IN_PROGRESS'
+  )
+  assert.throws(
+    () => markStalled(run, [{ dispatchId: 'd1' }], clock),
+    (error) => error.code === 'TSF_TICK_IN_PROGRESS'
+  )
+  assert.throws(
+    () => raiseNeedsYou(run, { question: 'Proceed?' }, clock, run.revision),
+    (error) => error.code === 'TSF_TICK_IN_PROGRESS'
+  )
+  // The tick's OWN internal escalation (tickInternal:true) is not blocked
+  // by the lock it currently holds -- it is part of releasing that lock.
+  const stalled = markStalled(run, [{ dispatchId: 'd1' }], clock, true)
+  assert.equal(stalled.state, 'STALLED')
+  const needsYou = raiseNeedsYou(run, { question: 'Proceed?' }, clock, run.revision, true)
+  assert.equal(needsYou.state, 'NEEDS_YOU')
+  // Once released, external transitions work normally again.
+  const released = releaseTick(run, clock, run.revision)
+  const paused = pauseRun(released, 'operator pause', clock, released.revision)
+  assert.equal(paused.state, 'PAUSED')
 })
 
 test('completeRun only reaches COMPLETE from ACTIVE, matching the gap-analysis stop decision', () => {

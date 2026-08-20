@@ -210,6 +210,95 @@ findings, addressed the same session:
 
 157/157 full suite GREEN after fixes, oxlint/oxfmt clean.
 
+## Wave 16: concurrency hardening (the tick's own mid-flight race)
+
+Wave 15b's finding 2 disclosed a real limitation rather than fixing it: the
+`expectedRevision` check on `tickKeepGoingRun` only compared a run's
+revision to itself, so it could not detect a state change landing on the
+same in-memory run while the tick's real Orca CLI round-trips were still
+in flight. Tim directed a bounded hardening wave on exactly this, before
+any further live dogfood.
+
+**Smallest safe concurrency model chosen:** a claim/commit lock built on
+one small synchronous compare-and-swap primitive, not a broad
+`data-store.mjs` rewrite.
+
+- `tsf/server/keep-going-run-store.mjs` (new, ~30 lines): `withKeepGoingRun`
+  wraps `data-store.mjs`'s `loadState()`/`saveState()` -- both synchronous
+  `fs` calls -- around one pure `mutateFn`. Because there is no `await`
+  between the load and the save, Node's single-threaded event loop cannot
+  interleave any other request's code into that window; this is what
+  actually provides atomicity, not the revision check alone.
+- `tsf/domain/keep-going.mjs` gains `tickLock` (`{ kind, claimedAt }` or
+  `null`) on the run, plus `claimTick`/`releaseTick`. A tick claims the
+  lock via one CAS *before* doing any real CLI work (preventing two ticks
+  from both starting real duplicate dispatch -- a plain "check revision
+  once at the end" cannot prevent that, since by the time either tick
+  reaches its own end-of-tick check both may already have created real,
+  duplicate Orca tasks), then commits its actual mutation plus
+  `releaseTick` via a second CAS keyed on the revision the claim produced.
+  A lock older than `TICK_LOCK_TIMEOUT_MS` (2 minutes, generous against the
+  bridge's 15s CLI timeout) is treated as abandoned so a crashed tick
+  cannot permanently wedge a run.
+- `transitionRun` itself rejects any external transition (operator pause/
+  resume/markStalled/raiseNeedsYou) while a live tick lock is held
+  (`TSF_TICK_IN_PROGRESS`), so a pause request racing an in-flight tick is
+  cleanly rejected -- not silently dropped, not silently overwritten by the
+  tick's eventual commit -- and simply succeeds once retried after the
+  (short-lived) lock clears. A `tickInternal` flag lets the tick's *own*
+  internal escalations (`markStalled`, the retry-budget `NEEDS_YOU`) pass
+  through the same lock they are themselves releasing, without being
+  rejected by it.
+- `tsf/server/keep-going-dispatch-loop.mjs` was restructured from a pure
+  `opState`-in/`opState`-out function into one that owns its own claim and
+  commit against an injectable `store` (defaulting to the real one,
+  faked in unit tests, real-store-backed in the adversarial concurrency
+  tests) -- a pure function handed a stale snapshot can never enforce
+  atomicity across its own awaits by construction, so this was a necessary
+  restructuring, not scope creep.
+- A commit that loses the CAS race (its claimed revision no longer
+  matches -- the lock was recovered as abandoned by another tick) reports
+  a `*_LOST_LOCK` result honestly, surfacing any real
+  `orchestrationRunId`/`dispatchRecords` it created for a future
+  reconciliation pass, rather than silently discarding them or retrying
+  unboundedly. Disclosed, not solved: it does not automatically re-adopt
+  those orphaned resources onto the winning tick's run (that risks
+  clobbering the winner's own reference) -- a known, bounded limitation of
+  this pass, consistent with the program's "disclose, don't fabricate"
+  discipline.
+
+**What this deliberately does not touch:** the pre-existing HTTP routes for
+start/pause/resume (`keep-going-http-routes.mjs`) still capture `opState`
+before `await readBody(req)` (wave 11 finding 1) rather than routing
+through `keep-going-run-store.mjs`. The adversarial tests below prove pause
+correctly rejects while locked using the *same* store primitive a hardened
+route would use, but wiring the actual HTTP routes to it is the necessary
+next step before the tick is ever exposed over HTTP -- recorded as a
+follow-up, not done in this bounded wave.
+
+**Adversarial tests added**, all GREEN:
+
+- `tsf/test/keep-going.test.mjs`: `claimTick`/`releaseTick` lifecycle,
+  ACTIVE-only + revision-first checks, abandoned-lock recovery,
+  `transitionRun`'s lock rejection for pause/markStalled/raiseNeedsYou and
+  its `tickInternal` bypass.
+- `tsf/test/keep-going-dispatch-loop.test.mjs`: rewritten for the new
+  `(projectId, candidateWorkItems, clock, { orchestration, store })`
+  signature (a fake in-memory store), plus a same-process two-overlapping-
+  ticks test proving the second is rejected before touching orchestration
+  at all.
+- `tsf/test/keep-going-dispatch-loop-concurrency.test.mjs` (new): the real
+  synchronous `data-store.mjs`-backed adversarial suite Tim required --
+  two DISPATCH ticks racing, two SETTLE ticks racing an already-in-flight
+  wave, a pause arriving mid-tick (rejected, then verified to still
+  succeed once the lock clears, and that a full tick completes unaffected
+  by the rejected pause attempt), and a tick that loses its lock to
+  abandonment-recovery *after* creating real Orca resources -- proving the
+  stale commit fails loudly and the winner's persisted state is never
+  corrupted.
+
+168/168 full suite GREEN, oxlint/oxfmt clean.
+
 ## Correction: `curly` lint is enforced on staged files
 
 Earlier in this wave, `tsf/domain/*.mjs` (including already-adopted files
