@@ -408,7 +408,7 @@
           "testsAdded": 17,
           "testsPassing": "17/17 new (3 domain: dispatchWave/settleInFlightWave lifecycle, idempotent replay, stale-revision rejection; 2 adapter: listOrchestrationTasks pass-through and honest CLI-unavailable failure; 12 orchestrator: NOOP paths for no-run/not-ACTIVE/no-candidates, stale-expectedRevision rejection, lazy orchestration-Run creation + reuse, dispatch, still-in-flight, settle on completed/failed, retry-budget-exceeded-reported-not-thrown, dispatch-failure and mid-wave-partial-dispatch-failure honesty); 153/153 full tsf suite GREEN (no regressions); oxlint clean; oxfmt clean.",
           "verifier": "SELF -- new module, thoroughly unit-tested via dependency-injected orchestration fakes (no live CLI/dispatch exercised this wave); scheduled for independent review and a live dogfood proof once fresh Codex capacity is confirmed",
-          "commit": null,
+          "commit": "fcf1fa327b4ca4e93a17edbdc86bf250c533804b",
           "deferredToNextWave": [
             "a live dogfood proving tickKeepGoingRun against the real orca CLI (gated on a fresh, trustworthy Codex capacity check -- the account snapshot was stale this wave)",
             "independent (non-SELF) review of this wave's new modules",
@@ -798,6 +798,14 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
+    "phase": "M2_WAVE_15_DISPATCH_LOOP_IMPLEMENTED",
+    "at": "2026-08-19T23:30:00-06:00",
+    "commit": "fcf1fa327b4ca4e93a17edbdc86bf250c533804b",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "Session recovery after the previous terminal closed post-RETURN_HANDOFF (see resumePreflight2 -- state was coherent/safe, tsf/main unaffected, Codex CLI healthy, Codex capacity snapshot stale so proceeded Claude-only). Implemented and unit-tested the autonomous wave-dispatch loop mechanism (tickKeepGoingRun in tsf/server/keep-going-dispatch-loop.mjs), the largest remaining M2 gap since wave 1: inFlightWave tracking + dispatchWave/settleInFlightWave in keep-going.mjs, listOrchestrationTasks in the orchestration bridge, and the orchestrator itself, all with dependency-injected-fake test coverage (17 new tests). 153/153 full tsf suite GREEN, oxlint/oxfmt clean. Verified intact via git cat-file immediately after commit; same pre-existing geometric-repack housekeeping failure as prior waves (GIT-HYGIENE-001), non-blocking. No live Codex dispatch attempted -- the mechanism is implemented and tested but not yet live-dogfooded, independently reviewed, or wired to an unattended trigger; see milestones[M2].waves[15] and nextSafeAction."
+  },
+  "priorDurableCheckpoint5": {
     "phase": "M2_EVENING_SPRINT_RETURN_HANDOFF",
     "at": "2026-08-19T22:10:00-06:00",
     "commit": "33a05424f28e49d299052a3790f47ef531c21edb",
