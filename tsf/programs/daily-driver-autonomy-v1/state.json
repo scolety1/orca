@@ -1390,7 +1390,21 @@
       ],
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started; depends on M2"]
+      "gaps": [
+        "Wave 1 (research/design) done -- see docs/tsf/M4_RUN_JOURNAL_RECOVERY_V1.md and waves[0]. 3 concrete gaps identified against the existing M2 durable state model: task/wave outcomes persisted as bare IDs, not compact content; no checkpoint call before pause; no recovery-summary surface after restart. Implementation, tests, and a real intentional-restart proof remain."
+      ],
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Research-first source inspection (per Tim's own standing execution model) before any M4 design/implementation: read keep-going.mjs's checkpoints[]/transitions[] hash-chained audit trail, keep-going-run-store.mjs's atomic file-backed persistence, and tickKeepGoingRun's settled-vs-in-flight routing. Confirmed M2 already provides most of M4's north star structurally (durable original goal, durable NEEDS_YOU, no code path that could ever repeat a settled wave) -- M4 is genuinely narrower than 'build a run journal from scratch.' Identified and documented 3 concrete, real gaps rather than a vague TODO: (1) checkpointRun's evidence field stores only task/dispatch IDs, not the compact wave-outcome content settleStep already computes and discards; (2) pauseRun/resumeRun call transitionRun only, never checkpointRun, so M4's own explicit 'checkpoint before provider/resource pause' criterion is not yet met; (3) no chat/Live-Work-Feed surface answers 'what happened while this was paused/the server was down' -- summarizeRun is a flat snapshot, not a since-last-seen diff. Wrote docs/tsf/M4_RUN_JOURNAL_RECOVERY_V1.md recording all 3 gaps, the fix approach for each (additive fields/call-sites only, no new persistence backend, no core state-machine change), and the required real proof: an actual process kill-and-restart against the safe scratch/fixture project, not a simulated one.",
+          "testsAdded": 0,
+          "testsPassing": "306/306 full tsf suite GREEN (unaffected -- research/design only, no code changed)",
+          "verifier": "SELF",
+          "commit": null,
+          "status": "IN_PROGRESS",
+          "note": "Next: implement gap 1 (compact wave-outcome persistence), gap 2 (checkpoint-before-pause), gap 3 (recovery-summary chat surface), each with real tests, following the same bounded-wave/independent-review/checkpoint discipline used throughout M2 and M3. Then the required real kill-and-restart proof. Then packaging/adoption if GREEN."
+        }
+      ]
     },
     {
       "id": "M5",
