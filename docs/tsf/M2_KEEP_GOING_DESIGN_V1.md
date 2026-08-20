@@ -107,6 +107,62 @@ full suite 102/102 GREEN, no regressions):
 5. Capability ledger update for the relevant `MSN-*`/`WRK-*` rows —
    batched at milestone completion rather than every wave, to avoid churn.
 
+## Wave 15: the autonomous wave-dispatch loop
+
+`tsf/server/keep-going-dispatch-loop.mjs` (`tickKeepGoingRun`) closes the
+long-standing gap noted above (waves 1, 6, 8, 11): a UI-started run
+previously sat at 0 waves forever because nothing drove `planWave`/
+`recordWave` against live Orca workers. One `tickKeepGoingRun` call performs
+exactly one bounded, idempotent step for one project's run:
+
+- **No run, or run not `ACTIVE`**: `NOOP` (never touches a paused/blocked/
+  complete run).
+- **No wave currently out** (`run.inFlightWave` is `null`): plans the next
+  wave (`planWave`) against caller-supplied candidate work items, lazily
+  creates the Orca orchestration Run on first dispatch
+  (`createOrchestrationRun`), then `createOrchestrationTask` +
+  `dispatchOrchestrationTask` per work item (the real
+  `orca-orchestration-bridge.mjs` calls wave 11 proved against the live CLI),
+  and records the wave as in flight (`dispatchWave`, a new domain function —
+  does **not** append to `run.waves` yet, so a crash between dispatch and
+  settle leaves the run re-checkable rather than losing or double-counting
+  the wave). A mid-wave dispatch failure records only the items actually
+  dispatched (trimmed plan), never silently orphaning a real Orca task with
+  no TSF-side record.
+- **A wave is out** (`run.inFlightWave` set): polls `orchestration
+  task-list` (not `worker-list` — wave 11's dogfood found `worker-list` only
+  tracks `worker-start`-launched workers, not tasks dispatched into a
+  pre-existing terminal) for each dispatched task's status. Still pending →
+  `WAVE_STILL_IN_FLIGHT`, no state change. All terminal → records a
+  `recordTaskAttempt` per outcome (keyed by the work item id, not the Orca
+  task id, since a retry creates a new Orca task for the same logical work
+  item), settles the wave (`settleInFlightWave`, clears `inFlightWave`), and
+  checkpoints.
+
+**Deliberately not done by this loop, disclosed rather than glossed over:**
+
+1. **No independent verification.** Orca reporting a task `completed` is
+   the worker's own claim. This loop never marks an acceptance criterion
+   `verifiedSatisfied` from that alone — doing so would be exactly the
+   "worker self-report treated as done" the charter forbids (Section F).
+   `projectKeepGoingRun`'s gap analysis still honestly passes
+   `verifiedSatisfied: []` until a real independent verifier pass exists;
+   wiring one in is separate future work.
+2. **No candidate-work-item generation.** Deciding *what* work items exist
+   for the current gap is a planning judgment, still supplied by the
+   caller (today: an operator or planner session) — this loop refuses to
+   plan a wave when none are given rather than fabricating one.
+3. **No registered recurring trigger.** `automations create --trigger
+   cron|rrule|preset` (the native primitive named at wave 1) is the
+   intended way to fire `tickKeepGoingRun` unattended, but registering a
+   standing, always-firing local automation is a separate decision with
+   its own interval/safety tradeoffs (how often, what stop conditions, what
+   happens if Orca is closed) — not made by this wave. Today the function
+   is only reachable by direct call (proven by
+   `tsf/test/keep-going-dispatch-loop.test.mjs`'s dependency-injected
+   orchestration fakes); an HTTP "run now" route and/or the automation
+   registration itself are the next deferred step.
+
 ## Correction: `curly` lint is enforced on staged files
 
 Earlier in this wave, `tsf/domain/*.mjs` (including already-adopted files

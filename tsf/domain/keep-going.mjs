@@ -79,6 +79,8 @@ export function createOvernightRun(
     state: 'ACTIVE',
     revision: 0,
     waves: [],
+    inFlightWave: null,
+    orchestrationRunId: null,
     retryCounts: {},
     needsYou: [],
     checkpoints: [],
@@ -272,6 +274,60 @@ export function recordWave(run, wavePlan, waveResult, clock, expectedRevision) {
   assertExpectedRevision(run, expectedRevision)
   const next = deepClone(run)
   next.waves.push({ digest, wavePlan, waveResult, recordedAt: isoNow(clock) })
+  next.revision += 1
+  next.updatedAt = isoNow(clock)
+  return next
+}
+
+// Records that a planned wave has been handed to real Orca workers but has
+// not yet settled -- the missing link for the autonomous wave-dispatch loop
+// (a UI-started run previously sat at 0 waves forever because nothing
+// tracked "a wave is currently out being worked"). Does NOT append to
+// run.waves yet; that only happens once settleInFlightWave records real
+// outcomes, so a crash between dispatch and settle leaves the run
+// re-checkable (inFlightWave still present) rather than silently losing the
+// wave or double-counting it.
+export function dispatchWave(run, wavePlan, dispatchRecords, clock, expectedRevision) {
+  if (run.inFlightWave) {
+    const error = new Error('a wave is already in flight for this run')
+    error.code = 'TSF_WAVE_ALREADY_IN_FLIGHT'
+    throw error
+  }
+  if (!Array.isArray(dispatchRecords) || dispatchRecords.length === 0) {
+    throw new Error('at least one dispatch record is required')
+  }
+  assertExpectedRevision(run, expectedRevision)
+  const next = deepClone(run)
+  next.inFlightWave = {
+    wavePlan,
+    dispatchRecords: [...dispatchRecords],
+    dispatchedAt: isoNow(clock)
+  }
+  next.revision += 1
+  next.updatedAt = isoNow(clock)
+  return next
+}
+
+// Settles the currently in-flight wave against real task outcomes and clears
+// inFlightWave. Reuses recordWave's idempotent-by-digest append inline
+// (rather than calling recordWave itself) so clearing inFlightWave and
+// appending the wave record share one revision bump -- clearing inFlightWave
+// is always a real state change here (the wave was, by definition, still
+// out), unlike recordWave's own true no-op replay case.
+export function settleInFlightWave(run, waveResult, clock, expectedRevision) {
+  if (!run.inFlightWave) {
+    const error = new Error('no in-flight wave to settle')
+    error.code = 'TSF_NO_IN_FLIGHT_WAVE'
+    throw error
+  }
+  assertExpectedRevision(run, expectedRevision)
+  const wavePlan = run.inFlightWave.wavePlan
+  const digest = sha256({ wavePlan, waveResult })
+  const next = deepClone(run)
+  next.inFlightWave = null
+  if (!next.waves.some((wave) => wave.digest === digest)) {
+    next.waves.push({ digest, wavePlan, waveResult, recordedAt: isoNow(clock) })
+  }
   next.revision += 1
   next.updatedAt = isoNow(clock)
   return next

@@ -6,6 +6,7 @@ import {
   createOrchestrationRun,
   createOrchestrationTask,
   dispatchOrchestrationTask,
+  listOrchestrationTasks,
   listOrchestrationWorkers
 } from '../adapters/orca-orchestration-bridge.mjs'
 
@@ -122,6 +123,25 @@ test('listOrchestrationWorkers returns the stubbed worker list unfiltered', asyn
 test('listOrchestrationWorkers fails honestly when the forced CLI override does not exist', async () => {
   await withEnv({ TSF_ORCA_CLI_COMMAND: NONEXISTENT }, async () => {
     const result = await listOrchestrationWorkers({ run: 'run-1' })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'SPAWN_ERROR')
+  })
+})
+
+// --- listOrchestrationTasks ---
+
+test('listOrchestrationTasks returns the stubbed task list, scoped by --run when given', async () => {
+  const tasks = [{ id: 'task-1', status: 'completed' }]
+  await withEnv({ ...STUBBED, STUB_ORCA_TASKS: JSON.stringify(tasks) }, async () => {
+    const result = await listOrchestrationTasks({ run: 'run-1' })
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.result.tasks, tasks)
+  })
+})
+
+test('listOrchestrationTasks fails honestly when the forced CLI override does not exist', async () => {
+  await withEnv({ TSF_ORCA_CLI_COMMAND: NONEXISTENT }, async () => {
+    const result = await listOrchestrationTasks({ run: 'run-1' })
     assert.equal(result.ok, false)
     assert.equal(result.reason, 'SPAWN_ERROR')
   })

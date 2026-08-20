@@ -5,6 +5,7 @@ const args = process.argv.slice(2)
 const mode = process.env.STUB_ORCA_MODE || 'success'
 const seededRepos = process.env.STUB_ORCA_REPOS ? JSON.parse(process.env.STUB_ORCA_REPOS) : []
 const seededWorkers = process.env.STUB_ORCA_WORKERS ? JSON.parse(process.env.STUB_ORCA_WORKERS) : []
+const seededTasks = process.env.STUB_ORCA_TASKS ? JSON.parse(process.env.STUB_ORCA_TASKS) : []
 
 function ok(result) {
   process.stdout.write(JSON.stringify({ id: 'stub', ok: true, result }))
@@ -62,6 +63,8 @@ if (args[0] === 'repo' && args[1] === 'list') {
   })
 } else if (args[0] === 'orchestration' && args[1] === 'worker-list') {
   ok({ workers: seededWorkers })
+} else if (args[0] === 'orchestration' && args[1] === 'task-list') {
+  ok({ tasks: seededTasks })
 } else if (args[0] === 'orchestration' && args[1] === 'gate-create') {
   const taskIndex = args.indexOf('--task')
   const questionIndex = args.indexOf('--question')

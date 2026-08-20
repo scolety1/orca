@@ -210,6 +210,19 @@ export async function listOrchestrationWorkers({ run, terminalState } = {}) {
   return runOrca(args)
 }
 
+// Task status (pending/dispatched/completed/failed/...) is the correct
+// supervision surface for a dispatch made into a pre-existing terminal --
+// worker-list only tracks resource accounting for `worker-start`-launched
+// workers (wave 11 dogfood finding). The autonomous wave-dispatch loop polls
+// this, not worker-list, to decide when an in-flight wave has settled.
+export async function listOrchestrationTasks({ run } = {}) {
+  const args = ['orchestration', 'task-list']
+  if (run) {
+    args.push('--run', run)
+  }
+  return runOrca(args)
+}
+
 // Needs You / human decision gate -- blocks a task until gate-resolve.
 export async function createOrchestrationGate({ task, question, options, from } = {}) {
   if (!task || !question?.trim()) {

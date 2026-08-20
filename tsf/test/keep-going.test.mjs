@@ -6,6 +6,7 @@ import {
   completeRun,
   createOvernightRun,
   detectStall,
+  dispatchWave,
   markStalled,
   pauseRun,
   planWave,
@@ -15,6 +16,7 @@ import {
   replaceGoal,
   resolveNeedsYou,
   resumeRun,
+  settleInFlightWave,
   summarizeRun,
   transitionRun
 } from '../domain/keep-going.mjs'
@@ -339,6 +341,71 @@ test('summarizeRun produces a concise morning/return summary', () => {
   assert.equal(summary.state, 'NEEDS_YOU')
   assert.equal(summary.openNeedsYou.length, 1)
   assert.equal(summary.lastCheckpoint.phase, 'WAVE_1_PLANNED')
+})
+
+test('dispatchWave records a wave as in flight without appending it to waves yet; settleInFlightWave clears it', () => {
+  let run = baseRun()
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  run = dispatchWave(run, plan, dispatchRecords, clock, 0)
+  assert.equal(run.revision, 1)
+  assert.equal(run.waves.length, 0, 'not settled yet -- must not appear as a completed wave')
+  assert.equal(run.inFlightWave.dispatchRecords.length, 1)
+
+  // A second wave cannot be dispatched while one is already out.
+  assert.throws(
+    () => dispatchWave(run, plan, dispatchRecords, clock),
+    (error) => error.code === 'TSF_WAVE_ALREADY_IN_FLIGHT'
+  )
+
+  const waveResult = { outcomes: [{ workItemId: 't1', outcome: 'COMPLETED' }] }
+  run = settleInFlightWave(run, waveResult, clock, 1)
+  assert.equal(run.revision, 2)
+  assert.equal(run.inFlightWave, null)
+  assert.equal(run.waves.length, 1)
+  assert.equal(run.waves[0].waveResult, waveResult)
+
+  // Settling again with nothing in flight is a real error, not a silent no-op.
+  assert.throws(
+    () => settleInFlightWave(run, waveResult, clock),
+    (error) => error.code === 'TSF_NO_IN_FLIGHT_WAVE'
+  )
+})
+
+test('settleInFlightWave is idempotent by (plan, result) digest, same as recordWave', () => {
+  let run = baseRun()
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  run = dispatchWave(run, plan, dispatchRecords, clock)
+  const waveResult = { outcomes: [{ workItemId: 't1', outcome: 'COMPLETED' }] }
+  run = settleInFlightWave(run, waveResult, clock)
+  assert.equal(run.waves.length, 1)
+  // Re-dispatch + re-settle the exact same (plan, result) -- the digest match
+  // must not duplicate the wave record, matching recordWave's own contract.
+  run = dispatchWave(run, plan, dispatchRecords, clock)
+  run = settleInFlightWave(run, waveResult, clock)
+  assert.equal(run.waves.length, 1)
+})
+
+test('dispatchWave and settleInFlightWave reject a stale expectedRevision', () => {
+  const run = baseRun()
+  const plan = planWave(run, [{ id: 't1', scope: ['src/a.mjs'] }], clock)
+  const dispatchRecords = [
+    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }
+  ]
+  assert.throws(
+    () => dispatchWave(run, plan, dispatchRecords, clock, 5),
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
+  const dispatched = dispatchWave(run, plan, dispatchRecords, clock, 0)
+  assert.throws(
+    () => settleInFlightWave(dispatched, {}, clock, 5),
+    (error) => error.code === 'TSF_STALE_REVISION'
+  )
 })
 
 test('completeRun only reaches COMPLETE from ACTIVE, matching the gap-analysis stop decision', () => {
