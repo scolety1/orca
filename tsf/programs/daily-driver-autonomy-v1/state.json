@@ -1163,7 +1163,7 @@
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": [
-        "The UI Live Work Feed component and the live fixture dogfood proof (with all \"also prove\" items Tim specified) are still pending -- see the design doc's rollout waves."
+        "Also-prove items remaining: a worker question surfacing as Needs You, a bounded revision request, stalled/failed worker recovery reuse -- likely provable via HTTP-level tests. Then: independent review of waves 5-6, the live fixture dogfood proof (real Codex dispatch), Tim's manual UI acceptance checklist, final packaging/adoption."
       ],
       "priority": "HIGHEST",
       "northStar": "Tim stays inside the TSF UI and says something natural in Planner Chat (\"Fix this,\" \"go ahead,\" \"build that,\" \"do the recommended next step\"). TSF understands the selected project/context, classifies intent and authority, has the planner create a bounded implementation plan, creates a real Orca Run/tasks using the already-adopted M2 orchestration/Keep Going primitives (not a second worker loop), dispatches Codex workers, supervises/retries/recovers via M2, surfaces real progress in TSF, routes genuine questions into Needs You, independently verifies substantive results, and stops consequential work at exact-candidate adoption.",
@@ -1247,6 +1247,25 @@
           "commit": "ac884e889",
           "status": "INDEPENDENTLY_VERIFIED_CLEAN",
           "note": "A new regression test for finding 3 deterministically forces the exact race outcome (an earlier, timing-based Promise.all version was confirmed to be a false positive -- it passed even against the unfixed code, since the fake store's synchronous withRun has no yield point for two concurrent calls to actually interleave in practice). Confirmed genuine by reverting the fix and observing the new test fail with the exact uncaught error, then restoring it and confirming green again. No outstanding findings remain against M3 waves 1-4. Next: the UI Live Work Feed component, then the live fixture dogfood proof."
+        },
+        {
+          "wave": 5,
+          "summary": "Built the UI Live Work Feed component. tsf/ui/src/lib/live-work-feed.ts (new): client-side mirror of the domain state mapping, adapted to KeepGoingRunView's own fields (state/phase/gap/openNeedsYou -- the real server projection, not raw domain internals). Tested directly via tsf/test/live-work-feed-ui.test.mjs, which runs the .ts module through Node's native TypeScript support -- no bundler/test framework was added to tsf/ui (it has none today; inventing one just for this would repeat the exact mistake the M2 acceptance investigation explicitly rejected). 14 tests. tsf/ui/src/components/keep-going/LiveWorkFeed.tsx (new): renders the 9 states as a badge + honest reason text, with a \"Drill down\" disclosure showing phase/waves-completed/the real orchestrationRunId and the exact orca CLI command to inspect it further -- Tim should not normally need this, but it is real, copyable detail, not a fabricated or non-functional \"Open in Orca\" button. keep-going-controller.mjs now exposes the run's real orchestrationRunId (null until a wave has actually dispatched). Wired into KeepGoingPanel.tsx's existing LiveRun render, reusing data already fetched -- no new API call.",
+          "testsAdded": 16,
+          "testsPassing": "292/292 full tsf suite GREEN",
+          "verifier": "SELF; tsf/ui production build confirmed to succeed",
+          "commit": "b98dc74c1",
+          "status": "IN_PROGRESS"
+        },
+        {
+          "wave": 6,
+          "summary": "\"What is it doing?\" now answers from the real, live Keep Going run once one exists, not the old pre-M2 mission/candidate/release model. chat-responder.mjs's respond() takes an optional (run, gap) pair; when present and intent is STATUS/NEXT_ACTION, answers deterministically from projectLiveWorkFeedState(run, gap) -- NEXT_ACTION points at the real existing affordance for each state (Resume, Abandon stalled wave, the Adoption surface) or the run's actual open Needs You question, never a fictional one. Also added \"what is it doing?\" itself to the STATUS pattern -- Tim's own exact north-star follow-up phrasing wasn't previously recognized at all. http-server.mjs's chat route looks up the real run once per request and answers STATUS/NEXT_ACTION from it directly, bypassing the live conversational planner entirely for these intents -- that path's own project-context capsule has zero awareness of Keep Going state today, so routing a status question through it risked an uninformed answer about work actually in progress. Proved two more items on Tim's \"also prove\" checklist with real HTTP-level tests: a follow-up \"what is it doing?\" after a genuine dispatch answers from live state, not a canned reply; and project switching cannot leak one project's Keep Going dispatch state or chat history into another's.",
+          "testsAdded": 5,
+          "testsPassing": "297/297 full tsf suite GREEN",
+          "verifier": "SELF (stub/HTTP-level tested); independent review of waves 5-6 to be commissioned before the live dogfood proof",
+          "commit": "4044c6f6b",
+          "status": "IN_PROGRESS",
+          "note": "Also-prove checklist progress: done -- no duplicate dispatch, authority interception, follow-up status query, project-switching isolation. Remaining -- a worker question surfacing as Needs You, a bounded revision request, stalled/failed worker recovery reuse (all can likely be proven via HTTP-level tests without needing Tim's manual click-through, matching the same methodology). Then: independent review, the live fixture dogfood proof itself (real Codex dispatch, matching M2's own live-dogfood discipline -- check live capacity via orca account list --json first), Tim's manual UI acceptance checklist (mirroring M2's own investigation: no compliant automated mechanism exists for tsf/ui's own rendered UI), final packaging/adoption."
         }
       ]
     },
@@ -1684,12 +1703,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M3_WAVE_4_INDEPENDENT_REVIEW_CLEAN",
-    "at": "2026-08-20T21:13:36.894Z",
-    "commit": "ac884e889",
+    "phase": "M3_WAVE_6_LIVE_WORK_FEED_UI_AND_STATUS_GROUNDING_COMPLETE",
+    "at": "2026-08-20T21:28:43.304Z",
+    "commit": "4044c6f6b",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "M3 wave 4: independent review of waves 1-3 found 3 real issues (an unenforced-but-mislabeled prohibited-actions floor, a fictional \"resolve Needs You\" affordance in an error message, and an uncaught exception on the losing side of a real concurrency race), all fixed and re-verified. 277/277 suite green. No outstanding findings. Next: the UI Live Work Feed component, then the live fixture dogfood proof."
+    "note": "M3 waves 5-6: built the Live Work Feed UI component (tsf/ui/src/components/keep-going/LiveWorkFeed.tsx), grounded \"what is it doing?\" in the real live Keep Going run, and proved 2 more \"also prove\" checklist items (follow-up status query, project-switching isolation) via real HTTP-level tests. 297/297 suite green. Remaining also-prove items: Needs You surfacing from a real worker question, a bounded revision request, stalled-worker recovery reuse. Then: independent review, the live fixture dogfood proof, Tim's manual UI acceptance checklist, final packaging/adoption."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -2003,5 +2022,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "M3 wave 3: real repository-identity resolution + HTTP wiring for chat -> dispatch, opt-in via an explicit placement field. Found and fixed a real bug (a stale opState snapshot in POST /api/chat silently erasing a freshly-created Keep Going run) via genuine HTTP-level integration testing. 275/275 suite green. Next: independent review, then the UI Live Work Feed component, then the live fixture dogfood proof."
+  },
+  "priorDurableCheckpoint33": {
+    "phase": "M3_WAVE_4_INDEPENDENT_REVIEW_CLEAN",
+    "at": "2026-08-20T21:13:36.894Z",
+    "commit": "ac884e889",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "M3 wave 4: independent review of waves 1-3 found 3 real issues (an unenforced-but-mislabeled prohibited-actions floor, a fictional \"resolve Needs You\" affordance in an error message, and an uncaught exception on the losing side of a real concurrency race), all fixed and re-verified. 277/277 suite green. No outstanding findings. Next: the UI Live Work Feed component, then the live fixture dogfood proof."
   }
 }
