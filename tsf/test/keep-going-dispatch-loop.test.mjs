@@ -317,7 +317,15 @@ test('a dispatch failure on an already-known orchestrationRunId does not touch i
 
 test('a mid-wave dispatch failure records only the items actually dispatched, trimming the plan honestly', async () => {
   const store = makeFakeStore(baseRun({ budget: { maxConcurrentWorkers: 1 } }))
-  const result = await tickKeepGoingRun(PROJECT_ID, twoItems, clock, {
+  // Distinct explicit worktrees -- twoItems both defaulting to 'current'
+  // would (correctly) be refused by the placement-collision guard before
+  // either ever reached createOrchestrationTask, which is not what this
+  // test means to exercise.
+  const twoItemsDistinctPlacement = [
+    { id: 't1', scope: ['src/a.mjs'], worktree: 'C:/repo/wt1' },
+    { id: 't2', scope: ['src/b.mjs'], worktree: 'C:/repo/wt2' }
+  ]
+  const result = await tickKeepGoingRun(PROJECT_ID, twoItemsDistinctPlacement, clock, {
     orchestration: okOrchestration({
       createOrchestrationTask: async ({ taskTitle }) => {
         if (taskTitle === 't2') {
@@ -429,6 +437,62 @@ test('two independent items in the same batch with distinct explicit worktrees d
   })
   assert.equal(result.action, 'WAVE_DISPATCHED')
   assert.equal(result.dispatchRecords.length, 2)
+})
+
+test('two overlapping-scope items forced into SEPARATE batches, both defaulting to worktree "current", are still refused as a collision (checked across the whole wave, not per batch)', async () => {
+  const store = makeFakeStore(baseRun({ budget: { maxConcurrentWorkers: 2 } }))
+  let startCalls = 0
+  const overlappingScopeItems = [
+    { id: 't1', scope: ['src/shared.mjs'] },
+    { id: 't2', scope: ['src/shared.mjs'] }
+  ]
+  const result = await tickKeepGoingRun(PROJECT_ID, overlappingScopeItems, clock, {
+    orchestration: okOrchestration({
+      startOrchestrationWorker: async (args) => {
+        startCalls += 1
+        return { ok: true, result: { taskId: args.task, dispatchId: 'ctx-1', state: 'ready' } }
+      }
+    }),
+    store
+  })
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.reason, 'UNSAFE_PLACEMENT_COLLISION')
+  assert.equal(startCalls, 0)
+})
+
+test('two items reusing the identical existing workerTerminal collide too, not just fresh-worktree placements', async () => {
+  const store = makeFakeStore(baseRun())
+  let startCalls = 0
+  const sameTerminalItems = [
+    { id: 't1', scope: ['src/a.mjs'], workerTerminal: 'term_existing' },
+    { id: 't2', scope: ['src/b.mjs'], workerTerminal: 'term_existing' }
+  ]
+  const result = await tickKeepGoingRun(PROJECT_ID, sameTerminalItems, clock, {
+    orchestration: okOrchestration({
+      startOrchestrationWorker: async (args) => {
+        startCalls += 1
+        return { ok: true, result: { taskId: args.task, dispatchId: 'ctx-1', state: 'ready' } }
+      }
+    }),
+    store
+  })
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.reason, 'UNSAFE_PLACEMENT_COLLISION')
+  assert.equal(startCalls, 0)
+})
+
+test('worktree collision detection normalizes slash direction and case (Windows path variants)', async () => {
+  const store = makeFakeStore(baseRun())
+  const windowsVariantItems = [
+    { id: 't1', scope: ['src/a.mjs'], worktree: 'C:/Repo/WT1' },
+    { id: 't2', scope: ['src/b.mjs'], worktree: 'c:\\repo\\wt1\\' }
+  ]
+  const result = await tickKeepGoingRun(PROJECT_ID, windowsVariantItems, clock, {
+    orchestration: okOrchestration(),
+    store
+  })
+  assert.equal(result.action, 'DISPATCH_FAILED')
+  assert.equal(result.reason, 'UNSAFE_PLACEMENT_COLLISION')
 })
 
 test('two overlapping ticks on the same run: the second is rejected outright, never attempting CLI work', async () => {

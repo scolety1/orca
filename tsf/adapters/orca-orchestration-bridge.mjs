@@ -196,14 +196,9 @@ export async function dispatchOrchestrationTask({ task, to, run, from, inject, d
   return runOrca(args)
 }
 
-// A coordinator CLI identity is bound to exactly one Run at a time --
-// reusing a persisted orchestrationRunId from a NEW CLI invocation (a
-// fresh process/session, e.g. resuming a Keep Going run after a restart)
-// fails with error code consumer_fenced ("This coordinator terminal is
-// bound to run_X, not run_Y") if that identity last bound to a different
-// Run (a real, live finding: resuming a parked M2 dogfood run failed this
-// way immediately after wave 20's rewiring). Binding is otherwise a no-op
-// for a coordinator identity already bound to this same Run.
+// A coordinator CLI identity is bound to exactly one Run at a time (else
+// task-create/worker-start fail with consumer_fenced) -- a no-op if
+// already bound to this Run.
 export async function bindOrchestrationRun({ id, from } = {}) {
   if (!id) {
     return { ok: false, reason: 'INVALID_ARGS', detail: 'id is required' }

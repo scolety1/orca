@@ -113,14 +113,31 @@ function resolveWorkerPlacement(item) {
   }
 }
 
-// Two placements collide if they'd land fresh agents in the same worktree
-// (most commonly two items both defaulting to 'current') -- worker-start
-// always creates a NEW terminal for a fresh (non-reused) placement, so two
-// such items in one conflict-free-by-scope batch would still run
-// concurrently in the same physical directory, risking real git/file-state
-// collisions that scope-based batching was never meant to catch.
+// Mirrors keep-going.mjs's own normalizeScopePath -- Windows paths can
+// differ by slash direction/case and still name the same directory (a
+// real review finding: raw === comparison let that pair through undetected).
+function normalizePlacementPath(p) {
+  return String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+// Two placements collide if worker-start would run two agents in the same
+// place at once: either both land fresh in the same worktree (most
+// commonly two items both defaulting to 'current'), or both explicitly
+// reuse the identical existing terminal. Checked across the WHOLE wave,
+// not just one planWave batch -- planWave batches only to keep scope-
+// conflicting items from touching the same files concurrently; it never
+// promises batch N+1 waits for batch N's agent to finish, so two items in
+// DIFFERENT batches that both default to 'current' would still overlap in
+// the same physical directory (a real review finding against the
+// same-batch-only version of this guard).
 function placementsCollide(a, b) {
-  return !a.terminal && !b.terminal && a.worktree === b.worktree
+  if (a.terminal && b.terminal) {
+    return normalizePlacementPath(a.terminal) === normalizePlacementPath(b.terminal)
+  }
+  if (!a.terminal && !b.terminal) {
+    return normalizePlacementPath(a.worktree) === normalizePlacementPath(b.worktree)
+  }
+  return false
 }
 
 function runNotFoundError() {
@@ -240,6 +257,41 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     }
   }
 
+  // Collision-checked across the WHOLE wave (every batch), not per batch --
+  // planWave only separates scope-conflicting items into different batches
+  // to keep them off the same files; it never guarantees batch N+1 waits
+  // for batch N's agent to finish, so two items in different batches that
+  // both default to worktree 'current' would still overlap in the same
+  // physical directory (a real review finding against an earlier,
+  // same-batch-only version of this guard). Checked once, up front, before
+  // any batch is touched, so a colliding wave is refused atomically rather
+  // than after already dispatching some earlier, non-colliding batch.
+  const allPlacements = wavePlan.batches
+    .flat()
+    .map((item) => ({ item, placement: resolveWorkerPlacement(item) }))
+  for (let i = 0; i < allPlacements.length; i += 1) {
+    for (let j = i + 1; j < allPlacements.length; j += 1) {
+      if (placementsCollide(allPlacements[i].placement, allPlacements[j].placement)) {
+        return commitPartialOrAbortedDispatch(
+          projectId,
+          store,
+          claimed,
+          clock,
+          wavePlan,
+          [],
+          orchestrationRunId,
+          orchestrationRunFreshlyCreated,
+          {
+            failedItem: allPlacements[j].item.id,
+            reason: 'UNSAFE_PLACEMENT_COLLISION',
+            detail: `${allPlacements[i].item.id} and ${allPlacements[j].item.id} would land in the same place at the same time -- give each an explicit, distinct item.worktree or item.workerTerminal`
+          }
+        )
+      }
+    }
+  }
+  const placementByItemId = new Map(allPlacements.map((p) => [p.item.id, p.placement]))
+
   // Batches themselves must stay sequential (planWave puts conflicting
   // items in separate batches precisely so they don't overlap), but items
   // within one conflict-free batch are still dispatched one at a time here
@@ -251,29 +303,8 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
   // sequential-with-early-return shape.
   const dispatchRecords = []
   for (const batch of wavePlan.batches) {
-    const placements = batch.map((item) => ({ item, placement: resolveWorkerPlacement(item) }))
-    for (let i = 0; i < placements.length; i += 1) {
-      for (let j = i + 1; j < placements.length; j += 1) {
-        if (placementsCollide(placements[i].placement, placements[j].placement)) {
-          return commitPartialOrAbortedDispatch(
-            projectId,
-            store,
-            claimed,
-            clock,
-            wavePlan,
-            dispatchRecords,
-            orchestrationRunId,
-            orchestrationRunFreshlyCreated,
-            {
-              failedItem: placements[j].item.id,
-              reason: 'UNSAFE_PLACEMENT_COLLISION',
-              detail: `${placements[i].item.id} and ${placements[j].item.id} would both launch fresh agents into worktree '${placements[i].placement.worktree}' concurrently -- give each an explicit, distinct item.worktree or item.workerTerminal`
-            }
-          )
-        }
-      }
-    }
-    for (const { item, placement } of placements) {
+    for (const item of batch) {
+      const placement = placementByItemId.get(item.id)
       const taskResult = await orchestration.createOrchestrationTask({
         spec: item.spec ?? item.id,
         run: orchestrationRunId,
