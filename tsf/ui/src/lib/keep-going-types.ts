@@ -57,6 +57,7 @@ export type KeepGoingRunView =
       openNeedsYou: KeepGoingNeedsYouEntry[]
       lastCheckpoint: KeepGoingCheckpoint | null
       readyForAdoption: boolean
+      orchestrationRunId: string | null
       createdAt: string
       updatedAt: string
     }

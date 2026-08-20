@@ -149,6 +149,21 @@ test('projectKeepGoingRun exposes goal, usage mode, budget, constraints, stop co
   assert.equal(view.readyForAdoption, false)
   assert.ok(view.lastCheckpoint)
   assert.equal(view.lastCheckpoint.phase, 'RUN_STARTED')
+  // M3's Live Work Feed drill-down affordance -- null until a real Orca
+  // Run has actually been created (no wave dispatched yet on a fresh run).
+  assert.equal(view.orchestrationRunId, null)
+})
+
+test('projectKeepGoingRun exposes the real orchestrationRunId once one exists, never a fabricated placeholder', () => {
+  const { run: started } = startKeepGoingRun(
+    {},
+    'proj-1',
+    { originalGoal: 'Ship it.', acceptanceCriteria: ['A_DONE'] },
+    clock
+  )
+  const withOrchestrationRun = { ...started, orchestrationRunId: 'run_real_orca_id' }
+  const view = projectKeepGoingRun(withOrchestrationRun, clock)
+  assert.equal(view.orchestrationRunId, 'run_real_orca_id')
 })
 
 test('projectKeepGoingRun exposes an honest gap analysis that never treats an unverified criterion as satisfied', () => {

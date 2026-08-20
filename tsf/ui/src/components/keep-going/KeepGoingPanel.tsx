@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import type { KeepGoingActiveRunView, KeepGoingRunState } from '@/lib/keep-going-types'
 import { KeepGoingStartForm } from './KeepGoingStartForm'
 import { KeepGoingTickForm } from './KeepGoingTickForm'
+import { LiveWorkFeed } from './LiveWorkFeed'
 
 const STATE_BADGE: Record<
   KeepGoingRunState,
@@ -97,6 +98,8 @@ function LiveRun({
             {run.readyForAdoption && <Badge variant="healthy">Ready for adoption</Badge>}
           </div>
         </div>
+
+        <LiveWorkFeed run={run} />
 
         <div className="text-sm font-medium">{run.goal}</div>
         <div className="flex flex-wrap gap-1">

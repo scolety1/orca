@@ -196,6 +196,13 @@ export function projectKeepGoingRun(run, clock) {
     })),
     lastCheckpoint,
     readyForAdoption: run.state === 'COMPLETE',
+    // M3: the Live Work Feed's drill-down affordance -- Tim should not
+    // normally need this, but it is the real, honest identifier for
+    // inspecting raw technical detail (e.g. `orca orchestration run-show
+    // --id <id>`), not a fabricated or placeholder value. null until a
+    // wave has actually been dispatched (the run may not have created a
+    // real Orca Run yet).
+    orchestrationRunId: run.orchestrationRunId ?? null,
     createdAt: run.createdAt,
     updatedAt: run.updatedAt
   }
