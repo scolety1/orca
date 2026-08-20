@@ -627,6 +627,36 @@
             "independent review of waves 21/22 combined (in flight)",
             "the remaining M2 multi-wave acceptance proof items (pause/resume live proof, supervisor/poller-loss recovery, worker-continuing-after-supervisor-loss)"
           ]
+        },
+        {
+          "wave": 23,
+          "summary": "Two fully live, production-path M2 acceptance proofs, both real Codex dispatches, both independently verified by reading files on disk directly (never trusting a worker_done claim). Proof A (resuming the parked wave-17 run): resumed keep-going-colety-labs-sales-engine-1787209970594 from durable state via abandonStalledWave (honestly fencing the dead --inject-path wave, not claiming it succeeded) + resolveNeedsYou, then dispatched two more real waves (wave1-marker-retry2/task_edff5accd47d, wave2-marker/task_c00355f32ea3) through the fully repaired tickKeepGoingRun (default deps, no stubs) -- both completed, verified, settled, run reached COMPLETE (revision 207) via compareStateToGoal with both criteria genuinely verifiedSatisfied. Proof B (a fresh small run, same low-risk dogfood worktree): dispatched one real task (pause-resume-marker/task_afd5735a0f7a), then paused the run via the production pauseRun function WHILE the real Codex worker was still actively working -- confirmed the real in-flight wave/dispatch record survived the pause intact. Confirmed ticking the PAUSED run correctly NOOPs and never touches Orca at all (a live poller/supervisor-loss analog: TSF stops polling, the real worker keeps running in Orca regardless, unaware of and unaffected by the pause). Waited for the real worker_done to arrive while the run sat PAUSED, independently verified the file on disk, then resumed via the production resumeRun function and settled via the real tickKeepGoingRun settle path -- the settlement reused the SAME taskId/dispatchId created before the pause (no duplicate task/dispatch was created), proving recovery resumes polling an existing dispatch rather than blind-redispatching. Run reached COMPLETE (revision 13). Together these are the first fully live, end-to-end M2 proofs (not unit tests, not disposable fixtures) of: resume-from-durable-state without blind redispatch, multi-wave progression on one run, real dispatch + real independent verification + real settlement, Pause under a genuinely live in-flight wave, and worker-continues-independently-of-TSF-polling. Every single script invocation this session was itself a fresh, cold Node process reading only durable state.json + live Orca CLI facts (no in-memory daemon), which is already a live instance of supervisor/process-restart recovery repeated dozens of times tonight, not merely asserted. Both dogfood-repo marker files were left in place (they are the real intended deliverable of their own run goals, not disposable scratch).",
+          "testsAdded": 0,
+          "testsPassing": "195/195 full tsf suite GREEN (unchanged by this wave -- this wave is live/manual production-path exercise, not a code change)",
+          "verifier": "INDEPENDENT (Claude read every marker file directly from disk and confirmed exact content + clean git status before treating any acceptance criterion as verifiedSatisfied; never trusted a worker_done payload alone)",
+          "commit": null,
+          "liveProofEvidence": {
+            "proofA_resumedParkedRun": {
+              "runId": "run_5aa5b6d8b029",
+              "newTasks": [
+                "task_edff5accd47d/ctx_4c7ac429e052 (wave1-marker-retry2)",
+                "task_c00355f32ea3/ctx_198bffbc7580 (wave2-marker)"
+              ],
+              "finalKeepGoingRunState": "COMPLETE",
+              "finalRevision": 207
+            },
+            "proofB_pauseResumeUnderLiveWave": {
+              "runId": "run_b4ffc0728399",
+              "task": "task_afd5735a0f7a/ctx_7f85e4359495 (pause-resume-marker)",
+              "finalKeepGoingRunState": "COMPLETE",
+              "finalRevision": 13
+            }
+          },
+          "deferredToNextWave": [
+            "independent review of waves 21/22 (in flight, launched during this wave)",
+            "remaining M2 acceptance items not yet proven live: a literal killed/restarted long-running poller process mid-wave (this session proved the equivalent via cold-process-per-tick, but not a literal daemon kill), provider-capacity pause/fallback under a real constrained-capacity window",
+            "packaging M2 as an immutable candidate and evaluating local auto-adoption per Section H once the pending review is addressed"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -1104,12 +1134,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_23_PARKED_RUN_RESUMED_AND_COMPLETED",
-    "at": "2026-08-20T09:12:35.947Z",
-    "commit": "54f4832fc42cf7c43b4a76842ad4b2cd6f1a3870",
+    "phase": "M2_WAVE_23_LIVE_ACCEPTANCE_PROOFS_A_AND_B_COMPLETE",
+    "at": "2026-08-20T09:17:20.774Z",
+    "commit": null,
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "TSF M2 OVERNIGHT RECOVERY + CONTINUATION directive, step 5 (decide the parked run's fate) DONE, with a genuine positive outcome exceeding 'resume safely': the parked wave-17 live run (keep-going-colety-labs-sales-engine-1787209970594) was resumed from durable state (not restarted) via abandonStalledWave (honestly fencing the dead --inject-path wave as evidence of the now-fixed root cause, not claiming it succeeded) + resolveNeedsYou (returning the run to ACTIVE). Two additional real waves were then dispatched through the repaired production tickKeepGoingRun path (default deps, no stubs): wave1-marker-retry2 (task_edff5accd47d) and wave2-marker (task_c00355f32ea3), both real Codex dispatches via orchestration worker-start, both completed a real worker_done within roughly 1-2 minutes, both independently verified by Claude reading the actual marker files on disk directly (not trusting the worker's own claim) -- exact expected content, git status showing only the intended untracked files. Both workers cleanly released. Gap analysis (compareStateToGoal) with both criteria marked verifiedSatisfied from that direct evidence returned STOP_COMPLETE; the run was checkpointed and transitioned to COMPLETE (revision 207). This is the first fully live, end-to-end, multi-wave M2 dogfood proof on a real run: resume-from-durable-state, real dispatch, real settlement, independent verification, and honest completion, all through production code paths. Along the way, resuming this SAME run surfaced and fixed a second real, previously-unknown Orca-integration gap (wave 21: coordinator-binding/consumer_fenced) beyond wave 19/20's root cause -- confirming Tim's directive to resume the actual parked run (not a fresh disposable fixture) as the right call, since a fresh-Run proof alone would never have surfaced it. An independent review of waves 21+22 is in flight (forked, not yet reported). Remaining M2 acceptance items not yet proven live this session: Pause/Ready-to-Resume/Resume under a real in-flight wave, supervisor/poller-loss recovery, and worker-continuing-after-supervisor-loss. Next: act on the review once it reports, then continue toward those remaining acceptance items, capacity permitting."
+    "note": "Both live M2 acceptance proofs (resumed-parked-run completion, and pause/resume-under-a-real-in-flight-wave with worker-continues-independently) are done and independently verified -- see milestones[M2].waves[23].liveProofEvidence. Both real Keep Going runs (run_5aa5b6d8b029 / keep-going-colety-labs-sales-engine-1787209970594, and the fresh keep-going-colety-labs-sales-engine-1787217241287) reached COMPLETE. An independent review of waves 21/22 (the coordinator-rebind fix and its own review-fix batch) is still in flight, launched earlier this wave. Next: act on that review once it reports, then assess what remains of the full M2 acceptance list (a literal killed/restarted long-running poller daemon, and provider-capacity pause/fallback under a real constrained window, are the two items not yet proven live), then move toward packaging M2 as a candidate and Section H local adoption."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1247,5 +1277,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "TSF M2 OVERNIGHT RECOVERY + CONTINUATION directive, step 3 (repair) complete: the real autonomous dispatch loop (keep-going-dispatch-loop.mjs) now dispatches via startOrchestrationWorker (worker-start), the primitive wave 19 proved correct live, instead of the defective dispatchOrchestrationTask (dispatch --inject) path. 185/185 full tsf suite GREEN, oxlint/oxfmt/max-lines-ratchet clean. Also noted: GIT-HYGIENE-001 (pre-existing, previously-disclosed geometric-repack background-maintenance failure) recurred again on this commit; verified non-blocking by confirming git archive succeeds cleanly against HEAD and every other local branch tip (tsf/main, scolety1/nixie, scolety1/tsf-planner-operator-chat) -- all reachable objects for every real branch are intact, the fsck 'missing blob' reports are unreachable/dangling objects only. Next: independent review of the wave 20 diff, then decide the parked wave-17 run's fate from evidence (per Tim's explicit \"do not pretend a failed/uncertain run settled\"), then resume the M2 multi-wave dogfood acceptance proof with the repaired path. See milestones[M2].waves[20]."
+  },
+  "priorDurableCheckpoint11": {
+    "phase": "M2_WAVE_23_PARKED_RUN_RESUMED_AND_COMPLETED",
+    "at": "2026-08-20T09:12:35.947Z",
+    "commit": "54f4832fc42cf7c43b4a76842ad4b2cd6f1a3870",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "TSF M2 OVERNIGHT RECOVERY + CONTINUATION directive, step 5 (decide the parked run's fate) DONE, with a genuine positive outcome exceeding 'resume safely': the parked wave-17 live run (keep-going-colety-labs-sales-engine-1787209970594) was resumed from durable state (not restarted) via abandonStalledWave (honestly fencing the dead --inject-path wave as evidence of the now-fixed root cause, not claiming it succeeded) + resolveNeedsYou (returning the run to ACTIVE). Two additional real waves were then dispatched through the repaired production tickKeepGoingRun path (default deps, no stubs): wave1-marker-retry2 (task_edff5accd47d) and wave2-marker (task_c00355f32ea3), both real Codex dispatches via orchestration worker-start, both completed a real worker_done within roughly 1-2 minutes, both independently verified by Claude reading the actual marker files on disk directly (not trusting the worker's own claim) -- exact expected content, git status showing only the intended untracked files. Both workers cleanly released. Gap analysis (compareStateToGoal) with both criteria marked verifiedSatisfied from that direct evidence returned STOP_COMPLETE; the run was checkpointed and transitioned to COMPLETE (revision 207). This is the first fully live, end-to-end, multi-wave M2 dogfood proof on a real run: resume-from-durable-state, real dispatch, real settlement, independent verification, and honest completion, all through production code paths. Along the way, resuming this SAME run surfaced and fixed a second real, previously-unknown Orca-integration gap (wave 21: coordinator-binding/consumer_fenced) beyond wave 19/20's root cause -- confirming Tim's directive to resume the actual parked run (not a fresh disposable fixture) as the right call, since a fresh-Run proof alone would never have surfaced it. An independent review of waves 21+22 is in flight (forked, not yet reported). Remaining M2 acceptance items not yet proven live this session: Pause/Ready-to-Resume/Resume under a real in-flight wave, supervisor/poller-loss recovery, and worker-continuing-after-supervisor-loss. Next: act on the review once it reports, then continue toward those remaining acceptance items, capacity permitting."
   }
 }
