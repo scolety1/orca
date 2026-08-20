@@ -746,6 +746,18 @@
             "per-project lock granularity (currently one global lock file serializes all projects)",
             "packaging M2 as an immutable candidate and evaluating local auto-adoption per Section H"
           ]
+        },
+        {
+          "wave": 30,
+          "summary": "M2 Acceptance Closure wave, per Tims explicit instruction. Investigated whether an already-approved, repository-supported automated mechanism exists to click through the real Keep Going product surface (Start/Pause/Resume/Run now) and could be used WITHOUT weakening the acceptance contract. Found: tests/e2e (Playwright + real Electron `_electron.launch()`, config at tests/playwright.config.ts, `pnpm run test:e2e`) is real, genuine, already-approved infrastructure -- but it launches the actual packaged Orca Electron app, which has ZERO references to TSF anywhere in src/main (grep confirmed empty). tsf/ui/package.json is explicit: \"Standalone local dev app; reads real TSF domain/pilot state through tsf/server, not Orca core.\" TSF is not mounted inside the shipped Orca app at all -- the existing Playwright/Electron harness genuinely cannot reach the KeepGoingPanel, so using it would fabricate equivalence between testing Orca core UI and testing TSFs separate overlay UI, exactly the kind of acceptance-contract-weakening Tim explicitly warned against. Checked tsf/ui itself for any existing test tooling (Playwright, vitest, testing-library, jsdom, cypress): none exists -- package.json has only vite dev/build/preview, no test script, no spec files anywhere in the tree. Per Tims explicit instruction not to invent a new framework just to automate one click-through, did NOT set up a new Playwright/browser-automation config against tsf/ui specifically (this would itself be inventing a new framework for exactly this one purpose) and did NOT substitute mcp__claude-in-chrome or any other browser-automation tool available in this session for the same reason (not a repository-supported mechanism for this surface, and explicitly prohibited by AGENTS.md as a substitute for the unavailable $electron skill in spirit even where not literally Orca-core UI). CONCLUSION: no compliant automated mechanism exists in this repository for TSFs own UI surface. Prepared the smallest exact manual validation checklist instead (see acceptanceClosure2026_08_20.manualValidationChecklist) -- 4 steps, ~5 minutes, using tsf/ui`s own vite dev server (which already mounts tsf/server as middleware in one process, `tsfApiPlugin` in tsf/ui/vite.config.ts, so no separate backend process is needed) against the always-present, zero-real-cost fixture project (tsf-ui-capability-check), reaching the real KeepGoingPanel/KeepGoingTickForm React components at /projects/tsf-ui-capability-check. Also classified the three remaining disclosed gaps per Tims requested taxonomy (see acceptanceClosure2026_08_20.gapClassification): heartbeat projection and lock TOCTOU window are SAFE_FOLLOWUP (real stall detection and cross-process safety both already work today via other proven mechanisms; neither gap has ever manifested as a live failure this session); per-project lock granularity is M3_OR_LATER (a scale characteristic, not a correctness bug, irrelevant at current single-active-project usage). None classified M2_BLOCKING -- nothing found this wave that is genuinely required for safe unattended Keep Going V1 beyond the UI click-through itself. Did not rerun the full packaging/adoption sequence (rerun acceptance suite, fresh independent verifier, package as candidate, adopt into tsf/main) since that explicitly comes only AFTER the UI acceptance requirement is satisfied, which requires Tim to perform the manual checklist -- performing it myself is not possible (no compliant automated substitute exists, and I do not have hands to click a real browser UI). 213/213 automated tsf suite remains GREEN, unchanged this wave (no code changes -- this was an investigation + documentation wave only).",
+          "testsAdded": 0,
+          "testsPassing": "213/213 full tsf suite GREEN (unchanged -- no code this wave)",
+          "verifier": "SELF (investigation of available infrastructure; no code to independently review)",
+          "commit": null,
+          "deferredToNextWave": [
+            "Tim performs the manual validation checklist (acceptanceClosure2026_08_20.manualValidationChecklist)",
+            "once satisfied: rerun full M2 acceptance suite, a fresh independent verifier pass, package as an immutable candidate, confirm HEAD/tree and Orca-core-delta-0, then evaluate Section H local adoption"
+          ]
         }
       ],
       "acceptanceCriteria": [
@@ -846,6 +858,56 @@
         ],
         "recommendation": "M2 is substantially proven live end-to-end tonight (root cause fixed, 3 independent-review rounds converging on the dispatch-loop repair, 2 complete live dogfood missions covering most of the acceptance list). Given the still-open items above -- especially the missing dedicated holistic verifier pass -- recommend NOT yet declaring M2 packaged/adopted under Section H tonight; a clean next step is a dedicated VERIFIER_INDEPENDENT pass against this exact list before that decision.",
         "updateNote": "Refreshed after waves 26-29 (HTTP/UI wiring for the dispatch loop; cross-process lock; a severe duplicate-dispatch bug found and fixed; dual-pass independent review of that fix). See milestones[M2].waves[26]-[29] for full detail."
+      },
+      "acceptanceClosure2026_08_20": {
+        "schemaVersion": "TSF_M2_ACCEPTANCE_CLOSURE_V1",
+        "generatedAt": "2026-08-20T17:10:54.889Z",
+        "automatedUiValidationInvestigation": {
+          "conclusion": "NO_COMPLIANT_AUTOMATED_MECHANISM_EXISTS",
+          "existingHarnessConsidered": {
+            "name": "tests/e2e (Playwright + real Electron _electron.launch(), tests/playwright.config.ts, pnpm run test:e2e)",
+            "genuine": true,
+            "whyNotUsable": "Launches the actual packaged Orca Electron app. src/main has zero TSF references (grep confirmed). tsf/ui/package.json states outright: \"Standalone local dev app; reads real TSF domain/pilot state through tsf/server, not Orca core.\" TSF is not mounted inside the shipped Orca app -- this harness cannot reach KeepGoingPanel at all. Using it would fabricate equivalence between two different UI surfaces, weakening rather than satisfying the acceptance contract."
+          },
+          "tsfUiOwnTestTooling": "NONE -- tsf/ui/package.json has only vite dev/build/preview; no Playwright, vitest, testing-library, jsdom, or cypress dependency; no spec/test files exist anywhere in tsf/ui.",
+          "rejectedAlternatives": [
+            "Setting up a new Playwright config against tsf/ui's own vite dev server -- would itself be inventing a new framework for exactly one click-through, explicitly prohibited by this instruction.",
+            "Using mcp__claude-in-chrome (available generally in this session) against tsf/ui -- not a repository-supported mechanism for this surface; same \"inventing a new framework\" concern applies.",
+            "The $electron skill named in AGENTS.md -- confirmed unavailable/unregistered in this environment (attempted, errored \"Unknown skill\")."
+          ]
+        },
+        "manualValidationChecklist": {
+          "title": "Smallest exact manual validation for the M2 UI acceptance criterion",
+          "estimatedTime": "~5 minutes",
+          "prerequisite": "From the repo root: cd tsf/ui && npm run dev -- launches on http://127.0.0.1:4600 and already mounts the real tsf/server API as middleware in the same process (tsfApiPlugin, tsf/ui/vite.config.ts) -- no separate backend process needed.",
+          "safeTarget": "The fixture project tsf-ui-capability-check (tsf/server/fixture-project.mjs) -- always present, zero real-repo/worktree risk, exactly what http-keep-going.test.mjs itself uses for the identical reason.",
+          "steps": [
+            "1. Open http://127.0.0.1:4600/projects/tsf-ui-capability-check -- confirm the Keep Going / Overnight panel renders with a Start form (goal + acceptance-criteria fields).",
+            "2. Fill in any goal text and one acceptance criterion, click Start -- confirm the panel switches to the live-run view showing state ACTIVE, the goal text, and the criterion as an unsatisfied badge.",
+            "3. Click Pause -- confirm the state badge changes to PAUSED and a Resume button appears. Click Resume -- confirm it returns to ACTIVE.",
+            "4. In the Run now section, enter any work item id (e.g. \"manual-check\") and one scope line (e.g. \"docs/x.md\"), leave worktree/agent at their defaults, click Run now -- confirm a result line appears (either a real dispatch action like WAVE_DISPATCHED, or an honest failure/claim-rejection -- either is acceptable proof the button correctly calls the real tick endpoint and renders its response; a real Codex dispatch completing is not required for this specific check, since that path is already independently proven live elsewhere this session)."
+          ],
+          "passCriterion": "All 4 steps behave as described, with no uncaught UI error, blank panel, or console exception. Report back pass/fail and, if fail, the exact step and what was observed instead."
+        },
+        "gapClassification": [
+          {
+            "gap": "Heartbeat projection (mapOrchestrationFacts always emits lastHeartbeatAt: null; detectStall is consequently dead code)",
+            "classification": "SAFE_FOLLOWUP",
+            "reasoning": "Real stall detection already works today via a different, proven mechanism: settleStep's own wall-clock-since-dispatch check, which correctly escalated a genuinely stalled wave to STALLED live this session (waves 17 and 23). The missing heartbeat would be a more precise signal, not a safety gap -- no run can hang indefinitely without detection today. Not required for safe unattended operation."
+          },
+          {
+            "gap": "Lock release-path TOCTOU window (cross-process-file-lock.mjs: readFileSync-then-unlinkSync is not one atomic operation)",
+            "classification": "SAFE_FOLLOWUP",
+            "reasoning": "Requires two independent, narrow conditions to align (this process's release delayed between two syscalls AND another process reclaiming-and-rewriting within that exact gap) against a critical section that is a fast, in-memory-only JSON read/mutate/write with a 15s staleness margin -- disclosed, low-probability, never manifested as a live failure this session across dozens of real lock acquisitions. Worth closing before heavy unattended/cron-triggered use at scale (the cron automation trigger is itself a separate, not-yet-authorized future decision per keep-going-dispatch-loop.mjs's own module header), not before this milestone's adoption."
+          },
+          {
+            "gap": "Per-project lock granularity (one global lock file currently serializes ALL projects' Keep Going operations, not just genuinely racing ones)",
+            "classification": "M3_OR_LATER",
+            "reasoning": "A scalability/latency characteristic, not a correctness or safety bug -- worst case is bounded added latency (the lock has a timeout) to an unrelated project's request, never data corruption or duplicate dispatch. Only matters once real multi-project concurrent Keep Going load exists, which is not current usage (single active pilot projects). No near-term milestone depends on it."
+          }
+        ],
+        "m2BlockingItemsFound": [],
+        "recommendation": "M2 is not yet ready for Section H adoption. The single remaining acceptance blocker is the UI click-through above, which requires Tim (no compliant automated substitute exists and none should be invented). Nothing else in this review is classified M2_BLOCKING. Once Tim confirms the checklist passes, the packaging/adoption sequence (rerun suite, fresh independent verifier, immutable candidate, HEAD/tree confirmation, Orca-core-delta-0 confirmation, Section H evaluation) should proceed directly."
       }
     },
     {
@@ -1297,12 +1359,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M2_WAVE_29_DUAL_PASS_REVIEW_ADDRESSED",
-    "at": "2026-08-20T10:44:43.948Z",
-    "commit": "a90770fdaa3e628f110e130d7953d8e6bbe3a6ee",
+    "phase": "M2_WAVE_30_ACCEPTANCE_CLOSURE_INVESTIGATION",
+    "at": "2026-08-20T17:10:54.902Z",
+    "commit": null,
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "The dispatch-loop repair (waves 19-29: root cause found, worker-start wired in, coordinator-binding fix, 3 rounds of placement-collision hardening, HTTP/UI wiring, async cross-process lock, a severe duplicate-dispatch bug found and fixed via live testing, and a dual-pass review of that fix) is now independently judged non-blocking for continued live dispatch use. 213/213 suite GREEN throughout, stable across repeated runs. Two live end-to-end dogfood missions from earlier this session (resumed-parked-run completion; pause/resume-under-a-real-in-flight-wave) remain valid, unaffected evidence. M2's own acceptance-status self-assessment (see m2.acceptanceStatus2026_08_20) still needs a final refresh incorporating waves 26-29's HTTP/UI wiring and cross-process-safety work before a Section H packaging decision. Next: refresh that assessment, then decide on packaging/adoption, or produce a session summary if capacity/time favors stopping here."
+    "note": "Investigated automated UI-validation options per Tim's explicit M2 Acceptance Closure directive. Confirmed no compliant repository-supported automated mechanism exists for TSF's own UI surface (the real Playwright/Electron e2e harness tests Orca core, which has zero TSF integration; tsf/ui has no test tooling of its own). Did not invent a new framework, per explicit instruction. Prepared the smallest exact manual checklist (4 steps, ~5 min, against the safe fixture project) instead -- see milestones[M2].acceptanceClosure2026_08_20. Classified the three remaining disclosed gaps: none are M2_BLOCKING (heartbeat projection and lock TOCTOU are SAFE_FOLLOWUP; per-project lock granularity is M3_OR_LATER). The single remaining M2 acceptance blocker is the manual UI checklist, which requires Tim to perform. Packaging/adoption sequence intentionally not run yet -- it is gated on that checklist passing."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
@@ -1488,5 +1550,13 @@
     "commitTree": null,
     "workingTreeClean": true,
     "note": "The most severe bug of this entire session was found and fixed this wave: the async cross-process lock (wave 27, itself fixing a real cross-process race) reopened a timing window letting two near-simultaneous ticks each create a genuine duplicate Orca task -- reproduced live, fixed by re-validating the dispatch-vs-settle routing decision under the lock, reproduced-fixed confirmed live again. This is exactly the kind of subtle, compounding correctness risk the programs discipline of live-proving fixes (not just trusting unit tests) exists to catch. 206/206 suite GREEN, stable across repeated runs. Given the severity, an independent review of this wave specifically is recommended before treating the dispatch-loop concurrency model as settled -- not yet launched. Next: decide whether to commission that review now or proceed to assess overall M2 readiness for Section H packaging with this now-fixed, disclosed history intact."
+  },
+  "priorDurableCheckpoint17": {
+    "phase": "M2_WAVE_29_DUAL_PASS_REVIEW_ADDRESSED",
+    "at": "2026-08-20T10:44:43.948Z",
+    "commit": "a90770fdaa3e628f110e130d7953d8e6bbe3a6ee",
+    "commitTree": null,
+    "workingTreeClean": true,
+    "note": "The dispatch-loop repair (waves 19-29: root cause found, worker-start wired in, coordinator-binding fix, 3 rounds of placement-collision hardening, HTTP/UI wiring, async cross-process lock, a severe duplicate-dispatch bug found and fixed via live testing, and a dual-pass review of that fix) is now independently judged non-blocking for continued live dispatch use. 213/213 suite GREEN throughout, stable across repeated runs. Two live end-to-end dogfood missions from earlier this session (resumed-parked-run completion; pause/resume-under-a-real-in-flight-wave) remain valid, unaffected evidence. M2's own acceptance-status self-assessment (see m2.acceptanceStatus2026_08_20) still needs a final refresh incorporating waves 26-29's HTTP/UI wiring and cross-process-safety work before a Section H packaging decision. Next: refresh that assessment, then decide on packaging/adoption, or produce a session summary if capacity/time favors stopping here."
   }
 }
