@@ -363,14 +363,14 @@ PER_ITEM_LOCK_TIMEOUT_MS`) before claiming.
 
 ## Wave 18: `abandonStalledWave` (formalizing a live-discovered recovery)
 
-The first real M2 live dogfood (BEDTIME_UNATTENDED session) hit a genuine
+The first real M2 live dogfood (BEDTIME*UNATTENDED session) hit a genuine
 stall: a real dispatch showed zero terminal activity and zero real file
 changes for 30+ minutes, correctly caught by the run's own stall watchdog.
 Recovery was improvised live by composing `resolveNeedsYou` +
 `recordTaskAttempt('RETRY')` + `settleInFlightWave` (honest
 `ABANDONED_STALLED` outcome) + `checkpointRun` -- all pre-existing, already-
 tested primitives, no new production code at the time. It worked, but
-was ad hoc and untested as a _unit_, and it surfaced a real, disclosed gap:
+was ad hoc and untested as a \_unit*, and it surfaced a real, disclosed gap:
 `markStalled` alone never touched `retryCounts`, so repeated stalls of the
 same work item were never bounded the way repeated _failures_ already are.
 
@@ -519,3 +519,62 @@ old primitive, since every dispatch-failure test already injects failure
 via `createOrchestrationTask`, not the dispatch call itself. 185/185 full
 suite GREEN, oxlint/oxfmt/max-lines-ratchet clean. An independent review of
 this diff is the next step before resuming the live M2 dogfood.
+
+## Wave 21: coordinator/Run binding (`consumer_fenced`)
+
+Resuming the parked wave-17 dogfood run through the repaired path failed
+immediately with a real, previously-unknown Orca error: `consumer_fenced`
+("This coordinator terminal is bound to run_X, not run_Y"). A coordinator
+CLI identity is bound to exactly one Run at a time (confirmed via `orca
+skills get orchestration --full`: a Run is only a durable namespace/inbox,
+and new orchestration messages/tasks belong to whichever Run the
+coordinator is _currently_ bound to) -- this identity had auto-bound to
+wave 19's disposable proof Run and never rebound. Not caught by wave 19's
+proof because that proof always created a fresh (auto-bound) Run; only
+surfaces when _reusing_ a persisted `orchestrationRunId` from a new CLI
+invocation, exactly the resume-after-restart scenario the dispatch loop
+must handle.
+
+Added `bindOrchestrationRun` (wraps `orchestration run-use --id`), wired
+into `dispatchStep` to rebind before reusing an existing
+`orchestrationRunId` (skipped when freshly created, since `run-create`
+auto-binds). A failed rebind reports `DISPATCH_FAILED` honestly via the
+existing `commitAbortedDispatch` path. Confirmed live: the exact
+`consumer_fenced` failure was reproduced, and the fix was proven by two
+subsequent real Codex dispatches into the resumed run both succeeding.
+
+## Wave 22: first review pass -- placement collisions (same batch)
+
+Independent review of wave 20 found that two independent work items
+batched together by `planWave`, both omitting `item.workerTerminal`,
+silently defaulted to the identical `worktree: 'current'` / `agent:
+'codex'` placement -- launching two concurrent fresh agents into the same
+physical directory (impossible under the old `dispatchOrchestrationTask`
+path, which required an explicit `--to` for every dispatch). Added a
+same-batch placement-collision guard, plus fixed `??` to `||` so an
+explicit empty string still falls back correctly, hoisted the
+worktree/terminal/agent branch into one `resolveWorkerPlacement()`
+helper, and threaded `item.retryOf` through when supplied.
+
+## Wave 24: second review pass -- placement collisions (cross-batch)
+
+A further review of waves 21/22 found the same-batch guard had a
+significant remaining gap: `planWave` only separates scope-conflicting
+items into different batches to keep them off the same _files_ -- it
+never guarantees batch N+1 waits for batch N's agent to finish, so two
+items in _different_ batches both defaulting to `current` still
+overlapped in the same directory, completely undetected. Since the live
+dogfood run's own `maxConcurrentWorkers: 1` config means every batch holds
+exactly one item, the same-batch guard could never fire in production at
+all -- this cross-batch gap was the only real exposure path. Fixed by
+computing every item's placement across the _whole_ wave up front and
+checking all pairs before any batch is dispatched, refusing the whole wave
+atomically on a collision. Also added Windows-safe path normalization
+(lowercase, unify slashes) to the comparison, and extended it to catch two
+items reusing the identical existing terminal (previously exempted
+entirely). Three consecutive review rounds on this code path (20 -> 21/22
+-> 24) each found and fixed real bugs -- see `state.json`'s wave 19-24
+entries for the full trail and live-proof evidence, including two complete
+live dogfood missions (a resumed parked run reaching `COMPLETE`, and a
+Pause/Resume-under-a-real-in-flight-wave proof) run through the repaired
+path end to end.
