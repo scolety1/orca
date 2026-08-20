@@ -18,14 +18,17 @@
 // domain transition, so a concurrent tick's lock (or another request that
 // landed first) is always seen.
 import {
-  abandonKeepGoingStalledWave,
   keepGoingRunFor,
   pauseKeepGoingRun,
   projectKeepGoingRun,
   resumeKeepGoingRun,
   startKeepGoingRun
 } from './keep-going-controller.mjs'
-import { hasExplicitPlacement, tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
+import {
+  abandonAndReconcileStalledWave,
+  hasExplicitPlacement,
+  tickKeepGoingRun
+} from './keep-going-dispatch-loop.mjs'
 import { withKeepGoingRun } from './keep-going-run-store.mjs'
 
 // TSF_STATE_LOCK_TIMEOUT (cross-process-file-lock.mjs, via
@@ -183,28 +186,24 @@ export async function handleKeepGoingRoute(
   // even looking at inFlightWave) and the UI's own Run now form stops
   // rendering entirely, so there was no path back to ACTIVE with the stuck
   // wave cleared through the product surface at all (a real, live-confirmed
-  // gap: a manual UI acceptance test hit this exact stuck state). Wraps the
-  // same abandonStalledWave already proven in waves 18/18b -- the
-  // controller enforces run.state === 'STALLED' before calling it, since
-  // that domain function itself has no opinion on run state and would
-  // otherwise let this route abort a healthy, still-in-progress wave too.
+  // gap: a manual UI acceptance test hit this exact stuck state). Uses
+  // abandonAndReconcileStalledWave (keep-going-dispatch-loop.mjs), not the
+  // bare controller function directly -- fencing TSF's own bookkeeping
+  // alone leaves the real Orca resource marked owned, which silently
+  // blocked a later worker-start into the same worktree in a live manual
+  // acceptance retest (a second real, live-confirmed gap). Uses that
+  // function's own default deps (the real orchestration bridge + the real
+  // store), same convention as the tick route below.
   if (parts[3] === 'abandon-stalled-wave') {
     const body = await readBody(req)
     try {
-      const run = await mutateThroughStore(projectId, (fakeOpState) =>
-        abandonKeepGoingStalledWave(
-          fakeOpState,
-          projectId,
-          body.reason,
-          () => new Date(),
-          body.expectedRevision
-        )
+      const { run, orchestrationReconciliation } = await abandonAndReconcileStalledWave(
+        projectId,
+        body.reason,
+        () => new Date(),
+        body.expectedRevision
       )
-      json(
-        res,
-        200,
-        projectKeepGoingRun(run, () => new Date())
-      )
+      json(res, 200, { ...projectKeepGoingRun(run, () => new Date()), orchestrationReconciliation })
     } catch (error) {
       respondError(res, json, error)
     }

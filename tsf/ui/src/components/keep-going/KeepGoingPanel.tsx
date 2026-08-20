@@ -218,6 +218,11 @@ function LiveRun({
           <div className="text-[11px] text-muted-foreground">
             Last checkpoint: {run.lastCheckpoint.phase} ·{' '}
             {new Date(run.lastCheckpoint.at).toLocaleString()}
+            {/* A real, live-confirmed gap: a DISPATCH_FAILED checkpoint's
+                own reason previously only ever appeared in the transient
+                tick response -- reloading the page (or checking back
+                later) showed only the phase, with no way to see why. */}
+            {run.lastCheckpoint.note && <span> -- {run.lastCheckpoint.note}</span>}
           </div>
         )}
 

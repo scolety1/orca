@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import path from 'node:path'
 import {
+  abandonOrchestrationWorker,
   bindOrchestrationRun,
   createOrchestrationGate,
   createOrchestrationRun,
@@ -221,6 +222,20 @@ test('showOrchestrationWorker passes --dispatch through', async () => {
     assert.equal(result.ok, true)
     assert.equal(result.result.dispatch.id, 'ctx-1')
     assert.equal(result.result.worker.dispatch_id, 'ctx-1')
+  })
+})
+
+test('abandonOrchestrationWorker rejects a missing dispatch before touching the CLI', async () => {
+  const result = await abandonOrchestrationWorker({})
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'INVALID_ARGS')
+})
+
+test('abandonOrchestrationWorker passes --dispatch through', async () => {
+  await withEnv(STUBBED, async () => {
+    const result = await abandonOrchestrationWorker({ dispatch: 'ctx-1' })
+    assert.equal(result.ok, true)
+    assert.equal(result.result.dispatch.id, 'ctx-1')
   })
 })
 

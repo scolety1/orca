@@ -47,6 +47,7 @@
 // claim (a real, confirmed review finding on an earlier version of this
 // module's settle-side commits).
 import {
+  abandonOrchestrationWorker,
   bindOrchestrationRun,
   createOrchestrationRun,
   createOrchestrationTask,
@@ -66,9 +67,11 @@ import {
   settleInFlightWave,
   TICK_LOCK_TIMEOUT_MS
 } from '../domain/keep-going.mjs'
+import { abandonKeepGoingStalledWave } from './keep-going-controller.mjs'
 import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
 
 const DEFAULT_ORCHESTRATION = Object.freeze({
+  abandonOrchestrationWorker,
   bindOrchestrationRun,
   createOrchestrationRun,
   createOrchestrationTask,
@@ -442,12 +445,21 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
 // Nothing was dispatched at all (createOrchestrationRun itself failed) --
 // just release the lock; persist a freshly-created orchestrationRunId if
 // there somehow is one (there shouldn't be on this path, but mirrors the
-// partial-dispatch helper's own safety net for symmetry).
+// partial-dispatch helper's own safety net for symmetry). Checkpoints the
+// failure (a real, live-confirmed gap: a DISPATCH_FAILED reason previously
+// only ever appeared in the transient tick HTTP response -- once that
+// response was gone, there was no way to look up afterward why a real
+// dispatch attempt had failed).
 async function commitAbortedDispatch(projectId, store, claimed, clock, failure) {
   try {
-    const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) =>
-      releaseTick(current, clock, expectedRevision)
-    )
+    const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
+      const released = releaseTick(current, clock, expectedRevision)
+      return checkpointRun(
+        released,
+        { phase: 'DISPATCH_FAILED', note: `${failure.reason}: ${failure.detail}`, evidence: [] },
+        clock
+      )
+    })
     return { action: 'DISPATCH_FAILED', run: next, ...failure }
   } catch (error) {
     return lostLockResult('DISPATCH_FAILED', error, {})
@@ -479,7 +491,21 @@ async function commitPartialOrAbortedDispatch(
         if (orchestrationRunFreshlyCreated) {
           n = { ...n, orchestrationRunId }
         }
-        return releaseTick(n, clock, expectedRevision)
+        n = releaseTick(n, clock, expectedRevision)
+        // Checkpointed for the same reason as commitAbortedDispatch above --
+        // this is the exact path a real live acceptance test hit (a task
+        // created successfully, then startOrchestrationWorker failing for
+        // it), and the failure reason previously vanished the moment the
+        // tick's own HTTP response was gone.
+        return checkpointRun(
+          n,
+          {
+            phase: 'DISPATCH_FAILED',
+            note: `stopped after failure on ${failure.failedItem}: ${failure.reason}: ${failure.detail}`,
+            evidence: []
+          },
+          clock
+        )
       })
       return { action: 'DISPATCH_FAILED', run: next, ...failure }
     } catch (error) {
@@ -757,4 +783,64 @@ export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, dep
     return settleStep(projectId, clock, orchestration, store)
   }
   return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store)
+}
+
+// Recovers a run whose in-flight wave stalled AND releases the real Orca
+// resource(s) that wave held. abandonKeepGoingStalledWave (keep-going-
+// controller.mjs) only fences TSF's own bookkeeping -- without also
+// telling Orca the dispatch is done, its worktree resource stays marked
+// owned there, which can silently block a later worker-start into the
+// same worktree (a real, live-confirmed gap: a manual UI acceptance
+// retest hit exactly this after using the abandon button -- the retry's
+// task was created but never dispatched, with zero trace in Orca's own
+// worker-list). Reads dispatchRecords BEFORE the atomic TSF-side mutate
+// -- if that mutate throws (stale revision, no in-flight wave, wrong
+// state), nothing is reconciled with Orca either; if it succeeds, nothing
+// else could have raced the read in between (any intervening change would
+// have failed the revision check the mutate performs).
+// Best-effort past that point: a failure reconciling one dispatch with
+// Orca does not undo or block the TSF-side fencing that already
+// succeeded -- TSF's own state consistency must not depend on Orca's
+// cooperation, matching this module's existing dispatch-failure handling.
+export async function abandonAndReconcileStalledWave(
+  projectId,
+  reason,
+  clock,
+  expectedRevision,
+  deps = {}
+) {
+  const orchestration = deps.orchestration ?? DEFAULT_ORCHESTRATION
+  const store = deps.store ?? DEFAULT_STORE
+
+  const before = store.readRun(projectId)
+  const abandonedDispatchIds = (before?.inFlightWave?.dispatchRecords ?? [])
+    .map((record) => record.dispatchId)
+    .filter(Boolean)
+
+  const next = await store.withRun(projectId, (current) => {
+    const { run } = abandonKeepGoingStalledWave(
+      { keepGoingRuns: { [projectId]: current } },
+      projectId,
+      reason,
+      clock,
+      expectedRevision
+    )
+    return run
+  })
+
+  const orchestrationReconciliation = []
+  for (const dispatchId of abandonedDispatchIds) {
+    try {
+      const result = await orchestration.abandonOrchestrationWorker({ dispatch: dispatchId })
+      orchestrationReconciliation.push({
+        dispatchId,
+        ok: result.ok,
+        reason: result.ok ? null : (result.reason ?? null)
+      })
+    } catch (error) {
+      orchestrationReconciliation.push({ dispatchId, ok: false, reason: error.message })
+    }
+  }
+
+  return { run: next, orchestrationReconciliation }
 }

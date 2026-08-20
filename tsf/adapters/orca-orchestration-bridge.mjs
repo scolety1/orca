@@ -288,6 +288,21 @@ export async function showOrchestrationWorker({ dispatch } = {}) {
   return runOrca(['orchestration', 'worker-show', '--dispatch', dispatch])
 }
 
+// Fences a Dispatch without claiming its process stopped ("Retains all
+// possibly-live resources and performs no process or filesystem action" --
+// orca orchestration worker-abandon --help) -- deliberately NOT worker-stop,
+// which actively tries to kill the terminal and would be a false claim for
+// a wave abandoned only because TSF gave up waiting on it, not because its
+// process is known to be dead. A real, live-confirmed gap: abandoning a
+// stalled wave on the TSF side left the real Orca resource still marked
+// owned, silently blocking a later worker-start into the same worktree.
+export async function abandonOrchestrationWorker({ dispatch } = {}) {
+  if (!dispatch) {
+    return { ok: false, reason: 'INVALID_ARGS', detail: 'dispatch is required' }
+  }
+  return runOrca(['orchestration', 'worker-abandon', '--dispatch', dispatch])
+}
+
 // Terminal state is process/resource accounting, reported separately from
 // task status (a completed task can still own a live terminal) -- feeds
 // keep-going.mjs's detectStall via the caller's own heartbeat projection.

@@ -198,7 +198,13 @@ test('a failed rebind onto an existing orchestrationRunId (consumer_fenced) repo
   assert.equal(result.action, 'DISPATCH_FAILED')
   assert.equal(result.reason, 'CLI_ERROR')
   assert.equal(taskCreateCalls, 0, 'a failed rebind must not proceed to dispatch any real work')
-  assert.equal(store.readRun(PROJECT_ID).tickLock, null, 'lock still released on this failure path')
+  const run = store.readRun(PROJECT_ID)
+  assert.equal(run.tickLock, null, 'lock still released on this failure path')
+  // A real, live-confirmed gap: this reason previously only ever appeared
+  // in the transient tick response -- once that response was gone, there
+  // was no way to look up afterward why a real dispatch attempt had failed.
+  assert.equal(run.checkpoints.at(-1).phase, 'DISPATCH_FAILED')
+  assert.match(run.checkpoints.at(-1).note, /consumer_fenced/)
 })
 
 test('a still-in-flight wave reports WAVE_STILL_IN_FLIGHT and releases the lock without settling', async () => {
@@ -337,6 +343,8 @@ test('a dispatch failure with nothing yet dispatched reports DISPATCH_FAILED and
     'the real Run created before the failure must not be forgotten'
   )
   assert.equal(run.tickLock, null)
+  assert.equal(run.checkpoints.at(-1).phase, 'DISPATCH_FAILED')
+  assert.match(run.checkpoints.at(-1).note, /t1.*boom/)
 })
 
 test('a dispatch failure on an already-known orchestrationRunId does not touch it again', async () => {

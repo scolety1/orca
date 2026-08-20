@@ -112,6 +112,9 @@ if (args[0] === 'repo' && args[1] === 'list') {
     worker: { dispatch_id: dispatchId, state: 'succeeded', stage: 'settled' },
     observation: { status: 'idle', exactWorker: true }
   })
+} else if (args[0] === 'orchestration' && args[1] === 'worker-abandon') {
+  const dispatchIndex = args.indexOf('--dispatch')
+  ok({ dispatch: { id: dispatchIndex === -1 ? null : args[dispatchIndex + 1], status: 'fenced' } })
 } else if (args[0] === 'orchestration' && args[1] === 'worker-list') {
   ok({ workers: seededWorkers })
 } else if (args[0] === 'orchestration' && args[1] === 'task-list') {
