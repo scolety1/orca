@@ -9,6 +9,7 @@
 // current state observable and operable from the UI.
 import { assertExpectedRevision } from '../domain/canonical.mjs'
 import {
+  abandonStalledWave,
   checkpointRun,
   compareStateToGoal,
   createOvernightRun,
@@ -86,6 +87,49 @@ export function resumeKeepGoingRun(opState, projectId, clock, expectedRevision) 
   resumed = checkpointRun(resumed, { phase: 'RUN_RESUMED' }, clock)
   const next = { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: resumed } }
   return { opState: next, run: resumed }
+}
+
+// A real, live-confirmed gap: a run left STALLED with its in-flight wave
+// never fenced had NO path back to usability from the product surface at
+// all -- tickKeepGoingRun always routes to settleStep whenever
+// inFlightWave is set (STALLED or not), silently re-checking the SAME
+// stuck wave and discarding any new work item a caller supplies, with no
+// signal that this happened. abandonStalledWave already existed
+// (tsf/domain/keep-going.mjs, waves 18/18b) but was only ever reachable
+// from a raw script. Exposing it here is what actually lets an operator
+// recover a stalled run through the UI instead of needing one.
+export function abandonKeepGoingStalledWave(opState, projectId, reason, clock, expectedRevision) {
+  const run = keepGoingRunFor(opState, projectId)
+  if (!run) {
+    const error = new Error('no Keep Going run exists for this project')
+    error.code = 'TSF_RUN_NOT_FOUND'
+    throw error
+  }
+  let next = abandonStalledWave(
+    run,
+    reason ?? 'OPERATOR_ABANDONED_STALLED_WAVE',
+    clock,
+    expectedRevision
+  )
+  // abandonStalledWave only fences the stuck wave -- it never moves the
+  // run's own STALLED state, so without this an operator who just recovered
+  // the wave would still be stuck with no usable affordance (canResume only
+  // shows for PAUSED, and tickKeepGoingRun refuses anything but ACTIVE).
+  // Only auto-resume if abandoning left the run at STALLED rather than
+  // escalating it further (e.g. to NEEDS_YOU on retry-budget exhaustion,
+  // which needs the operator's own decision, not an automatic override).
+  if (next.state === 'STALLED') {
+    next = resumeRun(next, clock, next.revision)
+    next = checkpointRun(
+      next,
+      { phase: 'RUN_RESUMED', note: 'auto-resumed after abandoning a stalled wave' },
+      clock
+    )
+  }
+  return {
+    opState: { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: next } },
+    run: next
+  }
 }
 
 // Projects the real run into the display shape the acceptance criteria

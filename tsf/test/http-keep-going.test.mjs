@@ -284,6 +284,118 @@ test('POST tick with a work item missing both worktree and workerTerminal is rej
   })
 })
 
+// Reproduces the exact bug a real manual UI acceptance test hit live: a
+// run left with a STALLED, un-fenced in-flight wave silently absorbs
+// every subsequent "Run now" click into settleStep (which only ever
+// re-checks the SAME stuck wave), discarding whatever new work item the
+// operator supplied, with no signal that this happened -- and, before
+// this fix, no way back to usability through the product surface at all.
+test("a stalled in-flight wave silently absorbs a later tick's new work item until abandon-stalled-wave clears it, after which the new item genuinely dispatches", async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        originalGoal: 'Stall recovery proof.',
+        acceptanceCriteria: ['X'],
+        budget: { stallThresholdMs: 100 }
+      })
+    })
+
+    // First "Run now": dispatches a real wave via the stub CLI, which
+    // never reports this task as completed (the stub's default task-list
+    // is empty), so it stays PENDING forever from TSF's perspective --
+    // exactly the same shape as a genuinely stuck worker.
+    const firstTick = await withStubOrca('success', () =>
+      fetch(`${base}/api/keep-going/${PROJECT_ID}/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          candidateWorkItems: [{ id: 'original-item', scope: ['a.md'], worktree: 'C:/repo/wt1' }]
+        })
+      })
+    )
+    assert.equal((await firstTick.json()).action, 'WAVE_DISPATCHED')
+
+    // Let real wall-clock time pass the (deliberately tiny) stall threshold.
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    // Second "Run now": the operator supplies a DIFFERENT new work item,
+    // exactly as Tim did -- but since the prior wave is still in flight
+    // (now past its stall threshold), this tick must route to settleStep
+    // and escalate THAT wave to STALLED, never touching the new item.
+    const secondTick = await withStubOrca('success', () =>
+      fetch(`${base}/api/keep-going/${PROJECT_ID}/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          candidateWorkItems: [{ id: 'new-item', scope: ['b.md'], worktree: 'C:/repo/wt2' }]
+        })
+      })
+    )
+    const secondBody = await secondTick.json()
+    assert.equal(secondBody.action, 'WAVE_STALLED')
+    // Proves the "new" item was never even considered -- the outcome
+    // still references the ORIGINAL work item, not the one just supplied.
+    assert.equal(secondBody.outcomes[0].workItemId, 'original-item')
+
+    const stalledView = await (await fetch(`${base}/api/keep-going/${PROJECT_ID}`)).json()
+    assert.equal(stalledView.state, 'STALLED')
+
+    // The fix: abandon-stalled-wave gives the operator a real recovery
+    // path through the product surface, instead of none at all.
+    const abandonRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/abandon-stalled-wave`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'test recovery', expectedRevision: stalledView.revision })
+    })
+    assert.equal(abandonRes.status, 200)
+    assert.equal((await abandonRes.json()).state, 'ACTIVE')
+
+    // Now the new item finally gets a real chance to dispatch.
+    const thirdTick = await withStubOrca('success', () =>
+      fetch(`${base}/api/keep-going/${PROJECT_ID}/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          candidateWorkItems: [{ id: 'new-item', scope: ['b.md'], worktree: 'C:/repo/wt2' }]
+        })
+      })
+    )
+    const thirdBody = await thirdTick.json()
+    assert.equal(thirdBody.action, 'WAVE_DISPATCHED')
+    assert.equal(thirdBody.dispatchRecords[0].workItemId, 'new-item')
+  })
+})
+
+test('POST abandon-stalled-wave 422s honestly when there is no in-flight wave to abandon', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ originalGoal: 'No wave yet.', acceptanceCriteria: ['X'] })
+    })
+    const res = await fetch(`${base}/api/keep-going/${PROJECT_ID}/abandon-stalled-wave`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    })
+    assert.equal(res.status, 422)
+    assert.equal((await res.json()).code, 'TSF_NO_IN_FLIGHT_WAVE')
+  })
+})
+
+test('POST abandon-stalled-wave on an unknown project 404s, same as the other routes', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/keep-going/does-not-exist/abandon-stalled-wave`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    })
+    assert.equal(res.status, 404)
+  })
+})
+
 test('POST tick on an unknown project 404s, same as the other routes', async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/api/keep-going/does-not-exist/tick`, {

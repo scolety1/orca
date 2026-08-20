@@ -152,5 +152,14 @@ export const api = {
     request<KeepGoingTickResult>(`/keep-going/${encodeURIComponent(projectId)}/tick`, {
       method: 'POST',
       body: JSON.stringify({ candidateWorkItems })
+    }),
+  abandonStalledKeepGoingWave: (
+    projectId: string,
+    reason: string | undefined,
+    expectedRevision: number
+  ) =>
+    request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/abandon-stalled-wave`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, expectedRevision })
     })
 }

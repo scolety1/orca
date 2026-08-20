@@ -18,6 +18,7 @@
 // domain transition, so a concurrent tick's lock (or another request that
 // landed first) is always seen.
 import {
+  abandonKeepGoingStalledWave,
   keepGoingRunFor,
   pauseKeepGoingRun,
   projectKeepGoingRun,
@@ -165,6 +166,37 @@ export async function handleKeepGoingRoute(
     try {
       const run = await mutateThroughStore(projectId, (fakeOpState) =>
         resumeKeepGoingRun(fakeOpState, projectId, () => new Date(), body.expectedRevision)
+      )
+      json(
+        res,
+        200,
+        projectKeepGoingRun(run, () => new Date())
+      )
+    } catch (error) {
+      respondError(res, json, error)
+    }
+    return true
+  }
+
+  // Recovers a run whose in-flight wave stalled -- otherwise tickKeepGoingRun
+  // always routes to settleStep whenever inFlightWave is set (STALLED or
+  // not), silently re-checking the same stuck wave and discarding any new
+  // work item on every future "Run now" click with no signal that this
+  // happened (a real, live-confirmed gap: a manual UI acceptance test hit
+  // this exact stuck state with no way back to it through the product
+  // surface at all). Wraps the same abandonStalledWave already proven in
+  // waves 18/18b.
+  if (parts[3] === 'abandon-stalled-wave') {
+    const body = await readBody(req)
+    try {
+      const run = await mutateThroughStore(projectId, (fakeOpState) =>
+        abandonKeepGoingStalledWave(
+          fakeOpState,
+          projectId,
+          body.reason,
+          () => new Date(),
+          body.expectedRevision
+        )
       )
       json(
         res,
