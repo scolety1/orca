@@ -2098,6 +2098,16 @@
           "commit": "e78868569e07c23144c9630e7b34b39eb7fae64e",
           "status": "COMMITTED",
           "note": "Next: wave 7 -- a restrained UI surface (current benchmark packs, last run, candidate vs current, regression count, recommendation, drill-down -- not a benchmark dashboard product), then a final holistic review before packaging M9 as an immutable candidate and adopting into tsf/main."
+        },
+        {
+          "wave": 7,
+          "summary": "Restrained Evaluation & Regression UI surface. New /evaluation page (Evaluation nav entry, AppShell), master-detail layout matching AgentsPage's established pattern: pack list left (packId/category/case count), selected pack's last run + case-by-case pass/fail/errored list right, Run now + Check for regression buttons surfacing real regressions/improvements/recommendation, honest NO_BASELINE_YET message. Deliberately restrained per Tim's own \"not a benchmark dashboard product\" framing -- no charts/trend graphs.\n\nNew eval-types.ts, 4 new api.ts methods. tsc/oxlint/vite build all clean. Full suite 543/543 GREEN, max-lines ratchet 346 unchanged, zero Orca core delta.",
+          "testsAdded": 0,
+          "testsPassing": "543 full tsf suite GREEN (UI-only wave, no new node tests)",
+          "verifier": "SELF",
+          "commit": "270ef9d8a2fda3705f4b417703ad6c6ee5508790",
+          "status": "COMMITTED",
+          "note": "All planned M9 waves complete. Next: a final holistic independent review of the whole M9 milestone (waves 1-7), then package as an immutable candidate and adopt into tsf/main via the established two-commit ff-only pattern."
         }
       ]
     },
