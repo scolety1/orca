@@ -2088,6 +2088,16 @@
           "commit": null,
           "status": "CLEAN",
           "note": "Next: wave 6 -- model-upgrade-gate wiring, persistence + HTTP routes, UI surface."
+        },
+        {
+          "wave": 6,
+          "summary": "Model-upgrade-gate report, eval-pack registry, persistence, and HTTP routes. New tsf/domain/model-upgrade-gate.mjs's buildModelUpgradeGateReport wraps the real compareEvalRuns with cost/capacity/latency/confidence reporting -- no side effects, no write path, produces a report only (promoting a mapping remains a human decision). Cost/capacity/latency honestly null unless a real figure is supplied (mutation-confirmed). New eval-pack-registry.mjs names all 7 real packs uniformly. New eval-http-routes.mjs: GET /api/eval, GET/:packId/history (append-only), POST/:packId/run, POST/:packId/regression-check (honest NO_BASELINE_YET, never a fabricated baseline). New data-store.mjs default: evalRuns.\n\n15 new tests (domain, a registry smoke test literally running every real pack, real HTTP-level). Full suite 543/543 GREEN -- one run hit a known-flaky pre-existing timing-sensitive test (http-chat-dispatch.test.mjs, unrelated to this wave) under full-suite CPU contention; reproduces clean standalone and on repeat, disclosed as a pre-existing flake class (like the cross-process-lock EPERM flake), not a regression.",
+          "testsAdded": 15,
+          "testsPassing": "543 full tsf suite GREEN",
+          "verifier": "SELF",
+          "commit": "e78868569e07c23144c9630e7b34b39eb7fae64e",
+          "status": "COMMITTED",
+          "note": "Next: wave 7 -- a restrained UI surface (current benchmark packs, last run, candidate vs current, regression count, recommendation, drill-down -- not a benchmark dashboard product), then a final holistic review before packaging M9 as an immutable candidate and adopting into tsf/main."
         }
       ]
     },
