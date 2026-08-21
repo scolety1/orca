@@ -67,16 +67,24 @@ first draft under-read the codebase by stopping at the bare domain
 functions instead of following the call chain into the controller that
 actually wraps them.
 
-## Gap 3 — no recovery summary surface after restart
+## Gap 3 — no recovery summary surface after restart (IMPLEMENTED, wave 2)
 
 Nothing today greets Tim (via chat or the Live Work Feed) with "here is
 what happened while this was paused/the server was down." `summarizeRun`
-exists but is a flat snapshot, not a "what changed since you last looked"
-diff. Fix: a small, additive function comparing the run's last-seen
-checkpoint (client-cached) against the current one, surfaced as a single
-chat-answerable "what happened?" query — reusing `chat-responder.mjs`'s
-existing live-run-grounding pattern from M3, not inventing a new answer
-path.
+exists but is only a flat current-state snapshot, no history at all.
+
+As actually built (corrected here after an independent review caught this
+section describing an earlier, abandoned design): `recentCheckpointTrail
+(run, limit=5)` (`keep-going.mjs`) is a stateless read of the last N
+entries in the existing `checkpoints[]` audit trail — no client-cached
+"last seen" checkpoint, no diff logic, no new persistence. Wired into
+`chat-responder.mjs`'s existing STATUS answer (which `catch me up` already
+routes to, per M3) as a plain "Recent history: PHASE_A -> PHASE_B -> ...
+" line, shown whenever a run has more than its own starting checkpoint.
+Simpler than the original last-seen-diff idea and sufficient for the
+acceptance criterion: a fresh, restarted process reading this same
+persisted run already has everything needed to answer "what happened?"
+with no extra state to keep in sync.
 
 ## Required real proof (per Tim's own standing "no worker self-report,
 no untested claim" discipline)
@@ -86,9 +94,10 @@ run against the safe scratch/fixture project, dispatch a real wave, kill
 the TSF server process (`taskkill`/SIGKILL, not a graceful shutdown),
 restart it pointed at the same state file, and confirm from a fresh
 process: the run resumes with the exact same revision/checkpoints/
-needsYou, does not redispatch the in-flight wave, and (once it settles)
-correctly reports the compact outcome from Gap 1 and a resume summary
-from Gap 3.
+needsYou, does not redispatch the in-flight wave, and a real "catch me
+up" chat query against the fresh process returns a recent-history line
+genuinely grounded in the checkpoint trail read straight off disk (Gap
+3) -- not from any in-memory state the killed process happened to hold.
 
 ## Explicitly out of scope for M4
 
