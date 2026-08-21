@@ -1548,7 +1548,21 @@
       ],
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started"]
+      "gaps": [
+        "Wave 1 (research-first scoping) done -- see docs/tsf/M6_DESKTOP_TSF_V1.md. Confirmed tsf/ui is a standalone built SPA (tsf/ui/dist exists) only ever run via manual `npm run dev`; tsf/server/http-server.mjs's startStandaloneServer(port) is a real Node HTTP entry point but serves ONLY /api routes, no static UI hosting. Real, substantive finding: TSF is already registered as a real Orca plugin (tsf/orca-plugin.json + tsf/main.mjs, entirely inside tsf/, zero core delta) with a real panel-contribution mechanism, but the currently-wired panel (tsf/panel.html) is a stale pre-M2 placeholder unrelated to the real TSF UI/API built since. Two open, unresolved design questions for wave 2 before any implementation: (1) can a plugin's worker-thread main.mjs spawn/manage a long-lived child process (the tsf/server) the way orca-orchestration-bridge.mjs/orca-capacity-bridge.mjs already spawn the orca CLI elsewhere in this program; (2) can a plugin panel's entry serve a full multi-route SPA bundle rather than one static HTML file. Unlike M4/M5, no acceptance criterion is already satisfied by existing code -- this milestone's gap really is close to everything, but is narrower than 'build a second Electron app' if the existing plugin system can host it."
+      ],
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Research-first source inspection (per Tim's own standing execution model, and per the pattern that already caught false gaps twice in M4/M5) before any M6 design/implementation. Read tsf/ui's package.json/README (standalone Vite SPA, own dist build, only ever run via manual npm run dev), tsf/server/http-server.mjs's real startStandaloneServer(port) entry point (confirmed via grep: /api routes only, no static-file serving of tsf/ui/dist anywhere in the file), tsf/orca-plugin.json + tsf/main.mjs (TSF is already a real, registered Orca plugin -- contributes.panels/commands, entirely inside tsf/, zero Orca core files), tsf/panel.html (a stale pre-M2 placeholder page, unrelated to the real current TSF UI/API), and src/main/plugins/plugin-host-runtime.ts (confirmed plugin main.mjs modules run in a dedicated Node worker_thread via createPluginWorkerRuntime, not the main Electron process and not a vm/browser sandbox -- searched for capability/process/spawn gates in that file and found none, but did not empirically verify whether a plugin's worker thread is actually permitted to spawn a child process, leaving that as an explicit open question rather than guessing). Wrote docs/tsf/M6_DESKTOP_TSF_V1.md documenting all of this plus 2 concrete open design questions wave 2 must resolve before any implementation: (1) can a plugin worker-thread spawn/manage the tsf/server process; (2) can a plugin panel entry serve the full tsf/ui SPA bundle rather than one static file. If either is infeasible, a fallback design (a small separate tsf-owned launcher, still zero core delta) is sketched but deliberately not committed to yet.",
+          "testsAdded": 0,
+          "testsPassing": "325/325 full tsf suite GREEN (unaffected -- research/design only, no code changed)",
+          "verifier": "SELF",
+          "commit": null,
+          "status": "IN_PROGRESS",
+          "note": "Next: empirically resolve the 2 open design questions (read plugin-host-runtime.ts and its worker bootstrap fully; if source alone doesn't settle it, probe in a safe fixture), then choose between extending TSF's existing Orca plugin vs. a separate tsf-owned launcher, then write the concrete implementation design before any code changes."
+        }
+      ]
     },
     {
       "id": "M7",
