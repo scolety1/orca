@@ -76,6 +76,34 @@ function structuredResponseFor(schemaJson, prompt) {
       stopConditions: ['stub stop condition']
     }
   }
+  if (schemaVersion === 'TSF_WBS_GENERATION_REQUEST_V1') {
+    // STUB_WBS_INVALID: schema-conformant (every field is individually the
+    // right type) but domain-invalid (min > expected) -- lets tests prove
+    // normalizeWbs's own semantic validation catches what the JSON schema
+    // alone cannot.
+    const activeEffortHours =
+      process.env.STUB_WBS_INVALID === '1'
+        ? { min: 20, expected: 8, max: 16 }
+        : { min: 4, expected: 8, max: 16 }
+    return {
+      schemaVersion: 'TSF_WBS_GENERATION_REQUEST_V1',
+      tasks: [
+        {
+          id: 'stub-task-1',
+          title: `stub-wbs-for::${prompt}`.slice(0, 200),
+          stage: 'implementation',
+          activeEffortHours,
+          clarity: 0.7,
+          confidence: 0.7,
+          risk: 'LOW',
+          providerRoleHint: 'WORKER_BALANCED',
+          assumptions: ['stub assumption'],
+          evidence: ['stub evidence'],
+          blockers: []
+        }
+      ]
+    }
+  }
   // Falls back to the onboarding direction-analysis shape (the only other
   // structured caller today).
   return {
