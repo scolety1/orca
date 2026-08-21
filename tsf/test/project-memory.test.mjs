@@ -8,6 +8,7 @@ import {
   retrieveExperiencesForCapsule,
   projectDecisionsFromReceipts
 } from '../domain/project-memory.mjs'
+import { createReceipt, verifyReceipt } from '../domain/receipts.mjs'
 
 function tick(ms) {
   let t = ms
@@ -288,4 +289,69 @@ test('projectDecisionsFromReceipts is a pure projection over the existing receip
 test('projectDecisionsFromReceipts handles an empty/undefined chain honestly', () => {
   assert.deepEqual(projectDecisionsFromReceipts(undefined), [])
   assert.deepEqual(projectDecisionsFromReceipts([]), [])
+})
+
+// Named, explicit proofs for 2 of Tim's own required-proofs list that were
+// previously only structurally true, not directly demonstrated by a
+// dedicated test naming the exact scenario.
+
+test('REQUIRED PROOF: a Decision cannot be silently overwritten -- receipts.mjs has no mutation path at all, only append', () => {
+  const clock = () => new Date('2026-01-01T00:00:00.000Z')
+  const original = createReceipt(
+    {
+      kind: 'ADOPTION_DECISION',
+      projectId: 'proj-a',
+      missionId: 'mission-1',
+      decision: 'ADOPT_MICROSERVICES_SPLIT'
+    },
+    { clock }
+  )
+  assert.ok(verifyReceipt(original))
+
+  // receipts.mjs exports exactly createReceipt/verifyReceipt/receiptNdjson
+  // -- there is no updateReceipt/deleteReceipt/overwriteReceipt. The ONLY
+  // way to record a changed decision is to append a NEW receipt chained
+  // to the old one via previousReceiptHash; the original is never touched.
+  const corrected = createReceipt(
+    {
+      kind: 'ADOPTION_DECISION',
+      projectId: 'proj-a',
+      missionId: 'mission-2',
+      decision: 'REVERTED_TO_MONOLITH'
+    },
+    { previousReceiptHash: original.receiptHash, clock }
+  )
+  const chain = [original, corrected]
+
+  // The original receipt survives byte-identical and still self-verifies
+  // -- it was never mutated, only superseded by a later, separate entry.
+  assert.deepEqual(chain[0], original)
+  assert.ok(verifyReceipt(chain[0]))
+  assert.equal(chain[0].decision, 'ADOPT_MICROSERVICES_SPLIT')
+  assert.equal(corrected.previousReceiptHash, original.receiptHash)
+
+  // Both decisions remain visible to retrieval -- "cannot be silently
+  // overwritten" means the old one is never hidden, not merely that its
+  // bytes survive.
+  const decisions = projectDecisionsFromReceipts(chain, 5)
+  assert.equal(decisions.length, 2)
+  assert.match(decisions[0], /ADOPT_MICROSERVICES_SPLIT/)
+  assert.match(decisions[1], /REVERTED_TO_MONOLITH/)
+})
+
+test('REQUIRED PROOF: a rejected architecture (do-not-repeat lesson) is retrieved when relevant', () => {
+  let memory = emptyProjectMemory()
+  memory = addMemoryRecord(
+    memory,
+    {
+      class: 'EXPERIENCE',
+      statement:
+        'Rejected: splitting into microservices was tried in mission-1 and reverted after 2 weeks -- keep the monolith, the team could not support the operational overhead.',
+      source: { kind: 'RESULT_CAPSULE', ref: 'mission-1' }
+    },
+    () => new Date()
+  )
+  const lessons = retrieveExperiencesForCapsule(memory, 5)
+  assert.equal(lessons.length, 1)
+  assert.match(lessons[0], /Rejected: splitting into microservices/)
 })
