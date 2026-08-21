@@ -5,6 +5,8 @@
 // gitignored local-state file.
 import { createServer } from 'node:http'
 import { pathToFileURL } from 'node:url'
+import path from 'node:path'
+import { createStaticUiHandler } from './static-ui-server.mjs'
 import { loadRealPilotProjects } from './portfolio-projection.mjs'
 import {
   createFixtureState,
@@ -579,9 +581,22 @@ function summarizeCard(project) {
   }
 }
 
-export function startStandaloneServer(port = 4610) {
+// M6: standalone/production mode has no Vite dev server to fall back to
+// for non-/api requests, unlike tsf/ui's own `npm run dev` (which mounts
+// createRequestHandler as Vite middleware and lets Vite serve everything
+// else) -- so this serves tsf/ui's built dist directly instead of 404ing.
+export function startStandaloneServer(port = 4610, options = {}) {
   const handler = createRequestHandler()
-  const server = createServer((req, res) => handler(req, res, () => notFound(res)))
+  const distDir = options.uiDistDir ?? path.join(import.meta.dirname, '..', 'ui', 'dist')
+  const serveStaticUi = createStaticUiHandler(distDir)
+  const server = createServer((req, res) =>
+    handler(req, res, () => {
+      if (serveStaticUi(req, res)) {
+        return
+      }
+      notFound(res)
+    })
+  )
   server.listen(port, '127.0.0.1', () => {
     console.log(`TSF operator API listening on http://127.0.0.1:${port}`)
   })
