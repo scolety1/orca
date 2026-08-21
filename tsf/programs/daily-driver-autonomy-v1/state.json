@@ -1953,6 +1953,16 @@
           "commit": "3837c1b355899e316465d28de127778d59d05b84 (9a), 5e544a641ae0dfd30fe81cfbbe801dd248782315 (9b)",
           "status": "COMMITTED",
           "note": "Next: wave 10 -- estimate-vs-actual calibration consuming real M4/M5 evidence (keep-going.mjs settled run/wave history), which is what lets provider-forecast.mjs's currently-honest null/UNKNOWN costs become real numbers. Then the required adversarial real-proof wave (small clean repo, larger uncertain repo, idea-only estimate, impossible deadline, provider near reset, competing Work Set commitments, blocked/dirty project, scope change, missing pricing, no historical calibration). Then a final holistic independent review, then packaging/adoption."
+        },
+        {
+          "wave": 10,
+          "summary": "Estimate-vs-actual calibration. New tsf/domain/estimate-calibration.mjs consumes M4's real settled-run evidence (keep-going.mjs's transitions[]/waves[]/retryCounts -- deliberately no new instrumentation added to an already-adopted milestone) to pair a completed (COMPLETE or BLOCKED) run against the estimate on file for that project into a TSF_ESTIMATE_ACTUAL_V1 record. summarizeCalibration honestly refuses to compute a correction below 5 real samples (INSUFFICIENT_SAMPLE_SIZE), and applyCalibrationBias -- once calibrated -- scales ONLY wallClockHours percentiles by the real historical median actual/predicted ratio, leaving activeEffortHours/humanEffortHours/deadlineProbability untouched. Both isolation guarantees verified genuine via mutation testing (broke each, confirmed the exact expected test failure, restored).\n\nNew estimate-http-routes.mjs endpoints: POST /api/projects/:id/estimate/actuals (idempotent by runId -- re-posting an already-recorded run returns the existing record, never a duplicate or a silently rewritten one) and GET .../estimate/calibration. New data-store.mjs default: estimateActuals. Disclosed limitation: Claude/Codex provider usage and human-review hours are honestly null -- keep-going.mjs tracks neither today.\n\n18 new tests (13 domain, 5 real HTTP-level against a real seeded settled run), all passing on first run. Full suite 454/454 GREEN, oxlint clean, max-lines ratchet 346 unchanged.",
+          "testsAdded": 18,
+          "testsPassing": "454 full tsf suite GREEN",
+          "verifier": "SELF; both calibration-isolation guarantees verified genuine via mutation testing",
+          "commit": "1f7fbfc1fadececa52ee1400337a3c9a5e33708b",
+          "status": "COMMITTED",
+          "note": "Next: the required adversarial real-proof wave (small clean repo, larger uncertain repo, idea-only estimate, impossible deadline, provider near reset, competing Work Set commitments, blocked/dirty project, scope change, missing pricing, no historical calibration -- never mutating real projects merely to estimate them). Then a final holistic independent review of the whole M8 milestone, then packaging as an immutable candidate and adoption into tsf/main via the established two-commit ff-only pattern."
         }
       ]
     },
