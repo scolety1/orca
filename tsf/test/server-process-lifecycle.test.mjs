@@ -114,6 +114,22 @@ test('restart uses the configured backoff delay, not an immediate synchronous re
   assert.equal(children.length, 2, 'respawn happens once the backoff callback fires')
 })
 
+test('a clean exit (code 0, no signal) is not restarted -- it is a graceful shutdown, not a crash', async () => {
+  const { spawnFn, children } = makeFakeSpawner()
+  const logs = []
+  const lifecycle = startServerLifecycle({
+    spawnFn,
+    serverEntryPath: '/fake/http-server.mjs',
+    port: 4610,
+    log: (level, msg) => logs.push({ level, msg }),
+    scheduleRestart: immediateSchedule
+  })
+  children[0].emit('exit', 0, null)
+  assert.equal(children.length, 1, 'a clean exit(0) does not trigger a respawn')
+  assert.equal(lifecycle.getRestartCount(), 0)
+  assert.ok(logs.some((l) => l.level === 'info' && /exited cleanly/.test(l.msg)))
+})
+
 test('getRestartCount reflects the real number of restarts performed', async () => {
   const { spawnFn, children } = makeFakeSpawner()
   const lifecycle = startServerLifecycle({

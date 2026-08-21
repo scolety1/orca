@@ -60,6 +60,30 @@ test('activate() registers the existing commands unchanged', () => {
   }
 })
 
+test('a re-entrant activate() stops the previous lifecycle rather than orphaning it', () => {
+  const { orca } = fakeOrca()
+  const stopCalls = []
+  function fakeSpawnFn() {
+    return {
+      stdout: null,
+      stderr: null,
+      on: () => {},
+      kill: () => stopCalls.push('killed')
+    }
+  }
+  activate(orca, { port: ephemeralPort(), spawnFn: fakeSpawnFn })
+  activate(orca, { port: ephemeralPort(), spawnFn: fakeSpawnFn })
+  try {
+    assert.equal(
+      stopCalls.length,
+      1,
+      'the first lifecycle was stopped before the second one started'
+    )
+  } finally {
+    deactivate()
+  }
+})
+
 test('activate() really spawns tsf/server and it really answers HTTP requests; deactivate() really kills it', async () => {
   const port = ephemeralPort()
   const { orca } = fakeOrca()

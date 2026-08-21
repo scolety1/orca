@@ -32,6 +32,11 @@ function realSpawnFn(serverEntryPath, port) {
 // an ephemeral port and the real server entry, rather than either mocking
 // child_process or hardcoding a fixed port a test run could collide with.
 export default function activate(orca, testOverrides = {}) {
+  // Guard against a re-entrant activate() (e.g. a plugin-reload edge case)
+  // silently losing the previous lifecycle's real child-process handle --
+  // stop it first rather than overwriting the reference and orphaning it.
+  activeLifecycle?.stop()
+
   // M6: spawn tsf/server (serving both /api and the built tsf/ui SPA, per
   // static-ui-server.mjs) as a real child process for as long as this
   // plugin stays active -- "connects to/starts required local TSF/Orca

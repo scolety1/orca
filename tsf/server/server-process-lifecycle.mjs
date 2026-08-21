@@ -48,6 +48,15 @@ export function startServerLifecycle(options) {
         )
         return
       }
+      // A clean exit(0) with no signal is a graceful, intentional shutdown,
+      // not a crash -- tsf/server has no self-terminating path today, but
+      // restarting on top of one would be wrong if it ever grows one, and
+      // would silently consume restart budget for something that isn't a
+      // failure.
+      if (code === 0 && signal === null) {
+        log('info', 'tsf/server exited cleanly (code 0) -- not restarting')
+        return
+      }
       if (restartCount >= maxRestarts) {
         log(
           'error',
