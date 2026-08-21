@@ -2304,6 +2304,16 @@
             "tsf/launcher/Uninstall-TsfLauncher.ps1",
             "tsf/launcher/README.md"
           ]
+        },
+        {
+          "wave": 2,
+          "summary": "Independent fork review of wave 1 found 4 real issues, all fixed and re-verified: (1) neither tsf/ui/index.html nor first-run-setup.html declared a favicon, so the dedicated app window would show a generic icon while running, not the TSF mark -- added a matching inline-SVG favicon (same rounded-square/ring/sail design as tsf.ico) to both; (2) Launch-TSF.ps1 built the first-run-setup.html file:// URL by naive slash-flipping with no percent-encoding, so a checkout path containing '#', '?', or spaces could produce a malformed URL and a wrong derived plugin path -- switched to [System.Uri]'s own file-path constructor, confirmed it correctly percent-encodes spaces and '#' (tested directly: 'TSF #2' -> 'TSF%20%232'); (3) the documented ~30s reachability timeout could overrun to ~33-37s because each poll attempt's own 3s HTTP timeout wasn't bounded by the remaining budget -- now caps each attempt to the lesser of 3s and time actually remaining; (4) the design doc named the install/uninstall scripts in lowercase-hyphenated form while the real files are PascalCase -- corrected the doc. Rebuilt tsf/ui/dist and re-ran the full suite clean (589/589, 0 skipped this run). Re-verified the real end-to-end first-run-guide launch after the fixes: correct ~30.1s timeout (down from the unbounded worst case), correct window title, no leftover Edge processes after close.",
+          "filesChanged": [
+            "tsf/ui/index.html",
+            "tsf/launcher/first-run-setup.html",
+            "tsf/launcher/Launch-TSF.ps1",
+            "docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md"
+          ]
         }
       ],
       "gaps": [

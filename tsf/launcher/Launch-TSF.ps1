@@ -79,8 +79,9 @@ function Open-DedicatedWindow {
 }
 
 function Test-TsfReachable {
+    param([int]$TimeoutSec = 3)
     try {
-        $res = Invoke-WebRequest -Uri "$TsfUrl/api/meta" -UseBasicParsing -TimeoutSec 3
+        $res = Invoke-WebRequest -Uri "$TsfUrl/api/meta" -UseBasicParsing -TimeoutSec $TimeoutSec
         return $res.StatusCode -eq 200
     } catch {
         return $false
@@ -106,7 +107,13 @@ try {
 $deadline = (Get-Date).AddSeconds($ReadyTimeoutSeconds)
 $ready = $false
 while ((Get-Date) -lt $deadline) {
-    if (Test-TsfReachable) { $ready = $true; break }
+    # Cap each attempt's own timeout to whatever's left so a slow/hanging
+    # request near the deadline can't push the total wait past the
+    # documented ReadyTimeoutSeconds bound.
+    $remaining = [Math]::Max(1, [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds))
+    $attemptTimeout = [Math]::Min(3, $remaining)
+    if (Test-TsfReachable -TimeoutSec $attemptTimeout) { $ready = $true; break }
+    if ((Get-Date).AddSeconds($PollIntervalSeconds) -ge $deadline) { break }
     Start-Sleep -Seconds $PollIntervalSeconds
 }
 
@@ -115,6 +122,11 @@ if ($ready) {
     Open-DedicatedWindow -Url $TsfUrl
 } else {
     Write-Log 'TSF backend not reachable after timeout -- opening the guided first-run setup page.'
-    $fileUrl = 'file:///' + ($FirstRunSetupPath -replace '\\', '/')
+    # Use [System.Uri]'s own file-path constructor rather than a naive
+    # slash-flip -- it percent-encodes spaces, '#', '?', and other
+    # URL-significant characters that a real checkout path could contain,
+    # which a plain string replace would instead let corrupt the URL (and
+    # the page's own location.pathname-derived plugin path).
+    $fileUrl = ([System.Uri]$FirstRunSetupPath).AbsoluteUri
     Open-DedicatedWindow -Url $fileUrl
 }

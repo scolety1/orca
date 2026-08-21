@@ -91,10 +91,11 @@ delta, zero new runtime dependencies):
 2. **`tsf/launcher/first-run-setup.html`** — a small, self-contained static page (TSF's
    own dark/purple palette, no network calls) with the exact guided steps above, a copy-
    path control, and a "Check again" button that re-invokes the readiness poll.
-3. **`tsf/launcher/install-tsf-launcher.ps1`** — one-time local install: copies the
-   launcher files to a stable per-user location, writes the Desktop and Start Menu
-   `.lnk` shortcuts (icon, working directory, hidden console window), and an
-   `uninstall-tsf-launcher.ps1` counterpart that removes them.
+3. **`tsf/launcher/Install-TsfLauncher.ps1`** — one-time local install: writes the
+   Desktop and Start Menu `.lnk` shortcuts pointing at `Launch-TSF.ps1` in place (icon,
+   working directory, hidden console window) — nothing is copied to a separate
+   location, TSF keeps running from this checkout, same as M6 — and an
+   `Uninstall-TsfLauncher.ps1` counterpart that removes them.
 4. A generated TSF icon (`tsf/launcher/tsf.ico`) for the shortcuts, built from TSF's own
    established purple/ship-wheel identity — no external asset dependency.
 
