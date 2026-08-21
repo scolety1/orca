@@ -193,6 +193,55 @@ test('project context is actually transmitted to the provider process, bound to 
   }
 })
 
+// REQUIRED PROOF (M7): real project memory genuinely reaches the real
+// planner chat call end to end -- not just buildProjectContextCapsule
+// called directly (every other test above/below does that), but through
+// invokeLivePlanner's own opState.projectMemory?.[project.id] wiring
+// (live-planner.mjs's one M7 call-site change), transmitted to the real
+// provider subprocess's actual argv. This is the one gap a final
+// milestone review found: opState.projectMemory was never populated by
+// any prior test, so this exact wiring line had never been exercised.
+test('REQUIRED PROOF: real project memory (a real EXPERIENCE lesson) reaches the actual transmitted system prompt via invokeLivePlanner', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tsf-planner-memory-'))
+  const debugFile = path.join(dir, 'argv.json')
+  try {
+    let memory = emptyProjectMemory()
+    memory = addMemoryRecord(
+      memory,
+      {
+        class: 'EXPERIENCE',
+        statement: 'Rejected: do not retry the flaky upload endpoint without exponential backoff',
+        source: { kind: 'RESULT_CAPSULE', ref: 'mission-42' }
+      },
+      () => new Date()
+    )
+    await withStubEnv(
+      {
+        TSF_PLANNER_CLAUDE_COMMAND: STUB,
+        STUB_MODE: 'success',
+        STUB_SESSION_ID: 's-memory',
+        STUB_DEBUG_FILE: debugFile
+      },
+      async () => {
+        await invokeLivePlanner({
+          project: project(),
+          message: 'what should I watch out for?',
+          opState: opState({ projectMemory: { 'weird-talent-marketplace': memory } }),
+          recentHistory: []
+        })
+      }
+    )
+    const seen = JSON.parse(readFileSync(debugFile, 'utf8'))
+    const systemPromptArg = seen.args[seen.args.indexOf('--system-prompt') + 1]
+    assert.match(
+      systemPromptArg,
+      /Rejected: do not retry the flaky upload endpoint without exponential backoff/
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('persistent/resumed planner session: second turn resumes the first turn session id', async () => {
   await withStubEnv(
     { TSF_PLANNER_CLAUDE_COMMAND: STUB, STUB_MODE: 'success', STUB_SESSION_ID: 'sticky-session-1' },
