@@ -1933,6 +1933,16 @@
           "commit": null,
           "status": "INDEPENDENTLY_VERIFIED_CLEAN",
           "note": "M8 waves 1-6 are now all independently verified clean. Next: wave 8 -- wire delivery-scheduling.mjs's real output into a full TSF_DELIVERY_PLAN_V1 orchestration (milestone dates via hourOffsetToDate, ON_TRACK/AT_RISK/UNREALISTIC status vs. a supplied deadline, deadline-probability reuse from estimation.mjs's runMonteCarloEstimate). The 6 named scheduling modes can be part of this wave or a real follow-up, per judgment once the core orchestration is built."
+        },
+        {
+          "wave": 8,
+          "summary": "Wired delivery-scheduling.mjs's real output into the full TSF_DELIVERY_PLAN_V1 orchestration. Added workingHoursBetween to delivery-scheduling.mjs -- the real inverse of hourOffsetToDate (converts a Tim-supplied deadline calendar date into an hour budget, respecting the same working-weekday/blackout-date calendar rules, never negative). New tsf/domain/delivery-plan.mjs's buildDeliveryPlan({wbs, startDate, deadlineDate, maxConcurrent, calendarOptions, seed, runs}) orchestrates 3 already-real pieces -- computeCriticalPathSchedule (wave 6), hourOffsetToDate (wave 6), and runMonteCarloEstimate (wave 2, unchanged, no second probability engine) -- into one result: every scheduled task gets real calendar startDate/endDate; deadlineProbability reuses the real Monte Carlo output; status is NO_DEADLINE_SET/ON_TRACK/AT_RISK/UNREALISTIC using documented, conservative thresholds (80%/40%, not Tim-specified exact numbers but disclosed as such) rather than a single fake-precise pass/fail.\n\n7 tests, including 2 explicitly named REQUIRED PROOF tests: real calendar dates respect dependency ordering end to end (not just hour offsets); an impossible deadline is honestly UNREALISTIC and a generous one is ON_TRACK. The status-classification logic (the safety-relevant piece -- mislabeling an impossible deadline as ON_TRACK would be a genuinely harmful bug for Tim's own decisions) was verified genuine via mutation testing: temporarily collapsed the 3-way branch to always return ON_TRACK, confirmed the exact expected test failure, restored.",
+          "testsAdded": 7,
+          "testsPassing": "429 full tsf suite GREEN",
+          "verifier": "SELF; the status-classification logic verified genuine via mutation testing",
+          "commit": null,
+          "status": "IN_PROGRESS",
+          "note": "The 6 named scheduling modes (FASTEST_SAFE/BALANCED/DEADLINE_FIRST/COST_MINIMIZED/SUBSCRIPTION_UTILIZATION/HIGH_ASSURANCE) remain deliberately deferred -- they mostly concern MULTI-project tradeoffs (subscription utilization across a whole fleet, cost-minimization across competing projects) that don't have real meaning for a single project's own delivery plan; re-evaluate whether they belong here at all vs. properly belonging to M12's Fleet Optimizer once that milestone is reached, rather than building a hollow per-project stand-in now. Next: wave 9 -- a restrained UI surface (Project Estimate + client estimate + Delivery Calendar, per Tim's own 'do not turn this into a knowledge-management/dashboard product' framing), then wave 10 -- estimate-vs-actual calibration consuming real M4/M5 evidence, then the required adversarial real-proof wave, then a final holistic review + packaging/adoption."
         }
       ]
     },

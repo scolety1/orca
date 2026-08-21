@@ -161,3 +161,35 @@ export function hourOffsetToDate(
   }
   return cursor
 }
+
+// Inverse of hourOffsetToDate: counts real working hours between
+// startDate and a target endDate under the same calendar rules. Used to
+// turn a Tim-supplied deadline calendar date into an hour budget
+// runMonteCarloEstimate's own deadlineHours parameter can consume.
+// Returns 0 (never negative) if endDate is on/before startDate.
+export function workingHoursBetween(
+  startDate,
+  endDate,
+  { hoursPerDay = 8, workingWeekdays = [1, 2, 3, 4, 5], blackoutDates = [] } = {}
+) {
+  if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) {
+    throw new Error('startDate must be a real Date')
+  }
+  if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) {
+    throw new Error('endDate must be a real Date')
+  }
+  if (endDate.getTime() <= startDate.getTime()) {
+    return 0
+  }
+  const blackoutSet = new Set(blackoutDates)
+  const cursor = new Date(startDate.getTime())
+  let hours = 0
+  while (cursor.getTime() < endDate.getTime()) {
+    const dateKey = cursor.toISOString().slice(0, 10)
+    if (workingWeekdays.includes(cursor.getUTCDay()) && !blackoutSet.has(dateKey)) {
+      hours += hoursPerDay
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return hours
+}
