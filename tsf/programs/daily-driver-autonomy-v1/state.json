@@ -1940,9 +1940,19 @@
           "testsAdded": 7,
           "testsPassing": "429 full tsf suite GREEN",
           "verifier": "SELF; the status-classification logic verified genuine via mutation testing",
-          "commit": null,
-          "status": "IN_PROGRESS",
+          "commit": "40c2457f75768474c7aabe5b862670b9aaec48be",
+          "status": "COMMITTED",
           "note": "The 6 named scheduling modes (FASTEST_SAFE/BALANCED/DEADLINE_FIRST/COST_MINIMIZED/SUBSCRIPTION_UTILIZATION/HIGH_ASSURANCE) remain deliberately deferred -- they mostly concern MULTI-project tradeoffs (subscription utilization across a whole fleet, cost-minimization across competing projects) that don't have real meaning for a single project's own delivery plan; re-evaluate whether they belong here at all vs. properly belonging to M12's Fleet Optimizer once that milestone is reached, rather than building a hollow per-project stand-in now. Next: wave 9 -- a restrained UI surface (Project Estimate + client estimate + Delivery Calendar, per Tim's own 'do not turn this into a knowledge-management/dashboard product' framing), then wave 10 -- estimate-vs-actual calibration consuming real M4/M5 evidence, then the required adversarial real-proof wave, then a final holistic review + packaging/adoption."
+        },
+        {
+          "wave": 9,
+          "summary": "Restrained UI surface, in two commits. Wave 9a (server): new estimate-http-routes.mjs -- GET/POST /api/projects/:id/estimate, mirroring project-memory-http-routes.mjs's snapshot-read/saveState pattern (not racing an autonomous dispatch loop). POST grounds a WBS in real onboarding evidence (repoEvidenceFor mirrors buildProjectContextCapsule's own bounded-field extraction, not a raw onboarding-scan dump) or an ideaBrief for a no-repo project, validates via generateWbs (wave 3, unchanged), builds a TSF_DELIVERY_PLAN_V1 via buildDeliveryPlan (wave 8, unchanged), and persists to a new projectEstimates map in data-store.mjs. 7 real HTTP-level tests (real server, real fetch, isolated state file) all passed on the first run: persistence across requests, unknown-project 404, missing-startDate 400, idea-brief preliminary flag, impossible-deadline UNREALISTIC status, unavailable-planner honest 422.\n\nWave 9b (UI): new estimate-types.ts (types.ts already over its own line cap), api.estimate/generateEstimate methods, and EstimatePanel.tsx wired as a new Estimate tab on ProjectDetailPage -- follows KeepGoingPanel's established generate-form/result-view pattern exactly. Deliberately restrained per Tim's own framing: P10/P50/P80/P95 active/human/wall-clock hours, a delivery-status badge, a plain scheduled-task list with real dates (no Gantt library), assumptions surfaced. No client-facing-vs-internal split yet (deferred). tsc -b --force --noEmit clean, oxlint clean, vite build clean.",
+          "testsAdded": 7,
+          "testsPassing": "436 full tsf suite GREEN (node --test); tsc/oxlint/vite build all clean on the UI side",
+          "verifier": "SELF",
+          "commit": "3837c1b355899e316465d28de127778d59d05b84 (9a), 5e544a641ae0dfd30fe81cfbbe801dd248782315 (9b)",
+          "status": "COMMITTED",
+          "note": "Next: wave 10 -- estimate-vs-actual calibration consuming real M4/M5 evidence (keep-going.mjs settled run/wave history), which is what lets provider-forecast.mjs's currently-honest null/UNKNOWN costs become real numbers. Then the required adversarial real-proof wave (small clean repo, larger uncertain repo, idea-only estimate, impossible deadline, provider near reset, competing Work Set commitments, blocked/dirty project, scope change, missing pricing, no historical calibration). Then a final holistic independent review, then packaging/adoption."
         }
       ]
     },
