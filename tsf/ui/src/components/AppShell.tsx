@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Compass, FolderKanban, LayoutGrid, TerminalSquare } from 'lucide-react'
+import { Compass, FlaskConical, FolderKanban, LayoutGrid, TerminalSquare } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
@@ -8,7 +8,8 @@ const NAV = [
   { to: '/', label: 'Home', icon: LayoutGrid, end: true },
   { to: '/work', label: 'Work', icon: Compass },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
-  { to: '/agents', label: 'Agents', icon: TerminalSquare }
+  { to: '/agents', label: 'Agents', icon: TerminalSquare },
+  { to: '/evaluation', label: 'Evaluation', icon: FlaskConical }
 ]
 
 export function AppShell() {
