@@ -26,6 +26,7 @@ import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { projectOnboardedProject } from './onboarded-project-projection.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
+import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
@@ -548,6 +549,21 @@ export function createRequestHandler() {
       // GET/POST /api/onboarding/* -- see onboarding-http-routes.mjs
       if (
         await handleOnboardingRoute(
+          parts,
+          req,
+          res,
+          url,
+          { opState },
+          { json, notFound, readBody, saveState }
+        )
+      ) {
+        return
+      }
+
+      // GET/POST /api/projects/:id/memory[/*/supersede] -- see
+      // project-memory-http-routes.mjs
+      if (
+        await handleProjectMemoryRoute(
           parts,
           req,
           res,
