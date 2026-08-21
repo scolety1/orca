@@ -6,6 +6,9 @@ const mode = process.env.STUB_ORCA_MODE || 'success'
 const seededRepos = process.env.STUB_ORCA_REPOS ? JSON.parse(process.env.STUB_ORCA_REPOS) : []
 const seededWorkers = process.env.STUB_ORCA_WORKERS ? JSON.parse(process.env.STUB_ORCA_WORKERS) : []
 const seededTasks = process.env.STUB_ORCA_TASKS ? JSON.parse(process.env.STUB_ORCA_TASKS) : []
+const seededRateLimits = process.env.STUB_ORCA_RATE_LIMITS
+  ? JSON.parse(process.env.STUB_ORCA_RATE_LIMITS)
+  : { claude: null, codex: null }
 
 function ok(result) {
   process.stdout.write(JSON.stringify({ id: 'stub', ok: true, result }))
@@ -23,7 +26,9 @@ if (mode === 'malformed') {
   process.exit(0)
 }
 
-if (args[0] === 'repo' && args[1] === 'list') {
+if (args[0] === 'account' && args[1] === 'list') {
+  ok({ rateLimits: seededRateLimits })
+} else if (args[0] === 'repo' && args[1] === 'list') {
   ok({ repos: seededRepos })
 } else if (args[0] === 'repo' && args[1] === 'add') {
   const pathIndex = args.indexOf('--path')
