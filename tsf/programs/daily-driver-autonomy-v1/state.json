@@ -1378,7 +1378,7 @@
     {
       "id": "M4",
       "name": "Run Journal + Recovery",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "priority": "HIGHEST",
       "acceptanceCriteria": [
         "Durable run timeline with phase/task outputs persisted compactly",
@@ -1389,7 +1389,19 @@
         "Proven via an intentional interruption/restart"
       ],
       "candidateCommit": "4360223cd4af312662c54aa2e00dbfbb372a4296",
-      "adoptedCommit": null,
+      "adoptedCommit": "4360223cd4af312662c54aa2e00dbfbb372a4296",
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M4_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T00:47:17.876Z",
+        "adoptedCommit": "4360223cd4af312662c54aa2e00dbfbb372a4296",
+        "previousTsfMainHead": "4bb8b2cf1a268b1cff0205bf25674817d1403537",
+        "mergeMethod": "git merge --ff-only (local, C:\\TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "wave 4 final holistic verifier -- GREEN, one LOW non-blocking documentation finding (fixed), including a fresh mutation-testing spot check and an independent trace confirming the needsYou-restart-survival reasoning is sound",
+        "postAdoptionTestRun": "310/310 GREEN, re-run directly from the adopted tsf/main tree; tsf/ui typecheck also re-run clean from the adopted tree",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging: git status clean, no unexpected dirty/staged state, HEAD at 4bb8b2cf1a268b1cff0205bf25674817d1403537 (the exact M3 adoption commit) -- no unrelated finding.",
+        "rollback": "To roll back: git -C C:\\TSF_ORCA reset --hard 4bb8b2cf1a268b1cff0205bf25674817d1403537 (previous tsf/main HEAD, recorded above)."
+      },
       "gaps": [
         "Waves 1-2 done -- see docs/tsf/M4_RUN_JOURNAL_RECOVERY_V1.md. Of the 3 originally-identified gaps, 2 turned out not to be real (wave-outcome content and checkpoint-before-pause were already correctly implemented in M2) -- only 'recovery summary after restart' was real, and it's now implemented (chat-responder.mjs's STATUS answer includes a recentCheckpointTrail-grounded history line). Independent review, the required real intentional process kill-and-restart proof, and final packaging/adoption remain."
       ],
@@ -1440,7 +1452,8 @@
     {
       "id": "M5",
       "name": "Capacity-Aware Routing",
-      "status": "NOT_STARTED",
+      "status": "CURRENT",
+      "priority": "HIGHEST",
       "acceptanceCriteria": [
         "Uses trustworthy provider capacity signals when available; reports UNKNOWN otherwise, never fabricated",
         "Preserves planner capacity; prefers cheaper workers for mechanical work",
@@ -1558,7 +1571,7 @@
       ]
     }
   ],
-  "currentMilestone": "M4",
+  "currentMilestone": "M5",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
