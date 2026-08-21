@@ -2163,10 +2163,10 @@
     {
       "id": "M11",
       "name": "Observability / Agent Flight Recorder",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
+      "adoptedCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
       "gaps": ["everything -- not started, pending M10 adoption"],
       "waves": [
         {
@@ -2179,12 +2179,26 @@
           "status": "COMMITTED",
           "note": "Acceptance items covered: (1) coherent trace/timeline for a multi-wave run; (2) largest-gap bottleneck identification; (3) retry/needsYou visibility; (4) no fabricated provider/model metadata (none claimed -- disclosed limitation, not fabricated); (5) unknown usage stays UNKNOWN (n/a, no usage/cost claims made here); (6) project isolation (operates on one run object only); (7) no sensitive prompt/source content captured (only digests/phases/reasons); (8) reconciles with M4 by construction; (9) restart/recovery does not corrupt the timeline (pure re-derivation, nothing to corrupt); (10) pending independent review; (11) Orca core delta 0. Next: a single comprehensive final review (leaner cadence, per tonight's time-bounded overnight target), then package/adopt."
         }
-      ]
+      ],
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M11_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T09:18:13.000Z",
+        "adoptedCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
+        "previousTsfMainHead": "3ec71b27163c5960b9139d761876275de5f99754",
+        "mergeMethod": "git merge --ff-only (local, C:TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "A single comprehensive final review (leaner cadence, per tonight's time-bounded overnight target) -- GREEN after finding and fixing one real test-coverage gap: findBottleneck's reduce logic was never actually exercised with the real largest gap at segments[0], because every real-run-derived scenario always places a genuine 0-duration segment there (RUN_CREATED-to-initial-transition) so the answer can never land at index 0 in practice -- the existing tests could not have caught an off-by-one reduce bug there. Fixed with a hand-constructed-timeline test isolating findBottleneck's own logic. Independently re-derived the reconciliation guarantee with a fresh scenario (2 waves, 2 Needs You entries, 1 resolved, 1 checkpoint) hand-counted against the real function's output. Confirmed via grep that wavePlan/waveResult never appear anywhere outside a comment -- the digest-only privacy guarantee is real.",
+        "postAdoptionTestRun": "573 tests, 572 pass / 1 gracefully skipped (M6 esbuild) / 0 fail -- re-run directly from the adopted tsf/main tree (C:TSF_ORCA)",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging: git status clean, HEAD at 3ec71b271 (the exact M10 adoption commit).",
+        "requiredRealProofRecorded": "All 11 M11 acceptance items assessed against literal spec text: coherent timeline for a multi-wave run (1); largest-gap bottleneck identification, mutation-confirmed (2); retry/stall/recovery events visible -- stalls/recovery genuinely visible via STATE_TRANSITION events, retries visible only as an aggregate count (3, see limitation below); no fabricated provider/model metadata -- an honest non-claim rather than a fabrication (4); unknown usage stays UNKNOWN -- n/a, no usage/cost claims made (5); project isolation by construction, operates on one run object (6); no sensitive prompt/source content captured, wave events carry only a digest -- confirmed via grep, never the full wavePlan/waveResult (7); reconciles with M4 Run Journal by construction, a stateless re-derivation from the same source every time (8); restart/recovery cannot corrupt the timeline, nothing is separately persisted to corrupt (9); independent verifier GREEN (10); Orca core delta 0 (11).",
+        "knownLimitations": "Retry visibility is aggregate-only (a final retryCounts object), not per-retry timestamped events -- keep-going.mjs's recordTaskAttempt (M2, already adopted) never durably timestamps an individual retry attempt, so there is no real per-event data to project; adding it would require changing already-adopted M2 domain code, out of proportion for this milestone under tonight's time-bounded mandate. Disclosed, not fabricated: no synthetic per-retry timestamps were invented to fill this gap. An unknown project ID and a known project with no run both currently return {timeline: null} rather than a distinguishing 404 -- low-severity, no data exposure, noted for a future wave.",
+        "rollback": "To roll back: git -C C:TSF_ORCA reset --hard 3ec71b27163c5960b9139d761876275de5f99754 (previous tsf/main HEAD, recorded above)."
+      }
     },
     {
       "id": "M12",
       "name": "Fleet Optimizer",
-      "status": "AUTHORIZED_PENDING_M11_ADOPTION",
+      "status": "CURRENT",
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": null,
       "adoptedCommit": null,
@@ -2200,7 +2214,7 @@
       "gaps": ["everything -- not started, pending M12 adoption"]
     }
   ],
-  "currentMilestone": "M11",
+  "currentMilestone": "M12",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
