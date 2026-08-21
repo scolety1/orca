@@ -701,3 +701,14 @@ export function summarizeRun(run, clock) {
     generatedAt: isoNow(clock)
   }
 }
+
+// M4: "recovery summary after restart" — a compact, chronological read of
+// the hash-chained checkpoints[] audit trail this module already keeps,
+// not a new persistence mechanism. Answers "what happened while this was
+// down/paused?" purely from durable state a fresh process already has on
+// disk; no in-memory "last seen" tracking required. Oldest-first (a
+// timeline reads naturally start-to-now), capped at `limit` most recent
+// entries so a long-running run's answer stays short.
+export function recentCheckpointTrail(run, limit = 5) {
+  return run.checkpoints.slice(-limit).map(({ phase, note, at }) => ({ phase, note, at }))
+}

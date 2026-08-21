@@ -36,26 +36,36 @@ scratch" — it is:
 2. **Proving** the whole thing survives an actual process restart, per
    M4's own explicit acceptance criterion — not just reasoning about it.
 
-## Gap 1 — task/wave outputs are IDs, not compact content
+## Gap 1 — CORRECTED, not actually a gap
 
-`checkpointRun`'s `evidence` field stores only task/dispatch IDs (strings).
-A resumed/rehydrated run (or a human reading the Live Work Feed after
-restart) has no compact record of what a settled wave's outcome actually
-was — outcomes live only in `settleInFlightWave`'s transient return value,
-never persisted onto the run itself beyond the checkpoint's bare IDs.
-Fix: persist a compact `{workItemId, outcome, rawStatus}` summary (already
-computed in `settleStep`, currently discarded after settlement) onto the
-checkpoint or a new small `waveOutcomes[]` run field — no new schema
-version, an additive field.
+Original framing (below, struck through in spirit, kept for the record):
+~~`checkpointRun`'s `evidence` field stores only task/dispatch IDs, so
+task outputs are never durably persisted.~~ On closer inspection (before
+implementing anything): `settleInFlightWave` already persists the FULL
+`waveResult` — including `outcomes: [{workItemId, scope, taskId,
+dispatchId, outcome, rawStatus}, ...]`, computed once in
+`keep-going-dispatch-loop.mjs`'s `settleStep` and passed straight through
+— onto `run.waves[]` (`{digest, wavePlan, waveResult, recordedAt}`). Task
+outputs ARE already durably, compactly persisted; `checkpointRun`'s own
+`evidence` field being bare task IDs is correct as designed — it's a
+lightweight audit-trail POINTER into the fuller `run.waves[]` history, not
+meant to duplicate it. No fix needed here. Recorded honestly rather than
+building an unnecessary/redundant change to satisfy a gap that turned out
+not to exist.
 
-## Gap 2 — no checkpoint before pause/provider-capacity pause
+## Gap 2 — CORRECTED, not actually a gap
 
-`pauseRun`/`resumeRun` (`keep-going.mjs:193-196`) call `transitionRun`
-only — no `checkpointRun` call. M4's own acceptance criterion explicitly
-names "checkpoint before provider/resource pause." Fix: have the pause
-route/controller call `checkpointRun` (phase `RUN_PAUSED`, note recording
-the reason) immediately before transitioning to PAUSED, mirroring the
-pattern already used for `DISPATCH_FAILED`/`WAVE_STALLED`.
+Original framing: ~~pause/resume never call checkpointRun.~~ On closer
+inspection of the CONTROLLER layer (not just the bare domain functions
+this doc originally checked): `keep-going-controller.mjs`'s
+`pauseKeepGoingRun`/`resumeKeepGoingRun` already call `pauseRun`/
+`resumeRun` and then immediately `checkpointRun` (phases
+`OPERATOR_PAUSED`/`RUN_RESUMED`) -- this was itself a real M2 wave 11
+review finding, already fixed there. No gap here either. Second honest
+correction before implementing anything unnecessary: this design doc's
+first draft under-read the codebase by stopping at the bare domain
+functions instead of following the call chain into the controller that
+actually wraps them.
 
 ## Gap 3 — no recovery summary surface after restart
 

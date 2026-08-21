@@ -5,6 +5,7 @@
 // persona. The interface (classify + respond) is what a real PLANNER_DEEP
 // route would sit behind later — the UI never hard-codes a vendor.
 import { projectLiveWorkFeedState } from '../domain/live-work-feed.mjs'
+import { recentCheckpointTrail } from '../domain/keep-going.mjs'
 
 const TIM_REQUIRED_PATTERNS = [
   /\b(push|merge|deploy|publish|release to prod|production)\b/i,
@@ -105,6 +106,11 @@ export function isLiveRunRelevantFor(intent, run) {
   return !!run && LIVE_RUN_INTENTS.has(intent) && !LIVE_RUN_TERMINAL_STATES.has(run.state)
 }
 
+function recentHistoryLine(run) {
+  const phases = recentCheckpointTrail(run).map((c) => c.phase)
+  return `Recent history: ${phases.join(' -> ')}.`
+}
+
 function respondStatusOrNextActionFromRun(intent, project, run, gap) {
   const feed = projectLiveWorkFeedState(run, gap)
   const base = `**${project.displayName}** — Keep Going run \`${run.id}\` is **${feed.state}**: ${feed.reason}.`
@@ -112,7 +118,15 @@ function respondStatusOrNextActionFromRun(intent, project, run, gap) {
     return `No, not yet — ${base}`
   }
   if (intent === 'STATUS') {
-    return base
+    // M4: "recovery summary after restart" -- 'catch me up' already routes
+    // here (STATUS's own pattern includes it). Appending a short,
+    // chronological read of the durable checkpoint trail is what actually
+    // answers "what happened while this was down/paused?" -- grounded in
+    // the exact same persisted state a fresh, restarted process reads,
+    // never a separate in-memory "since you last looked" tracker. Skipped
+    // when there is nothing yet to recap (a run that just started has
+    // only its own RUN_STARTED checkpoint).
+    return run.checkpoints.length > 1 ? `${base} ${recentHistoryLine(run)}` : base
   }
   // NEXT_ACTION: point at the real, existing affordance for each state --
   // never a fictional one (an independent review finding elsewhere in M3

@@ -2,7 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { classifyDecision, classifyIntent, respond } from '../server/chat-responder.mjs'
 import { loadRealPilotProjects } from '../server/portfolio-projection.mjs'
-import { createOvernightRun, dispatchWave, planWave, raiseNeedsYou } from '../domain/keep-going.mjs'
+import {
+  checkpointRun,
+  createOvernightRun,
+  dispatchWave,
+  planWave,
+  raiseNeedsYou
+} from '../domain/keep-going.mjs'
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 
@@ -94,6 +100,28 @@ test('STATUS answers from the live run, not the old mission/candidate model, onc
     /mission `/i,
     'must not fall back to the old mission-shaped text'
   )
+})
+
+// M4: "recovery summary after restart" -- 'catch me up' already shares
+// STATUS's own pattern; this proves the answer now includes a real,
+// chronological read of the durable checkpoint trail, not just the
+// current one-line state.
+test('STATUS ("catch me up") includes a real recent-history trail once more than one checkpoint exists', () => {
+  const project = loadRealPilotProjects()[0]
+  let run = activeRunWithInFlightWave()
+  run = checkpointRun(run, { phase: 'WAVE_DISPATCHED' }, clock)
+  run = checkpointRun(run, { phase: 'RUN_PAUSED' }, clock)
+  const result = respond(project, 'catch me up', run)
+  assert.equal(result.intent, 'STATUS')
+  assert.match(result.text, /Recent history:/)
+  assert.match(result.text, /WAVE_DISPATCHED -> RUN_PAUSED/)
+})
+
+test('STATUS omits the recent-history trail for a freshly started run with nothing yet to recap', () => {
+  const project = loadRealPilotProjects()[0]
+  const run = activeRunWithInFlightWave()
+  const result = respond(project, "what's going on with this project?", run)
+  assert.doesNotMatch(result.text, /Recent history:/)
 })
 
 test('NEXT_ACTION on a NEEDS_YOU run surfaces the real open question, not a fictional affordance', () => {

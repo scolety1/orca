@@ -13,6 +13,7 @@ import {
   pauseRun,
   planWave,
   raiseNeedsYou,
+  recentCheckpointTrail,
   recordTaskAttempt,
   recordWave,
   releaseTick,
@@ -344,6 +345,33 @@ test('summarizeRun produces a concise morning/return summary', () => {
   assert.equal(summary.state, 'NEEDS_YOU')
   assert.equal(summary.openNeedsYou.length, 1)
   assert.equal(summary.lastCheckpoint.phase, 'WAVE_1_PLANNED')
+})
+
+// M4: "recovery summary after restart" reads purely from this durable,
+// already-hash-chained checkpoint trail -- no separate in-memory tracker.
+test('recentCheckpointTrail returns checkpoints in chronological order, capped at the limit', () => {
+  let run = baseRun()
+  run = checkpointRun(run, { phase: 'PHASE_A' }, clock)
+  run = checkpointRun(run, { phase: 'PHASE_B' }, clock)
+  run = checkpointRun(run, { phase: 'PHASE_C' }, clock)
+  const trail = recentCheckpointTrail(run, 2)
+  assert.deepEqual(
+    trail.map((c) => c.phase),
+    ['PHASE_B', 'PHASE_C']
+  )
+})
+
+test('recentCheckpointTrail defaults to the 5 most recent checkpoints', () => {
+  let run = baseRun()
+  for (const phase of ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']) {
+    run = checkpointRun(run, { phase }, clock)
+  }
+  const trail = recentCheckpointTrail(run)
+  assert.deepEqual(
+    trail.map((c) => c.phase),
+    ['P2', 'P3', 'P4', 'P5', 'P6']
+  )
+  assert.equal(trail.length, 5)
 })
 
 test('dispatchWave records a wave as in flight without appending it to waves yet; settleInFlightWave clears it', () => {
