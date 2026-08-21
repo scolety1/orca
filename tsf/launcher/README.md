@@ -42,27 +42,29 @@ checkout.
 
 1. If Thousand Sunny Fleet is already running, `Launch-TSF.ps1` detects that via a
    named Mutex and just activates the existing window instead of opening a second one.
-2. Otherwise it runs `orca open` (idempotent -- safe whether Orca is already running
-   or not) and waits for Orca's own runtime to be reachable.
-3. It polls `http://127.0.0.1:4610/api/meta` (TSF's fixed server port) for up to 30
-   seconds.
-4. Either way, it hosts a genuine dedicated window **in this same process** -- loads
-   the WebView2 SDK's managed assemblies (vendored in `webview2/`) directly into this
-   `powershell.exe` process and creates a plain WinForms window with a `WebView2`
-   control filling it, rather than shelling out to a browser or a separate compiled
-   host exe. (An earlier attempt at a compiled .NET/WebView2 host `.exe` was hard-blocked
-   by Windows Smart App Control on the real target machine -- see
+2. Otherwise it creates and shows a genuine dedicated window **immediately** (measured
+   live: ~1 second from double-click) -- no waiting on Orca, the network, or anything
+   else first. It loads the WebView2 SDK's managed assemblies (vendored in `webview2/`)
+   directly into this `powershell.exe` process and creates a plain WinForms window with
+   a `WebView2` control filling it, rather than shelling out to a browser or a separate
+   compiled host exe. (An earlier attempt at a compiled .NET/WebView2 host `.exe` was
+   hard-blocked by Windows Smart App Control on the real target machine -- see
    `docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md` for the evidence. Hosting the control
-   inside the already-trusted `powershell.exe` process instead sidesteps that
-   entirely, since no second executable image is ever loaded.)
-5. **Reachable** -> that window navigates straight to the real TSF UI.
-6. **Not reachable** (most likely cause: Orca's plugin system hasn't been pointed at
-   this checkout yet) -> the same window navigates to `first-run-setup.html` instead: a
-   guided, one-time, three-step walkthrough of Orca's own Settings -> Plugins ->
-   Development flow, with the exact folder path to paste and a copy button. That page
-   polls the backend itself and transitions the same window to the real UI in place
-   the moment it comes up -- no relaunch needed. This step runs once per machine; every
-   later launch goes straight to the real UI.
+   inside the already-trusted `powershell.exe` process instead sidesteps that entirely,
+   since no second executable image is ever loaded.)
+3. In the background, it fires `orca open` (non-blocking, retried a bounded number of
+   times) to make sure Orca itself is coming up.
+4. The window navigates straight to `first-run-setup.html`, which owns all of the
+   actual waiting from here: an immediate neutral "Starting…" state, a guided
+   registration walkthrough revealed only if the wait crosses a real-cold-boot-shaped
+   threshold (with the exact folder path to paste and a copy button), and an honest
+   "this is taking a while" note if it's genuinely stalled -- polling indefinitely and
+   never giving up, then auto-navigating the same window to the real UI the instant the
+   backend answers. No relaunch needed, whether that takes one second or two minutes.
+   This registration step runs once per machine; every later launch goes straight to
+   the real UI within about a second.
+5. Any genuine failure anywhere in this sequence shows a real, visible error dialog --
+   there is no silent-death path left.
 
 Logs (for diagnosing "it didn't open" reports) are written to
 `%LOCALAPPDATA%\ThousandSunnyFleet\launcher.log`.

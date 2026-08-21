@@ -3,40 +3,53 @@
   Thousand Sunny Fleet desktop launcher (M14).
 
 .DESCRIPTION
-  Ensures Orca itself is running (`orca open` -- idempotent, safe on every launch),
-  waits for the TSF backend (spawned by Orca's own TSF plugin, once registered) to
-  become reachable on its fixed port, then hosts the real TSF UI in a genuine
-  dedicated Windows window -- its own title/icon/taskbar entry, no browser chrome
-  or branding. If the backend never comes up (most likely: the plugin isn't
-  registered in Orca yet), the same window shows the guided first-run setup page
-  instead of a blank page or a crash; that page's own polling transitions the
-  window in place once the backend comes up, with no relaunch needed.
+  Ensures Orca itself is running (`orca open`, retried in the background a
+  bounded number of times -- idempotent and safe on every launch), then hosts
+  the real TSF UI in a genuine dedicated Windows window -- its own title/icon
+  /taskbar entry, no browser chrome or branding. If the backend isn't reachable
+  yet (cold Orca boot, plugin not yet registered, or anything else), the same
+  window shows a branded "Starting..." state immediately, then the guided
+  first-run setup page if the wait crosses a real-cold-boot-shaped threshold --
+  never a blank page, a frozen window, or a silent failure.
 
-  Runs on Windows PowerShell (built into every Windows install) rather than Node --
-  Node is only ever spawned by Orca's own bundled runtime for tsf/server itself, and
-  this script must not assume Tim has a separate Node install on PATH.
+  Runs on Windows PowerShell (built into every Windows install) rather than
+  Node -- Node is only ever spawned by Orca's own bundled runtime for
+  tsf/server itself, and this script must not assume Tim has a separate Node
+  install on PATH.
 
-  M14 defect 2 fix: an earlier version of this launcher shelled out to
-  `msedge.exe --app=`, which Tim rejected as "a browser wrapper, not a dedicated
-  Windows application". A follow-up attempt to replace it with a compiled,
-  self-contained .NET/WebView2 host .exe was blocked outright by Windows Smart App
-  Control on the real target machine (confirmed via Microsoft-Windows-
-  CodeIntegrity/Operational event 3077/3118 -- an unsigned new executable image is
-  rejected before it ever runs, and this cannot be worked around without code
-  signing, which is out of scope for this local V1). This version instead hosts a
-  WebView2 control *directly inside this already-trusted, Microsoft-signed
-  powershell.exe process* -- no second executable image is ever loaded, so Smart
-  App Control has nothing new to evaluate, while still producing a real, separate,
-  independently-titled/iconed top-level window with its own taskbar entry.
+  M14 remediation history (see docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md
+  for the full evidence trail of each):
+  - v1 shelled out to `msedge.exe --app=`, which Tim rejected as a browser
+    wrapper, not a dedicated app.
+  - v2 replaced that with a compiled, self-contained .NET/WebView2 host .exe,
+    which Windows Smart App Control hard-blocked outright on the real target
+    machine (unsigned executable, no user override in enforcement mode).
+  - v3 (this version, still) hosts a WebView2 control *directly inside this
+    already-trusted, Microsoft-signed powershell.exe process* -- no second
+    executable image is ever loaded, so Smart App Control has nothing new to
+    evaluate.
+  - v4 (this version's actual changes) fixes a real cold-start failure Tim's
+    own hands-on test reproduced: earlier versions ran `orca open` and a
+    bounded readiness poll *before* ever creating a window, so a slow cold
+    boot (a real possibility this script must tolerate, not assume away)
+    meant Tim saw nothing at all for up to 30+ seconds -- and any unhandled
+    exception anywhere in that pre-window-creation code path would silently
+    kill the whole (hidden-window) process with zero visible trace, which is
+    the most likely explanation for "Orca opened, TSF never did": something
+    threw before a window ever appeared, and -WindowStyle Hidden means that
+    error was never seen. Fixed by (a) creating and showing the window
+    *immediately*, before any network/process readiness work at all -- the
+    hosted page itself now owns all of the waiting/retry/reveal logic and
+    never gives up on its own -- and (b) wrapping the entire launch sequence
+    in a top-level handler that surfaces any real failure via a visible
+    MessageBox rather than dying silently.
 #>
 
 $ErrorActionPreference = 'Stop'
 
-$TsfPort = 4610
-$TsfUrl = "http://127.0.0.1:$TsfPort"
-$ReadyTimeoutSeconds = 30
-$PollIntervalSeconds = 1
-
+# TSF's fixed backend port (4610) is no longer referenced directly here --
+# first-run-setup.html owns the reachability check against it and the
+# eventual navigation once ready. See that file if the port ever changes.
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $FirstRunSetupPath = Join-Path $ScriptDir 'first-run-setup.html'
 $IconPath = Join-Path $ScriptDir 'tsf.ico'
@@ -45,6 +58,12 @@ $DataDir = Join-Path $env:LOCALAPPDATA 'ThousandSunnyFleet'
 $WebViewProfileDir = Join-Path $DataDir 'webview2-profile'
 $MutexName = 'Global\ThousandSunnyFleet.SingleInstance'
 $WindowTitle = 'Thousand Sunny Fleet'
+# Retried, not just fired once: if Orca's own launch is slow or hiccups,
+# repeating this bounded number of times gives it real chances to recover
+# rather than the launcher assuming one attempt was enough. `orca open` is
+# documented idempotent/safe to call repeatedly.
+$OrcaOpenRetryCount = 6
+$OrcaOpenRetryIntervalMs = 15000
 
 function Write-Log {
     param([string]$Message)
@@ -58,16 +77,6 @@ function Show-HonestError {
     Write-Log "ERROR: $Message"
     Add-Type -AssemblyName PresentationFramework
     [System.Windows.MessageBox]::Show($Message, 'Thousand Sunny Fleet', 'OK', 'Error') | Out-Null
-}
-
-function Test-TsfReachable {
-    param([int]$TimeoutSec = 3)
-    try {
-        $res = Invoke-WebRequest -Uri "$TsfUrl/api/meta" -UseBasicParsing -TimeoutSec $TimeoutSec
-        return $res.StatusCode -eq 200
-    } catch {
-        return $false
-    }
 }
 
 # --- Single-instance handling ---------------------------------------------
@@ -102,89 +111,105 @@ if (-not $orcaCmd) {
     exit 1
 }
 
+# Everything from here on used to run *before* any window existed -- a slow
+# cold boot meant nothing appeared for 30+ seconds, and any unhandled error
+# in this whole stretch died silently (hidden window, no console). Now the
+# window is created first (see below) and this top-level handler is the
+# actual backstop: if anything past this point genuinely throws, Tim sees a
+# real error instead of nothing.
 try {
-    & orca open --json | Out-Null
-} catch {
-    # `orca open` failing is surfaced via the reachability timeout below, not a
-    # hard exit here -- Orca may still be reachable via a stale/slow response.
-    Write-Log "orca open reported an error: $_"
-}
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
 
-$deadline = (Get-Date).AddSeconds($ReadyTimeoutSeconds)
-$ready = $false
-while ((Get-Date) -lt $deadline) {
-    # Cap each attempt's own timeout to whatever's left so a slow/hanging
-    # request near the deadline can't push the total wait past the
-    # documented ReadyTimeoutSeconds bound.
-    $remaining = [Math]::Max(1, [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds))
-    $attemptTimeout = [Math]::Min(3, $remaining)
-    if (Test-TsfReachable -TimeoutSec $attemptTimeout) { $ready = $true; break }
-    if ((Get-Date).AddSeconds($PollIntervalSeconds) -ge $deadline) { break }
-    Start-Sleep -Seconds $PollIntervalSeconds
-}
+    # Must run before any Form/Control is created on this thread -- WinForms
+    # throws if called any later, which is why this sits here rather than
+    # right before Application.Run below.
+    [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
+    [System.Windows.Forms.Application]::add_ThreadException({
+        param($s, $e)
+        Write-Log "Unhandled UI-thread exception: $($e.Exception.ToString())"
+        Show-HonestError "Thousand Sunny Fleet hit an unexpected error: $($e.Exception.Message)"
+    })
 
-if ($ready) {
-    Write-Log 'TSF backend reachable -- opening the dedicated window on the real UI.'
-    $initialUrl = $TsfUrl
-} else {
-    Write-Log 'TSF backend not reachable after timeout -- opening the dedicated window on the first-run guide.'
-    # [System.Uri]'s own file-path constructor percent-encodes spaces, '#',
-    # '?', and other URL-significant characters a real checkout path could
-    # contain, which a naive slash-flip would instead let corrupt the URL.
-    $initialUrl = ([System.Uri]$FirstRunSetupPath).AbsoluteUri
-}
-
-# --- Host the dedicated window ---------------------------------------------
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-Add-Type -Path (Join-Path $WebView2Dir 'Microsoft.Web.WebView2.Core.dll')
-Add-Type -Path (Join-Path $WebView2Dir 'Microsoft.Web.WebView2.WinForms.dll')
-
-# WebView2Loader.dll is a native DLL resolved via the process's own working
-# directory / DLL search path -- copy it into the profile dir (already
-# writable, already per-user) and make that the process's current directory
-# so the loader is found regardless of where this script itself lives.
-if (-not (Test-Path $WebViewProfileDir)) { New-Item -ItemType Directory -Path $WebViewProfileDir -Force | Out-Null }
-Copy-Item (Join-Path $WebView2Dir 'WebView2Loader.dll') (Join-Path $WebViewProfileDir 'WebView2Loader.dll') -Force
-[Environment]::CurrentDirectory = $WebViewProfileDir
-
-$form = New-Object System.Windows.Forms.Form
-$form.Text = $WindowTitle
-$form.Width = 1280
-$form.Height = 860
-$form.StartPosition = 'CenterScreen'
-$form.MinimumSize = New-Object System.Drawing.Size(720, 480)
-if (Test-Path $IconPath) {
-    $form.Icon = New-Object System.Drawing.Icon($IconPath)
-}
-
-$webView = New-Object Microsoft.Web.WebView2.WinForms.WebView2
-$webView.Dock = 'Fill'
-$creationProps = New-Object Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties
-$creationProps.UserDataFolder = $WebViewProfileDir
-$webView.CreationProperties = $creationProps
-$form.Controls.Add($webView)
-
-$webView.add_CoreWebView2InitializationCompleted({
-    param($s, $e)
-    if (-not $e.IsSuccess) {
-        Write-Log "WebView2 initialization failed: $($e.InitializationException)"
+    # Fire-and-forget, retried: ensures Orca is launching/running without
+    # ever blocking window creation on it. Idempotent per its own contract,
+    # so repeating this while Orca is already up is a harmless no-op.
+    $orcaRetryTimer = New-Object System.Windows.Forms.Timer
+    $orcaRetryTimer.Interval = $OrcaOpenRetryIntervalMs
+    $script:orcaOpenAttempts = 0
+    $invokeOrcaOpen = {
+        $script:orcaOpenAttempts++
+        try {
+            Start-Process -FilePath $orcaCmd.Source -ArgumentList @('open', '--json') -WindowStyle Hidden
+        } catch {
+            Write-Log "orca open attempt $($script:orcaOpenAttempts) failed to start: $_"
+        }
+        if ($script:orcaOpenAttempts -ge $OrcaOpenRetryCount) {
+            $orcaRetryTimer.Stop()
+        }
     }
-})
-# The window's own Text is deliberately left fixed as "Thousand Sunny Fleet"
-# (WinForms does not auto-sync it to the hosted page's <title> the way a
-# browser tab would) -- both because that is the identity Tim asked for, and
-# because the single-instance FindWindow check above depends on this exact
-# title never changing, on the first-run guide or the real UI alike.
-$webView.add_NavigationCompleted({
-    param($s, $e)
-    Write-Log "Navigation completed: success=$($e.IsSuccess) status=$($e.WebErrorStatus)"
-})
+    $orcaRetryTimer.Add_Tick($invokeOrcaOpen)
+    & $invokeOrcaOpen
+    $orcaRetryTimer.Start()
 
-$form.Add_Shown({
-    $webView.Source = [Uri]$initialUrl
-})
+    # --- Host the dedicated window, immediately -----------------------------
+    Add-Type -Path (Join-Path $WebView2Dir 'Microsoft.Web.WebView2.Core.dll')
+    Add-Type -Path (Join-Path $WebView2Dir 'Microsoft.Web.WebView2.WinForms.dll')
 
-[System.Windows.Forms.Application]::Run($form)
-Write-Log 'Window closed -- launcher exiting.'
-$mutex.ReleaseMutex()
+    # WebView2Loader.dll is a native DLL resolved via the process's own
+    # working directory / DLL search path -- copy it into the profile dir
+    # (already writable, already per-user) and make that the process's
+    # current directory so the loader is found regardless of where this
+    # script itself lives.
+    if (-not (Test-Path $WebViewProfileDir)) { New-Item -ItemType Directory -Path $WebViewProfileDir -Force | Out-Null }
+    Copy-Item (Join-Path $WebView2Dir 'WebView2Loader.dll') (Join-Path $WebViewProfileDir 'WebView2Loader.dll') -Force
+    [Environment]::CurrentDirectory = $WebViewProfileDir
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = $WindowTitle
+    $form.Width = 1280
+    $form.Height = 860
+    $form.StartPosition = 'CenterScreen'
+    $form.MinimumSize = New-Object System.Drawing.Size(720, 480)
+    if (Test-Path $IconPath) {
+        $form.Icon = New-Object System.Drawing.Icon($IconPath)
+    }
+
+    $webView = New-Object Microsoft.Web.WebView2.WinForms.WebView2
+    $webView.Dock = 'Fill'
+    $creationProps = New-Object Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties
+    $creationProps.UserDataFolder = $WebViewProfileDir
+    $webView.CreationProperties = $creationProps
+    $form.Controls.Add($webView)
+
+    $webView.add_CoreWebView2InitializationCompleted({
+        param($s, $e)
+        if (-not $e.IsSuccess) {
+            Write-Log "WebView2 initialization failed: $($e.InitializationException)"
+            Show-HonestError "Thousand Sunny Fleet couldn't start its display component: $($e.InitializationException.Message)"
+        }
+    })
+    $webView.add_NavigationCompleted({
+        param($s, $e)
+        Write-Log "Navigation completed: success=$($e.IsSuccess) status=$($e.WebErrorStatus) url=$($webView.Source)"
+    })
+
+    # The page itself (first-run-setup.html) owns all subsequent
+    # waiting/retry/reveal logic and auto-navigates to the real UI the
+    # moment the backend answers -- see that file for the "Starting..." ->
+    # (optionally) setup-guide -> real UI state machine. This is always the
+    # first thing shown, whether or not the backend turns out to be reachable
+    # in a second or in two minutes.
+    $form.Add_Shown({
+        $fileUrl = ([System.Uri]$FirstRunSetupPath).AbsoluteUri
+        $webView.Source = [Uri]$fileUrl
+    })
+
+    [System.Windows.Forms.Application]::Run($form)
+    $orcaRetryTimer.Stop()
+    Write-Log 'Window closed -- launcher exiting.'
+} catch {
+    Show-HonestError "Thousand Sunny Fleet hit an unexpected error and couldn't start: $($_.Exception.Message)"
+} finally {
+    try { $mutex.ReleaseMutex() } catch { }
+}

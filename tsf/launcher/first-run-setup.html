@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Thousand Sunny Fleet — First-Run Setup</title>
+<title>Thousand Sunny Fleet</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2309090f'/%3E%3Ccircle cx='50' cy='50' r='44' fill='none' stroke='%239161f9' stroke-width='6'/%3E%3Cpolygon points='50,20 74,62 50,62' fill='%23a684fc'/%3E%3Cpolygon points='22,70 78,70 68,82 32,82' fill='%23e9e7f2'/%3E%3C/svg%3E" />
 <style>
   :root {
@@ -18,6 +18,7 @@
     --input: #1b1826;
     --status-healthy: #3ddc9a;
     --status-degraded: #f5b942;
+    --status-blocked: #f0506e;
     --glow: #9161f9;
     --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -145,8 +146,36 @@
     height: 8px;
     border-radius: 999px;
     background: var(--status-degraded);
+    animation: pulse 1.4s ease-in-out infinite;
   }
-  .dot.ok { background: var(--status-healthy); }
+  .dot.ok { background: var(--status-healthy); animation: none; }
+  .dot.stalled { background: var(--status-blocked); animation: none; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  #setup-phase { display: none; }
+  #starting-phase .spinner {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    animation: spin 0.9s linear infinite;
+    margin: 12px 0 24px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #stalled-hint {
+    display: none;
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--muted-foreground);
+    line-height: 1.55;
+  }
 </style>
 </head>
 <body>
@@ -159,45 +188,66 @@
     </div>
   </div>
 
-  <h1>One-time setup</h1>
-  <p class="lede">
-    Thousand Sunny Fleet runs as a plugin inside Orca. This machine hasn't registered it
-    yet, so before the app can open, Orca needs to be told where to find it — a one-time
-    step done once per machine, in Orca's own Settings.
-  </p>
+  <!-- Shown immediately on every launch, before anything else, so something
+       is always visible right away -- this is not conditional on how long
+       Orca/the backend take to become ready. -->
+  <div id="starting-phase">
+    <div class="spinner"></div>
+    <h1 id="starting-title">Starting Thousand Sunny Fleet…</h1>
+    <p class="lede" id="starting-lede">
+      Waiting for Orca and the TSF backend to come up. This can take a little longer
+      the first time, or right after a reboot.
+    </p>
+    <div id="stalled-hint">
+      This is taking longer than usual. If Orca hasn't opened at all, make sure it's
+      installed and try again. If Orca <em>is</em> open, this machine may not have TSF
+      registered as a plugin yet -- the setup steps below will appear shortly if so.
+    </div>
+  </div>
 
-  <div class="step">
-    <div class="n">1</div>
-    <div class="body">
-      <p>In Orca, open <strong>Settings → Plugins</strong> and turn on <strong>Plugin
-      system</strong>.</p>
-    </div>
-  </div>
-  <div class="step">
-    <div class="n">2</div>
-    <div class="body">
-      <p>Expand <strong>Development</strong> and paste this exact folder path, then
-      click <strong>Add path</strong>:</p>
-      <div class="pathbox">
-        <code id="plugin-path">resolving…</code>
-        <button id="copy-btn" type="button">Copy</button>
+  <!-- Revealed only if the wait crosses a "this probably isn't just a cold
+       boot" threshold -- see REVEAL_SETUP_AFTER_MS below. -->
+  <div id="setup-phase">
+    <h1>One-time setup</h1>
+    <p class="lede">
+      Thousand Sunny Fleet runs as a plugin inside Orca. This machine hasn't registered it
+      yet, so before the app can open, Orca needs to be told where to find it — a one-time
+      step done once per machine, in Orca's own Settings.
+    </p>
+
+    <div class="step">
+      <div class="n">1</div>
+      <div class="body">
+        <p>In Orca, open <strong>Settings → Plugins</strong> and turn on <strong>Plugin
+        system</strong>.</p>
       </div>
-      <div class="hint" id="copy-hint"></div>
     </div>
-  </div>
-  <div class="step">
-    <div class="n">3</div>
-    <div class="body">
-      <p>Enable <strong>Thousand Sunny Fleet Foundation</strong> once it appears in the
-      plugin list.</p>
-      <div class="hint">That's it — every future launch is a plain double-click.</div>
+    <div class="step">
+      <div class="n">2</div>
+      <div class="body">
+        <p>Expand <strong>Development</strong> and paste this exact folder path, then
+        click <strong>Add path</strong>:</p>
+        <div class="pathbox">
+          <code id="plugin-path">resolving…</code>
+          <button id="copy-btn" type="button">Copy</button>
+        </div>
+        <div class="hint" id="copy-hint"></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="n">3</div>
+      <div class="body">
+        <p>Enable <strong>Thousand Sunny Fleet Foundation</strong> once it appears in the
+        plugin list.</p>
+        <div class="hint">That's it — every future launch is a plain double-click.</div>
+      </div>
     </div>
   </div>
 
   <div class="footer">
     <div class="status">
       <span class="dot" id="status-dot"></span>
-      <span id="status-text">Waiting for the TSF backend…</span>
+      <span id="status-text">Checking…</span>
     </div>
     <button class="primary" id="recheck-btn" type="button">Check again</button>
   </div>
@@ -205,6 +255,19 @@
 
 <script>
   const TSF_URL = 'http://127.0.0.1:4610';
+  // If the backend still isn't reachable after this long, reveal the setup
+  // steps -- a normal cold boot (Orca starting fresh, then the plugin
+  // spawning tsf/server) is expected to finish well before this, so crossing
+  // it is the actual signal that registration is the more likely blocker.
+  const REVEAL_SETUP_AFTER_MS = 20000;
+  // Past this much total waiting, say so plainly rather than spinning
+  // forever with no acknowledgement that something may be wrong.
+  const STALLED_HINT_AFTER_MS = 75000;
+  const POLL_INTERVAL_MS = 2000;
+
+  const startedAt = Date.now();
+  let setupRevealed = false;
+  let stalledShown = false;
 
   // Derive the plugin folder path from this file's own location -- this page
   // lives at <install>/tsf/launcher/first-run-setup.html, so the plugin
@@ -236,13 +299,38 @@
     document.body.removeChild(ta);
   });
 
+  function revealSetupIfDue() {
+    if (setupRevealed || Date.now() - startedAt < REVEAL_SETUP_AFTER_MS) {
+      return;
+    }
+    setupRevealed = true;
+    document.getElementById('starting-title').textContent = 'Still starting…';
+    document.getElementById('starting-lede').textContent =
+      "This is taking longer than a normal cold start usually does. It's most likely " +
+      "that Orca hasn't been told where to find Thousand Sunny Fleet yet -- follow the " +
+      'steps below once, in Orca\'s own Settings.';
+    document.getElementById('setup-phase').style.display = 'block';
+  }
+
+  function showStalledHintIfDue() {
+    if (stalledShown || Date.now() - startedAt < STALLED_HINT_AFTER_MS) {
+      return;
+    }
+    stalledShown = true;
+    document.getElementById('stalled-hint').style.display = 'block';
+    document.getElementById('status-dot').classList.add('stalled');
+  }
+
+  // Polls indefinitely -- deliberately never gives up on its own. A backend
+  // that never becomes reachable is communicated honestly via the escalating
+  // messages above, not by the page stopping and going silent.
   async function checkReady() {
     const dot = document.getElementById('status-dot');
     const text = document.getElementById('status-text');
-    text.textContent = 'Checking…';
     try {
       const res = await fetch(TSF_URL + '/api/meta', { cache: 'no-store' });
       if (res.ok) {
+        dot.classList.remove('stalled');
         dot.classList.add('ok');
         text.textContent = 'Ready — opening Thousand Sunny Fleet…';
         location.href = TSF_URL;
@@ -251,13 +339,14 @@
     } catch (e) {
       // Backend still unreachable -- stay on this page.
     }
-    dot.classList.remove('ok');
-    text.textContent = 'Still waiting for the TSF backend…';
+    revealSetupIfDue();
+    showStalledHintIfDue();
+    text.textContent = setupRevealed ? 'Still waiting for the TSF backend…' : 'Checking…';
   }
 
   document.getElementById('recheck-btn').addEventListener('click', checkReady);
   checkReady();
-  setInterval(checkReady, 5000);
+  setInterval(checkReady, POLL_INTERVAL_MS);
 </script>
 </body>
 </html>

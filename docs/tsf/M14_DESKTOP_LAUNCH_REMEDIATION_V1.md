@@ -1,7 +1,66 @@
 # M14 — TSF Desktop Launch + V1 Release-Candidate Remediation
 
-## Post-hands-on-test remediation (this section first: it supersedes the
-## Edge `--app` design described below)
+## Second hands-on-test remediation: the real cold-start failure (read first)
+
+Tim's second hands-on test ("I clicked the shortcut. Orca launched successfully.
+Thousand Sunny Fleet itself never opened.") reproduced a real, confirmed defect in
+the wave-3 launcher, caught with direct live evidence rather than guessed at:
+
+**Live specimen found and inspected.** A `powershell.exe` process from Tim's own
+test (`Launch-TSF.ps1`, matching his shortcut's exact command line) was still alive
+**10+ minutes** after his test, holding the single-instance Mutex, with **no window
+title and no `WebView2`/`System.Windows.Forms` modules loaded at all** -- proving it
+never reached the point of creating any window, guide or otherwise, and had been
+stuck since very early in the script.
+
+**Root cause.** The wave-3 script ran, in order, *before ever creating a window*:
+(1) a synchronous `& orca open --json` call, then (2) a bounded, up-to-30-second
+`Invoke-WebRequest`-based reachability poll. Two independent problems compound
+here: `orca open`'s own real duration on a genuine cold boot is unbounded from the
+script's point of view (nothing caps how long it can take), and separately,
+`Invoke-WebRequest -TimeoutSec` on Windows PowerShell 5.1 does not reliably bound
+the *connection* phase against a non-listening loopback port -- a known class of
+issue where the underlying connect attempt can hang well past the stated timeout.
+Either one stalling silently explains the specimen exactly: stuck before any
+window, for many minutes, with `-WindowStyle Hidden` meaning nothing was ever
+visible to Tim and no console existed to show an error even if one had been
+thrown.
+
+**Fix (structural, not a timeout tweak).** Window creation no longer waits on
+*anything*: `Launch-TSF.ps1` now creates and shows the dedicated window
+immediately (measured: ~1 second from double-click), before touching Orca or the
+network at all. `orca open` is now fired via `Start-Process` (non-blocking,
+fire-and-forget, retried up to 6 times 15s apart in the background -- real
+recover/retry, not one attempt) instead of a synchronous call. All reachability
+waiting moved entirely into `first-run-setup.html`'s own `fetch()`-based polling,
+which runs on the browser engine's networking stack (not subject to the same
+PowerShell/.NET quirk) and **never gives up on its own** -- it shows a neutral
+"Starting Thousand Sunny Fleet…" state immediately, reveals the guided
+registration steps only if the wait crosses a real-cold-boot-shaped threshold
+(20s), and says so plainly if it's been stalled a long time (75s), all while
+continuing to poll indefinitely. A top-level error handler (plus a WinForms
+`ThreadException` handler for anything thrown later, during the message loop
+itself) now shows a real, visible `MessageBox` for any genuine failure --
+eliminating the entire class of silent death `-WindowStyle Hidden` otherwise
+allows.
+
+**Verified for real, not just reasoned about:** killed and inspected the actual
+stuck specimen from Tim's test (confirmed the diagnosis above); measured the new
+window appearing in ~0.7-1.1s against the live backend; reproduced the full
+"Starting…" → (reveal at 20s) → auto-transition sequence end-to-end on a scratch
+port, including bringing a real server up mid-wait and confirming the auto
+navigation fired; re-verified relaunch (single instance, zero duplicates) and
+clean shutdown, both on the new version. Added
+`test/desktop-launcher-cold-start.test.mjs`: a structural regression guard
+(Windows GUI behavior has no test harness in this repo's CI) that fails if the
+exact bug shape (a blocking call gating window creation, or a give-up path in the
+page's poll) is ever reintroduced -- confirmed it actually catches the old,
+buggy wave-3 source when pointed at it.
+
+---
+
+## First hands-on-test remediation (superseded in the areas above, still
+## accurate for what M6 already provides and the guided-first-run reasoning)
 
 Tim's own hands-on acceptance test (plugin registered, enabled, Orca restarted,
 launcher run) reproduced two real defects. Both are fixed; the architecture
@@ -145,23 +204,31 @@ delta, zero new runtime dependencies):
    Orca's own Electron/Node, not a system install) — a launcher Tim double-clicks
    directly cannot assume Node exists on his machine at all, only Windows' own built-in
    PowerShell, which is what "no developer bootstrap" actually requires here:
-   - Runs `orca open` to ensure Orca itself is up (idempotent -- safe whether Orca is
-     already running or not).
-   - Polls `http://127.0.0.1:4610/api/meta` on a bounded interval/timeout.
-   - Either way (reachable or not), hosts a genuine dedicated window **in this same
-     process** by loading the WebView2 SDK's managed assemblies (`tsf/launcher/webview2/`,
-     vendored) via `Add-Type` and creating a plain WinForms `Form` + `WebView2` control --
-     no second executable is ever launched (see the remediation section above for why:
-     Smart App Control blocks a compiled host exe outright, but has nothing new to
-     evaluate when the control is loaded into the already-trusted `powershell.exe`
-     process itself). Navigates to `http://127.0.0.1:4610` if reachable, or to the local
-     `first-run-setup.html` guide if not -- the guide's own polling then transitions the
-     same window in place once the backend comes up, no relaunch needed.
+   - Creates and shows a genuine dedicated window **immediately, before anything else**
+     (measured live: ~1 second from double-click) -- by loading the WebView2 SDK's
+     managed assemblies (`tsf/launcher/webview2/`, vendored) via `Add-Type` and creating
+     a plain WinForms `Form` + `WebView2` control in this same process. No second
+     executable is ever launched (see the remediation section above for why: Smart App
+     Control blocks a compiled host exe outright, but has nothing new to evaluate when
+     the control is loaded into the already-trusted `powershell.exe` process itself).
+   - Fires `orca open` via `Start-Process` (non-blocking, retried up to 6 times 15s
+     apart in the background) to ensure Orca itself is up -- this never gates window
+     creation, and never blocks the UI thread.
+   - Navigates the window straight to `first-run-setup.html`, which owns *all*
+     reachability waiting itself (via `fetch()` against the browser engine's own
+     networking stack, not PowerShell's) and never gives up on its own: an immediate
+     neutral "Starting…" state, the guided registration steps revealed only past a
+     real-cold-boot-shaped threshold, and an honest "this is stalled" note if the wait
+     goes long -- auto-navigating the same window to the real UI the moment the backend
+     answers, whether that's in one second or two minutes.
    - A named Mutex + `FindWindow`/`SetForegroundWindow` makes a relaunch activate the
      existing window instead of opening a second one.
+   - A top-level error handler plus a WinForms `ThreadException` handler show a real,
+     visible `MessageBox` for any genuine failure, anywhere in the launch sequence --
+     no more silent death behind `-WindowStyle Hidden`.
 2. **`tsf/launcher/first-run-setup.html`** — a small, self-contained static page (TSF's
-   own dark/purple palette, no network calls) with the exact guided steps above, a copy-
-   path control, and a "Check again" button that re-invokes the readiness poll.
+   own dark/purple palette, no network calls) that is now the *first* thing shown on
+   every launch, not just an error path -- see its own state machine above.
 3. **`tsf/launcher/webview2/`** — the three WebView2 SDK files (`net462` managed +
    native loader) `Launch-TSF.ps1` loads, vendored rather than restored via NuGet at
    install time so the launcher needs no package-restore or build step on Tim's machine.
@@ -184,7 +251,7 @@ None of this touches `src/**` (Orca core) or adds a `dependencies` entry to any
 
 | # | Test | How it's verified |
 |---|------|--------------------|
-| 1 | Cold launch | Desktop shortcut → Orca not yet running → launcher starts Orca, backend comes up, dedicated window opens on the real UI, no manual step |
+| 1 | Cold launch | Desktop shortcut → dedicated window appears within ~1s regardless of Orca's state (measured live) → `orca open` fires in the background (retried) → the window itself shows "Starting…" and transitions to the real UI the moment the backend answers, however long that takes → no manual step, no silent hang (this exact path was the wave-3 defect; see the remediation section above for the live specimen/root-cause evidence) |
 | 2 | Relaunch | Orca and the window already running → the named-Mutex check finds the existing instance and activates its window (`FindWindow`/`SetForegroundWindow`) instead of opening a second one |
 | 3 | Runtime unavailable | Backend never becomes reachable (plugin not yet registered) → honest first-run guide shown, not a blank page or crash; auto-transitions to the real UI in place the moment the backend comes up, no relaunch needed (real end-to-end proof: scratch-port server brought up while the guide was open and polling, window switched to the real UI within one 5s poll cycle) |
 | 4 | Provider state | TSF UI's own existing provider/account surfaces (Work, Agents) render honestly inside the dedicated window exactly as they do in a browser tab |

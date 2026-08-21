@@ -2286,7 +2286,7 @@
     {
       "id": "M14",
       "name": "TSF Desktop Launch + V1 Release-Candidate Remediation",
-      "status": "CODE_ADOPTED_AWAITING_TIM_HANDS_ON_TEST",
+      "status": "CURRENT",
       "note": "Authorized directly by Tim after the M13 handoff (see docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md). Bounded remediation only -- no new product capabilities, no Orca fork, Orca core delta stays 0. Closes the one concrete defect M13 found: no real double-click TSF launch experience exists on the machine. Do NOT create M15.",
       "candidateCommit": "54dfa6936",
       "adoptedCommit": "54dfa6936",
@@ -2327,6 +2327,17 @@
             "tsf/launcher/webview2/WebView2Loader.dll",
             "tsf/launcher/webview2/NOTICE.md",
             "tsf/server/http-server.mjs"
+          ]
+        },
+        {
+          "wave": 4,
+          "summary": "Tim's SECOND real hands-on test FAILED: \"Orca launched successfully. Thousand Sunny Fleet itself never opened.\" Diagnosed from a live specimen, not guesswork: a real powershell.exe process from his exact test (matching the shortcut's command line) was found still alive 10+ minutes later, holding the single-instance Mutex, with NO window title and NO WebView2/System.Windows.Forms modules loaded at all -- proof it never reached window creation and had been stuck since very early in the script. Root cause: the wave-3 script ran a synchronous `& orca open --json` call and then an up-to-30s Invoke-WebRequest-based reachability poll BEFORE ever creating any window. Two compounding problems: orca open's own duration on a genuine cold boot is unbounded from the script's point of view, and separately, PowerShell 5.1's Invoke-WebRequest -TimeoutSec does not reliably bound the connection phase against a non-listening loopback port (a known class of issue). Either stalling silently explains the specimen exactly, and -WindowStyle Hidden meant there was no console to ever show an error even if one had been thrown. Fixed structurally, not with a bigger timeout: Launch-TSF.ps1 now creates and shows the dedicated window IMMEDIATELY (measured live: ~0.7-1.1s from double-click), before touching Orca or the network at all. `orca open` is now fired via Start-Process (non-blocking, retried up to 6 times 15s apart in the background -- real recover/retry, not one attempt). ALL reachability waiting moved into first-run-setup.html's own fetch()-based polling (the browser engine's networking stack, not PowerShell's, and not subject to the same quirk), which never gives up on its own: an immediate neutral \"Starting Thousand Sunny Fleet...\" state, the guided registration steps revealed only past a 20s real-cold-boot-shaped threshold, and an honest \"this is taking a while\" note past 75s, all while continuing to poll indefinitely and auto-navigating the instant the backend answers. Added a top-level error handler plus a WinForms ThreadException handler so ANY genuine failure anywhere in the sequence shows a real, visible MessageBox -- eliminating the entire silent-death class -WindowStyle Hidden otherwise allows. Verified for real: killed and inspected the actual stuck specimen (confirmed the diagnosis); measured the new immediate window appearance against the live backend; reproduced the full Starting -> (reveal) -> auto-transition sequence end-to-end on a scratch port including bringing a real server up mid-wait; re-verified relaunch (single instance, zero duplicates) and clean shutdown on the new version. Added test/desktop-launcher-cold-start.test.mjs: a structural regression guard (no Windows GUI test harness exists in this repo's CI) that fails if the exact bug shape (a blocking call gating window creation, or a give-up path in the page's poll) is ever reintroduced -- confirmed it genuinely catches the old buggy wave-3 source when pointed at it. Full suite: 594/594, 593 pass, 1 fail (the same pre-existing plugin-real-load-proof.test.mjs port-4610 collision with Tim's own live process, unrelated to this change, previously confirmed via git stash to be pre-existing on unmodified code).",
+          "filesChanged": [
+            "docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md",
+            "tsf/launcher/Launch-TSF.ps1",
+            "tsf/launcher/README.md",
+            "tsf/launcher/first-run-setup.html",
+            "tsf/test/desktop-launcher-cold-start.test.mjs"
           ]
         }
       ],
