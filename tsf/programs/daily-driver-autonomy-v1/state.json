@@ -1692,7 +1692,21 @@
       ],
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started"]
+      "gaps": [
+        "Wave 1 (research-first scoping) done -- see docs/tsf/M7_PROJECT_MEMORY_V2_V1.md. Confirmed tsf/domain/receipts.mjs already provides a real, hash-chained, append-only decision/audit record (ADOPTION_DECISION/PROJECT_ONBOARDED/HUMAN_CONSEQUENTIAL_APPROVAL/etc.) -- a strong existing candidate backbone for the Decisions memory class, structurally satisfying 'explicit user decisions cannot be silently overwritten'. keep-going.mjs's settleInFlightWave (M4 finding) already persists per-run wave outcomes -- a real partial building block for Experiences-Lessons, but scoped to one run, not aggregated/retrievable across runs/projects. session-affinity.mjs is unrelated (provider identity, not project content). Real, confirmed gaps: no Facts or Preferences store exists anywhere; no unified, project-scoped, provenance-aware, bounded retrieval surface exists across any of the four classes; Hindsight remains explicitly OPTIONAL_MEMORY_BACKEND per the program's established harvest-concepts-not-runtimes discipline, evaluated only after the native approach is tried. 4 open design questions recorded for wave 2 (storage backend choice, provenance shape, supersession semantics, retrieval bound) before any schema/storage code is written."
+      ],
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Research-first source inspection (per Tim's own standing execution model, and the pattern that has now caught false gaps or substantially narrowed real work in M4/M5/M6) before any M7 design/implementation. Read tsf/domain/receipts.mjs (a real, existing hash-chained decision/audit record already used for ADOPTION_DECISION/PROJECT_ONBOARDED/etc. -- a strong candidate backbone for the Decisions memory class rather than inventing a new one), tsf/domain/session-affinity.mjs (confirmed unrelated -- provider/session identity, not project content memory), tsf/domain/onboarding.mjs (a one-time stateless classifier, no cross-session persistence of its own), keep-going.mjs's settleInFlightWave (a real per-run wave-outcome history, a partial Experiences-Lessons building block but not aggregated/retrievable across runs), result-capsule.schema.v1.json (per-mission response fields with no evidence of durable persistence beyond the immediate response), and docs/tsf/SOURCE_HARVEST_LEDGER_V1.md (confirmed Hindsight is explicitly deferred as OPTIONAL_MEMORY_BACKEND, evaluated only after the native approach, matching every other harvested concept in that ledger ending up as a pure function or an Orca-native mapping, never a vendored runtime). Also noted M6's own discovery of Orca's plugin-private storage.get/set (256KB/value, 5MB total, no query/filter capability) as a candidate but likely-insufficient-alone storage primitive. Wrote docs/tsf/M7_PROJECT_MEMORY_V2_V1.md recording all of this plus 4 concrete open design questions for wave 2: storage backend choice (data-store.mjs vs. a new store), provenance shape, supersession semantics (stale-fact vs. cannot-silently-overwrite-decision are two different mutation policies), and the retrieval-bound mechanism (the 'no giant transcript injection' test requirement).",
+          "testsAdded": 0,
+          "testsPassing": "351 (350 pass, 1 gracefully skipped) full tsf suite GREEN (unaffected -- research/design only, no code changed)",
+          "verifier": "SELF",
+          "commit": null,
+          "status": "IN_PROGRESS",
+          "note": "Next: answer wave 2's 4 open design questions with real evidence (read data-store.mjs, project-context-capsule.schema.v1.json, chat-responder.mjs's context-building path) before writing any schema or storage code, then implement in the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M6."
+        }
+      ]
     },
     {
       "id": "M8",
