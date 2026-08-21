@@ -2213,6 +2213,26 @@
           "commit": "b343dc9f3d1d936d65ea47cb42e77ed3135f7705",
           "status": "COMMITTED",
           "note": "Next: a single comprehensive final review (leaner cadence, per tonight's time-bounded overnight target), then package/adopt. M13 immediately after."
+        },
+        {
+          "wave": "review",
+          "summary": "Single comprehensive final review. Verdict: GREEN WITH FIXES NEEDED. Found and fixed a real, serious bug via a fresh adversarial 3-project repro: the fleet-wide re-placement loop only checked concurrency-slot saturation, never enforced a task's own dependency floor against its FLEET-ADJUSTED (not isolated) end time -- under contention, a dependent task could be placed to start before its real dependency actually ended. Fixed by tracking each task's real fleet-adjusted end time and enforcing start >= max(ideal start, every dependency's real end); mutation-confirmed. Also flagged a real, disclosed gap: M13's own spec (Phase 12, Phase 14) requires Fleet planning to be reachable/understandable to Tim, but wave 1 shipped domain-only -- closed in wave 2 (HTTP route + UI) rather than deferred, since M13 would otherwise hit it as an unfixable-in-place gap.",
+          "testsAdded": 1,
+          "testsPassing": "586 full tsf suite GREEN (after the review's own fix)",
+          "verifier": "INDEPENDENT (forked review agent)",
+          "commit": "9ab0f562f226a29517dd7b6fb5f85faceec9afef",
+          "status": "GREEN_WITH_FIXES_NEEDED_THEN_CLOSED",
+          "note": "The named gap (missing HTTP/UI surface) closed in wave 2."
+        },
+        {
+          "wave": 2,
+          "summary": "Closes the review's named gap. New fleet-optimizer-http-routes.mjs: POST /api/fleet/schedule, reusing each requested project's REAL, already-persisted estimate (M8's projectEstimates.wbs) -- a project with no estimate on file is an honest 422, never a fabricated WBS. New Fleet nav page: Work Set projects with priority inputs, max-concurrent-workers control, Build schedule button, per-project schedule/reasoning/deadline-status display -- report-only, no dispatch/authorization. 3 new real HTTP-level tests.\n\nFull suite 589/589 GREEN, tsc/oxlint/vite build clean, max-lines ratchet 346 unchanged, zero Orca core delta. Given tonight's time-bounded overnight target and that this wave is thin, well-tested glue reusing 2 already-thoroughly-reviewed real patterns (M8's estimate-route pattern; M12 wave 1's own freshly-mutation-tested domain function), proceeding directly to adoption without a further dedicated review round.",
+          "testsAdded": 3,
+          "testsPassing": "589 full tsf suite GREEN",
+          "verifier": "SELF",
+          "commit": "9faba491258a145fda4d6e318cf1d698d56ddc63",
+          "status": "COMMITTED",
+          "note": "Next: package/adopt, then M13."
         }
       ]
     },
