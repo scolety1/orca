@@ -65,6 +65,18 @@ test('normalizeWbs rejects a dependency referencing an unknown task id', () => {
   )
 })
 
+test('REQUIRED PROOF: normalizeWbs rejects a conflictsWith referencing an unknown task id -- matches dependencies validation exactly, no longer asymmetric', () => {
+  assert.throws(
+    () => normalizeWbs([rawTask({ conflictsWith: ['does-not-exist'] })]),
+    /conflictsWith unknown task id/
+  )
+})
+
+test('normalizeWbs accepts a real conflictsWith relationship between two known tasks', () => {
+  const wbs = normalizeWbs([rawTask({ id: 'a' }), rawTask({ id: 'b', conflictsWith: ['a'] })])
+  assert.deepEqual(wbs[1].conflictsWith, ['a'])
+})
+
 test('normalizeWbs accepts a real dependency between two known tasks', () => {
   const wbs = normalizeWbs([rawTask({ id: 'a' }), rawTask({ id: 'b', dependencies: ['a'] })])
   assert.equal(wbs.length, 2)

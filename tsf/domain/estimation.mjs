@@ -132,6 +132,17 @@ export function normalizeWbs(rawTasks) {
         throw new Error(`WBS task ${task.id} depends on unknown task id ${depId}`)
       }
     }
+    // Matches the dependencies check above -- a typo'd or dangling
+    // conflictsWith id would otherwise silently fail to produce its
+    // intended scheduling constraint (delivery-scheduling.mjs's own
+    // conflict check simply never matches a nonexistent id), with no
+    // error at any layer. A real, independently-found gap (M8 wave 6
+    // review) -- fixed here rather than left asymmetric with dependencies.
+    for (const conflictId of task.conflictsWith) {
+      if (!seen.has(conflictId)) {
+        throw new Error(`WBS task ${task.id} conflictsWith unknown task id ${conflictId}`)
+      }
+    }
   }
   return tasks
 }
