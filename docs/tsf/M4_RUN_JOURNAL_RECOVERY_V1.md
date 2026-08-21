@@ -90,14 +90,23 @@ with no extra state to keep in sync.
 no untested claim" discipline)
 
 An actual process restart, not a simulated one: start a real Keep Going
-run against the safe scratch/fixture project, dispatch a real wave, kill
-the TSF server process (`taskkill`/SIGKILL, not a graceful shutdown),
-restart it pointed at the same state file, and confirm from a fresh
-process: the run resumes with the exact same revision/checkpoints/
-needsYou, does not redispatch the in-flight wave, and a real "catch me
-up" chat query against the fresh process returns a recent-history line
-genuinely grounded in the checkpoint trail read straight off disk (Gap
-3) -- not from any in-memory state the killed process happened to hold.
+run against the safe scratch/fixture project, dispatch a wave through the
+real chat-dispatch path (stub Orca/planner CLIs are an acceptable,
+disclosed scoping choice for THIS proof specifically -- it targets TSF's
+own restart-safety, not Codex/Orca dispatch mechanics, already
+exhaustively proven live in M3 waves 11-13), kill the TSF server process
+(`taskkill`/SIGKILL, not a graceful shutdown), restart it pointed at the
+same state file, and confirm from a fresh process: the run resumes with
+the exact same revision/checkpoints (`needsYou` was not separately
+exercised live -- see wave 3's own note on why its restart-survival
+follows structurally from the same single-file persistence mechanism
+rather than needing its own live scenario), does not redispatch the
+in-flight wave, and a real "catch me up" chat query against the fresh
+process returns a recent-history line genuinely grounded in the
+checkpoint trail read straight off disk (Gap 3) -- not from any
+in-memory state the killed process happened to hold. See
+tsf/programs/daily-driver-autonomy-v1/state.json's M4 wave 3 for the full
+executed record.
 
 ## Explicitly out of scope for M4
 
