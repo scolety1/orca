@@ -40,20 +40,102 @@
    KeepGoingPanel/etc., built across M2-M5) or the real `tsf/server` HTTP
    API. It predates all of M2-M5's actual product surface.
 
-5. **Plugin execution model**: `src/main/plugins/plugin-host-runtime.ts`
-   defines `createPluginWorkerRuntime` — plugin `main.mjs` modules run
-   inside a dedicated Node `worker_thread`, not the main Electron
-   process and not a browser/vm sandbox. The only searched-for
-   capability/permission gate (`capabilities`, `process`, `childProcess`,
-   `spawn`) turned up no matches in that file — meaning the *exposed
-   `orca` API object* is a bounded surface (`commands.register`,
-   `host.call`, `events.on`, `log`), but it's still an open question
-   (not yet verified) whether the worker thread itself is permitted to
-   `import('node:child_process')` directly the way `tsf/adapters/
-   orca-orchestration-bridge.mjs`/`orca-capacity-bridge.mjs` already do
-   elsewhere in this program. **Unresolved — first thing wave 2 must
-   verify before committing to a design**, since the whole "connects
-   to/starts required local TSF/Orca services" criterion hinges on it.
+5. **Plugin execution model — CORRECTED in wave 2** (wave 1 misread this
+   from the file name alone): `src/main/plugins/plugin-host-runtime.ts`'s
+   `createPluginWorkerRuntime` is only the message-loop logic that runs
+   *inside* the plugin process; the actual process is started by
+   `src/main/plugins/plugin-host-process.ts`'s `startPluginWorker`, which
+   calls real Node `child_process.fork(entryPath, [], {execArgv: [],
+   stdio: [...,'ipc'], ...})`. This is a genuine, separate OS-level Node
+   process (`ELECTRON_RUN_AS_NODE` makes the forked Electron binary run
+   as plain Node) — not a `worker_thread`, not a vm sandbox. `execArgv:
+   []` only strips inspector/loader flags; the process itself has full,
+   unrestricted Node module access. Its environment is a scrubbed
+   allowlist (`plugin-worker-env.ts`) that keeps `PATH`/`HOME`/
+   `USERPROFILE`/Windows system vars but drops `LOCALAPPDATA`/
+   `ProgramFiles` — a real, minor gotcha for `orca-capacity-bridge.mjs`'s/
+   `orca-orchestration-bridge.mjs`'s own CLI-resolution order (their first
+   two candidates would silently miss inside a plugin process; their
+   hardcoded-path and bare-`orca`-on-PATH fallbacks still work).
+
+## Wave 2 findings (both open questions resolved with hard evidence)
+
+**Question 1 — can a plugin spawn/manage a long-lived child process?
+YES, confirmed.** `startPluginWorker` (`plugin-host-process.ts:88`) is a
+real `fork()` with no sandbox/permission flags. A plugin's `main.mjs`
+(this TSF plugin's own `activate(orca)`) can `import('node:child_process')`
+directly and spawn/manage `tsf/server` exactly the way
+`orca-orchestration-bridge.mjs`/`orca-capacity-bridge.mjs` already spawn
+the `orca` CLI elsewhere in this program — no new capability or host-API
+grant is needed for this, since it's the plugin's own process doing the
+spawning, not a call through the gated `orca.host.call` bridge.
+
+**Question 2 — can a plugin panel host the full tsf/ui SPA or talk to a
+local API? NO, structurally ruled out, confirmed.** `plugin-panel-
+controller.ts`'s `load()` reads the panel's `entry` as a single blob of
+text (`readContainedPluginArtifactText`, capped at 10MB) and wraps it
+with `buildPluginPanelShellHtml` (`src/shared/plugins/plugin-panel-
+shell.ts`) before mounting it in a sandboxed `srcdoc` iframe under a
+**hard-coded CSP**: `` default-src 'none'; connect-src 'none'; script-src
+'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src
+data:; base-uri 'none'; form-action 'none' ``. `connect-src 'none'`
+blocks **every** fetch/XHR/WebSocket call, including to a same-machine
+`http://127.0.0.1` origin; `script-src`/`style-src '`unsafe-inline'`
+only (no `self`/`https:`/any src-based loading) means no separate JS/CSS
+asset files can load, so the built multi-file `tsf/ui/dist` bundle
+cannot be mounted this way at all — only a single, fully self-contained,
+offline HTML document (exactly what the current placeholder already
+is). This is a deliberate security boundary (documented in the shell
+builder's own comments: plugins are semi-trusted, panels are documents,
+never browsing contexts), not an oversight to work around.
+
+Compounding this: `src/shared/plugins/plugin-host-api.ts`'s
+`PLUGIN_HOST_API_V0` is the complete, authoritative list of every method
+a plugin may call — `workspace.readContext`, `terminal.sendText`,
+`notifications.show`, `storage.*`, `secrets.*`, `settings.*`,
+`events.subscribe`. **There is no `shell.openExternal`-equivalent
+method** — a plugin cannot even ask the host to open an external URL/
+browser window on its behalf.
+
+**Conclusion: the plugin-panel path is ruled out entirely for hosting
+the real TSF UI.** The panel can, at most, remain a tiny static status
+display (as it already is) — it structurally cannot become the real UI
+surface. The real, viable architecture uses only the plugin's *backend*
+process (confirmed unrestricted in Q1), not its panel:
+
+1. TSF's existing plugin (`main.mjs`'s `activate(orca)`) spawns
+   `tsf/server` (extended to also serve `tsf/ui/dist` as static files —
+   `startStandaloneServer` serves `/api` only today, per wave 1) as a
+   real child process. Confirmed via `plugin-service.ts`'s
+   `performRefresh`/`workerController.reconcile` that an approved
+   plugin's worker process starts automatically as part of Orca's own
+   startup plugin reconciliation (`whenReady()`), not lazily on
+   panel-open — so this genuinely satisfies "connects to/starts" without
+   Tim running any command.
+2. Since no host API can open a window/URL, the plugin registers a real
+   command (`orca.commands.register`, already the exact mechanism the
+   current placeholder plugin uses) that, when invoked from Orca's
+   command palette, spawns the OS's own "open URL" process (`start` on
+   Windows, `open` on macOS, `xdg-open` on Linux) pointed at the local
+   server's origin — a plain, unprivileged child-process launch, not a
+   new host-API grant. This satisfies "double-click launch" as "one
+   click from Orca's own command palette," not raw localhost commands.
+3. `module.deactivate` (already a supported export per `plugin-host-
+   runtime.ts`'s `handleInit`) kills the spawned `tsf/server` child on
+   plugin/app shutdown — the "clean shutdown" criterion.
+4. "Graceful backend-unavailable state" becomes: the opened browser tab
+   shows whatever `tsf/ui`'s own existing fetch-failure UI already
+   renders when `tsf/server` isn't reachable (needs checking in wave 3
+   whether that already exists or needs adding).
+
+Remaining open items for wave 3 (implementation design, not yet
+resolved): exact child-process lifecycle (restart-on-crash? single
+instance across Orca restarts? port conflict handling?), whether
+`tsf/ui`'s existing fetch-error handling is adequate for "graceful
+backend-unavailable," and the Windows packaging/install-strategy
+criterion (this whole design stays inside `tsf/`'s existing plugin — no
+second Electron app, no new installer needed beyond what a plugin
+already ships as).
 
 ## The real, remaining gap (confirmed, not assumed)
 
@@ -70,53 +152,45 @@ the `tsf/server` process, and IF a plugin panel can point its
 `entry`/iframe at the real `tsf/ui` bundle (as static assets or via a
 locally-served origin) instead of a single static HTML file.
 
-## Open questions for wave 2 (deliberately not resolved by guessing)
+## Open questions from wave 1 — SUPERSEDED by wave 2's findings above
 
-1. Can a plugin's `main.mjs` (running in `createPluginWorkerRuntime`'s
-   worker thread) `import('node:child_process')` and spawn/manage a
-   long-lived local process (`tsf/server/http-server.mjs`) today? Read
-   `plugin-host-runtime.ts` and its worker-thread bootstrap fully, and
-   probe empirically in a safe fixture if the source alone doesn't
-   settle it.
-2. Can a plugin panel's `entry` serve more than one static HTML file —
-   i.e., can `panel.html` embed/proxy the full built `tsf/ui/dist`
-   (multi-route SPA, its own JS/CSS assets, calls to a local `/api`
-   origin) rather than being a single inline-script page? Read how
-   `contributes.panels[].entry` is resolved and loaded (likely also in
-   `src/main/plugins/`).
-3. If (1) or (2) turn out to be infeasible or too constrained, the
-   fallback design is a small, separate, `tsf`-owned Electron/Node
-   launcher (its own `package.json`/build, NOT touching `src/main`)
-   that starts `startStandaloneServer` in production mode (after adding
-   static-file serving of `tsf/ui/dist` to it, still inside
-   `tsf/server/http-server.mjs`) and opens a plain window/browser tab
-   pointed at it — still zero Orca core delta, just not reusing the
-   plugin-panel surface. Needs its own smoke-test/build-packaging
-   research before design.
-4. "Windows application build with reliable launch, graceful
-   backend-unavailable state, clean shutdown" needs a concrete decision
-   on which of the two paths above is used before this can be scoped
-   further, since the packaging story differs substantially between
-   "extend the existing Orca plugin" and "ship a second app."
+Both questions below are now resolved with direct evidence (see "Wave 2
+findings"); kept here only as a record of what wave 1 asked.
+
+1. ~~Can a plugin's `main.mjs` ... spawn/manage a long-lived local
+   process?~~ Resolved YES.
+2. ~~Can a plugin panel's `entry` serve the full built `tsf/ui/dist`?~~
+   Resolved NO — structurally blocked by the panel's CSP.
+3. The "fallback design" sketched in wave 1 (a second, separate `tsf`-
+   owned Electron/Node launcher) is NOT needed: extending the existing
+   plugin's backend process (spawn + a real command that opens the OS
+   browser) satisfies the criteria without a second app. See wave 2.
+4. See wave 2's "Remaining open items for wave 3" instead.
 
 ## Acceptance criteria re-check against current code (not claims)
 
 - "Double-click launch opens TSF UI and connects to/starts required
-  local TSF/Orca services" — NOT met; no launcher exists in either
-  candidate form yet.
+  local TSF/Orca services" — NOT yet met; architecture now decided
+  (wave 2: plugin auto-spawns `tsf/server`, a registered command opens
+  the OS browser) but not implemented.
 - "Planner Chat, projects, Health, adoption all work without manual
-  localhost commands" — NOT met; all require `npm run dev` today.
-- "Orca core delta stays 0" — achievable either way; both candidate
-  designs above stay entirely inside `tsf/`.
+  localhost commands" — NOT yet met; all require `npm run dev` today;
+  the wave-2 architecture removes that requirement once implemented.
+- "Orca core delta stays 0" — achievable; the wave-2 design stays
+  entirely inside `tsf/` (plugin manifest/main.mjs/server changes only).
 - "Windows application build with reliable launch, graceful
-  backend-unavailable state, clean shutdown" — NOT met; depends on
-  wave-2's design decision.
+  backend-unavailable state, clean shutdown" — NOT yet met; a plugin
+  needs no separate Windows "build" beyond what it already ships as, so
+  this narrows to: reliable spawn/restart-on-crash logic, `tsf/ui`'s own
+  fetch-failure UI being adequate for backend-unavailable, and using
+  the existing `deactivate()` export for clean shutdown — all wave 3.
 - "Update/install strategy documented; unsigned local dev installer
-  acceptable; no external distribution" — NOT met; not yet designed.
-- "Smoke-tested locally" — NOT met; nothing to test yet.
+  acceptable; no external distribution" — NOT yet met; simplified by the
+  wave-2 finding (no second installer needed, it's the existing plugin).
+- "Smoke-tested locally" — NOT met; nothing implemented yet.
 
-No acceptance criterion is already satisfied by existing code (unlike
-M4/M5) — this milestone's gap really is close to "everything," but wave
-2's job is answering questions 1-2 above before writing any
-implementation, exactly the research-first discipline this program has
-already validated twice.
+Unlike M4/M5, no acceptance criterion was already fully satisfied by
+existing code, but wave 2 substantially narrowed the real work: from
+"decide between two unproven architectures" to "implement one
+evidence-backed architecture," exactly the value of the research-first
+discipline this program has now validated three times.
