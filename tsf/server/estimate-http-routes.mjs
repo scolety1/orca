@@ -11,6 +11,8 @@ import {
   summarizeCalibration
 } from '../domain/estimate-calibration.mjs'
 import { forecastMeteredCost, forecastProviderCapacity } from '../domain/provider-forecast.mjs'
+import { detectCompetingCommitments } from '../domain/competing-commitments.mjs'
+import { buildClientEstimate } from '../domain/client-estimate.mjs'
 import { readKeepGoingRun } from './keep-going-run-store.mjs'
 import { fetchCapacitySnapshot } from '../adapters/orca-capacity-bridge.mjs'
 import { loadState } from './data-store.mjs'
@@ -74,6 +76,23 @@ export async function handleEstimateRoute(
   const project = map.get(projectId)
   if (!project) {
     notFound(res, `unknown project: ${projectId}`)
+    return true
+  }
+
+  // GET /api/projects/:id/estimate/client -- acceptance item 13: the
+  // client-facing quote, kept structurally separate from the internal
+  // estimate (buildClientEstimate reads none of the internal-only
+  // fields -- providerForecast, costForecast, calibration,
+  // competingCommitments -- so there is no field this route could
+  // accidentally leak even if the internal estimate object grows more
+  // internal-only data later).
+  if (parts.length === 5 && parts[4] === 'client' && req.method === 'GET') {
+    const estimate = opState.projectEstimates?.[projectId]
+    if (!estimate) {
+      json(res, 422, { ok: false, error: 'NO_ESTIMATE_ON_FILE_FOR_PROJECT' })
+      return true
+    }
+    json(res, 200, { ok: true, projectId, clientEstimate: buildClientEstimate(estimate) })
     return true
   }
 
@@ -191,6 +210,19 @@ export async function handleEstimateRoute(
     // to tell that apart rather than assume full internal consistency.
     const calibration = summarizeCalibration(opState.estimateActuals?.[projectId] ?? [])
     const calibratedMonteCarlo = applyCalibrationBias(plan.estimate, calibration)
+    // Acceptance item 12: disclosure-only competing-commitments check,
+    // reusing the providerForecast just computed above (never a second
+    // capacity read).
+    const competingCommitments = detectCompetingCommitments({
+      projectId,
+      // opState.workSet (not opState.portfolio.workSet, a separate, still-
+      // mostly-empty-by-default structure) -- the same flat Work Set field
+      // live-planner.mjs's own buildProjectContextCapsule already treats
+      // as the real, currently-populated signal.
+      workSet: opState.workSet,
+      keepGoingRuns: opState.keepGoingRuns,
+      providerForecast
+    })
     const estimate = {
       schemaVersion: 'TSF_PROJECT_ESTIMATE_RESULT_V1',
       projectId,
@@ -200,6 +232,12 @@ export async function handleEstimateRoute(
       calibration,
       providerForecast,
       costForecast,
+      competingCommitments,
+      // Stored so a later GET .../estimate/client can derive the client-
+      // facing delivery range without needing the original POST body
+      // again -- see buildClientEstimate.
+      startDate: body.startDate,
+      calendarOptions: body.calendarOptions ?? {},
       generatedAt: new Date().toISOString()
     }
     // Re-read fresh right before saving -- generateWbs and
