@@ -142,6 +142,37 @@ test('REQUIRED PROOF: the optimizer can replan after a stall -- calling it again
   assert.notEqual(originalB, replannedB)
 })
 
+test("REQUIRED PROOF: a real review finding -- a dependent task can never start before its own dependency's REAL, fleet-contention-delayed end, even when the concurrency cap alone would not have blocked it", () => {
+  // 3 same-duration blocker tasks from 3 higher-priority projects occupy
+  // every one of the 3 available concurrency slots for hours [0,10),
+  // forcing project-a's a1 to be delayed to [10,14) in the real,
+  // fleet-wide placement -- a real delay computeCriticalPathSchedule
+  // (run per-project, in isolation) could never have produced on its
+  // own (it has no fleet contention to account for). a2 depends on a1;
+  // a naive re-placement that only checks concurrency-slot saturation
+  // (not each task's own real dependency floor) would let a2 start at
+  // hour 10 -- the ideal, contention-free start computeCriticalPathSchedule
+  // assigned it in isolation -- which is BEFORE a1's real end at 14.
+  const blockers = [0, 1, 2].map((i) => ({
+    projectId: `blocker-${i}`,
+    priority: 0,
+    wbs: [task(`blk${i}`, 10)]
+  }))
+  const withDep = projectA({
+    priority: 1,
+    wbs: [task('a1', 4), task('a2', 3, { dependencies: ['a1'] })]
+  })
+  const result = buildFleetSchedule({ projects: [...blockers, withDep], maxConcurrentWorkers: 3 })
+  const a = result.projects.find((p) => p.projectId === 'project-a')
+  const a1 = a.schedule.find((s) => s.id === 'a1')
+  const a2 = a.schedule.find((s) => s.id === 'a2')
+  assert.equal(a1.endHour, 14)
+  assert.ok(
+    a2.startHour >= a1.endHour,
+    `a2 started at ${a2.startHour} before a1's real end ${a1.endHour}`
+  )
+})
+
 test('REQUIRED PROOF: identical inputs produce byte-identical, reproducible schedules (deterministic, no randomness)', () => {
   const input = { projects: [projectA(), projectB()], maxConcurrentWorkers: 2 }
   const first = buildFleetSchedule(input)

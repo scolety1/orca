@@ -83,9 +83,26 @@ export function buildFleetSchedule({
     const perProjectSchedule = computeCriticalPathSchedule(project.wbs, {
       maxConcurrent: project.wbs.length
     })
+    // computeCriticalPathSchedule's own output drops each task's
+    // `dependencies` array (see delivery-scheduling.mjs's scheduled.push),
+    // so the real dependency floor is looked up back on the original WBS
+    // task by id. Without this, a dependent task's fleet-wide-adjusted
+    // start could fall before its own dependency's REAL (contention-
+    // delayed) end -- the concurrency-slot check alone does not enforce
+    // this, since two overlapping intervals only block placement once
+    // they saturate `concurrency`; a genuine correctness bug a real
+    // adversarial 3-blocker-project repro confirmed independently
+    // produces (a2 starting at hour 10 while its own dependency a1 -- real,
+    // contention-delayed -- doesn't finish until hour 14).
+    const wbsById = new Map(project.wbs.map((t) => [t.id, t]))
+    const realEndByTaskId = new Map()
     const placed = []
     for (const task of perProjectSchedule.schedule) {
-      let start = task.startHour
+      const dependsOn = wbsById.get(task.id).dependencies
+      const dependencyFloor = dependsOn.length
+        ? Math.max(...dependsOn.map((d) => realEndByTaskId.get(d)))
+        : 0
+      let start = Math.max(task.startHour, dependencyFloor)
       for (let attempt = 0; attempt < placed.length + globalBusyIntervals.length + 2; attempt++) {
         const overlapping = globalBusyIntervals.filter(
           (iv) => start < iv.end && start + task.durationHours > iv.start
@@ -97,6 +114,7 @@ export function buildFleetSchedule({
       }
       const end = start + task.durationHours
       globalBusyIntervals.push({ start, end })
+      realEndByTaskId.set(task.id, end)
       placed.push({ ...task, startHour: start, endHour: end })
     }
     const totalDurationHours = placed.length ? Math.max(...placed.map((p) => p.endHour)) : 0
