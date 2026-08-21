@@ -192,7 +192,17 @@ function json(res, status, body) {
   const payload = JSON.stringify(body)
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
-    'content-length': Buffer.byteLength(payload)
+    'content-length': Buffer.byteLength(payload),
+    // M14 defect 1 fix: the desktop launcher's first-run guide polls this
+    // API from a file:// origin (Origin: null) while deciding whether to
+    // hand off to the real UI. Without this header Chromium-based engines
+    // (WebView2 included) complete the request at the network level -- so
+    // it looked "reachable" in every process/port check -- but silently
+    // discard the response in fetch(), so the guide never detected a
+    // genuinely-ready backend. Safe to allow any origin: this server only
+    // ever listens on 127.0.0.1, so only local processes can reach it
+    // regardless of this header.
+    'access-control-allow-origin': '*'
   })
   res.end(payload)
 }

@@ -40,20 +40,29 @@ checkout.
 
 ## What happens on launch
 
-1. `Launch-TSF.ps1` runs `orca open` (idempotent -- safe whether Orca is already
-   running or not) and waits for Orca's own runtime to be reachable.
-2. It polls `http://127.0.0.1:4610/api/meta` (TSF's fixed server port) for up to 30
+1. If Thousand Sunny Fleet is already running, `Launch-TSF.ps1` detects that via a
+   named Mutex and just activates the existing window instead of opening a second one.
+2. Otherwise it runs `orca open` (idempotent -- safe whether Orca is already running
+   or not) and waits for Orca's own runtime to be reachable.
+3. It polls `http://127.0.0.1:4610/api/meta` (TSF's fixed server port) for up to 30
    seconds.
-3. **Reachable** -> opens a dedicated app-mode window (Microsoft Edge's built-in
-   `--app=` mode, with its own taskbar identity, no address bar/tabs, close/minimize
-   like a normal app -- no Electron fork, no bundled browser) pointed at the real
-   TSF UI.
-4. **Not reachable** (most likely cause: Orca's plugin system hasn't been pointed at
-   this checkout yet) -> opens the same kind of dedicated window on
-   `first-run-setup.html` instead: a guided, one-time, three-step walkthrough of
-   Orca's own Settings -> Plugins -> Development flow, with the exact folder path to
-   paste and a copy button. This step runs once per machine; every later launch is a
-   plain double-click.
+4. Either way, it hosts a genuine dedicated window **in this same process** -- loads
+   the WebView2 SDK's managed assemblies (vendored in `webview2/`) directly into this
+   `powershell.exe` process and creates a plain WinForms window with a `WebView2`
+   control filling it, rather than shelling out to a browser or a separate compiled
+   host exe. (An earlier attempt at a compiled .NET/WebView2 host `.exe` was hard-blocked
+   by Windows Smart App Control on the real target machine -- see
+   `docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md` for the evidence. Hosting the control
+   inside the already-trusted `powershell.exe` process instead sidesteps that
+   entirely, since no second executable image is ever loaded.)
+5. **Reachable** -> that window navigates straight to the real TSF UI.
+6. **Not reachable** (most likely cause: Orca's plugin system hasn't been pointed at
+   this checkout yet) -> the same window navigates to `first-run-setup.html` instead: a
+   guided, one-time, three-step walkthrough of Orca's own Settings -> Plugins ->
+   Development flow, with the exact folder path to paste and a copy button. That page
+   polls the backend itself and transitions the same window to the real UI in place
+   the moment it comes up -- no relaunch needed. This step runs once per machine; every
+   later launch goes straight to the real UI.
 
 Logs (for diagnosing "it didn't open" reports) are written to
 `%LOCALAPPDATA%\ThousandSunnyFleet\launcher.log`.
@@ -70,9 +79,11 @@ powershell -ExecutionPolicy Bypass -File Generate-Icon.ps1
 
 ## Requirements
 
-- Windows 11 (or 10) with PowerShell (built in) and Microsoft Edge (built in; the
-  launcher falls back to the OS default browser -- as a plain tab, not a dedicated
-  window -- if Edge cannot be found).
+- Windows 11 (or 10) with PowerShell (built in) and the Microsoft Edge WebView2
+  Runtime (built in on Windows 11; auto-installed as part of Windows/Edge servicing
+  on Windows 10, and evergreen once present).
 - Orca installed, with the `orca` CLI on PATH (true for any normal Orca install).
 - No Node.js install required on the machine running the launcher itself -- Node is
   only ever invoked by Orca's own bundled runtime to run `tsf/server`.
+- No .NET SDK, npm, or package-restore step required either -- the WebView2 SDK files
+  the launcher loads are vendored in `webview2/` (see its `NOTICE.md`).

@@ -705,9 +705,7 @@
           "testsPassing": "204/204 full tsf suite GREEN",
           "verifier": "SELF; an independent review of waves 26+27 combined is in flight",
           "commit": "0a4f0930f4985b0afa71055e31566d9509d048af",
-          "deferredToNextWave": [
-            "independent review of this wiring (in flight)"
-          ]
+          "deferredToNextWave": ["independent review of this wiring (in flight)"]
         },
         {
           "wave": 27,
@@ -1195,11 +1193,7 @@
       ],
       "liveWorkFeedRule": "No fabricated status -- every state shown must be sourced from real Orca/TSF facts (task/dispatch status, run state, checkpoint phase), the same discipline M2 established (projectKeepGoingRun never invents workers/verifierResults it cannot back with real data). Drill-down/Open in Orca available for raw technical detail; Tim should not normally need Orca terminals.",
       "chatAuthority": {
-        "preserve": [
-          "AUTO_DECIDE",
-          "RECOMMEND_AND_PROCEED",
-          "TIM_REQUIRED"
-        ],
+        "preserve": ["AUTO_DECIDE", "RECOMMEND_AND_PROCEED", "TIM_REQUIRED"],
         "chatMustNeverSilentlyAuthorize": [
           "adoption",
           "push/merge",
@@ -2023,9 +2017,7 @@
       "note": "Tim sent a full M9-M13 roadmap extension mid-M8-session (received while M8 wave 5 was in progress) -- recorded verbatim in docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md so it survives context compaction. Explicit instruction: do NOT interrupt/restart/broaden/redo M8 because this message exists -- M8 finishes normally under the existing charter first. Once M8.status becomes ADOPTED, flip this entry's status to CURRENT and begin M9 wave 1 (research-first, per docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md's own bounded Promptfoo license/API verification instruction -- not a broad research phase) per the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M8.",
       "candidateCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
       "adoptedCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
-      "gaps": [
-        "everything -- not started, pending M8 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M8 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2140,9 +2132,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M9 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
       "adoptedCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
-      "gaps": [
-        "everything -- not started, pending M9 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M9 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2177,9 +2167,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
       "adoptedCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
-      "gaps": [
-        "everything -- not started, pending M10 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M10 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2214,9 +2202,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
       "adoptedCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
-      "gaps": [
-        "everything -- not started, pending M11 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M11 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2271,9 +2257,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). NOT a feature-building milestone -- freezes feature scope at M1-M12; fixes genuine defects, closes integration gaps, simplifies UX, improves reliability/docs, only after all 18 acceptance phases in the handoff doc are worked through. Do NOT begin M14 or invent additional feature milestones without Tim's approval -- M13 is intentionally the end of this upgrade program. Begins only after M12 is genuinely ADOPTED.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": [
-        "everything -- not started, pending M12 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M12 adoption"],
       "acceptancePass": {
         "schemaVersion": "TSF_M13_ACCEPTANCE_REPORT_V1",
         "completedAt": "2026-08-21T09:50:35.000Z",
@@ -2302,7 +2286,7 @@
     {
       "id": "M14",
       "name": "TSF Desktop Launch + V1 Release-Candidate Remediation",
-      "status": "CODE_ADOPTED_AWAITING_TIM_HANDS_ON_TEST",
+      "status": "CURRENT",
       "note": "Authorized directly by Tim after the M13 handoff (see docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md). Bounded remediation only -- no new product capabilities, no Orca fork, Orca core delta stays 0. Closes the one concrete defect M13 found: no real double-click TSF launch experience exists on the machine. Do NOT create M15.",
       "candidateCommit": "1bd53c549",
       "adoptedCommit": "1bd53c549",
@@ -2329,6 +2313,20 @@
             "tsf/launcher/first-run-setup.html",
             "tsf/launcher/Launch-TSF.ps1",
             "docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md"
+          ]
+        },
+        {
+          "wave": 3,
+          "summary": "Tim's own real hands-on acceptance test (plugin registered + enabled + Orca restarted + launcher run) FAILED with 2 reproduced defects. Both diagnosed from real runtime evidence (netstat/Get-CimInstance/CodeIntegrity event log), not by asking Tim to redo setup, and both fixed. DEFECT 1 (plugin enabled but launcher still showed \"Checking...\"): confirmed via netstat + direct HTTP request that tsf/server was genuinely up and answering 200 on port 4610 the whole time -- the real bug was that tsf/server's JSON responses carried no Access-Control-Allow-Origin header, so the first-run guide's fetch() poll (from a file:// origin, Origin: null) had its response silently discarded by CORS in every Chromium-based engine, even though the network request itself completed (which is why every process/port check looked reachable). Fixed with one header on tsf/server's shared json() helper. Reproduced and fixed end-to-end on a scratch port with a real client/server pair: brought up a fixed-code server while a real first-run-guide window was open and polling, confirmed it auto-transitioned to the real UI within one 5s poll cycle, screenshotted. DEFECT 2 (Edge --app felt like a browser wrapper, not a dedicated app): first fix attempt was a compiled, self-contained .NET 8 + WebView2 WinForms host (dotnet publish -r win-x64 --self-contained) -- built and ran cleanly in isolation, but Windows Smart App Control hard-blocked it on the real target machine the instant it tried to launch (Microsoft-Windows-CodeIntegrity/Operational event 3077/3118: unsigned executable rejected, no user override once a machine is in enforcement mode). Code signing is both out of scope for this local V1 (Tim's own instruction) and a paid/approval-requiring decision this program does not make unilaterally, so the compiled-exe project (tsf/desktop-host/) was discarded entirely -- never committed. Real fix: Launch-TSF.ps1 now loads the WebView2 SDK's managed net462 assemblies directly into its own already-Microsoft-signed powershell.exe process via Add-Type and hosts a plain WinForms Form + WebView2 control there -- no second executable image is ever loaded, so Smart App Control has nothing new to evaluate. Confirmed empirically: the compiled exe was blocked (event log evidence); the identical control hosted this way was not (no new CodeIntegrity event, real window, real content rendered, screenshotted). Added single-instance handling (named Mutex + FindWindow/SetForegroundWindow) since the window is now this same process rather than a fire-and-forget child spawn. Vendored the 3 required WebView2 SDK files into tsf/launcher/webview2/ (NOTICE.md documents the redistribution license) so no package restore or build step is needed on Tim's machine. Real end-to-end verification on this machine: reachable path (real live backend, real window, correct icon/title, screenshotted), relaunch (second invocation correctly detected the Mutex, activated the existing window, logged it, spawned zero duplicates -- verified via window count), shutdown (closing the window leaves zero orphaned processes, and Orca's own tsf/server -- a separate, Orca-owned process -- is correctly unaffected either way). Full suite re-run: 588/589, 1 failure -- plugin-real-load-proof.test.mjs's own \"must not still be listening after shutdown\" assertion, which collides with Tim's own real, live tsf/server process legitimately occupying port 4610 for his own ongoing use (the test's own comments anticipate and accept exactly this failure mode). Confirmed via git stash this failure is pre-existing on the unmodified adopted code too -- not a regression from any change in this wave.",
+          "filesChanged": [
+            "docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md",
+            "tsf/launcher/Launch-TSF.ps1",
+            "tsf/launcher/README.md",
+            "tsf/launcher/webview2/Microsoft.Web.WebView2.Core.dll",
+            "tsf/launcher/webview2/Microsoft.Web.WebView2.WinForms.dll",
+            "tsf/launcher/webview2/WebView2Loader.dll",
+            "tsf/launcher/webview2/NOTICE.md",
+            "tsf/server/http-server.mjs"
           ]
         }
       ],
@@ -2511,11 +2509,7 @@
         "Once usable capacity is effectively exhausted, checkpoint and wait/switch providers normally -- do not force further dispatch.",
         "Immediately after reset, reassess live capacity and restore the normal worker budget/concurrency for that provider."
       ],
-      "appliesToProviders": [
-        "codex",
-        "claude",
-        "any future provider with a known reset window"
-      ],
+      "appliesToProviders": ["codex", "claude", "any future provider with a known reset window"],
       "supersedesForNearResetWindowOnly": "The general 'hold off on new WORKER_* dispatch near a limit' base policy above -- this amendment only relaxes that base policy inside a known-reset window with a genuine bounded task available; it does not authorize dispatch when no such task exists or when the task risks stranding.",
       "mustStillHonor": [
         "Section F execution discipline (conflict-aware waves, independent verification, no worker self-report treated as done)",
@@ -2593,10 +2587,7 @@
       "worktreeRepoId": "443fd5dc-bd87-4019-a2a0-879188f97506",
       "operatorStateFile": "tsf/server/.local-state/operator-state.json (real default store, not a test override -- gitignored, inspect directly on disk)",
       "wave1Goal": "docs/m2-live-dogfood/wave-1-marker.md containing exactly the line 'M2 live dogfood wave 1 marker'",
-      "acceptanceCriteria": [
-        "DOGFOOD_MARKER_WAVE_1_ADDED",
-        "DOGFOOD_MARKER_WAVE_2_ADDED"
-      ],
+      "acceptanceCriteria": ["DOGFOOD_MARKER_WAVE_1_ADDED", "DOGFOOD_MARKER_WAVE_2_ADDED"],
       "dispatchedAt": "2026-08-20T07:12:51.241Z",
       "statusAtEntry": "orca orchestration task-list still reports status:'dispatched' as of 2026-08-20T07:42:35Z (~30 minutes elapsed, at/past the run's own stallThresholdMs of 30 minutes). orca terminal read on the worker terminal shows latestCursor/nextCursor UNCHANGED (14) since immediately after MCP startup -- zero new output in ~28 minutes, a genuine stall (the --inject dispatch mechanism appears to not have delivered visibly, or the terminal is deadlocked before echoing it), not a transient delay. This is being fenced as UNCERTAIN, not claimed as failed or stopped.",
       "scratchpadEvidence": "A non-committed mission driver script and its log live in this session's scratchpad temp dir (m2-live-dogfood.mjs / .log) -- NOT durable, may not survive a session loss; this state.json entry is the durable source of truth, not that log."
