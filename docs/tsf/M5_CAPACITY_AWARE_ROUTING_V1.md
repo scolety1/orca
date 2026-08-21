@@ -64,11 +64,16 @@ gap M5 needs to close.
    `UNKNOWN` (not a guessed value) when the adapter call failed, per the
    acceptance criterion's own wording.
 3. **One real call site**: `keep-going-dispatch-loop.mjs`'s `dispatchStep`
-   checks capacity once per tick (reusing the adapter/policy above)
-   before dispatching a new wave; on `PAUSE_AND_CHECKPOINT`, calls the
-   EXISTING `checkpointRun`+`pauseRun` path (M4/M2), not a new one.
-   `REDUCE_CONCURRENCY`/`DOWNGRADE_WORKER` adjust the wave plan's own
-   `maxConcurrentWorkers`/role choice, already parameters this loop reads.
+   checks capacity once per tick (reusing the adapter/policy above), after
+   the tick lock is claimed and before dispatching a new wave; on
+   `PAUSE_AND_CHECKPOINT`, calls the EXISTING `checkpointRun`+`pauseRun`
+   path (M4/M2), not a new one. **Shipped scope boundary**:
+   `REDUCE_CONCURRENCY`/`DOWNGRADE_WORKER` are decided by the policy
+   function but not wired to any effect in `dispatchStep` — `planWave`
+   reads `run.budget.maxConcurrentWorkers` with no override hook today,
+   and this module doesn't choose a work item's requested agent. Wiring
+   those two actions is left for a real follow-up wave rather than a
+   rushed change to this adversarially-hardened dispatch path.
 4. **Mission-boundary provider switching**: `dispatchStep` only ever
    resolves a role once per wave (already true structurally — a wave's
    role choice is fixed for its own dispatch), so "switches at mission

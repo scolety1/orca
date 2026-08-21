@@ -82,11 +82,15 @@ const DEFAULT_ORCHESTRATION = Object.freeze({
   startOrchestrationWorker
 })
 
-// M5: real capacity signal, checked once per dispatch attempt, before ever
-// claiming the tick lock or touching Orca. DEFAULT_CAPACITY.provider is
-// 'codex' because DEFAULT_WORKER_AGENT below is this module's own real
-// dispatch target for every wave -- its capacity is what actually gates
-// whether a new dispatch can succeed. A disclosed, real scope boundary:
+// M5: real capacity signal, checked once per dispatch attempt -- AFTER the
+// tick lock is claimed (see the call site below), not before: the capacity
+// check itself needs no lock, but an earlier before-claim placement broke
+// the overlapping-ticks concurrency test's 'claim is the first async
+// operation' ordering guarantee, so it runs post-claim like every other
+// validate/act step in this module. DEFAULT_CAPACITY.provider is 'codex'
+// because DEFAULT_WORKER_AGENT below is this module's own real dispatch
+// target for every wave -- its capacity is what actually gates whether a
+// new dispatch can succeed. A disclosed, real scope boundary:
 // only the PAUSE_AND_CHECKPOINT action is wired here.
 // REDUCE_CONCURRENCY/DOWNGRADE_WORKER are left for a real follow-up wave
 // rather than risking a rushed change to this adversarially-hardened
