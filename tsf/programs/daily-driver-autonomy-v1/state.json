@@ -2263,8 +2263,8 @@
         "completedAt": "2026-08-21T09:50:35.000Z",
         "verdict": "YELLOW_TSF_V1_OPERATOR_READY_WITH_CAVEATS",
         "verdictReasoning": "Phase 1 (source/state reconciliation) performed genuinely: every M1-M12 adopted commit independently confirmed a real git ancestor of tsf/main HEAD (ded5c5381c7d094ea721721e954b9335e8ba2b03), cumulative Orca core delta re-confirmed empty across the whole program (de105fb46..HEAD), tsf/package.json confirmed to declare zero runtime dependencies, 589/589 tests passing, max-lines ratchet 346 unchanged throughout. Phases 3,4,7,8,9,10 substantively covered by real, passing, mutation-tested evidence already built during M1-M12. Phases 6,11,12,13,15,17 partially covered (real evidence exists but was not freshly re-run as one consolidated M13-specific pass tonight, disclosed). Phases 2,5,14,16,18 genuinely NOT executed this session -- each requires either a live Electron desktop launch, a live Claude/Codex account interaction, a real multi-hour unattended run, a human UX judgment call, or Tim's own explicit authorization for a real pilot repo -- none of which an autonomous text session can perform or substitute for. This is NOT a code defect: it is a structural limit of what this session can verify. Per Tim's own explicit instruction, M14 is reserved for concrete/bounded/fixable acceptance DEFECTS -- none were found unfixed at this gate (every real bug found during M9-M12's reviews was fixed and re-verified before its milestone was adopted). Because this YELLOW is not defect-driven, the M14 trigger does not apply; per Tim's own \"otherwise: checkpoint and stop for Tim\" instruction, the program stops here with the full handoff package delivered, rather than inventing an M14 with nothing concrete to fix.",
-        "m14Created": false,
-        "m14Rationale": "M14 is reserved for fixing concrete, bounded, fixable acceptance defects. No such defect was found unfixed at the M13 gate -- every real bug found during any milestone's independent review this session was fixed and re-verified before that milestone was adopted. The gaps this report discloses are un-executed hands-on verification phases, not code defects, so M14 was not created.",
+        "m14Created": true,
+        "m14Rationale": "M14 authorized directly by Tim after the M13 handoff, triggered by the concrete, bounded defect the M6-desktop-launch investigation surfaced: no TSF installer/shortcut exists and the Orca plugin was never registered on the real machine. See docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md for the full spec and architecture.",
         "finalReportArtifact": "https://claude.ai/code/artifact/df7386e5-4abd-4865-a121-ef9518ddee81",
         "tsfMainFinalHead": "ded5c5381c7d094ea721721e954b9335e8ba2b03",
         "programStartCommit": "de105fb4632d7e8a297d824963f931dcd4eb858e",
@@ -2282,9 +2282,37 @@
         ],
         "singleRecommendedFirstAction": "Launch the real Orca desktop app and confirm TSF opens on its own (M13 Phase 2) -- the one thing this autonomous session could not verify, and everything else in the Tim Test Checklist depends on it working first."
       }
+    },
+    {
+      "id": "M14",
+      "name": "TSF Desktop Launch + V1 Release-Candidate Remediation",
+      "status": "CURRENT",
+      "note": "Authorized directly by Tim after the M13 handoff (see docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md). Bounded remediation only -- no new product capabilities, no Orca fork, Orca core delta stays 0. Closes the one concrete defect M13 found: no real double-click TSF launch experience exists on the machine. Do NOT create M15.",
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Rebuilt tsf/ui/dist from accepted tsf/main source and proved it contains the M9-M12 UI (Fleet Planning, Flight Recorder, regression-check, NO_ESTIMATE_ON_FILE_FOR_PROJECT all present, one match each) -- not the stale M8 bundle it replaces. Full suite re-run clean (588/589, 1 pre-existing skip, 0 failures). Investigated real Orca plugin-settings reactivity (src/main/index.ts) and the safe CLI surface (orca open, orca status --json, fixed TSF_SERVER_PORT=4610) to ground the launcher design. Added tsf/launcher/: Launch-TSF.ps1 (PowerShell, not Node -- a double-clicked launcher cannot assume Tim has Node on PATH), first-run-setup.html (self-contained guided one-time plugin-registration walkthrough, TSF theme tokens, no network dependency), Generate-Icon.ps1 + tsf.ico (TSF-palette shortcut icon, no external asset), Install-/Uninstall-TsfLauncher.ps1 (Desktop + Start Menu .lnk shortcuts, additive-only, never touches Orca settings or any other shortcut). Deliberately did NOT programmatically write to orca-data.json -- the one-time plugin registration stays a Tim-driven guided step through Orca's own existing Settings UI, consistent with Tim's own explicit constraint against silent settings mutation. Real end-to-end verification performed on this machine: installed the real Desktop/Start Menu shortcuts and inspected their properties (correct target/args/icon); ran the real launcher with the plugin genuinely unregistered and confirmed via process list + real window title (\"Thousand Sunny Fleet — First-Run Setup\") that a genuine dedicated Edge app-mode window opened on the guided setup page after the correct ~30s reachability timeout, logged to %LOCALAPPDATA%\\ThousandSunnyFleet\\launcher.log; confirmed no leftover Edge child processes tied to the TSF profile after closing the window. Did NOT flip Orca's real pluginSystemEnabled/devPluginPaths settings myself -- that one-time step, and the resulting \"reachable\" cold-launch proof, is reserved for Tim's own hands-on test per his explicit instruction not to claim that human proof without him.",
+          "filesChanged": [
+            "docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md",
+            "tsf/launcher/Launch-TSF.ps1",
+            "tsf/launcher/first-run-setup.html",
+            "tsf/launcher/Generate-Icon.ps1",
+            "tsf/launcher/tsf.ico",
+            "tsf/launcher/Install-TsfLauncher.ps1",
+            "tsf/launcher/Uninstall-TsfLauncher.ps1",
+            "tsf/launcher/README.md"
+          ]
+        }
+      ],
+      "gaps": [
+        "The real end-to-end reachable path (plugin genuinely registered + enabled, dedicated window opens on the live TSF UI) has not been proven with real Orca settings -- reserved for Tim's own one-time guided setup + hands-on test, per his explicit instruction.",
+        "No packaged/signed installer -- explicitly out of scope for this local V1 per Tim's own instruction."
+      ]
     }
   ],
-  "currentMilestone": "M13",
+  "currentMilestone": "M14",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."

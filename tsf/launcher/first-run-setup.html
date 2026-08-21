@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Thousand Sunny Fleet — First-Run Setup</title>
+<style>
+  :root {
+    --background: #09090f;
+    --foreground: #e9e7f2;
+    --card: #121019;
+    --primary: #9161f9;
+    --primary-foreground: #0a0714;
+    --muted-foreground: #938ea6;
+    --accent-foreground: #c9b8fb;
+    --border: #262233;
+    --input: #1b1826;
+    --status-healthy: #3ddc9a;
+    --status-degraded: #f5b942;
+    --glow: #9161f9;
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    display: flex;
+    justify-content: center;
+    padding: 48px 24px;
+  }
+  main { width: 100%; max-width: 640px; }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .brand .mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(145, 97, 249, 0.18);
+    box-shadow: 0 0 18px rgba(145, 97, 249, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .brand .name { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .brand .sub { font-size: 11px; color: var(--muted-foreground); }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+    text-wrap: balance;
+  }
+  p.lede {
+    color: var(--muted-foreground);
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0 0 28px;
+  }
+  .step {
+    display: flex;
+    gap: 14px;
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+  }
+  .step:last-of-type { border-bottom: 1px solid var(--border); }
+  .step .n {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--accent-foreground);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step .body { min-width: 0; flex: 1; padding-top: 2px; }
+  .step .body p { margin: 0; font-size: 14px; line-height: 1.55; }
+  .step .body .hint { color: var(--muted-foreground); font-size: 12.5px; margin-top: 4px; }
+  .pathbox {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .pathbox code {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--accent-foreground);
+  }
+  button {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--primary); }
+  button.primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+  }
+  .footer {
+    margin-top: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .status {
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--status-degraded);
+  }
+  .dot.ok { background: var(--status-healthy); }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <div class="mark">⛵</div>
+    <div>
+      <div class="name">Thousand Sunny Fleet</div>
+      <div class="sub">Orca Foundation</div>
+    </div>
+  </div>
+
+  <h1>One-time setup</h1>
+  <p class="lede">
+    Thousand Sunny Fleet runs as a plugin inside Orca. This machine hasn't registered it
+    yet, so before the app can open, Orca needs to be told where to find it — a one-time
+    step done once per machine, in Orca's own Settings.
+  </p>
+
+  <div class="step">
+    <div class="n">1</div>
+    <div class="body">
+      <p>In Orca, open <strong>Settings → Plugins</strong> and turn on <strong>Plugin
+      system</strong>.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">2</div>
+    <div class="body">
+      <p>Expand <strong>Development</strong> and paste this exact folder path, then
+      click <strong>Add path</strong>:</p>
+      <div class="pathbox">
+        <code id="plugin-path">resolving…</code>
+        <button id="copy-btn" type="button">Copy</button>
+      </div>
+      <div class="hint" id="copy-hint"></div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="n">3</div>
+    <div class="body">
+      <p>Enable <strong>Thousand Sunny Fleet Foundation</strong> once it appears in the
+      plugin list.</p>
+      <div class="hint">That's it — every future launch is a plain double-click.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">Waiting for the TSF backend…</span>
+    </div>
+    <button class="primary" id="recheck-btn" type="button">Check again</button>
+  </div>
+</main>
+
+<script>
+  const TSF_URL = 'http://127.0.0.1:4610';
+
+  // Derive the plugin folder path from this file's own location -- this page
+  // lives at <install>/tsf/launcher/first-run-setup.html, so the plugin
+  // folder Orca needs (the one containing orca-plugin.json) is two levels up.
+  function resolvePluginPath() {
+    let path = decodeURIComponent(location.pathname);
+    path = path.replace(/^\/([a-zA-Z]:)/, '$1'); // file:///C:/... -> C:/...
+    path = path.replace(/\/launcher\/first-run-setup\.html$/, '');
+    return path.replace(/\//g, '\\');
+  }
+
+  const pluginPath = resolvePluginPath();
+  document.getElementById('plugin-path').textContent = pluginPath;
+
+  document.getElementById('copy-btn').addEventListener('click', () => {
+    const hint = document.getElementById('copy-hint');
+    const ta = document.createElement('textarea');
+    ta.value = pluginPath;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      hint.textContent = 'Copied.';
+    } catch (e) {
+      hint.textContent = 'Could not copy automatically -- select the path above and copy it manually.';
+    }
+    document.body.removeChild(ta);
+  });
+
+  async function checkReady() {
+    const dot = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    text.textContent = 'Checking…';
+    try {
+      const res = await fetch(TSF_URL + '/api/meta', { cache: 'no-store' });
+      if (res.ok) {
+        dot.classList.add('ok');
+        text.textContent = 'Ready — opening Thousand Sunny Fleet…';
+        location.href = TSF_URL;
+        return;
+      }
+    } catch (e) {
+      // Backend still unreachable -- stay on this page.
+    }
+    dot.classList.remove('ok');
+    text.textContent = 'Still waiting for the TSF backend…';
+  }
+
+  document.getElementById('recheck-btn').addEventListener('click', checkReady);
+  checkReady();
+  setInterval(checkReady, 5000);
+</script>
+</body>
+</html>
