@@ -27,6 +27,7 @@ import { projectOnboardedProject } from './onboarded-project-projection.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
 import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
+import { handleEstimateRoute } from './estimate-http-routes.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
@@ -564,6 +565,20 @@ export function createRequestHandler() {
       // project-memory-http-routes.mjs
       if (
         await handleProjectMemoryRoute(
+          parts,
+          req,
+          res,
+          url,
+          { map, opState },
+          { json, notFound, readBody, saveState }
+        )
+      ) {
+        return
+      }
+
+      // GET/POST /api/projects/:id/estimate -- see estimate-http-routes.mjs
+      if (
+        await handleEstimateRoute(
           parts,
           req,
           res,
