@@ -2286,10 +2286,10 @@
     {
       "id": "M14",
       "name": "TSF Desktop Launch + V1 Release-Candidate Remediation",
-      "status": "CURRENT",
+      "status": "CODE_ADOPTED_AWAITING_TIM_HANDS_ON_TEST",
       "note": "Authorized directly by Tim after the M13 handoff (see docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md). Bounded remediation only -- no new product capabilities, no Orca fork, Orca core delta stays 0. Closes the one concrete defect M13 found: no real double-click TSF launch experience exists on the machine. Do NOT create M15.",
-      "candidateCommit": "1bd53c549",
-      "adoptedCommit": "1bd53c549",
+      "candidateCommit": "54dfa6936",
+      "adoptedCommit": "54dfa6936",
       "waves": [
         {
           "wave": 1,
@@ -2331,24 +2331,26 @@
         }
       ],
       "gaps": [
-        "The real end-to-end reachable path (plugin genuinely registered + enabled, dedicated window opens on the live TSF UI) has not been proven with real Orca settings -- reserved for Tim's own one-time guided setup + hands-on test, per his explicit instruction.",
-        "No packaged/signed installer -- explicitly out of scope for this local V1 per Tim's own instruction."
+        "The real end-to-end reachable path has now been proven with a real live backend (Tim's own actual tsf/server, port 4610, currently up) and a real dedicated window -- but the specific act of Tim double-clicking the shortcut himself and confirming it feels right is still reserved for him, per his own explicit instruction not to claim that human proof without him.",
+        "No packaged/signed installer -- explicitly out of scope for this local V1 per Tim's own instruction.",
+        "Low-severity, non-blocking (per independent review): FindWindow(null, \"Thousand Sunny Fleet\") has a theoretical, negligible risk of matching an unrelated window that happens to share this exact title on a real machine -- accepted as-is rather than adding complexity for a near-zero-probability collision."
       ],
       "adoptionReceipt": {
         "schemaVersion": "TSF_MILESTONE_ADOPTION_RECEIPT_V1",
-        "adoptedAt": "2026-08-21T18:53:00.754Z",
+        "adoptedAt": "2026-08-21T19:54:26.121Z",
         "adoptedIntoBranch": "tsf/main",
-        "candidateCommit": "1bd53c549",
-        "ffMergeCommit": "1bd53c549",
+        "candidateCommit": "54dfa6936",
+        "ffMergeCommit": "54dfa6936",
         "reVerifiedFromMergedTree": {
-          "fullTestSuite": "589/589 (588 pass, 1 pre-existing skip, 0 failures)",
-          "orcaCoreDelta": "EMPTY (git diff --stat ded5c5381..1bd53c549 -- . ':!tsf/**' ':!docs/tsf/**' confirmed empty)",
-          "newRuntimeDependencies": "ZERO (tsf/package.json unchanged)",
-          "uiRebuiltAndProven": "tsf/ui/dist rebuilt from this exact merged tree; grepped bundle confirms 'Fleet Planning', 'Flight Recorder', 'regression-check' each present once -- current M9-M12 UI, not the stale M8 bundle",
-          "realShortcutsRepointed": "Install-TsfLauncher.ps1 re-run from C:/TSF_ORCA/tsf/launcher (the adopted tree) -- confirmed Desktop and Start Menu shortcuts now target C:/TSF_ORCA/tsf/launcher/Launch-TSF.ps1 with the correct icon, not the temporary session-branch worktree used during wave 1/2 development"
+          "fullTestSuite": "589/589 (588 pass, 1 skip via esbuild-unavailable self-skip, 0 failures)",
+          "orcaCoreDelta": "EMPTY (git diff --stat b92a548d5..54dfa6936 -- . ':!tsf/**' ':!docs/tsf/**' confirmed empty)",
+          "newRuntimeDependencies": "ZERO (tsf/package.json unchanged; WebView2 SDK vendored as binary files, not a package dependency)",
+          "realShortcutsRepointed": "Install-TsfLauncher.ps1 re-run from C:/TSF_ORCA/tsf/launcher (the adopted tree) -- Desktop and Start Menu shortcuts confirmed targeting C:/TSF_ORCA/tsf/launcher/Launch-TSF.ps1",
+          "realSmokeTest": "Ran the real Desktop shortcut post-merge against Tim's actual live tsf/server (port 4610): launcher.log shows 'TSF backend reachable -- opening the dedicated window on the real UI', real window opened titled 'Thousand Sunny Fleet' with the TSF icon, then closed cleanly with zero orphaned processes -- left in a closed state so Tim's own hands-on test is a genuine cold click, not a refocus of an already-open window."
         },
-        "whyNotPlainAdopted": "The launcher code itself is genuinely done, reviewed, fixed, and re-verified -- no different from any other M2-M12 milestone's adoption bar. What is NOT yet done is the one real-world step Tim's own M14 instruction reserves for him: registering the TSF plugin through Orca's real Settings UI on this machine and confirming the 'reachable' cold-launch path (dedicated window opens on the live TSF UI, not the first-run guide) actually works end to end. This status name keeps that distinction honest rather than claiming a human proof that hasn't happened.",
-        "singleRemainingManualAction": "Double-click the 'Thousand Sunny Fleet' Desktop shortcut. It will open the guided first-run setup page (plugin not yet registered on this machine) -- follow its 3 steps once in Orca's own Settings, then click 'Check again' (or just double-click the shortcut again). Once the plugin is enabled, every future launch is a plain double-click straight to the real TSF UI."
+        "independentReview": "Fresh fork review of wave 3 (adversarial re-derivation, not narration-trusting) confirmed: the CORS header is genuinely present and load-bearing on every JSON response; the server is hardcoded to bind 127.0.0.1 only (no exposure from the permissive header); no recurrence of the earlier New-Object-silently-drops-args bug anywhere in Launch-TSF.ps1 (empirically tested the 3 multi-arg candidates); Mutex release is sound (OS auto-releases on process exit); the 3 vendored WebView2 DLLs are byte-identical (SHA-256) to the official NuGet package, no tampering; the abandoned compiled-exe project is confirmed absent from git history and the working tree; and the reviewer independently reproduced the full auto-transition proof on a separate scratch port, screenshotted. One low-severity, non-blocking finding (FindWindow title-collision theoretical risk) recorded above, accepted as-is.",
+        "whyNotPlainAdopted": "Same distinction as the first M14 adoption: the code is genuinely done, reviewed, fixed, and re-verified -- including now a real live-backend smoke test through the real shortcut. What remains is specifically Tim's own act of double-clicking it himself and confirming the experience feels like a real dedicated app, which this status name keeps honest rather than claiming on his behalf.",
+        "singleRemainingManualAction": "Double-click the 'Thousand Sunny Fleet' Desktop shortcut. The plugin is already registered and enabled on this machine, so it should open directly to the real TSF UI in its own dedicated window -- no first-run guide, no browser chrome, no Edge branding. Confirm it looks and feels like a real app to you."
       }
     }
   ],
