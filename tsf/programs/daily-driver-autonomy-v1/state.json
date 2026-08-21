@@ -2128,10 +2128,10 @@
     {
       "id": "M10",
       "name": "Security & Supply-Chain Health",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M9 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
+      "adoptedCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
       "gaps": ["everything -- not started, pending M9 adoption"],
       "waves": [
         {
@@ -2144,12 +2144,26 @@
           "status": "COMMITTED",
           "note": "All 11 M10 acceptance items addressed: (1) read-only by default; (2) scanner absence -> honest UNKNOWN; (3) provenance-bound; (4) secret values never passed through (allow-list, mutation-confirmed); (5) severity/source/version recorded; (6) scanner failure never produces a false clean; (7) High Assurance can consume findings; (8) planted-issue fixture detected; (9) real repos not mutated during scanning; (10) pending independent review; (11) Orca core delta 0. Next: a single comprehensive final review (leaner cadence than M8/M9, per tonight's time-bounded overnight target), then package/adopt."
         }
-      ]
+      ],
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M10_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T08:57:38.000Z",
+        "adoptedCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
+        "previousTsfMainHead": "acedaf18f156911f98ab753a3040ac6eb1a303c9",
+        "mergeMethod": "git merge --ff-only (local, C:TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "A single comprehensive final review (leaner cadence, per tonight's explicit time-bounded overnight target) -- GREEN after finding and fixing one real gap: the scanner-timeout failure path (SCANNER_TIMEOUT) was asserted only by code inspection, never actually triggered by any test against the real 120000ms default. Fixed with a test-only TSF_SECURITY_SCANNER_TIMEOUT_MS override (self-caught its own bug mid-fix: the override was first read as a frozen module-level constant, so setting the env var later in a test did nothing -- corrected to read it inside runSecurityScan itself). Independently re-derived 2 fresh mutations of already-tested guarantees (secret-value redaction with different field names; the never-escalate-to-BLOCKED health integration) and a real repro proving spawn() never mis-tokenizes a scanner path containing spaces regardless of the .mjs/.js branch taken.",
+        "postAdoptionTestRun": "563 tests, 562 pass / 1 gracefully skipped (an M6 real-proof test correctly detects this tsf/main worktree lacks esbuild) / 0 fail -- re-run directly from the adopted tsf/main tree (C:TSF_ORCA)",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging: git status clean, HEAD at acedaf18f (the exact M9 adoption commit) -- no unexpected dirty/staged state.",
+        "requiredRealProofRecorded": "All 11 of Tim's named M10 acceptance items verified against literal spec text by the final review: read-only by default (1); honest UNKNOWN/UNAVAILABLE on scanner absence (2); provenance-bound findings (3); secret values never passed through -- a strict allow-list finding shape, mutation-confirmed with 2 independently-chosen field names (4); severity/source/version recorded (5); a scanner failure never produces a false clean result -- every failure class distinct and honest (6); High Assurance can consume findings via securityRequiresHighAssuranceReview (7); a stub fixture with deliberately planted findings (2 HIGH deps, 1 MEDIUM config) is detected end to end (8); real repos are never mutated during scanning, proven via a before/after directory-listing comparison (9); independent verifier GREEN (10); Orca core delta 0 (11).",
+        "knownLimitations": "Finding title/detail fields remain scanner-supplied free text with no dedicated secret-value field to leak through, but are not separately sanitized -- judged an accepted, disclosed boundary (responsibility for not embedding raw secret text in a finding's own description sits with the scanner adapter, matching how any evidence-passthrough integration works). SBOM support is a real, honest binary sbomAvailable flag, a literal match to Tim's own spec example rather than a fuller SBOM-format capability. No real Trivy (or other) scanner binary has been installed or exercised in this environment -- only the adapter interface and a stub fixture with planted findings; wiring in a real scanner remains Tim's own choice/action (TSF architecture explicitly must not depend on one).",
+        "rollback": "To roll back: git -C C:TSF_ORCA reset --hard acedaf18f156911f98ab753a3040ac6eb1a303c9 (previous tsf/main HEAD, recorded above)."
+      }
     },
     {
       "id": "M11",
       "name": "Observability / Agent Flight Recorder",
-      "status": "AUTHORIZED_PENDING_M10_ADOPTION",
+      "status": "CURRENT",
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": null,
       "adoptedCommit": null,
@@ -2174,7 +2188,7 @@
       "gaps": ["everything -- not started, pending M12 adoption"]
     }
   ],
-  "currentMilestone": "M10",
+  "currentMilestone": "M11",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
