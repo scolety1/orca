@@ -1681,7 +1681,7 @@
     {
       "id": "M7",
       "name": "Project Memory V2",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "acceptanceCriteria": [
         "Inspects existing capsules/onboarding state/receipts/session affinity/backlog before adding new storage",
         "Facts/Decisions/Preferences/Experiences-Lessons memory classes",
@@ -1690,8 +1690,23 @@
         "Hindsight evaluated only as OPTIONAL_MEMORY_BACKEND, adopted only if it survives bounded local evaluation",
         "Tests: cross-session recall, project isolation, stale-fact supersession, rejected-design recall, preference persistence, no giant transcript injection"
       ],
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "abbf540361ae56039e7356d60386ea8e883eaf5a",
+      "adoptedCommit": "abbf540361ae56039e7356d60386ea8e883eaf5a",
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M7_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T05:08:22.000Z",
+        "adoptedCommit": "abbf540361ae56039e7356d60386ea8e883eaf5a",
+        "previousTsfMainHead": "4b6a7588c32c6206d15893677870c3f87692bec4",
+        "mergeMethod": "git merge --ff-only (local, C:\\TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "waves 3-5 verifier -- CLEAN on domain-module correctness/safety, 3 MODERATE/LOW HTTP-route-layer findings, all fixed (wave 6), plus 2 real bugs self-caught during that same fix's own re-verification; final holistic milestone verifier -- RED (the required real Planner Chat proof had been named as a next step but never actually performed), fixed for real in wave 8 (a genuine test populating opState.projectMemory and confirming via invokeLivePlanner that lesson text reaches the real transmitted system-prompt argv); focused confirmation verifier on that exact fix -- GREEN, re-verified via an independent, fresh mutation (a typo'd project-id key) confirming project-scoped lookup is genuinely exercised, not just 'memory exists somewhere'",
+        "postAdoptionTestRun": "377 pass / 1 gracefully skipped (an M6 real-proof test correctly detects this tsf/main worktree lacks esbuild and skips with a clear reason) / 0 fail -- re-run directly from the adopted tsf/main tree (C:\\TSF_ORCA)",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging: git status clean, no unexpected dirty/staged state, HEAD at 4b6a7588c32c6206d15893677870c3f87692bec4 (the exact M6 adoption commit) -- no unrelated finding.",
+        "requiredRealProofRecorded": "wave 8 -- a genuine invokeLivePlanner call with a real, populated project-memory EXPERIENCE record, confirming the real spawned provider-CLI subprocess's actual --system-prompt argv contains the lesson's exact statement text; verified via mutation testing (reverting the wiring line reproduced the exact expected failure) and independently re-verified via a fresh, different mutation (a typo'd project-id key) confirming genuine project-scoped lookup, not a coincidental pass.",
+        "twelveRequiredProofs": "All 12 of Tim's own named required-proof scenarios (fact/preference cross-session recall, stale-fact supersession preserving history, Decision/Preference cannot be silently overwritten, rejected-design recall, project isolation, bounded retrieval, automatic delivery to Planner Chat, provenance-bound writes, malformed-input fail-closed, authorized correction) are each directly, explicitly tested -- see docs/tsf/M7_PROJECT_MEMORY_V2_V1.md and this milestone's own wave 1-8 entries below for exactly which test proves which.",
+        "knownLimitations": "No dedicated read-only operator UI for viewing/correcting project memory was built this milestone -- a deliberate, disclosed decision (Tim's own message frames it as explicitly optional, 'if useful,' and none of the 12 required proofs or the acceptance criteria's own test list needs one; independently judged defensible by the final holistic review). Automatic capture (e.g. a verifier rejection or a FAILED/BLOCKED Keep Going wave outcome automatically becoming an EXPERIENCE record) is likewise deliberately not implemented -- the explicit/API-driven capture path already satisfies every required proof; automatic capture is left for a real follow-up wave, matching M5's own equivalent disclosed scope-boundary precedent.",
+        "rollback": "To roll back: git -C C:\\TSF_ORCA reset --hard 4b6a7588c32c6206d15893677870c3f87692bec4 (previous tsf/main HEAD, recorded above)."
+      },
       "gaps": [
         "Wave 1 (research-first scoping) done -- see docs/tsf/M7_PROJECT_MEMORY_V2_V1.md. Confirmed tsf/domain/receipts.mjs already provides a real, hash-chained, append-only decision/audit record (ADOPTION_DECISION/PROJECT_ONBOARDED/HUMAN_CONSEQUENTIAL_APPROVAL/etc.) -- a strong existing candidate backbone for the Decisions memory class, structurally satisfying 'explicit user decisions cannot be silently overwritten'. keep-going.mjs's settleInFlightWave (M4 finding) already persists per-run wave outcomes -- a real partial building block for Experiences-Lessons, but scoped to one run, not aggregated/retrievable across runs/projects. session-affinity.mjs is unrelated (provider identity, not project content). Real, confirmed gaps: no Facts or Preferences store exists anywhere; no unified, project-scoped, provenance-aware, bounded retrieval surface exists across any of the four classes; Hindsight remains explicitly OPTIONAL_MEMORY_BACKEND per the program's established harvest-concepts-not-runtimes discipline, evaluated only after the native approach is tried. 4 open design questions recorded for wave 2 (storage backend choice, provenance shape, supersession semantics, retrieval bound) before any schema/storage code is written."
       ],
@@ -1781,7 +1796,7 @@
     {
       "id": "M8",
       "name": "Project Estimator + Delivery Planner",
-      "status": "AUTHORIZED_PENDING_M7_ADOPTION",
+      "status": "CURRENT",
       "note": "Approved by Tim 2026-08-19T21:48 as an addition beyond the original seven upgrades (originalGoal.sevenUpgrades remains the immutable core list this program executes sequentially unless Tim changes it). Tim sent a full, completed research handoff and implementation spec mid-M7-session (2026-08-20/21) -- recorded verbatim in docs/tsf/M8_PROJECT_ESTIMATOR_DELIVERY_PLANNER_HANDOFF_V1.md so it survives context compaction; do NOT re-run broad external research for M8, only targeted verification of specific API/license/version details when actually needed. Tim's own explicit sequencing: 'finish M7 -> verify -> immutable candidate -> locally adopt if all existing program conditions pass -> immediately make M8 CURRENT -> implement M8 using this research/spec' -- do not begin M8 implementation before M7 is genuinely ADOPTED, and do not stop after M7 adoption merely to ask whether M8 should begin. Once M7.status becomes ADOPTED, immediately flip this entry's status to CURRENT and begin M8 wave 1 per the handoff doc's own proposed wave sequence (still applying research-first-before-each-wave discipline, since some 'waves' may turn out partially satisfied by existing M1-M7 code, as happened repeatedly in M4-M7).",
       "sourceHarvestPlan": {
         "instruction": "Before any M8 implementation, perform a bounded READ-ONLY source harvest from the sources below, using the same harvesting policy already established for Zenith/Command Center/Smithers/OpenWeft: harvest concepts, not competing runtimes. No code is vendored; ideas are adapted into native TSF code.",
@@ -1850,7 +1865,7 @@
       ]
     }
   ],
-  "currentMilestone": "M7",
+  "currentMilestone": "M8",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
