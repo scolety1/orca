@@ -12,21 +12,46 @@ function finding(code, status, summary, remediation, evidence = {}) {
 // actually needs to express: "fine, but worth knowing X"). Every finding
 // here traces to a fact repo-inspector.mjs actually observed — nothing is
 // fabricated for dimensions that weren't checked.
-const onboardingSeverityRank = { HEALTHY: 0, HEALTHY_WITH_CAVEATS: 1, UNKNOWN: 2, NEEDS_ATTENTION: 3, BLOCKED: 4 }
+const onboardingSeverityRank = {
+  HEALTHY: 0,
+  HEALTHY_WITH_CAVEATS: 1,
+  UNKNOWN: 2,
+  NEEDS_ATTENTION: 3,
+  BLOCKED: 4
+}
 
 export function assessRepositoryOnboardingHealth(facts, clock) {
   const findings = []
-  const add = (code, status, summary, remediation, evidence = {}) => findings.push(finding(code, status, summary, remediation, evidence))
+  const add = (code, status, summary, remediation, evidence = {}) =>
+    findings.push(finding(code, status, summary, remediation, evidence))
 
   // Git/state health
   if (facts.activeGitOperation) {
-    add('GIT_OPERATION_ACTIVE', 'BLOCKED', `An unfinished Git ${facts.activeGitOperationKind ?? 'operation'} is in progress.`, 'Resolve or abort the Git operation outside TSF before onboarding for work.', { kind: facts.activeGitOperationKind })
+    add(
+      'GIT_OPERATION_ACTIVE',
+      'BLOCKED',
+      `An unfinished Git ${facts.activeGitOperationKind ?? 'operation'} is in progress.`,
+      'Resolve or abort the Git operation outside TSF before onboarding for work.',
+      { kind: facts.activeGitOperationKind }
+    )
   }
   if (facts.conflicted?.length) {
-    add('GIT_CONFLICTED_FILES', 'BLOCKED', `${facts.conflicted.length} conflicted file(s) present.`, 'Resolve conflicts before this project is safe for normal work.', { files: facts.conflicted.slice(0, 20) })
+    add(
+      'GIT_CONFLICTED_FILES',
+      'BLOCKED',
+      `${facts.conflicted.length} conflicted file(s) present.`,
+      'Resolve conflicts before this project is safe for normal work.',
+      { files: facts.conflicted.slice(0, 20) }
+    )
   }
   if (facts.detached) {
-    add('GIT_DETACHED_HEAD', 'NEEDS_ATTENTION', 'Repository is on a detached HEAD.', 'Confirm the intended branch before any future mutation work.', { head: facts.head })
+    add(
+      'GIT_DETACHED_HEAD',
+      'NEEDS_ATTENTION',
+      'Repository is on a detached HEAD.',
+      'Confirm the intended branch before any future mutation work.',
+      { head: facts.head }
+    )
   }
   if (facts.dirty && !facts.conflicted?.length) {
     add(
@@ -38,42 +63,123 @@ export function assessRepositoryOnboardingHealth(facts, clock) {
     )
   }
   if (facts.missingWorktrees?.length) {
-    add('WORKTREE_RESIDUE', 'NEEDS_ATTENTION', `${facts.missingWorktrees.length} registered Git worktree path(s) are missing on disk.`, 'Inspect worktree registration; do not prune automatically.', { paths: facts.missingWorktrees })
+    add(
+      'WORKTREE_RESIDUE',
+      'NEEDS_ATTENTION',
+      `${facts.missingWorktrees.length} registered Git worktree path(s) are missing on disk.`,
+      'Inspect worktree registration; do not prune automatically.',
+      { paths: facts.missingWorktrees }
+    )
   }
   if (facts.largeUntrackedDirectories?.length) {
-    add('LARGE_UNTRACKED_DIRECTORY', 'HEALTHY_WITH_CAVEATS', `${facts.largeUntrackedDirectories.length} large untracked director${facts.largeUntrackedDirectories.length === 1 ? 'y' : 'ies'} found.`, 'May be generated output or real work — inspect ownership before ignoring or deleting anything.', { directories: facts.largeUntrackedDirectories })
+    add(
+      'LARGE_UNTRACKED_DIRECTORY',
+      'HEALTHY_WITH_CAVEATS',
+      `${facts.largeUntrackedDirectories.length} large untracked director${facts.largeUntrackedDirectories.length === 1 ? 'y' : 'ies'} found.`,
+      'May be generated output or real work — inspect ownership before ignoring or deleting anything.',
+      { directories: facts.largeUntrackedDirectories }
+    )
   }
 
   // Build/test health
   if (!facts.hasKnownTestCommand) {
-    add('NO_KNOWN_TEST_COMMAND', 'NEEDS_ATTENTION', 'No test command could be discovered from package scripts.', 'Ask the operator, or look for a test runner config not yet covered by discovery.', {})
+    add(
+      'NO_KNOWN_TEST_COMMAND',
+      'NEEDS_ATTENTION',
+      'No test command could be discovered from package scripts.',
+      'Ask the operator, or look for a test runner config not yet covered by discovery.',
+      {}
+    )
   }
 
   // Architecture/documentation clarity
   if (!facts.hasReadme) {
-    add('NO_README', 'HEALTHY_WITH_CAVEATS', 'No README found at the repository root.', 'Not blocking, but onboarding confidence is lower without one.', {})
+    add(
+      'NO_README',
+      'HEALTHY_WITH_CAVEATS',
+      'No README found at the repository root.',
+      'Not blocking, but onboarding confidence is lower without one.',
+      {}
+    )
   }
   if (!facts.hasInstructions) {
-    add('NO_PROJECT_INSTRUCTIONS', 'HEALTHY_WITH_CAVEATS', 'No AGENTS.md/CLAUDE.md project instructions found.', 'Consider adding one once this project sees real work — not required to onboard.', {})
+    add(
+      'NO_PROJECT_INSTRUCTIONS',
+      'HEALTHY_WITH_CAVEATS',
+      'No AGENTS.md/CLAUDE.md project instructions found.',
+      'Consider adding one once this project sees real work — not required to onboard.',
+      {}
+    )
   }
 
   // Dependency/runtime health
   if (facts.hasPackageManifest && !facts.dependenciesInstalled) {
-    add('DEPENDENCIES_NOT_INSTALLED', 'UNKNOWN', 'A package manifest exists but dependencies are not installed locally.', 'Install policy and safety are unverified until dependencies are actually installed.', {})
+    add(
+      'DEPENDENCIES_NOT_INSTALLED',
+      'UNKNOWN',
+      'A package manifest exists but dependencies are not installed locally.',
+      'Install policy and safety are unverified until dependencies are actually installed.',
+      {}
+    )
   }
 
   // Source-of-truth ambiguity
   if (facts.handoffConflict) {
-    add('HANDOFF_REPOSITORY_MISMATCH', 'NEEDS_ATTENTION', 'The migration handoff disagrees with observed repository state.', 'An authoritative source must be chosen before trusting handoff claims.', { summary: facts.handoffConflictSummary ?? null })
+    add(
+      'HANDOFF_REPOSITORY_MISMATCH',
+      'NEEDS_ATTENTION',
+      'The migration handoff disagrees with observed repository state.',
+      'An authoritative source must be chosen before trusting handoff claims.',
+      { summary: facts.handoffConflictSummary ?? null }
+    )
   }
 
   // Deployment sensitivity
   if (facts.deploymentConfigPresent) {
-    add('DEPLOYMENT_CONFIG_PRESENT', 'HEALTHY_WITH_CAVEATS', 'Deployment configuration files were found in this repository.', 'Treat with elevated caution; confirm no live/production target is implied before any write action.', { files: facts.deploymentConfigFiles ?? [] })
+    add(
+      'DEPLOYMENT_CONFIG_PRESENT',
+      'HEALTHY_WITH_CAVEATS',
+      'Deployment configuration files were found in this repository.',
+      'Treat with elevated caution; confirm no live/production target is implied before any write action.',
+      { files: facts.deploymentConfigFiles ?? [] }
+    )
+  }
+
+  // M10: security/supply-chain signals. facts.securitySummary is a real
+  // buildSecurityHealthSummary result (tsf/domain/security-health.mjs)
+  // -- optional and additive, so every existing caller with no security
+  // scan attached is unaffected. A finding here is evidence, never
+  // automatic authority: the highest severity found never escalates
+  // onboarding status past NEEDS_ATTENTION on its own (BLOCKED stays
+  // reserved for genuine repo-state hazards like unresolved conflicts).
+  if (facts.securitySummary) {
+    const security = facts.securitySummary
+    if (security.status === 'UNKNOWN') {
+      add(
+        'SECURITY_SCAN_UNAVAILABLE',
+        'UNKNOWN',
+        'No security scan could be performed for this repository.',
+        'Configure a real security scanner adapter (TSF_SECURITY_SCANNER_COMMAND) to get evidence-backed findings.',
+        {}
+      )
+    } else if (security.status !== 'NONE') {
+      const status =
+        security.status === 'HIGH' || security.status === 'CRITICAL'
+          ? 'NEEDS_ATTENTION'
+          : 'HEALTHY_WITH_CAVEATS'
+      add(
+        'SECURITY_FINDINGS_PRESENT',
+        status,
+        `Dependencies ${security.dependencyCount} ${security.dependencies} / Secrets ${security.secretCount} ${security.secrets} / Configuration ${security.configurationCount} ${security.configuration} / Licenses ${security.licenses} / SBOM ${security.sbom}`,
+        'Review findings before adoption; TSF never automatically rewrites dependencies, rotates credentials, or remediates a finding.',
+        { scannerName: security.scannerName, scannerVersion: security.scannerVersion }
+      )
+    }
   }
 
   const status = findings.reduce(
-    (current, item) => (onboardingSeverityRank[item.status] > onboardingSeverityRank[current] ? item.status : current),
+    (current, item) =>
+      onboardingSeverityRank[item.status] > onboardingSeverityRank[current] ? item.status : current,
     'HEALTHY'
   )
   return {
@@ -88,34 +194,104 @@ export function assessRepositoryOnboardingHealth(facts, clock) {
 export function assessHealth(facts, clock) {
   const findings = []
   if (facts.repositoryAvailable === false) {
-    findings.push(finding('REPOSITORY_UNAVAILABLE', 'BLOCKED', 'Project repository is unavailable.', 'Verify the registered path without mutating it.'))
+    findings.push(
+      finding(
+        'REPOSITORY_UNAVAILABLE',
+        'BLOCKED',
+        'Project repository is unavailable.',
+        'Verify the registered path without mutating it.'
+      )
+    )
   }
   if (facts.worktreeHealthy === false) {
-    findings.push(finding('WORKTREE_UNHEALTHY', 'BLOCKED', 'Orca reports an unhealthy worktree.', 'Inspect Orca worktree facts and preserve the candidate.'))
+    findings.push(
+      finding(
+        'WORKTREE_UNHEALTHY',
+        'BLOCKED',
+        'Orca reports an unhealthy worktree.',
+        'Inspect Orca worktree facts and preserve the candidate.'
+      )
+    )
   }
   if (facts.workerStuck === true) {
-    findings.push(finding('WORKER_STUCK', 'DEGRADED', 'Worker has exceeded its progress threshold.', 'Pause or replace it at a recovery checkpoint.'))
+    findings.push(
+      finding(
+        'WORKER_STUCK',
+        'DEGRADED',
+        'Worker has exceeded its progress threshold.',
+        'Pause or replace it at a recovery checkpoint.'
+      )
+    )
   }
   if (facts.sessionStale === true) {
-    findings.push(finding('SESSION_STALE', 'DEGRADED', 'Session identity is stale.', 'Create a replacement receipt at a mission boundary.'))
+    findings.push(
+      finding(
+        'SESSION_STALE',
+        'DEGRADED',
+        'Session identity is stale.',
+        'Create a replacement receipt at a mission boundary.'
+      )
+    )
   }
   if (facts.testsPassed === false) {
-    findings.push(finding('TESTS_FAILED', 'BLOCKED', 'Candidate tests failed.', 'Return the exact failure evidence for bounded repair.'))
+    findings.push(
+      finding(
+        'TESTS_FAILED',
+        'BLOCKED',
+        'Candidate tests failed.',
+        'Return the exact failure evidence for bounded repair.'
+      )
+    )
   }
   if (facts.providerAvailable === false) {
-    findings.push(finding('PROVIDER_UNAVAILABLE', 'DEGRADED', 'Requested provider is unavailable.', 'Use the configured fallback at a mission boundary.'))
+    findings.push(
+      finding(
+        'PROVIDER_UNAVAILABLE',
+        'DEGRADED',
+        'Requested provider is unavailable.',
+        'Use the configured fallback at a mission boundary.'
+      )
+    )
   }
   if (facts.upgradeBlocked === true) {
-    findings.push(finding('UPGRADE_BLOCKED', 'BLOCKED', 'Upgrade cannot advance.', 'Resolve the linked candidate or test blocker.'))
+    findings.push(
+      finding(
+        'UPGRADE_BLOCKED',
+        'BLOCKED',
+        'Upgrade cannot advance.',
+        'Resolve the linked candidate or test blocker.'
+      )
+    )
   }
   if (facts.humanDecisionPending === true) {
-    findings.push(finding('HUMAN_DECISION_PENDING', 'DEGRADED', 'A consequential decision is waiting for Tim.', 'Present the exact current binding and options.'))
+    findings.push(
+      finding(
+        'HUMAN_DECISION_PENDING',
+        'DEGRADED',
+        'A consequential decision is waiting for Tim.',
+        'Present the exact current binding and options.'
+      )
+    )
   }
   if (facts.upstreamDrift === true) {
-    findings.push(finding('UPSTREAM_DRIFT', 'DEGRADED', 'Pinned Orca upstream has drifted.', 'Run the bounded upstream compatibility workflow.'))
+    findings.push(
+      finding(
+        'UPSTREAM_DRIFT',
+        'DEGRADED',
+        'Pinned Orca upstream has drifted.',
+        'Run the bounded upstream compatibility workflow.'
+      )
+    )
   }
   if (facts.overlayCompatible === false) {
-    findings.push(finding('OVERLAY_INCOMPATIBLE', 'BLOCKED', 'TSF overlay contract is incompatible with Orca.', 'Stop foundation work and inspect the plugin contract delta.'))
+    findings.push(
+      finding(
+        'OVERLAY_INCOMPATIBLE',
+        'BLOCKED',
+        'TSF overlay contract is incompatible with Orca.',
+        'Stop foundation work and inspect the plugin contract delta.'
+      )
+    )
   }
   const status = findings.reduce(
     (current, item) => (severityRank[item.status] > severityRank[current] ? item.status : current),
