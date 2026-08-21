@@ -2058,6 +2058,16 @@
           "commit": "b2b43430114164a06e2145e61f3d637eefd4b9ac",
           "status": "CLEAN_WITH_NOTES",
           "note": "Next: wave 4 -- worker and/or verifier eval packs."
+        },
+        {
+          "wave": 4,
+          "summary": "Real worker and verifier eval packs. WORKER_BASICS_PACK (4 cases, worker-eval-cases.mjs/runner.mjs) measures false-success avoidance and scope adherence -- pure evaluation-support glue, not new production capability. VERIFIER_BASICS_PACK (3 cases) measures keep-going.mjs's real compareStateToGoal decision logic (the genuine interface between a verifier's findings and TSF's stop/continue call -- no separate invocable verifier-agent function exists to measure instead).\n\n8 tests, 2 REQUIRED PROOF regression-detection tests (one per pack), each exercising the SAME real function with genuinely different real input.",
+          "testsAdded": 8,
+          "testsPassing": "511 full tsf suite GREEN",
+          "verifier": "SELF",
+          "commit": "dd0fa8568023c85ead5ea2b7dc7475f6e8bb2f56",
+          "status": "COMMITTED",
+          "note": "Next: wave 5 -- routing, memory, autonomy, and estimator eval packs (the remaining 4 of 7 required categories), same self-contained pattern."
         }
       ]
     },
