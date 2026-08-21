@@ -60,6 +60,36 @@ test('activate() registers the existing commands unchanged', () => {
   }
 })
 
+test('logs a clear, actionable warning when tsf/ui/dist has not been built yet', () => {
+  const { orca, logs } = fakeOrca()
+  activate(orca, {
+    port: ephemeralPort(),
+    spawnFn: () => ({ stdout: null, stderr: null, on: () => {}, kill: () => {} }),
+    uiIndexPath: path.join(import.meta.dirname, 'fixtures', 'does-not-exist', 'index.html')
+  })
+  try {
+    assert.ok(
+      logs.some((line) => /tsf\/ui\/dist not found/.test(line) && /npm run build/.test(line))
+    )
+  } finally {
+    deactivate()
+  }
+})
+
+test('does not log the missing-build warning when tsf/ui/dist genuinely exists', () => {
+  const { orca, logs } = fakeOrca()
+  activate(orca, {
+    port: ephemeralPort(),
+    spawnFn: () => ({ stdout: null, stderr: null, on: () => {}, kill: () => {} }),
+    uiIndexPath: path.join(import.meta.dirname, 'foundation-contracts.test.mjs')
+  })
+  try {
+    assert.ok(!logs.some((line) => /tsf\/ui\/dist not found/.test(line)))
+  } finally {
+    deactivate()
+  }
+})
+
 test('the tsf-open-ui command opens the URL for the actual port this activation is using', async () => {
   const { orca, registered } = fakeOrca()
   const port = ephemeralPort()

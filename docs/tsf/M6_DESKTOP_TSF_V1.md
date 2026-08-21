@@ -208,28 +208,60 @@ findings"); kept here only as a record of what wave 1 asked.
 
 ## Acceptance criteria re-check against current code (not claims)
 
+**CORRECTED post-wave-8** (this section was never updated between wave 3
+and wave 8's implementation, a real doc-staleness finding from the final
+holistic review — the paragraphs below describe the actual current
+state, not wave 1-3's planning-stage status):
+
 - "Double-click launch opens TSF UI and connects to/starts required
-  local TSF/Orca services" — NOT yet met; architecture now decided
-  (wave 2: plugin auto-spawns `tsf/server`, a registered command opens
-  the OS browser) but not implemented.
+  local TSF/Orca services" — IMPLEMENTED (waves 4, 6, 8): the plugin's
+  `activate()` spawns `tsf/server` (serving `/api` and the built
+  `tsf/ui` SPA) automatically whenever Orca's own startup plugin
+  reconciliation activates an approved plugin; the registered
+  `tsf-open-ui` command opens it in the OS default browser. Honestly:
+  this is "automatic backend start at Orca launch, plus one
+  command-palette click to open the browser" — not a literal OS-level
+  double-click icon/installer. Proven live through Orca's real plugin
+  host machinery (real fork + IPC), not just direct function calls —
+  see `tsf/test/plugin-real-load-proof.test.mjs` (wave 9).
 - "Planner Chat, projects, Health, adoption all work without manual
-  localhost commands" — NOT yet met; all require `npm run dev` today;
-  the wave-2 architecture removes that requirement once implemented.
-- "Orca core delta stays 0" — achievable; the wave-2 design stays
-  entirely inside `tsf/` (plugin manifest/main.mjs/server changes only).
+  localhost commands" — IMPLEMENTED for the backend/serving path (once
+  the plugin is enabled, no `npm run dev` is needed); requires
+  `tsf/ui/dist` to exist first (`cd tsf/ui && npm run build` — `dist/`
+  is gitignored and nothing builds it automatically, a real gap found
+  in the final review; the plugin now logs a clear, actionable warning
+  at activation if it's missing rather than silently 404ing).
+- "Orca core delta stays 0" — MET; confirmed via `git diff --stat`
+  across the full M6 commit range restricted to outside `tsf/`/
+  `docs/tsf/` — empty.
 - "Windows application build with reliable launch, graceful
-  backend-unavailable state, clean shutdown" — NOT yet met; a plugin
-  needs no separate Windows "build" beyond what it already ships as, so
-  this narrows to: reliable spawn/restart-on-crash logic, `tsf/ui`'s own
-  fetch-failure UI being adequate for backend-unavailable, and using
-  the existing `deactivate()` export for clean shutdown — all wave 3.
+  backend-unavailable state, clean shutdown" — IMPLEMENTED: reliable
+  spawn/bounded-backoff-restart/EADDRINUSE-as-already-running logic
+  (`server-process-lifecycle.mjs`), `tsf/ui`'s existing fetch-failure UI
+  confirmed adequate (wave 3, re-confirmed unchanged in the final
+  review), and `deactivate()` (with a re-entrant-`activate()` guard,
+  wave 7) for clean shutdown.
 - "Update/install strategy documented; unsigned local dev installer
-  acceptable; no external distribution" — NOT yet met; simplified by the
-  wave-2 finding (no second installer needed, it's the existing plugin).
-- "Smoke-tested locally" — NOT met; nothing implemented yet.
+  acceptable; no external distribution" — DOCUMENTED: no separate
+  installer — enabling the plugin system, adding `tsf/` as a dev plugin
+  path, and approving it are all through Orca's existing Settings UI
+  (wave 3), now written up in `tsf/README.md`'s "Desktop launch"
+  section alongside the `tsf/ui` build prerequisite above.
+- "Smoke-tested locally" — MET as of wave 9: every wave 4-8 test calls
+  `activate()`/`deactivate()` as plain JS functions (a real, but
+  partial, proof), which the final holistic review correctly flagged as
+  not exercising Orca's actual plugin host machinery. Wave 9 closes
+  that gap with a genuine live proof — bundling the real, unmodified
+  `src/main/plugins/plugin-host-entry.ts`/`plugin-host-process.ts` (core
+  Orca files, read-only) via esbuild (the same technique core's own
+  `plugin-worker-supervision.integration.test.ts` uses), forking a real
+  worker process running our real, unmodified `tsf/main.mjs`, invoking
+  its commands through the real IPC channel, confirming the real
+  `tsf/server` child actually spawns and answers, and confirming a real
+  shutdown actually kills it.
 
 Unlike M4/M5, no acceptance criterion was already fully satisfied by
-existing code, but wave 2 substantially narrowed the real work: from
-"decide between two unproven architectures" to "implement one
-evidence-backed architecture," exactly the value of the research-first
-discipline this program has now validated three times.
+existing code at wave 1, but wave 2 substantially narrowed the real
+work: from "decide between two unproven architectures" to "implement
+one evidence-backed architecture," exactly the value of the
+research-first discipline this program has now validated three times.

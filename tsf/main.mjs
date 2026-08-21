@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { startServerLifecycle } from './server/server-process-lifecycle.mjs'
 import { openUrl } from './server/open-url-command.mjs'
@@ -44,6 +45,19 @@ export default function activate(orca, testOverrides = {}) {
   // services" without Tim running any command. See server-process-
   // lifecycle.mjs for the bounded-backoff restart / already-running logic.
   const serverPort = testOverrides.port ?? TSF_SERVER_PORT
+  // tsf/ui/dist is gitignored and nothing builds it automatically -- a
+  // fresh checkout has no built UI until `cd tsf/ui && npm run build` runs
+  // once. static-ui-server.mjs already fails safely (404, not a crash)
+  // when it's missing, but that failure is otherwise silent; this makes
+  // the real, common first-run cause visible instead of a mysterious
+  // blank page.
+  const uiIndexPath =
+    testOverrides.uiIndexPath ?? join(import.meta.dirname, 'ui', 'dist', 'index.html')
+  if (!existsSync(uiIndexPath)) {
+    orca.log(
+      '[tsf] tsf/ui/dist not found -- the TSF UI will 404 until you run `cd tsf/ui && npm install && npm run build` once.'
+    )
+  }
   activeLifecycle = startServerLifecycle({
     spawnFn: testOverrides.spawnFn ?? realSpawnFn,
     serverEntryPath:

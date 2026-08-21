@@ -22,3 +22,15 @@ cd tsf/ui
 npm install
 npm run dev   # http://127.0.0.1:4600 — UI and its /api adapter in one process
 ```
+
+## Desktop launch (M6)
+
+TSF is also registered as a real Orca plugin (`orca-plugin.json`/`main.mjs`): once enabled and added as a dev plugin path in Orca's own Settings, activating it spawns `tsf/server` automatically and the `TSF: Open UI` command opens it in your browser — no manual `npm run dev` needed. This path serves `tsf/ui`'s **built** output (`tsf/ui/dist`), not the Vite dev server, and `dist/` is gitignored — build it once first:
+
+```powershell
+cd tsf/ui
+npm install
+npm run build
+```
+
+Without a build, the plugin still starts `tsf/server` correctly, but the UI itself 404s (a log line at activation names this exact cause).
