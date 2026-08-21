@@ -10,6 +10,7 @@ import type {
   ProjectEstimateView
 } from './estimate-types'
 import type { EvalComparison, EvalPackSummary, EvalRunResult } from './eval-types'
+import type { FlightRecorderView } from './flight-recorder-types'
 import type {
   AgentEvidence,
   ChatAttachmentMeta,
@@ -195,5 +196,7 @@ export const api = {
     requestTolerant<
       { ok: true; packId: string; comparison: EvalComparison },
       { ok: false; error: string }
-    >(`/eval/${encodeURIComponent(packId)}/regression-check`, { method: 'POST' })
+    >(`/eval/${encodeURIComponent(packId)}/regression-check`, { method: 'POST' }),
+  flightRecorder: (projectId: string) =>
+    request<FlightRecorderView>(`/projects/${encodeURIComponent(projectId)}/flight-recorder`)
 }

@@ -29,6 +29,7 @@ import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
 import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
 import { handleEstimateRoute } from './estimate-http-routes.mjs'
 import { handleEvalRoute } from './eval-http-routes.mjs'
+import { handleFlightRecorderRoute } from './flight-recorder-http-routes.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
@@ -593,6 +594,11 @@ export function createRequestHandler() {
 
       // GET/POST /api/eval[/:packId/*] -- see eval-http-routes.mjs
       if (await handleEvalRoute(parts, req, res, url, { opState }, { json, notFound, saveState })) {
+        return
+      }
+
+      // GET /api/projects/:id/flight-recorder -- see flight-recorder-http-routes.mjs
+      if (handleFlightRecorderRoute(parts, req, res, url, { map, opState }, { json, notFound })) {
         return
       }
 
