@@ -7,6 +7,8 @@
 // autonomous dispatch loop).
 import { generateWbs } from './wbs-generation.mjs'
 import { buildDeliveryPlan } from '../domain/delivery-plan.mjs'
+import { buildEstimateActual, summarizeCalibration } from '../domain/estimate-calibration.mjs'
+import { readKeepGoingRun } from './keep-going-run-store.mjs'
 
 // Bounded, real evidence for an onboarded/known project -- the same
 // fields buildProjectContextCapsule (live-planner.mjs) already extracts,
@@ -42,6 +44,59 @@ export async function handleEstimateRoute(
   const project = map.get(projectId)
   if (!project) {
     notFound(res, `unknown project: ${projectId}`)
+    return true
+  }
+
+  // GET /api/projects/:id/estimate/calibration -- the real historical
+  // TSF_ESTIMATE_ACTUAL_V1 records for this project plus the honest,
+  // sample-size-gated calibration verdict (see estimate-calibration.mjs).
+  if (parts.length === 5 && parts[4] === 'calibration' && req.method === 'GET') {
+    const actuals = opState.estimateActuals?.[projectId] ?? []
+    json(res, 200, { ok: true, projectId, actuals, calibration: summarizeCalibration(actuals) })
+    return true
+  }
+
+  // POST /api/projects/:id/estimate/actuals { runId }
+  // Pairs a real, settled (COMPLETE or BLOCKED) Keep Going run against the
+  // estimate on file for this project, recording one immutable
+  // TSF_ESTIMATE_ACTUAL_V1. Idempotent by runId -- re-posting the same
+  // settled run returns the existing record rather than duplicating it
+  // (this program never rewrites a past estimate-vs-actual record).
+  if (parts.length === 5 && parts[4] === 'actuals' && req.method === 'POST') {
+    const body = await readBody(req)
+    const run = readKeepGoingRun(projectId)
+    if (!run) {
+      json(res, 422, { ok: false, error: 'NO_KEEP_GOING_RUN_FOR_PROJECT' })
+      return true
+    }
+    if (body.runId && body.runId !== run.id) {
+      json(res, 422, { ok: false, error: 'RUN_ID_DOES_NOT_MATCH_CURRENT_RUN' })
+      return true
+    }
+    if (run.state !== 'COMPLETE' && run.state !== 'BLOCKED') {
+      json(res, 422, { ok: false, error: 'RUN_NOT_SETTLED', detail: run.state })
+      return true
+    }
+    const estimate = opState.projectEstimates?.[projectId]
+    if (!estimate) {
+      json(res, 422, { ok: false, error: 'NO_ESTIMATE_ON_FILE_FOR_PROJECT' })
+      return true
+    }
+    const existingActuals = opState.estimateActuals?.[projectId] ?? []
+    const already = existingActuals.find((a) => a.runId === run.id)
+    if (already) {
+      json(res, 200, { ok: true, projectId, actual: already, alreadyRecorded: true })
+      return true
+    }
+    const actual = buildEstimateActual({ estimate, run })
+    saveState({
+      ...opState,
+      estimateActuals: {
+        ...opState.estimateActuals,
+        [projectId]: [...existingActuals, actual]
+      }
+    })
+    json(res, 200, { ok: true, projectId, actual, alreadyRecorded: false })
     return true
   }
 
