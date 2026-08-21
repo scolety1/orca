@@ -5,6 +5,11 @@ import type {
 } from './keep-going-types'
 import type { ChatPlacement } from './chat-dispatch-types'
 import type {
+  GenerateEstimateError,
+  GenerateEstimateRequest,
+  ProjectEstimateView
+} from './estimate-types'
+import type {
   AgentEvidence,
   ChatAttachmentMeta,
   ChatMessage,
@@ -167,5 +172,12 @@ export const api = {
     request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/abandon-stalled-wave`, {
       method: 'POST',
       body: JSON.stringify({ reason, expectedRevision })
-    })
+    }),
+  estimate: (projectId: string) =>
+    request<ProjectEstimateView>(`/projects/${encodeURIComponent(projectId)}/estimate`),
+  generateEstimate: (projectId: string, body: GenerateEstimateRequest) =>
+    requestTolerant<ProjectEstimateView, GenerateEstimateError>(
+      `/projects/${encodeURIComponent(projectId)}/estimate`,
+      { method: 'POST', body: JSON.stringify(body) }
+    )
 }
