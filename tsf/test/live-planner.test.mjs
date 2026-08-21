@@ -11,6 +11,11 @@ import {
   modelDisplayName,
   stripSchemaMetaKeys
 } from '../server/live-planner.mjs'
+import {
+  emptyProjectMemory,
+  addMemoryRecord,
+  supersedeMemoryRecord
+} from '../domain/project-memory.mjs'
 
 const HERE = import.meta.dirname
 const STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
@@ -91,6 +96,44 @@ test('buildProjectContextCapsule stays bound to the given project and does not f
   assert.match(capsule.active_blockers.join(' '), /opaque Talent IDs/)
   assert.deepEqual(capsule.hq_escalation_history, [])
   assert.deepEqual(capsule.do_not_repeat_lessons, [])
+})
+
+test('buildProjectContextCapsule fills do_not_repeat_lessons from real project memory, bounded, when given one', () => {
+  const clock = () => new Date()
+  let memory = emptyProjectMemory()
+  memory = addMemoryRecord(
+    memory,
+    {
+      class: 'EXPERIENCE',
+      statement: 'do not retry the flaky upload endpoint without backoff',
+      source: { kind: 'RESULT_CAPSULE', ref: 'mission-1' }
+    },
+    clock
+  )
+  const capsule = buildProjectContextCapsule(project(), memory)
+  assert.deepEqual(capsule.do_not_repeat_lessons, [
+    'do not retry the flaky upload endpoint without backoff'
+  ])
+})
+
+test('buildProjectContextCapsule never returns a superseded lesson', () => {
+  const clock = () => new Date()
+  let memory = emptyProjectMemory()
+  memory = addMemoryRecord(
+    memory,
+    { class: 'EXPERIENCE', statement: 'stale lesson', source: { kind: 'CHAT', ref: 'msg-1' } },
+    clock
+  )
+  const staleId = memory.records[0].id
+  memory = supersedeMemoryRecord(
+    memory,
+    staleId,
+    { statement: 'corrected lesson', source: { kind: 'CHAT', ref: 'msg-2' } },
+    undefined,
+    clock
+  )
+  const capsule = buildProjectContextCapsule(project(), memory)
+  assert.deepEqual(capsule.do_not_repeat_lessons, ['corrected lesson'])
 })
 
 test('successful live planner response: real text, real observed session/model, correctly labeled', async () => {

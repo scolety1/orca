@@ -17,6 +17,7 @@ import {
   replaceSessionBinding,
   assertAffinity
 } from '../domain/session-affinity.mjs'
+import { emptyProjectMemory, retrieveExperiencesForCapsule } from '../domain/project-memory.mjs'
 import { resolveAgentEntry } from '../providers/resolve-agent-entry.mjs'
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import launchProfiles from '../providers/launch-profiles.v1.json' with { type: 'json' }
@@ -65,7 +66,7 @@ function ensureNeutralCwd() {
 // Builds a TSF_PROJECT_CONTEXT_CAPSULE_V1-shaped object (see
 // tsf/contracts/project-context-capsule.schema.v1.json) from the same real
 // ProjectDetail the rest of the UI already reads — no separate data source.
-export function buildProjectContextCapsule(project) {
+export function buildProjectContextCapsule(project, memory = emptyProjectMemory()) {
   const onboarding = project.evidence?.onboarding ?? null
   const blockers = []
   if (project.mission.blockedReason) {
@@ -128,7 +129,11 @@ export function buildProjectContextCapsule(project) {
     active_blockers: blockers.slice(0, 5),
     approvals: approvals.slice(-5),
     known_risks: knownRisks,
-    do_not_repeat_lessons: [],
+    // M7: real, bounded, project-scoped recall of prior lessons/mistakes --
+    // never a fabricated or full-history list (retrieveExperiencesForCapsule
+    // caps at its own default limit, mirroring every sibling field's
+    // .slice() bound above).
+    do_not_repeat_lessons: retrieveExperiencesForCapsule(memory),
     next_recommended_action:
       project.evidence?.selectedMission?.title && project.evidence?.selectedMission?.rationale
         ? `${project.evidence.selectedMission.title} — ${project.evidence.selectedMission.rationale}`
@@ -388,7 +393,7 @@ export async function invokeLivePlanner({
     mappings: providerRoles,
     profiles: { profiles: launchProfiles.profiles }
   })
-  const capsule = buildProjectContextCapsule(project)
+  const capsule = buildProjectContextCapsule(project, opState.projectMemory?.[project.id])
   const systemPrompt = buildSystemPrompt({
     project,
     capsule,

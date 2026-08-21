@@ -26,7 +26,8 @@ const DEFAULTS = {
   plannerSessions: {}, // projectId -> TSF_SESSION_BINDING_V1 (see tsf/domain/session-affinity.mjs)
   portfolio: createPortfolio(), // real tsf/domain/portfolio.mjs structure: Known/Active Fleet/Work Set
   onboardedProjects: {}, // projectId -> { repoPath, lastAnalysis, receipts, acceptedAt, refreshedAt }
-  keepGoingRuns: {} // projectId -> TSF_OVERNIGHT_RUN_V1 (see tsf/domain/keep-going.mjs)
+  keepGoingRuns: {}, // projectId -> TSF_OVERNIGHT_RUN_V1 (see tsf/domain/keep-going.mjs)
+  projectMemory: {} // projectId -> TSF_PROJECT_MEMORY_V1 (see tsf/domain/project-memory.mjs)
 }
 
 // Exposes the real state file path (honoring the same TSF_UI_STATE_FILE

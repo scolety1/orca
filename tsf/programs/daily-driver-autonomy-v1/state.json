@@ -1725,6 +1725,16 @@
           "commit": null,
           "status": "IN_PROGRESS",
           "note": "Next: wave 4 -- wire this domain module into the real system: add a projectMemory:{} key to data-store.mjs's DEFAULTS (matching the existing per-project-map pattern), and wire live-planner.mjs's do_not_repeat_lessons field to call retrieveExperiencesForCapsule instead of hardcoding []. Then wave 5+: HTTP routes/UI surface for adding/superseding memory records (if the acceptance criteria's own test list requires operator-visible interaction, not just internal wiring -- re-check the exact test list: cross-session recall, project isolation, stale-fact supersession, rejected-design recall, preference persistence, no giant transcript injection)."
+        },
+        {
+          "wave": 4,
+          "summary": "Wired the pure domain module into the real system, closing the wave-2 'dormant hook' finding. data-store.mjs's DEFAULTS gained projectMemory:{} (projectId -> TSF_PROJECT_MEMORY_V1), matching the existing onboardedProjects/keepGoingRuns per-project-map pattern exactly -- no new persistence mechanism. live-planner.mjs's buildProjectContextCapsule(project, memory = emptyProjectMemory()) now calls retrieveExperiencesForCapsule(memory) for do_not_repeat_lessons instead of hardcoding [] -- the field genuinely reaches the real system prompt (JSON.stringify'd into buildSystemPrompt, confirmed by the pre-existing 'project context is actually transmitted to the provider process' E2E test still passing unchanged). invokeLivePlanner's one call site now passes opState.projectMemory?.[project.id] through -- opState was already threaded into invokeLivePlanner's own parameters, so no new plumbing was needed there either. 4 new tests: 2 directly on buildProjectContextCapsule (real experiences populate the field, bounded; a superseded lesson is correctly excluded and replaced by its successor), confirmed the existing 'stays bound... does not fabricate' test (asserting [] with no memory given) remains valid unchanged as the honest-default case.",
+          "testsAdded": 4,
+          "testsPassing": "366 full tsf suite GREEN",
+          "verifier": "SELF; the pre-existing E2E 'project context is actually transmitted to the provider process' test (unmodified) continuing to pass confirms the wiring reaches the real system prompt, not just the pure capsule function",
+          "commit": null,
+          "status": "IN_PROGRESS",
+          "note": "Next: decide whether wave 5 needs an HTTP-route/UI surface for adding/superseding memory records, or whether the acceptance criteria's own test list (cross-session recall, project isolation, stale-fact supersession, rejected-design recall, preference persistence, no giant transcript injection) can be satisfied purely by wiring result-capsule outcomes (SUCCEEDED/FAILED/BLOCKED missions) to automatically call addMemoryRecord -- re-read chat-responder.mjs's/keep-going-controller.mjs's settlement path to check whether automatic capture is the more honest, more 'real system already produces this' design than requiring manual operator input."
         }
       ]
     },
