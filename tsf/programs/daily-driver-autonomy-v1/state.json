@@ -1963,6 +1963,16 @@
           "commit": "1f7fbfc1fadececa52ee1400337a3c9a5e33708b",
           "status": "COMMITTED",
           "note": "Next: the required adversarial real-proof wave (small clean repo, larger uncertain repo, idea-only estimate, impossible deadline, provider near reset, competing Work Set commitments, blocked/dirty project, scope change, missing pricing, no historical calibration -- never mutating real projects merely to estimate them). Then a final holistic independent review of the whole M8 milestone, then packaging as an immutable candidate and adoption into tsf/main via the established two-commit ff-only pattern."
+        },
+        {
+          "wave": 11,
+          "summary": "Required adversarial real-proof wave (Tim's M8 handoff item 7), plus a real gap self-caught while starting it: the POST estimate route (wave 9) never actually wired M5's provider capacity/cost forecast into the estimate result at all, despite Tim's own spec explicitly listing \"provider forecast, costs\" as part of the Estimate detail surface. Fixed with buildProviderForecasts() -- calls the real fetchCapacitySnapshot() (M5, unchanged) and reports providerForecast/costForecast for both real providers (claude, codex) on every generated estimate; never throws (an unreachable orca CLI degrades to honest UNKNOWN assurance).\n\nNew estimate-adversarial.test.mjs, 6 REQUIRED PROOF tests, each end to end through the real HTTP route: larger/uncertain repo (new STUB_WBS_MULTI stub mode -- a real 3-task dependency+conflict WBS proven to flow through normalization, Monte Carlo, and scheduling correctly, including a genuinely wider P95-P10 spread for the low-clarity task); provider near reset (the real historically-observed AT_EXPIRING_CAPACITY_SAFETY_RESERVE value, 91% codex weekly, first used in M5, honestly reflected); blocked/dirty project (repoEvidenceFor, now exported, discloses a real blockedReason/health finding); missing provider pricing (honestly null/NO_PRICING_ADAPTER_CONFIGURED by default); scope change (regenerating an estimate replaces the estimate on file, but a past TSF_ESTIMATE_ACTUAL_V1 record survives); no historical calibration data (honest uncalibrated verdict). \"Small clean repo\" and \"idea-only estimate\" were already covered by wave 9's own tests. \"Existing competing Work Set commitments\" remains deliberately out of scope for a single-project plan (multi-project scheduling belongs to M12's Fleet Optimizer, per wave 8's own disclosed deferral) -- recorded, not silently dropped.\n\nFull suite: 460/460 passing. oxlint clean. max-lines ratchet 346 unchanged.",
+          "testsAdded": 6,
+          "testsPassing": "460 full tsf suite GREEN",
+          "verifier": "SELF",
+          "commit": "37932cc3ec1de3e2606dd332b62f2921b0c24a92",
+          "status": "COMMITTED",
+          "note": "All 10 of Tim's named adversarial scenarios are now accounted for (9 proven by test, 1 -- competing Work Set commitments -- explicitly and disclosedly deferred to M12). Next: a final holistic independent review of the whole M8 milestone (waves 1-11), then package as an immutable candidate and adopt into tsf/main via the established two-commit ff-only pattern."
         }
       ]
     },
