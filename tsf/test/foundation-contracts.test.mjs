@@ -16,15 +16,28 @@ test('Orca plugin registers bounded TSF commands and events', async () => {
   const handlers = new Map()
   const events = new Map()
   const plugin = await import('../main.mjs')
-  plugin.default({
-    commands: { register: (id, handler) => handlers.set(id, handler) },
-    events: { on: (id, handler) => events.set(id, handler) },
-    host: { call: async () => ({ value: null }) },
-    log: () => {}
-  })
-  assert.deepEqual(await handlers.get('tsf-foundation-health')(), plugin.FOUNDATION)
-  assert.equal(handlers.size, 3)
-  assert.equal(events.size, 3)
+  // M6: activate() now also spawns tsf/server as a real child process (see
+  // server-process-lifecycle.mjs) -- this test's own concern is command/
+  // event registration, not the server lifecycle (covered by its own
+  // tsf/test/main-plugin.test.mjs), so a fake spawnFn keeps this test
+  // hermetic and avoids leaking a real, ref'd child process that would
+  // otherwise keep this test file's process alive indefinitely.
+  plugin.default(
+    {
+      commands: { register: (id, handler) => handlers.set(id, handler) },
+      events: { on: (id, handler) => events.set(id, handler) },
+      host: { call: async () => ({ value: null }) },
+      log: () => {}
+    },
+    { spawnFn: () => ({ stdout: null, stderr: null, on: () => {}, kill: () => {} }) }
+  )
+  try {
+    assert.deepEqual(await handlers.get('tsf-foundation-health')(), plugin.FOUNDATION)
+    assert.equal(handlers.size, 3)
+    assert.equal(events.size, 3)
+  } finally {
+    plugin.deactivate()
+  }
 })
 
 test('provider roles are complete and mappings remain configuration', async () => {
@@ -75,7 +88,12 @@ test('migration manifest preserves 111 unique capability IDs with coverage', asy
     assert.ok(entry.proposedWave !== null || ['REFERENCE_ONLY', 'REJECTED'].includes(entry.state))
   }
   assert.equal(migration.summary.TOTAL, 111)
-  assert.equal(Object.values(migration.summary).filter((value) => typeof value === 'number').reduce((a, b) => a + b, 0), 222)
+  assert.equal(
+    Object.values(migration.summary)
+      .filter((value) => typeof value === 'number')
+      .reduce((a, b) => a + b, 0),
+    222
+  )
   assert.deepEqual(migration.allowedStates, [
     'UPSTREAM_NATIVE',
     'REUSED_LEGACY_CODE',
