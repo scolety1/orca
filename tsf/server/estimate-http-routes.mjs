@@ -8,13 +8,40 @@
 import { generateWbs } from './wbs-generation.mjs'
 import { buildDeliveryPlan } from '../domain/delivery-plan.mjs'
 import { buildEstimateActual, summarizeCalibration } from '../domain/estimate-calibration.mjs'
+import { forecastMeteredCost, forecastProviderCapacity } from '../domain/provider-forecast.mjs'
 import { readKeepGoingRun } from './keep-going-run-store.mjs'
+import { fetchCapacitySnapshot } from '../adapters/orca-capacity-bridge.mjs'
+
+// The 2 real providers this program dispatches work to (keep-going-
+// dispatch-loop.mjs's own default worker agent is 'codex'; 'claude' also
+// participates as planner/verifier). Forecasting both, rather than
+// resolving each WBS task's providerRoleHint through routing.mjs's full
+// usage-mode/profile configuration, keeps this wave bounded -- Tim's own
+// spec asks for "provider capacity forecast" at the estimate level, not a
+// per-task routing decision.
+const FORECAST_PROVIDER_IDS = ['claude', 'codex']
+
+// Real, current capacity signal (M5, unchanged) for every known provider.
+// Never throws: an unreachable/errored orca CLI degrades to a null
+// snapshot, which decideCapacityAction already reports as honest UNKNOWN
+// assurance rather than crashing the whole estimate.
+async function buildProviderForecasts() {
+  const capacityResult = await fetchCapacitySnapshot()
+  const capacitySnapshot = capacityResult.ok ? capacityResult.result : null
+  const providerForecast = {}
+  const costForecast = {}
+  for (const providerId of FORECAST_PROVIDER_IDS) {
+    providerForecast[providerId] = forecastProviderCapacity({ capacitySnapshot, providerId })
+    costForecast[providerId] = forecastMeteredCost({ providerId })
+  }
+  return { providerForecast, costForecast }
+}
 
 // Bounded, real evidence for an onboarded/known project -- the same
 // fields buildProjectContextCapsule (live-planner.mjs) already extracts,
 // not the raw onboarding scan (per the established "avoid dumping the
 // entire onboarding scan into every planner turn" discipline).
-function repoEvidenceFor(project) {
+export function repoEvidenceFor(project) {
   return {
     projectId: project.id,
     displayName: project.displayName,
@@ -141,12 +168,15 @@ export async function handleEstimateRoute(
       json(res, 422, { ok: false, error: error.message, code: error.code ?? null })
       return true
     }
+    const { providerForecast, costForecast } = await buildProviderForecasts()
     const estimate = {
       schemaVersion: 'TSF_PROJECT_ESTIMATE_RESULT_V1',
       projectId,
       preliminary: wbsResult.preliminary,
       wbs: wbsResult.wbs,
       plan,
+      providerForecast,
+      costForecast,
       generatedAt: new Date().toISOString()
     }
     saveState({

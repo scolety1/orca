@@ -85,6 +85,60 @@ function structuredResponseFor(schemaJson, prompt) {
       process.env.STUB_WBS_INVALID === '1'
         ? { min: 20, expected: 8, max: 16 }
         : { min: 4, expected: 8, max: 16 }
+    // STUB_WBS_MULTI: a larger, less-certain decomposition (dependency
+    // chain + a conflicting pair + one low-clarity/confidence task) --
+    // proves a real multi-task WBS flows end to end through normalizeWbs,
+    // the Monte Carlo engine, and dependency-aware scheduling, not just
+    // the single-task happy path.
+    if (process.env.STUB_WBS_MULTI === '1') {
+      return {
+        schemaVersion: 'TSF_WBS_GENERATION_REQUEST_V1',
+        tasks: [
+          {
+            id: 'discover',
+            title: 'Discovery and design',
+            stage: 'discovery',
+            activeEffortHours: { min: 2, expected: 4, max: 8 },
+            clarity: 0.8,
+            confidence: 0.8,
+            risk: 'LOW',
+            providerRoleHint: 'PLANNER_BALANCED',
+            assumptions: [],
+            evidence: [],
+            blockers: []
+          },
+          {
+            id: 'implement',
+            title: 'Core implementation',
+            stage: 'implementation',
+            dependencies: ['discover'],
+            activeEffortHours: { min: 10, expected: 24, max: 60 },
+            clarity: 0.3,
+            confidence: 0.3,
+            risk: 'HIGH',
+            providerRoleHint: 'WORKER_DEEP',
+            assumptions: ['Unfamiliar legacy module -- true effort is genuinely uncertain'],
+            evidence: [],
+            blockers: []
+          },
+          {
+            id: 'verify',
+            title: 'Independent verification',
+            stage: 'verification',
+            dependencies: ['implement'],
+            conflictsWith: ['implement'],
+            activeEffortHours: { min: 2, expected: 6, max: 12 },
+            clarity: 0.7,
+            confidence: 0.7,
+            risk: 'MODERATE',
+            providerRoleHint: 'VERIFIER_INDEPENDENT',
+            assumptions: [],
+            evidence: [],
+            blockers: []
+          }
+        ]
+      }
+    }
     return {
       schemaVersion: 'TSF_WBS_GENERATION_REQUEST_V1',
       tasks: [
