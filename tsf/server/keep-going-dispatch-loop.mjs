@@ -54,12 +54,15 @@ import {
   listOrchestrationTasks,
   startOrchestrationWorker
 } from '../adapters/orca-orchestration-bridge.mjs'
+import { fetchCapacitySnapshot } from '../adapters/orca-capacity-bridge.mjs'
 import { isoNow } from '../domain/canonical.mjs'
+import { decideCapacityAction } from '../domain/capacity-policy.mjs'
 import {
   checkpointRun,
   claimTick,
   dispatchWave,
   markStalled,
+  pauseRun,
   planWave,
   raiseNeedsYou,
   recordTaskAttempt,
@@ -78,6 +81,19 @@ const DEFAULT_ORCHESTRATION = Object.freeze({
   listOrchestrationTasks,
   startOrchestrationWorker
 })
+
+// M5: real capacity signal, checked once per dispatch attempt, before ever
+// claiming the tick lock or touching Orca. DEFAULT_CAPACITY.provider is
+// 'codex' because DEFAULT_WORKER_AGENT below is this module's own real
+// dispatch target for every wave -- its capacity is what actually gates
+// whether a new dispatch can succeed. A disclosed, real scope boundary:
+// only the PAUSE_AND_CHECKPOINT action is wired here.
+// REDUCE_CONCURRENCY/DOWNGRADE_WORKER are left for a real follow-up wave
+// rather than risking a rushed change to this adversarially-hardened
+// dispatch path -- planWave reads run.budget.maxConcurrentWorkers with no
+// override hook today, and this module doesn't choose a work item's
+// requested agent, it only dispatches what candidateWorkItems specify.
+const DEFAULT_CAPACITY = Object.freeze({ fetchCapacitySnapshot, provider: 'codex' })
 
 // Fresh work items dispatch through a new agent terminal unless the item
 // specifies an existing one to reuse (item.workerTerminal).
@@ -253,7 +269,7 @@ function trimPlanToDispatched(wavePlan, dispatchedWorkItemIds) {
   return { ...wavePlan, batches }
 }
 
-async function dispatchStep(projectId, candidateWorkItems, clock, orchestration, store) {
+async function dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity) {
   if (!Array.isArray(candidateWorkItems) || candidateWorkItems.length === 0) {
     return { action: 'NOOP', reason: 'no candidate work items available to plan a wave' }
   }
@@ -272,6 +288,43 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       action: 'DISPATCH_CLAIM_FAILED',
       reason: error.code ?? 'CLAIM_FAILED',
       detail: error.message
+    }
+  }
+
+  // M5: real capacity check now that this tick genuinely holds the lock --
+  // still before any real Orca CLI dispatch work (planWave/task-create/
+  // worker-start) happens, but deliberately AFTER claim() so this
+  // module's own "claim is the first async operation" concurrency
+  // guarantee (relied on by the overlapping-ticks test) is untouched --
+  // matches the existing "claim first, then validate/act" pattern used
+  // everywhere else in this function (placement checks, planWave's own
+  // validation, etc. all happen post-claim too). fetchCapacitySnapshot's
+  // own honest failure (never a fabricated snapshot) feeds
+  // decideCapacityAction, which itself defaults to PROCEED with
+  // assurance:'UNKNOWN' on no/failed signal -- no extra failure-handling
+  // needed here.
+  const snapshotResult = await capacity.fetchCapacitySnapshot()
+  const capacityDecision = decideCapacityAction(
+    snapshotResult.ok ? snapshotResult.result : null,
+    capacity.provider
+  )
+  if (capacityDecision.action === 'PAUSE_AND_CHECKPOINT') {
+    try {
+      const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
+        // The lock this tick holds must be released BEFORE pauseRun --
+        // pauseRun (transitionRun) itself rejects any external transition
+        // while a tick lock is active, and this pause IS that tick's own
+        // in-progress mutation, not an external one. Matches every other
+        // commit path in this module (commitAbortedDispatch etc.):
+        // releaseTick first, then the real mutation.
+        let n = releaseTick(current, clock, expectedRevision)
+        n = pauseRun(n, 'LOW_PROVIDER_CAPACITY', clock, n.revision)
+        n = checkpointRun(n, { phase: 'CAPACITY_PAUSED', note: capacityDecision.reason }, clock)
+        return n
+      })
+      return { action: 'DISPATCH_SKIPPED_LOW_CAPACITY', reason: capacityDecision.reason, run: next }
+    } catch (error) {
+      return lostLockResult('DISPATCH_SKIPPED_LOW_CAPACITY', error, {})
     }
   }
 
@@ -771,6 +824,7 @@ async function commitReleaseOnly(projectId, store, claimed, clock, action, outco
 export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, deps = {}) {
   const orchestration = deps.orchestration ?? DEFAULT_ORCHESTRATION
   const store = deps.store ?? DEFAULT_STORE
+  const capacity = deps.capacity ?? DEFAULT_CAPACITY
 
   const before = store.readRun(projectId)
   if (!before) {
@@ -782,7 +836,7 @@ export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, dep
   if (before.inFlightWave) {
     return settleStep(projectId, clock, orchestration, store)
   }
-  return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store)
+  return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity)
 }
 
 // Recovers a run whose in-flight wave stalled AND releases the real Orca

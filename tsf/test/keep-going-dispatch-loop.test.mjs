@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import path from 'node:path'
 import { createOvernightRun } from '../domain/keep-going.mjs'
 import { tickKeepGoingRun } from '../server/keep-going-dispatch-loop.mjs'
+
+// M5: dispatchStep now checks real capacity (tsf/adapters/orca-capacity-
+// bridge.mjs, sharing orca-orchestration-bridge.mjs's own TSF_ORCA_CLI_
+// COMMAND resolution) once per dispatch attempt. This file's own fakes
+// only cover deps.orchestration/deps.store, never deps.capacity --
+// pointing the shared CLI-resolution env var at the stub CLI here keeps
+// every test in this file fast and hermetic (the stub's account-list
+// handler returns instantly) instead of silently spawning the real orca
+// binary and depending on a live account.
+process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
+process.env.STUB_ORCA_MODE = 'success'
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 const PROJECT_ID = 'fixture:proj'
@@ -91,6 +103,68 @@ test('tickKeepGoingRun dispatches the next wave, creating the orchestration run 
   assert.equal(run.tickLock, null, 'lock released after commit')
   assert.equal(run.inFlightWave.dispatchRecords.length, 1)
   assert.equal(run.inFlightWave.dispatchRecords[0].taskId, 'task-t1')
+})
+
+// M5: a real, low-capacity signal must pause and checkpoint BEFORE any
+// Orca CLI dispatch work happens -- never start a real worker that
+// capacity can't finish. Seeds a genuinely high codex usage into the
+// SAME shared stub CLI this file's own module-level env vars already
+// point at, scoped to this one test only.
+test('a real low-capacity signal pauses and checkpoints the run instead of dispatching', async () => {
+  const prior = process.env.STUB_ORCA_RATE_LIMITS
+  process.env.STUB_ORCA_RATE_LIMITS = JSON.stringify({
+    claude: null,
+    codex: { weekly: { usedPercent: 97 }, status: 'ok' }
+  })
+  try {
+    const store = makeFakeStore(baseRun())
+    let taskCreateCalls = 0
+    const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+      orchestration: okOrchestration({
+        createOrchestrationTask: async (args) => {
+          taskCreateCalls += 1
+          return okOrchestration().createOrchestrationTask(args)
+        }
+      }),
+      store
+    })
+    assert.equal(result.action, 'DISPATCH_SKIPPED_LOW_CAPACITY')
+    assert.match(result.reason, /codex usage at 97%/)
+    assert.equal(taskCreateCalls, 0, 'no real Orca task may be created when capacity says pause')
+    const run = store.readRun(PROJECT_ID)
+    assert.equal(run.state, 'PAUSED')
+    assert.equal(run.inFlightWave, null, 'nothing was ever dispatched')
+    assert.equal(run.checkpoints.at(-1).phase, 'CAPACITY_PAUSED')
+    assert.equal(run.tickLock, null, 'lock released after the pause commit')
+  } finally {
+    if (prior === undefined) {
+      delete process.env.STUB_ORCA_RATE_LIMITS
+    } else {
+      process.env.STUB_ORCA_RATE_LIMITS = prior
+    }
+  }
+})
+
+test('a healthy real capacity signal proceeds to dispatch normally', async () => {
+  const prior = process.env.STUB_ORCA_RATE_LIMITS
+  process.env.STUB_ORCA_RATE_LIMITS = JSON.stringify({
+    claude: null,
+    codex: { weekly: { usedPercent: 10 }, status: 'ok' }
+  })
+  try {
+    const store = makeFakeStore(baseRun())
+    const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+      orchestration: okOrchestration(),
+      store
+    })
+    assert.equal(result.action, 'WAVE_DISPATCHED')
+  } finally {
+    if (prior === undefined) {
+      delete process.env.STUB_ORCA_RATE_LIMITS
+    } else {
+      process.env.STUB_ORCA_RATE_LIMITS = prior
+    }
+  }
 })
 
 test("a stale dispatch-vs-settle routing decision is rejected before touching orchestration (a real bug found live: the cross-process lock's async acquire reopened a window where two near-simultaneous ticks could each create a genuine duplicate Orca task)", async () => {

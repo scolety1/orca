@@ -6,8 +6,16 @@
 // live in keep-going-dispatch-loop-concurrency.test.mjs.
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import path from 'node:path'
 import { createOvernightRun } from '../domain/keep-going.mjs'
 import { tickKeepGoingRun } from '../server/keep-going-dispatch-loop.mjs'
+
+// M5: see keep-going-dispatch-loop.test.mjs's own identical comment --
+// dispatchStep's new real capacity check shares orca-orchestration-
+// bridge.mjs's TSF_ORCA_CLI_COMMAND resolution; pointing it at the stub
+// CLI keeps every test here fast and hermetic.
+process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
+process.env.STUB_ORCA_MODE = 'success'
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 const PROJECT_ID = 'fixture:proj'

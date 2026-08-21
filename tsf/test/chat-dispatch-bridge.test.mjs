@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import path from 'node:path'
 import { planAndDispatchFromChat } from '../server/chat-dispatch-bridge.mjs'
 import { createOvernightRun, pauseRun } from '../domain/keep-going.mjs'
+
+// M5: see keep-going-dispatch-loop.test.mjs's own identical comment --
+// tickKeepGoingRun's new real capacity check shares orca-orchestration-
+// bridge.mjs's TSF_ORCA_CLI_COMMAND resolution; pointing it at the stub
+// CLI keeps every test here fast and hermetic. This file's own tickDeps
+// never overrides deps.capacity, so it would otherwise hit the real
+// binary.
+process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
+process.env.STUB_ORCA_MODE = 'success'
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 const PROJECT = { id: 'fixture:proj', displayName: 'Fixture Project' }

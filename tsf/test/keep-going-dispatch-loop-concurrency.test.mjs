@@ -21,6 +21,15 @@ const STATE_FILE = path.join(
   `operator-state.test-keep-going-concurrency-${process.pid}.json`
 )
 process.env.TSF_UI_STATE_FILE = STATE_FILE
+// M5: see keep-going-dispatch-loop.test.mjs's own identical comment --
+// dispatchStep's new real capacity check shares orca-orchestration-
+// bridge.mjs's TSF_ORCA_CLI_COMMAND resolution; pointing it at the stub
+// CLI keeps every test here fast and hermetic (and, since the capacity
+// check runs strictly after claim() per dispatchStep's own ordering, adds
+// no new timing hazard to the real claim/commit atomicity this file
+// tests).
+process.env.TSF_ORCA_CLI_COMMAND = path.join(HERE, 'fixtures', 'stub-orca-cli.mjs')
+process.env.STUB_ORCA_MODE = 'success'
 
 const { createOvernightRun, claimTick, releaseTick, dispatchWave, pauseRun, planWave } =
   await import('../domain/keep-going.mjs')
