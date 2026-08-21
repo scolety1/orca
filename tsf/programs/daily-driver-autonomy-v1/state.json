@@ -1796,7 +1796,7 @@
     {
       "id": "M8",
       "name": "Project Estimator + Delivery Planner",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "note": "Approved by Tim 2026-08-19T21:48 as an addition beyond the original seven upgrades (originalGoal.sevenUpgrades remains the immutable core list this program executes sequentially unless Tim changes it). Tim sent a full, completed research handoff and implementation spec mid-M7-session (2026-08-20/21) -- recorded verbatim in docs/tsf/M8_PROJECT_ESTIMATOR_DELIVERY_PLANNER_HANDOFF_V1.md so it survives context compaction; do NOT re-run broad external research for M8, only targeted verification of specific API/license/version details when actually needed. Tim's own explicit sequencing: 'finish M7 -> verify -> immutable candidate -> locally adopt if all existing program conditions pass -> immediately make M8 CURRENT -> implement M8 using this research/spec' -- do not begin M8 implementation before M7 is genuinely ADOPTED, and do not stop after M7 adoption merely to ask whether M8 should begin. Once M7.status becomes ADOPTED, immediately flip this entry's status to CURRENT and begin M8 wave 1 per the handoff doc's own proposed wave sequence (still applying research-first-before-each-wave discipline, since some 'waves' may turn out partially satisfied by existing M1-M7 code, as happened repeatedly in M4-M7).",
       "sourceHarvestPlan": {
         "instruction": "Before any M8 implementation, perform a bounded READ-ONLY source harvest from the sources below, using the same harvesting policy already established for Zenith/Command Center/Smithers/OpenWeft: harvest concepts, not competing runtimes. No code is vendored; ideas are adapted into native TSF code.",
@@ -1858,8 +1858,8 @@
         ],
         "hardRule": "Never present fake precision. Prefer ranges, probabilities, and explicit assumptions over single-point numbers."
       },
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "edcbe23c1263f620616cccedeaf972ee3c1d9a1c",
+      "adoptedCommit": "edcbe23c1263f620616cccedeaf972ee3c1d9a1c",
       "gaps": [
         "Wave 1 (research-first scoping) done -- see docs/tsf/M8_PROJECT_ESTIMATOR_DELIVERY_PLANNER_V1.md. Tim's own message already completed the external source-harvest research (recorded verbatim in docs/tsf/M8_PROJECT_ESTIMATOR_DELIVERY_PLANNER_HANDOFF_V1.md) -- this wave was TSF's-own-code research only. Confirmed no existing estimation/scheduling/WBS engine anywhere (the original 'everything -- not started' stub was accurate). Found 3 real, reusable existing building blocks: routing.mjs's TSF_EXECUTION_ROLES/effortClass is the exact 'provider role hint' vocabulary a WBS task should reference; capacity-policy.mjs (M5) is the real provider-capacity/cost policy M8 must reuse, not reimplement; keep-going.mjs's run/wave history (M2/M4) is the real settled-run evidence M8's calibration wave needs, no new actuals storage required. Wave 2 next: contracts + a pure deterministic estimation engine (WBS normalization, three-point estimates, seeded Monte Carlo, percentiles, deadline probability), deliberately bounded to exclude planner integration, provider forecasting, scheduling, UI, and calibration (all later waves)."
       ],
@@ -1994,12 +1994,26 @@
           "status": "COMMITTED",
           "note": "Next: a focused confirmation review of just wave 12 (matching M7's own precedent for a load-bearing post-RED fix) before packaging M8 as an immutable candidate and adopting into tsf/main."
         }
-      ]
+      ],
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M8_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T07:19:39.000Z",
+        "adoptedCommit": "edcbe23c1263f620616cccedeaf972ee3c1d9a1c",
+        "previousTsfMainHead": "9314f8f02d5f8198426917d28cbd87f82ac02925",
+        "mergeMethod": "git merge --ff-only (local, C:TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "Wave 4 verifier -- CLEAN on waves 1-3 (reproducibility, triangular-sampler empirical accuracy, adversarial mutations). Wave 7 verifier -- CLEAN on waves 4-6 with 1 real LOW finding (conflictsWith had no existence validation), fixed same wave, plus an independent hand-worked adversarial re-derivation of the scheduling logic and a mathematical convergence proof. Final holistic milestone verifier (waves 1-11) -- RED: code quality solid, but 2 of Tim's own named acceptance-bar items (12: existing project commitments can create deadline/capacity conflicts; 13: client quote remains separate from internal cost forecast) were entirely unaddressed. That same reviewer also self-caught and fixed 2 real bugs on its own initiative (a stale-opState race in the estimate HTTP routes; applyCalibrationBias built in wave 10 but never wired into a live estimate) before handing back RED. Wave 12 closed both named gaps for real (new competing-commitments.mjs and client-estimate.mjs, both with mutation-verified isolation/honesty guarantees). A focused confirmation reviewer then re-derived items 12 and 13 from source independently (fresh hand-derived adversarial Work Set scenario matched the real function's output exactly; a fresh mutation -- spreading the internal estimate into the client view -- was caught by the existing leak-guard test; a custom-calendarOptions round-trip was exercised over real HTTP) and returned CONFIRMED with no further fixes needed.",
+        "postAdoptionTestRun": "477 tests, 476 pass / 1 gracefully skipped (an M6 real-proof test correctly detects this tsf/main worktree lacks esbuild and skips with a clear reason) / 0 fail -- re-run directly from the adopted tsf/main tree (C:TSF_ORCA)",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging: git status clean, HEAD at 9314f8f02d5f8198426917d28cbd87f82ac02925 (the exact M7 adoption commit) -- no unexpected dirty/staged state, no unrelated finding.",
+        "requiredRealProofRecorded": "All 10 of Tim's named adversarial scenarios (M8 handoff item 7) are accounted for: small clean repo and idea-only estimate (wave 9's own tests); larger/uncertain repo, provider near reset, blocked/dirty project, missing provider pricing, scope change, no historical calibration data (wave 11's estimate-adversarial.test.mjs, each end to end through the real HTTP route); existing competing Work Set commitments (wave 12, disclosure-only per its own explicitly-judged scope). Plus the 3 originally-named required-proof tests from waves 5 and 8 (never-fabricate-a-cost, real calendar dates respecting dependency order, impossible-deadline honestly UNREALISTIC).",
+        "knownLimitations": "The 6 named scheduling modes (FASTEST_SAFE/BALANCED/DEADLINE_FIRST/COST_MINIMIZED/SUBSCRIPTION_UTILIZATION/HIGH_ASSURANCE) and true multi-project schedule optimization remain deliberately deferred to M12's Fleet Optimizer (wave 8's own disclosed deferral; wave 12's competing-commitments check is disclosure-only, not scheduling). Claude/Codex provider usage and human-review hours are honestly reported null in estimate-vs-actual calibration -- keep-going.mjs tracks neither today, and no new instrumentation was added to the already-adopted M2 milestone to get them. Client-facing estimate's revisionAllowance/contingency/exclusions/pricing are honestly null by default -- Tim configures these per real engagement; TSF has no basis to invent them (pricing policy support exists as an injectable function, unused by default).",
+        "rollback": "To roll back: git -C C:TSF_ORCA reset --hard 9314f8f02d5f8198426917d28cbd87f82ac02925 (previous tsf/main HEAD, recorded above)."
+      }
     },
     {
       "id": "M9",
       "name": "Evaluation & Regression Lab",
-      "status": "AUTHORIZED_PENDING_M8_ADOPTION",
+      "status": "CURRENT",
       "note": "Tim sent a full M9-M13 roadmap extension mid-M8-session (received while M8 wave 5 was in progress) -- recorded verbatim in docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md so it survives context compaction. Explicit instruction: do NOT interrupt/restart/broaden/redo M8 because this message exists -- M8 finishes normally under the existing charter first. Once M8.status becomes ADOPTED, flip this entry's status to CURRENT and begin M9 wave 1 (research-first, per docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md's own bounded Promptfoo license/API verification instruction -- not a broad research phase) per the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M8.",
       "candidateCommit": null,
       "adoptedCommit": null,
@@ -2042,7 +2056,7 @@
       "gaps": ["everything -- not started, pending M12 adoption"]
     }
   ],
-  "currentMilestone": "M8",
+  "currentMilestone": "M9",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
