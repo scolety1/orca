@@ -2078,6 +2078,16 @@
           "commit": "84e0abfce2d4dbd50cf88e3cc97ddb5c30358e7d",
           "status": "COMMITTED",
           "note": "All 7 required eval categories (planner/worker/verifier/routing/memory/autonomy/estimator) now have a real, self-contained pack. Next: wave 6 -- the model-upgrade-gate wiring (CURRENT vs CANDIDATE routing-mapping comparison using these packs), persistence + HTTP routes for eval runs (never rewriting a past run), and a restrained UI surface. Then a final holistic review before packaging M9 as an immutable candidate and adopting into tsf/main."
+        },
+        {
+          "wave": "review-4-5",
+          "summary": "Independent review of M9 waves 4-5 (worker/verifier/routing/memory/autonomy/estimator eval packs). Verdict: CLEAN -- no bugs found, no commits made. Constructed 2 of its own fresh adversarial variants (a routing candidate mapping pointing at a nonexistent profile -- confirmed resolveRole throws honestly; a chained memory supersession v1->v2->v3 with a re-supersede-of-v1 attempt -- confirmed it throws and history is preserved). Independently re-verified: isWithinScope has no sibling-directory prefix bug; the routing config-override spread is genuinely deep enough; the autonomy budget-override is a real merge (createOvernightRun's own {...DEFAULT_BUDGET, ...budget}), not an overwrite, so no cross-case contamination; the zero-uncertainty seed-insensitivity claim reproduces with independently-chosen seeds; fakeRunFor supplies every field compareStateToGoal actually reads.\n\nOne non-blocking nit, not fixed: routing-eval-runner.mjs's non-independence branch uses a bare catch that would mislabel ANY resolveRole failure as threwOnUnknownRole:true, overpromising specificity -- currently harmless (the only real case exercising it is the genuine unknown-role path) but worth a more precise field/distinction if the pack grows. Acceptance cross-check: items 1,2,3,4,5,7,10 satisfied by waves 3-5; items 6 (cost/capacity honesty) and 8 (historical inspectability) correctly deferred to wave 6+, nothing about current design looks hard to satisfy later.",
+          "testsAdded": 0,
+          "testsPassing": "527 full tsf suite GREEN (unchanged, no fixes needed)",
+          "verifier": "INDEPENDENT (forked review agent)",
+          "commit": null,
+          "status": "CLEAN",
+          "note": "Next: wave 6 -- model-upgrade-gate wiring, persistence + HTTP routes, UI surface."
         }
       ]
     },
