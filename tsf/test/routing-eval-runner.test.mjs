@@ -25,6 +25,21 @@ test('runRoutingEvalCase resolves PLANNER_DEEP to the real anthropic provider', 
   assert.equal(result.providerId, 'anthropic')
 })
 
+test('threwOnUnknownRole is only true for a genuinely unknown role, not any resolveRole failure (a real review finding)', () => {
+  const missingProfileMappings = {
+    ...providerRoles,
+    roles: {
+      ...providerRoles.roles,
+      WORKER_CHEAP: { ...providerRoles.roles.WORKER_CHEAP, preferredProfile: 'NONEXISTENT_PROFILE' }
+    }
+  }
+  const result = runRoutingEvalCase(
+    { input: { role: 'WORKER_CHEAP' } },
+    { mappings: missingProfileMappings }
+  )
+  assert.equal(result.threwOnUnknownRole, false)
+})
+
 test('REQUIRED PROOF: a real candidate config regression -- VERIFIER_INDEPENDENT no longer actually differing from WORKER_BALANCED -- is detected end to end and blocks promotion', () => {
   const pack = normalizeEvalPack(ROUTING_BASICS_PACK)
   const baselineRun = runEvalPack(

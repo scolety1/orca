@@ -26,8 +26,14 @@ export function runRoutingEvalCase(
   try {
     const resolution = resolveRole({ role: input.role, mappings, profiles })
     return { providerId: resolution.requested.providerId, threwOnUnknownRole: false }
-  } catch {
-    return { threwOnUnknownRole: true }
+  } catch (error) {
+    // Distinguishes the real "unknown stable execution role" failure
+    // (resolveRole's own message, see routing.mjs) from any other
+    // resolveRole error (e.g. a role pointing at a missing launch
+    // profile) -- a review finding: a bare catch here would mislabel
+    // every resolveRole failure as threwOnUnknownRole, overpromising
+    // specificity this field's name claims.
+    return { threwOnUnknownRole: /unknown stable execution role/.test(error.message) }
   }
 }
 
