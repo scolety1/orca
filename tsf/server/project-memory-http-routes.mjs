@@ -9,6 +9,16 @@
 // superseding a memory record isn't racing an autonomous dispatch loop
 // the way a Keep Going tick is, so the lighter-weight pattern already
 // established for onboarding commit/refresh applies here too.
+//
+// authorizedBy/reason on the supersede route are trust-on-request, like
+// every other mutating route on this server: there is no authentication
+// anywhere and the server only ever binds to 127.0.0.1 (matching every
+// sibling route's own trust model) -- this is the first place a
+// domain-layer "human authorization" gate (project-memory.mjs's own
+// TSF_MEMORY_EXPLICIT_IMMUTABLE check, mirroring keep-going.mjs's
+// replaceGoal) is reachable directly from an HTTP body, so it's called
+// out explicitly rather than left for a future reader to assume is a
+// real identity check.
 import {
   emptyProjectMemory,
   addMemoryRecord,
@@ -17,21 +27,34 @@ import {
   MEMORY_CLASSES
 } from '../domain/project-memory.mjs'
 
+const MAX_LISTED_RECORDS = 500
+
 export async function handleProjectMemoryRoute(
   parts,
   req,
   res,
   url,
-  { opState },
+  { map, opState },
   { json, notFound, readBody, saveState }
 ) {
   if (parts[1] !== 'projects' || parts[3] !== 'memory') {
     return false
   }
   const projectId = parts[2]
+  // Matches keep-going-http-routes.mjs's/onboarding-http-routes.mjs's own
+  // precedent: reject an unknown project id honestly rather than silently
+  // creating/reading a memory bucket for a project that doesn't exist.
+  if (!map.get(projectId)) {
+    notFound(res, `unknown project: ${projectId}`)
+    return true
+  }
 
   // GET /api/projects/:id/memory[?class=FACT|PREFERENCE|EXPERIENCE] --
   // active (non-superseded) records only, optionally filtered by class.
+  // Bounded the same way onboarding's own browse endpoint is (.slice),
+  // since this is an operator/UI listing, not the LLM-facing capsule path
+  // (that bound is retrieveExperiencesForCapsule's own .slice(-limit),
+  // already enforced separately) -- but still shouldn't grow unbounded.
   if (parts.length === 4 && req.method === 'GET') {
     const memory = opState.projectMemory?.[projectId] ?? emptyProjectMemory()
     const filterClass = url.searchParams.get('class')
@@ -39,9 +62,11 @@ export async function handleProjectMemoryRoute(
       json(res, 400, { ok: false, error: `class must be one of ${MEMORY_CLASSES.join(', ')}` })
       return true
     }
-    const records = filterClass
-      ? activeRecordsOfClass(memory, filterClass)
-      : MEMORY_CLASSES.flatMap((c) => activeRecordsOfClass(memory, c))
+    const records = (
+      filterClass
+        ? activeRecordsOfClass(memory, filterClass)
+        : MEMORY_CLASSES.flatMap((c) => activeRecordsOfClass(memory, c))
+    ).slice(-MAX_LISTED_RECORDS)
     json(res, 200, { ok: true, projectId, records })
     return true
   }

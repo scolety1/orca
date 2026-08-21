@@ -568,7 +568,7 @@ export function createRequestHandler() {
           req,
           res,
           url,
-          { opState },
+          { map, opState },
           { json, notFound, readBody, saveState }
         )
       ) {
