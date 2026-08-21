@@ -33,6 +33,11 @@ export function createStaticUiHandler(distDir) {
     if (!existsSync(indexPath)) {
       return false
     }
+    // A req.url starting with // (e.g. "//sentinel.txt") is parsed by the
+    // WHATWG URL constructor as protocol-relative -- "sentinel.txt" becomes
+    // the (ignored, since base already fixes the host) host, and pathname
+    // is just "/". This harmlessly serves the SPA root, not a traversal or
+    // disclosure, but is worth noting so a future reader isn't surprised.
     const url = new URL(req.url, 'http://localhost')
     let requestedPath
     try {

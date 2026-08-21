@@ -1591,6 +1591,16 @@
           "commit": null,
           "status": "IN_PROGRESS",
           "note": "Next: the real spawn/restart/shutdown lifecycle in tsf/main.mjs's activate()/deactivate() (per wave 3's finding, this is genuinely new logic -- no existing precedent to copy), then the registered 'open TSF UI' command wired into tsf/orca-plugin.json's contributes.commands, matching the architecture decided in wave 2."
+        },
+        {
+          "wave": 5,
+          "summary": "Independent review of M6 wave 4 (commit 859b5bac7) reported back CLEAN -- no findings requiring a fix. Independently re-derived the path-traversal safety with 12 fresh adversarial payloads the parent hadn't tried (double-encoding, backslash variants, null-byte tricks, protocol-relative //, nested traversal) against a real running server with a real sentinel file outside distDir -- none leaked. Independently verified the Windows-vs-POSIX path.join claim by directly running path.win32.join and path.posix.join with the same payload shape -- confirmed accurate, not just plausible-sounding: Windows produces a drive-relative miss, POSIX produces a real escape to the exact sentinel location, so the explicit guard is genuinely load-bearing on POSIX. Confirmed /api/* behavior byte-for-byte unchanged via diff (createRequestHandler itself doesn't appear in the wave-4 diff at all). Confirmed no MIME/info-disclosure risk (unknown extensions -> octet-stream, no filesystem paths ever appear in a 404, directories can never be streamed). Confirmed 334/334 suite, clean git status, clean lint, clean max-lines ratchet, zero Orca core delta. Confirmed state.json's wave-4 entry honestly matches the real commit. One benign, non-security note: a request starting with // is parsed by the WHATWG URL constructor as protocol-relative (host swap), harmlessly serving the SPA root rather than anything resembling a leak -- added a one-line code comment documenting this for future readers, per the review's suggestion.",
+          "testsAdded": 0,
+          "testsPassing": "334/334 full tsf suite GREEN (unaffected -- comment-only change)",
+          "verifier": "INDEPENDENT (forked review agent; 12 fresh adversarial path-traversal payloads against a real server, direct path.win32.join/path.posix.join verification, full diff/quality-gate/core-delta re-check)",
+          "commit": null,
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "Next: wave 6 -- the real spawn/restart/shutdown lifecycle in tsf/main.mjs's activate()/deactivate() (genuinely new logic per wave 3's finding), then wave 7 -- the registered 'open TSF UI' command wired into tsf/orca-plugin.json's contributes.commands."
         }
       ]
     },
