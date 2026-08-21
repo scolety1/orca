@@ -122,3 +122,50 @@ test('the real, live planner pack (which invokes the real generateWbs stub call)
     assert.equal(res.body.run.passRate, 1)
   })
 })
+
+test("REQUIRED PROOF: a concurrent run landing while regression-check's own real (slow) pack run is still in flight is reflected as the comparison baseline, not the stale pre-request one", async () => {
+  await withServer(async (base) => {
+    const first = await post(base, '/api/eval/planner-basics/run')
+    assert.equal(first.status, 200)
+
+    // Forces entry.run's own real generateWbs call to take several real
+    // seconds (a genuine subprocess sleep, not a microtask tick) --
+    // giving a wide, reliable window for a concurrent write to land
+    // during regression-check's own await, exactly like a second
+    // request's real run completing in between.
+    const priorMode = process.env.STUB_MODE
+    process.env.STUB_MODE = 'timeout'
+    try {
+      const checkPromise = post(base, '/api/eval/planner-basics/regression-check')
+
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const { loadState, saveState } = await import('../server/data-store.mjs')
+      const injectedRun = {
+        schemaVersion: 'TSF_EVAL_RUN_RESULT_V1',
+        packId: 'planner-basics',
+        packVersion: 1,
+        category: 'PLANNER',
+        runAt: 'RACE_INJECTED_BASELINE',
+        totalCases: 1,
+        passedCases: 1,
+        failedCases: 0,
+        passRate: 1,
+        results: [{ caseId: 'race-case', passed: true, errored: false, assertionResults: [] }]
+      }
+      const state = loadState()
+      saveState({
+        ...state,
+        evalRuns: {
+          ...state.evalRuns,
+          'planner-basics': [...(state.evalRuns['planner-basics'] ?? []), injectedRun]
+        }
+      })
+
+      const checked = await checkPromise
+      assert.equal(checked.status, 200)
+      assert.equal(checked.body.comparison.baselineRunAt, 'RACE_INJECTED_BASELINE')
+    } finally {
+      process.env.STUB_MODE = priorMode
+    }
+  })
+})

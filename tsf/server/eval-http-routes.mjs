@@ -65,20 +65,34 @@ export async function handleEvalRoute(
   // baseline: honestly reports NO_BASELINE_YET if no prior run exists.
   if (parts.length === 4 && parts[3] === 'regression-check' && req.method === 'POST') {
     const history = opState.evalRuns?.[packId] ?? []
-    const baselineRun = history.at(-1)
-    if (!baselineRun) {
+    if (!history.at(-1)) {
       json(res, 422, { ok: false, error: 'NO_BASELINE_YET' })
       return true
     }
     const actualOutputs = await entry.run(entry.pack)
     const candidateRun = runEvalPack(entry.pack, actualOutputs)
+    // Re-read fresh right before comparing AND saving -- entry.run can
+    // perform a real, slow await (e.g. planner-basics spawns a real
+    // provider CLI, up to 180s), during which a concurrent request could
+    // append a newer run to this same pack's history. Comparing against
+    // the request-start baseline captured above would silently compare
+    // against a stale baseline even though the save itself is already
+    // safe (a real review finding: the save-side race was already fixed
+    // here, but the read-side one wasn't).
+    // Re-read fresh right before comparing AND saving -- entry.run can
+    // perform a real, slow await (e.g. planner-basics spawns a real
+    // provider CLI, up to 180s), during which a concurrent request could
+    // append a newer run to this same pack's history. Comparing against
+    // the request-start baseline would silently compare against a stale
+    // baseline even though the save itself is already safe (a real
+    // review finding: the save-side race was already fixed here, but
+    // the read-side one wasn't).
     const freshState = loadState()
+    const freshHistory = freshState.evalRuns?.[packId] ?? []
+    const baselineRun = freshHistory.at(-1)
     saveState({
       ...freshState,
-      evalRuns: {
-        ...freshState.evalRuns,
-        [packId]: [...(freshState.evalRuns?.[packId] ?? []), candidateRun]
-      }
+      evalRuns: { ...freshState.evalRuns, [packId]: [...freshHistory, candidateRun] }
     })
     json(res, 200, { ok: true, packId, comparison: compareEvalRuns(baselineRun, candidateRun) })
     return true
