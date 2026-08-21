@@ -79,14 +79,6 @@ export async function handleEvalRoute(
     // against a stale baseline even though the save itself is already
     // safe (a real review finding: the save-side race was already fixed
     // here, but the read-side one wasn't).
-    // Re-read fresh right before comparing AND saving -- entry.run can
-    // perform a real, slow await (e.g. planner-basics spawns a real
-    // provider CLI, up to 180s), during which a concurrent request could
-    // append a newer run to this same pack's history. Comparing against
-    // the request-start baseline would silently compare against a stale
-    // baseline even though the save itself is already safe (a real
-    // review finding: the save-side race was already fixed here, but
-    // the read-side one wasn't).
     const freshState = loadState()
     const freshHistory = freshState.evalRuns?.[packId] ?? []
     const baselineRun = freshHistory.at(-1)
