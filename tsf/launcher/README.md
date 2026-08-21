@@ -53,20 +53,26 @@ checkout.
    inside the already-trusted `powershell.exe` process instead sidesteps that entirely,
    since no second executable image is ever loaded.)
 3. In the background, it fires `orca open` (non-blocking, retried a bounded number of
-   times) to make sure Orca itself is coming up.
+   times) to make sure Orca itself is coming up, and on the same retry cadence, fires
+   `Invoke-TsfActivationNudge.ps1` -- Orca activates a dev plugin's worker process
+   *lazily*, only the first time one of its commands is invoked or one of its
+   subscribed events fires (confirmed by reading Orca's own plugin-service source),
+   and none of TSF's subscribed events happen automatically at a bare cold start. This
+   script invokes TSF's own already-registered `tsf-status` command directly against
+   the running Orca instance, over the same local RPC mechanism the `orca` CLI itself
+   uses (`%APPDATA%\orca\orca-runtime.json` + a named pipe) -- the real, supported fix,
+   not just a longer wait. See `Invoke-TsfActivationNudge.ps1`'s own header and
+   `docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md` for the full evidence trail.
 4. The window navigates straight to `first-run-setup.html`, which owns all of the
-   actual waiting from here: an immediate neutral "Starting…" state, a reassurance
-   after 90 seconds that a multi-minute wait can be entirely normal (Orca's own
-   plugin activation was observed taking ~4.5 minutes on real hardware with nothing
-   wrong -- there is no supported lever, for this launcher or for Tim, to make that
-   faster), a registration walkthrough revealed only past 5 minutes and framed as
-   something to double-check rather than a diagnosis, and an honest "this is
-   genuinely unusual" note past 10 minutes -- polling indefinitely throughout and
-   never giving up, then auto-navigating the same window to the real UI the instant
-   the backend answers, however long that takes. Once registered, every later launch
-   still goes straight to the real UI within about a second on a machine where Orca
-   and the plugin are already warm; the multi-minute case is specifically the
-   activation-after-enabling / post-restart path, not the everyday one.
+   actual waiting from here regardless: an immediate neutral "Starting…" state, a
+   reassurance after 90 seconds that a longer wait can still be normal, a registration
+   walkthrough revealed only past 5 minutes and framed as something to double-check
+   rather than a diagnosis, and an honest "this is genuinely unusual" note past 10
+   minutes -- polling indefinitely throughout and never giving up, then auto-navigating
+   the same window to the real UI the instant the backend answers. With the activation
+   nudge above, this is normally seconds, not minutes; the escalating messaging exists
+   as a safety net for whatever this launcher has no control over, not the expected
+   everyday path.
 5. Any genuine failure anywhere in this sequence shows a real, visible error dialog --
    there is no silent-death path left.
 

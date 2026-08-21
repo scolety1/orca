@@ -1,6 +1,78 @@
 # M14 — TSF Desktop Launch + V1 Release-Candidate Remediation
 
-## Third hands-on-test remediation: the real plugin-activation delay (read first)
+## Fourth hands-on-test remediation: the real root cause and the real fix (read first)
+
+Tim's fourth hands-on test again showed the backend genuinely absent (`Test-NetConnection
+127.0.0.1 -Port 4610` failed twice, real evidence, no guessing) with the plugin visibly
+`Dev · Enabled` at the correct path and Orca fully open -- and, mid-diagnosis, reported
+that TSF *did* eventually come up on its own, noting the timing correlated with using
+Claude inside Orca. That correlation is the key that unlocks the actual mechanism.
+
+**Root cause, confirmed by reading Orca's own plugin-activation source (read-only, no
+core changes) and by a second live process-timestamp specimen:** Orca activates a dev
+plugin's worker process **lazily** -- `plugin-service.ts`'s own reconciliation
+(`performRefresh` → `workerController.reconcile`) never starts a worker eagerly; it only
+tears down workers whose specs disappeared and registers command handlers that invoke
+`ensure()` on demand. The only two call sites that ever call `ensure()` are
+`invokeCommand()` (a command is actually invoked) and `deliverPluginEvent()` (one of the
+plugin's *subscribed* events is delivered) -- confirmed directly in
+`plugin-worker-controller.ts` and `plugin-event-delivery.ts`. TSF's manifest subscribes
+only to `worktree.created`, `worktree.removed`, and `agent.status.changed`, and the last
+of those is wired to Orca's real agent-hook pipeline (`agentHookServer
+.subscribeEnrichedStatus`, `src/main/index.ts`) -- it only fires when a real coding-agent
+session reports status. **Using Claude inside Orca is exactly what fired it.** A second
+live specimen confirmed this isn't a fixed delay either: this time every Orca subprocess
+started within 5 seconds of the main process, but the TSF plugin-host-entry.js process
+didn't appear for **24 minutes 13 seconds** -- entirely dependent on when Tim happened to
+do something that incidentally triggered one of TSF's three subscribed events. This is a
+deliberate, sensible Orca design (don't fork a plugin's process until it's actually
+needed) -- not a bug, and not something to change in Orca core.
+
+**The real fix.** Since no CLI/RPC surface exists for plugin management (`orca --help`'s
+full command tree and `orca status --json`'s full capability list both confirmed to have
+zero such entries), and since fabricating a qualifying event safely was not viable
+(the only lightweight-looking option, `orca worktree create`, is a real, heavyweight,
+highly visible operation -- creating an actual git worktree as a side effect purely to
+wake up a plugin would be a far worse defect than the one being fixed), the launcher now
+invokes TSF's own **already-registered, read-only `tsf-status` command** itself, directly
+against Orca's real, running instance, using **the exact same local-RPC mechanism every
+`orca` CLI command already uses internally**: a JSON-over-named-pipe protocol, connecting
+to the pipe named in `%APPDATA%\orca\orca-runtime.json` and authenticating with the token
+in that same file (both read-only, both exactly what `src/cli/runtime/transport.ts` and
+`metadata.ts` already do) and calling the real `plugins.invokeCommand` RPC method
+(`src/main/runtime/rpc/methods/plugins.ts`) with `{pluginKey:
+"thousand-sunny-fleet.foundation", commandId: "tsf-status"}`. This is not a new or
+unofficial channel -- it is the identical mechanism `orca status`/`orca open` use, just
+automated here instead of typed by a human, and it triggers the *exact same* `ensure()`
+activation path a real command-palette invocation would.
+
+Implemented as a new, separate script (`Invoke-TsfActivationNudge.ps1`) run via
+`Start-Process` on the same background retry timer as `orca open` -- a separate process,
+never inline on the UI thread, because `NamedPipeClientStream` has no reliable
+`ReadTimeout` API in classic PowerShell (confirmed empirically: it throws "Timeouts are
+not supported on this stream"), so the read side is bounded via `Task.Wait(ms)` on
+`ReadAsync` and the whole attempt via its own wall-clock deadline instead, keeping any
+slow/hung attempt confined to a disposable helper process rather than freezing the
+dedicated window.
+
+**Verified for real:** ran the raw RPC call directly against the actual live Orca
+instance (a safe, read-only `status.get` call first, then the real `plugins.list` query
+confirming the exact schema/field names, then the actual `tsf-status` invocation) and
+confirmed a genuine success response. Ran the finished script directly against the real
+running instance (succeeded). Ran the full integration through an isolated scratch
+mutex/window-title/data-dir copy of the launcher (to avoid touching Tim's own real
+session a third time) and confirmed the nudge fires automatically on launch and
+succeeds. Did not attempt to force a live "plugin not yet active" specimen by
+deactivating Tim's real, currently-working plugin -- the idempotent
+"start-if-not-running, else return existing handle" semantics of `ensure()` were
+confirmed by direct source reading instead (`manager.ensureActive(spec)`,
+`plugin-worker-controller.ts`), which is what makes repeatedly invoking `tsf-status` on
+every retry tick safe regardless of whether the worker is already running. Added
+regression tests confirming the nudge fires on every retry tick (not just `orca open`),
+targets the real plugin key/command/RPC method, and bounds its own runtime rather than
+relying on the unsupported `PipeStream.ReadTimeout`.
+
+---
 
 Tim's third hands-on test was a genuine partial pass: cold launch, immediate window,
 and Orca auto-starting all confirmed working. But with the plugin visibly registered
@@ -259,9 +331,11 @@ delta, zero new runtime dependencies):
      executable is ever launched (see the remediation section above for why: Smart App
      Control blocks a compiled host exe outright, but has nothing new to evaluate when
      the control is loaded into the already-trusted `powershell.exe` process itself).
-   - Fires `orca open` via `Start-Process` (non-blocking, retried up to 6 times 15s
-     apart in the background) to ensure Orca itself is up -- this never gates window
-     creation, and never blocks the UI thread.
+   - Fires `orca open` via `Start-Process` (non-blocking, retried up to 24 times 15s
+     apart in the background) to ensure Orca itself is up, and on the same retry tick
+     fires `Invoke-TsfActivationNudge.ps1` (also `Start-Process`, also non-blocking) to
+     activate TSF's own plugin worker -- neither ever gates window creation or blocks
+     the UI thread.
    - Navigates the window straight to `first-run-setup.html`, which owns *all*
      reachability waiting itself (via `fetch()` against the browser engine's own
      networking stack, not PowerShell's) and never gives up on its own: an immediate
@@ -277,6 +351,13 @@ delta, zero new runtime dependencies):
 2. **`tsf/launcher/first-run-setup.html`** — a small, self-contained static page (TSF's
    own dark/purple palette, no network calls) that is now the *first* thing shown on
    every launch, not just an error path -- see its own state machine above.
+2a. **`tsf/launcher/Invoke-TsfActivationNudge.ps1`** — the real fix for TSF's lazy
+   plugin-activation gap (see the remediation section above for the full mechanism):
+   connects to Orca's real runtime RPC over the named pipe named in
+   `%APPDATA%\orca\orca-runtime.json` and invokes TSF's own registered `tsf-status`
+   command, which activates the plugin's worker exactly as a real command-palette
+   invocation would. Always run as a separate process (never inline), with its own
+   bounded overall deadline.
 3. **`tsf/launcher/webview2/`** — the three WebView2 SDK files (`net462` managed +
    native loader) `Launch-TSF.ps1` loads, vendored rather than restored via NuGet at
    install time so the launcher needs no package-restore or build step on Tim's machine.

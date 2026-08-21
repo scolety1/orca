@@ -43,6 +43,25 @@
     never gives up on its own -- and (b) wrapping the entire launch sequence
     in a top-level handler that surfaces any real failure via a visible
     MessageBox rather than dying silently.
+  - v5 (this version's actual changes) fixes the real cause of "plugin shows
+    Enabled, backend never comes up": reading Orca's own plugin-service
+    source (read-only, no core changes -- src/main/plugins/plugin-service.ts,
+    plugin-worker-controller.ts, plugin-event-delivery.ts) confirmed Orca
+    activates a dev plugin's worker process lazily -- only the first time one
+    of its registered commands is invoked, or one of its subscribed events
+    (TSF: worktree.created/worktree.removed/agent.status.changed) is
+    delivered. None of those happen automatically at a bare cold start, so
+    without an external nudge TSF's backend only comes alive whenever Tim
+    happens to do something elsewhere in Orca that incidentally triggers one
+    -- confirmed via real process timestamps to take anywhere from ~4.5
+    minutes to 24+ minutes, not a fixed delay. Fixed by having this launcher
+    invoke TSF's own already-registered, read-only `tsf-status` command
+    itself, in the background, via Orca's own real runtime RPC (the exact
+    named-pipe protocol and `plugins.invokeCommand` method every `orca` CLI
+    command already uses -- see Invoke-TsfActivationNudge.ps1's own header
+    for the full mechanism and evidence) -- activating the worker exactly the
+    way a real command invocation would, just automated instead of requiring
+    Tim to use the command palette.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -140,18 +159,31 @@ try {
         Show-HonestError "Thousand Sunny Fleet hit an unexpected error: $($e.Exception.Message)"
     })
 
-    # Fire-and-forget, retried: ensures Orca is launching/running without
-    # ever blocking window creation on it. Idempotent per its own contract,
-    # so repeating this while Orca is already up is a harmless no-op.
+    # Fire-and-forget, retried, both non-blocking (never gates window
+    # creation or freezes the UI thread): (1) ensures Orca is launching/
+    # running -- idempotent per its own contract, harmless to repeat once
+    # Orca is already up; (2) nudges Orca into activating TSF's own plugin
+    # worker via Orca's real runtime RPC (see Invoke-TsfActivationNudge.ps1)
+    # -- the actual fix for the real, confirmed lazy-activation gap above.
+    # Run as a genuinely separate process each time (not inline here) since
+    # named-pipe I/O has no reliable timeout API in classic PowerShell.
     $orcaRetryTimer = New-Object System.Windows.Forms.Timer
     $orcaRetryTimer.Interval = $OrcaOpenRetryIntervalMs
     $script:orcaOpenAttempts = 0
+    $nudgeScriptPath = Join-Path $ScriptDir 'Invoke-TsfActivationNudge.ps1'
     $invokeOrcaOpen = {
         $script:orcaOpenAttempts++
         try {
             Start-Process -FilePath $orcaCmd.Source -ArgumentList @('open', '--json') -WindowStyle Hidden
         } catch {
             Write-Log "orca open attempt $($script:orcaOpenAttempts) failed to start: $_"
+        }
+        try {
+            Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$nudgeScriptPath`""
+            ) -WindowStyle Hidden
+        } catch {
+            Write-Log "activation-nudge attempt $($script:orcaOpenAttempts) failed to start: $_"
         }
         if ($script:orcaOpenAttempts -ge $OrcaOpenRetryCount) {
             $orcaRetryTimer.Stop()

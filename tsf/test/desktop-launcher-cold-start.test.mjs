@@ -27,6 +27,10 @@ import path from 'node:path'
 const TSF_ROOT = path.join(import.meta.dirname, '..')
 const launcherSource = readFileSync(path.join(TSF_ROOT, 'launcher', 'Launch-TSF.ps1'), 'utf8')
 const guideSource = readFileSync(path.join(TSF_ROOT, 'launcher', 'first-run-setup.html'), 'utf8')
+const nudgeSource = readFileSync(
+  path.join(TSF_ROOT, 'launcher', 'Invoke-TsfActivationNudge.ps1'),
+  'utf8'
+)
 
 test('Launch-TSF.ps1 never gates window creation behind a blocking network/process call', () => {
   // The exact shape that caused the bug: a synchronous `orca open` /
@@ -183,5 +187,99 @@ test("first-run-setup.html's setup-phase copy double-checks rather than diagnose
     guideSource,
     /double-check/i,
     'setup-phase copy should invite double-checking, not declare a diagnosis'
+  )
+})
+
+// M14 real live-state regression: Tim's own machine showed Orca Plugin
+// system ON, Thousand Sunny Fleet Foundation Dev * Enabled, the correct
+// C:\TSF_ORCA\tsf path, Orca itself fully running -- yet Test-NetConnection
+// against port 4610 genuinely failed twice, confirmed via the real,
+// currently-running Orca process tree: every one of Orca's own subprocesses
+// started within seconds of its main process, but the plugin-host-entry.js
+// process for TSF did not exist at all yet. Reading Orca's own plugin
+// activation source (plugin-service.ts's performRefresh/reconcile,
+// plugin-worker-controller.ts's reconcile, plugin-event-delivery.ts)
+// confirmed the real mechanism: Orca starts a dev plugin's worker lazily,
+// only on the first invokeCommand or subscribed-event delivery -- neither of
+// which happens automatically at a bare cold start. The fix: this launcher
+// invokes TSF's own already-registered tsf-status command itself, via
+// Orca's real runtime RPC (the same named-pipe protocol and
+// plugins.invokeCommand method every `orca` CLI command already uses).
+test('Launch-TSF.ps1 fires the activation nudge on every background retry tick, not just orca open', () => {
+  const tickHandlerStart = launcherSource.indexOf('$invokeOrcaOpen = {')
+  const tickHandlerEnd = launcherSource.indexOf(
+    '$orcaRetryTimer.Add_Tick($invokeOrcaOpen)',
+    tickHandlerStart
+  )
+  assert.ok(
+    tickHandlerStart > 0 && tickHandlerEnd > tickHandlerStart,
+    'expected to find the retry-tick handler body'
+  )
+  const tickHandlerBody = launcherSource.slice(tickHandlerStart, tickHandlerEnd)
+  assert.match(
+    tickHandlerBody,
+    /\$nudgeScriptPath/,
+    'the same tick handler that retries `orca open` must also retry the activation nudge -- ' +
+      'Orca being open is not sufficient on its own, per the real evidence above'
+  )
+  assert.match(
+    launcherSource,
+    /\$nudgeScriptPath\s*=.*Invoke-TsfActivationNudge\.ps1/,
+    '$nudgeScriptPath must actually resolve to Invoke-TsfActivationNudge.ps1'
+  )
+  assert.match(
+    tickHandlerBody,
+    /-WindowStyle\s+Hidden/,
+    'the nudge must be launched non-blocking (Start-Process), never inline, since named-pipe ' +
+      'I/O has no reliable timeout API in classic PowerShell and could otherwise freeze the window'
+  )
+})
+
+test('Invoke-TsfActivationNudge.ps1 targets the real plugin key/command and never throws unhandled', () => {
+  assert.match(
+    nudgeSource,
+    /\$TsfPluginKey\s*=\s*'thousand-sunny-fleet\.foundation'/,
+    'must target the real, qualified TSF plugin key'
+  )
+  assert.match(
+    nudgeSource,
+    /\$TsfCommandId\s*=\s*'tsf-status'/,
+    'must invoke a real, already-registered, read-only TSF command'
+  )
+  assert.match(
+    nudgeSource,
+    /method\s*=\s*'plugins\.invokeCommand'/,
+    "must call Orca's real plugins.invokeCommand RPC method"
+  )
+  // The whole script must be wrapped so a missing runtime, an unreachable
+  // pipe, or any other failure degrades to a logged no-op -- this runs
+  // unattended on every retry tick and must never surface an error dialog
+  // for what is explicitly a best-effort nudge, not a required step.
+  const tryIndex = nudgeSource.indexOf('try {')
+  const catchIndex = nudgeSource.lastIndexOf('} catch {')
+  assert.ok(
+    tryIndex !== -1 && catchIndex > tryIndex,
+    'expected a top-level try/catch wrapping the whole attempt'
+  )
+})
+
+test('Invoke-TsfActivationNudge.ps1 bounds its own runtime instead of relying on PipeStream timeouts', () => {
+  // PipeStream.ReadTimeout genuinely throws "Timeouts are not supported on
+  // this stream" for a NamedPipeClientStream opened this way (confirmed
+  // empirically) -- the read side must be bounded via Task.Wait(ms) on
+  // ReadAsync instead, not by trying to set ReadTimeout.
+  assert.ok(
+    !/\.ReadTimeout\s*=/.test(nudgeSource),
+    'must not rely on PipeStream.ReadTimeout -- it is not supported on a NamedPipeClientStream here'
+  )
+  assert.match(
+    nudgeSource,
+    /ReadAsync/,
+    'reads must go through the async API so they can be bounded with Task.Wait(ms)'
+  )
+  assert.match(
+    nudgeSource,
+    /\$OverallDeadline/,
+    'the whole attempt must have an overall wall-clock deadline, not just a per-call timeout'
   )
 })
