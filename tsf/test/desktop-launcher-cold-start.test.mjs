@@ -170,8 +170,12 @@ test('first-run-setup.html tolerates a multi-minute activation delay before ever
 test("first-run-setup.html's setup-phase copy double-checks rather than diagnoses", () => {
   // Must not claim the machine definitely hasn't registered the plugin --
   // it may well have, and just still be waiting on Orca's own activation.
+  // Matches both the current phrasing and the actual old buggy wording
+  // ("Orca hasn't been told where to find Thousand Sunny Fleet yet"), so a
+  // revert to that old copy genuinely fails this assertion rather than
+  // silently passing it.
   assert.ok(
-    !/hasn'?t registered/i.test(guideSource),
+    !/hasn'?t (?:been told|registered)/i.test(guideSource),
     'setup-phase copy must not assert the plugin is unregistered as a fact -- a ' +
       'correctly-registered machine can still be mid-activation for several minutes'
   )

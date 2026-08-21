@@ -2355,6 +2355,11 @@
             "tsf/launcher/first-run-setup.html",
             "tsf/test/desktop-launcher-cold-start.test.mjs"
           ]
+        },
+        {
+          "wave": 7,
+          "summary": "Independent review of wave 6 found no functional gap in the fix itself (live evidence, process-timestamp gap, and lack of any CLI reconciliation lever were all independently re-confirmed) but flagged one low-severity test-quality issue: the new regression test's negative assertion (!/hasn'?t registered/i) never actually matched the real old buggy copy's wording (\"hasn't been told where to find...\"), so it was a no-op guard -- the test still correctly distinguished old from new via its sibling positive assertion, so this was never a functional gap in the suite's outcome, but the assertion itself was ineffective. Fixed by broadening the pattern to hasn't (?:been told|registered), confirmed to now genuinely match the real old phrasing. Full suite re-run clean: 596/596, 595 pass, 1 fail (same pre-existing port-4610 collision, unrelated).",
+          "filesChanged": ["tsf/test/desktop-launcher-cold-start.test.mjs"]
         }
       ],
       "gaps": [
