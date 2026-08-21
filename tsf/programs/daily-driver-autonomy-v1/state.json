@@ -2132,7 +2132,19 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M9 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started, pending M9 adoption"]
+      "gaps": ["everything -- not started, pending M9 adoption"],
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Bounded research (Trivy verified Apache-2.0, actively maintained v0.71.x June 2026, Aqua Security -- no license/governance concern) plus full domain+adapter+Health-integration implementation in one wave, given tonight's explicit time-bounded overnight target (Tim's own message: reach M13 and stop/handoff, not endless feature expansion).\n\nNew tsf/domain/security-health.mjs (normalizeSecurityScanResult fail-closed validation with a strict allow-list finding shape -- secret values have nowhere to be passed through, acceptance item 4, mutation-confirmed; buildSecurityHealthSummary matching Tim's own exact example format, honestly UNKNOWN across every dimension when unscanned, never defaulted to clean, mutation-confirmed; securityRequiresHighAssuranceReview, a real callable query for the still-reserved HIGH_ASSURANCE mode). New tsf/adapters/security-scanner-adapter.mjs: env-var-configured (TSF_SECURITY_SCANNER_COMMAND), read-only, honest distinct failure classes, never silently a clean scan on failure. Self-caught and fixed a real bug: naive command space-splitting broke on a real process.execPath containing a space (\"C:Program Files\nodejs\node.exe\") -- fixed to mirror orca-capacity-bridge.mjs's own .mjs/.js-detection convention.\n\nNew stub-security-scanner.mjs fixture with deliberately PLANTED findings, proving real end-to-end detection without mutating the scanned repo. Additive-only wiring into health.mjs's assessRepositoryOnboardingHealth (existing callers unaffected, mutation-confirmed; a HIGH/CRITICAL finding surfaces as NEEDS_ATTENTION, never auto-escalated to BLOCKED, mutation-confirmed -- evidence, not automatic authority).\n\n18 tests total across 3 files. Full suite 562/562 GREEN, oxlint clean, max-lines ratchet 346 unchanged, zero Orca core delta.",
+          "testsAdded": 18,
+          "testsPassing": "562 full tsf suite GREEN",
+          "verifier": "SELF; core guarantees (additive-only, never-escalate-to-BLOCKED, secret-redaction) verified genuine via mutation testing",
+          "commit": "32a5e0e3588b844dce8d6afa8cec6767e8fc66aa",
+          "status": "COMMITTED",
+          "note": "All 11 M10 acceptance items addressed: (1) read-only by default; (2) scanner absence -> honest UNKNOWN; (3) provenance-bound; (4) secret values never passed through (allow-list, mutation-confirmed); (5) severity/source/version recorded; (6) scanner failure never produces a false clean; (7) High Assurance can consume findings; (8) planted-issue fixture detected; (9) real repos not mutated during scanning; (10) pending independent review; (11) Orca core delta 0. Next: a single comprehensive final review (leaner cadence than M8/M9, per tonight's time-bounded overnight target), then package/adopt."
+        }
+      ]
     },
     {
       "id": "M11",
