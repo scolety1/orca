@@ -2038,6 +2038,16 @@
           "commit": "89f534cb7f27d082edafccb05b656342e22029fd",
           "status": "COMMITTED",
           "note": "Next: wave 3 -- wire this engine against real per-category outputs, starting with a planner eval pack (decomposition quality, goal retention, project-context grounding, authority classification, avoidance of previously rejected approaches -- reusing wbs-generation.mjs/live-planner.mjs's real structured-analysis call pattern for the actual output, not a new provider integration)."
+        },
+        {
+          "wave": 3,
+          "summary": "A real planner eval pack, wired end to end. New tsf/server/planner-eval-cases.mjs's PLANNER_BASICS_PACK -- a self-contained, versioned eval pack (each case carries its own fixed input, no external fixture dependency). Measures 2 already-adopted real capabilities: buildProjectContextCapsule's do-not-repeat-lessons wiring (M7) and generateWbs's decomposition (M8) -- not a new planner capability, per M9's own measurement-not-construction purpose.\n\nNew planner-eval-runner.mjs's runPlannerEvalPack actually calls the real functions per case (never fabricated actual outputs). 4 tests, 2 REQUIRED PROOF: the real pack passes 100% against real capabilities; a genuine regression (the same case, real input no longer supplying the lesson) is detected via compareEvalRuns and blocks promotion -- directly satisfies acceptance items 2 and 5 using a real capability, not synthetic data.",
+          "testsAdded": 4,
+          "testsPassing": "501 full tsf suite GREEN",
+          "verifier": "SELF",
+          "commit": "00a23af313b5076ce5afc8535de641e0eac92938",
+          "status": "COMMITTED",
+          "note": "Next: wave 4 -- a worker eval pack (task completion, scope adherence, false-success avoidance) and/or a verifier eval pack (planted-defect detection), reusing keep-going.mjs/plan-capsule-mapping.mjs's real settled-run shapes rather than a new provider integration. Then routing/memory/autonomy/estimator packs, the model-upgrade-gate comparison wiring against routing.mjs, persistence + HTTP routes, and a restrained UI surface."
         }
       ]
     },
