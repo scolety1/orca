@@ -93,6 +93,35 @@ test('a license concern is reflected even with zero dependency/secret/config fin
   assert.equal(summary.dependencies, 'NONE')
 })
 
+test('REQUIRED PROOF: a scanner adapter that tries to hand back a raw secret value has nowhere to put it -- normalizeSecurityScanResult never passes through an unrecognized field', () => {
+  const result = normalizeSecurityScanResult(
+    rawScan({
+      findings: [
+        {
+          category: 'SECRETS_EXPOSURE',
+          severity: 'CRITICAL',
+          title: 'AWS key detected in .env',
+          secretValue: 'AKIAABCDEFGHIJKLMNOP',
+          rawMatch: 'AKIAABCDEFGHIJKLMNOP'
+        }
+      ]
+    })
+  )
+  const [f] = result.findings
+  assert.equal('secretValue' in f, false)
+  assert.equal('rawMatch' in f, false)
+  assert.deepEqual(Object.keys(f).sort(), [
+    'category',
+    'detail',
+    'packageName',
+    'packageVersion',
+    'severity',
+    'source',
+    'sourceVersion',
+    'title'
+  ])
+})
+
 test('securityRequiresHighAssuranceReview is true at HIGH and CRITICAL, false below', () => {
   assert.equal(securityRequiresHighAssuranceReview({ status: 'MEDIUM' }), false)
   assert.equal(securityRequiresHighAssuranceReview({ status: 'HIGH' }), true)

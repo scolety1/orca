@@ -43,6 +43,13 @@ export function normalizeSecurityScanResult(raw) {
     if (!SEVERITY_LEVELS.includes(f.severity)) {
       throw new Error(`security finding ${i}: unknown severity ${f.severity}`)
     }
+    // Acceptance item 4: secret values are never unnecessarily copied
+    // into TSF logs/UI. The finding shape has no field for a raw secret
+    // match at all -- location/title only -- so even a scanner adapter
+    // that (against its own contract) tried to hand back the actual
+    // secret text has nowhere to put it: only the allow-listed fields
+    // below survive normalization, an unrecognized field is silently
+    // dropped rather than passed through.
     return {
       category: f.category,
       severity: f.severity,
