@@ -2198,10 +2198,10 @@
     {
       "id": "M12",
       "name": "Fleet Optimizer",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
+      "adoptedCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
       "gaps": ["everything -- not started, pending M11 adoption"],
       "waves": [
         {
@@ -2234,19 +2234,33 @@
           "status": "COMMITTED",
           "note": "Next: package/adopt, then M13."
         }
-      ]
+      ],
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M12_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T09:40:51.000Z",
+        "adoptedCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
+        "previousTsfMainHead": "6fb8155ba4ca583073f6f0666d3a6c74d81c5187",
+        "mergeMethod": "git merge --ff-only (local, C:TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "A single comprehensive final review (leaner cadence, per tonight's time-bounded overnight target) -- GREEN WITH FIXES NEEDED, both closed before adoption. Found and fixed a real, serious bug via a fresh adversarial 3-project repro: the fleet-wide re-placement loop enforced concurrency-slot saturation but not a task's own dependency floor against its FLEET-ADJUSTED end time, so under real contention a dependent task could be placed to start before its real dependency actually ended -- fixed and mutation-confirmed. Also flagged that M13's own spec requires Fleet planning to be reachable/understandable to Tim, which wave 1 (domain-only) did not satisfy -- closed in wave 2 (real HTTP route + UI, reusing M8's already-reviewed estimate-route pattern) rather than deferred into M13.",
+        "postAdoptionTestRun": "589 tests, 588 pass / 1 gracefully skipped (M6 esbuild) / 0 fail -- re-run directly from the adopted tsf/main tree (C:TSF_ORCA)",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging: git status clean, HEAD at 6fb8155ba (the exact M11 adoption commit).",
+        "requiredRealProofRecorded": "All 12 M12 acceptance items verified against literal spec text: 2+ project workloads scheduled on one shared timeline (1); dependencies change the result, including the fleet-adjusted dependency-floor fix (2); provider resets change the result -- REDUCE_CONCURRENCY halves effective concurrency, PAUSE_AND_CHECKPOINT zeroes it, both mutation-confirmed (3); project priority changes the result, order-independent tie-break confirmed (4); Windows concurrency limits change the result (5); an impossible deadline is surfaced honestly, mutation-confirmed (6); every schedule carries real reasoning (7); no project is automatically authorized beyond its Work Set/policy -- the module and its HTTP route have zero dispatch/authorization side effects (8); the optimizer can replan after a stall via the same pure function called again with updated remaining work (9); deterministic test scenarios are reproducible, confirmed byte-identical across repeated calls (10); independent verifier GREEN after its own fix (11); Orca core delta 0 (12).",
+        "knownLimitations": "DOWNGRADE_WORKER (a real, valid capacity action distinct from PROCEED/REDUCE_CONCURRENCY/PAUSE_AND_CHECKPOINT) falls through to unchanged concurrency -- judged defensible by the review since that action's own semantics (prefer a cheaper worker tier) are orthogonal to the concurrency/timing dimension this scheduler models; the signal is still honestly surfaced in capacityAction for a caller to see. The scheduler does not model per-repository file/worktree conflicts across projects (only shared concurrency-slot contention and each project's own internal task dependencies/conflicts, per M8) -- a real, disclosed scope boundary, not a fabricated guarantee.",
+        "rollback": "To roll back: git -C C:TSF_ORCA reset --hard 6fb8155ba4ca583073f6f0666d3a6c74d81c5187 (previous tsf/main HEAD, recorded above)."
+      }
     },
     {
       "id": "M13",
       "name": "TSF Full-System Acceptance + Operator Readiness",
-      "status": "AUTHORIZED_PENDING_M12_ADOPTION",
+      "status": "CURRENT",
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). NOT a feature-building milestone -- freezes feature scope at M1-M12; fixes genuine defects, closes integration gaps, simplifies UX, improves reliability/docs, only after all 18 acceptance phases in the handoff doc are worked through. Do NOT begin M14 or invent additional feature milestones without Tim's approval -- M13 is intentionally the end of this upgrade program. Begins only after M12 is genuinely ADOPTED.",
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": ["everything -- not started, pending M12 adoption"]
     }
   ],
-  "currentMilestone": "M12",
+  "currentMilestone": "M13",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
