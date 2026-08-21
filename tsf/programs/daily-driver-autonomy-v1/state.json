@@ -2028,6 +2028,16 @@
           "commit": null,
           "status": "COMMITTED",
           "note": "Next: wave 2 -- pure TSF-native evaluation engine (tsf/domain/evaluation-pack.mjs): EvalCase/EvalPack contracts, assertion scoring, pack scoring, baseline-vs-candidate comparison with a real regression-blocks-promotion gate, all pure/deterministic and versioned/append-only (never rewriting a past eval run)."
+        },
+        {
+          "wave": 2,
+          "summary": "Contracts + pure TSF-native evaluation engine. New tsf/contracts/evaluation-pack.schema.v1.json (TSF_EVAL_PACK_V1) and tsf/domain/evaluation-pack.mjs -- concepts borrowed from Promptfoo (test cases/assertions, side-by-side comparison, regression thresholds), no external framework dependency, per wave 1. normalizeEvalPack: fail-closed validation matching this program's established normalize* pattern. scoreAssertion: 6 pure assertion types (EQUALS/CONTAINS/NOT_CONTAINS/MATCHES/GTE/LTE) via a dot-path getter. scoreCase requires EVERY assertion in a case to pass. runEvalPack honestly reports a case with no actual output as ERRORED, never a silent pass. compareEvalRuns detects real pass/fail transitions between a baseline and candidate run and recommends DO_NOT_PROMOTE the instant any regression exists, regardless of accompanying improvements -- directly satisfies acceptance item 5.\n\n20 tests; both REQUIRED PROOF guarantees (regression blocks promotion even alongside improvements; errored case never counted as a pass) verified genuine via mutation testing.",
+          "testsAdded": 20,
+          "testsPassing": "497 full tsf suite GREEN",
+          "verifier": "SELF; both guarantees verified genuine via mutation testing",
+          "commit": "89f534cb7f27d082edafccb05b656342e22029fd",
+          "status": "COMMITTED",
+          "note": "Next: wave 3 -- wire this engine against real per-category outputs, starting with a planner eval pack (decomposition quality, goal retention, project-context grounding, authority classification, avoidance of previously rejected approaches -- reusing wbs-generation.mjs/live-planner.mjs's real structured-analysis call pattern for the actual output, not a new provider integration)."
         }
       ]
     },
