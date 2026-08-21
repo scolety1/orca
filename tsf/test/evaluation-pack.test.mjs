@@ -58,6 +58,18 @@ test('normalizeEvalPack rejects an unknown assertion type', () => {
   assert.throws(() => normalizeEvalPack(pack), /unknown type/)
 })
 
+test("REQUIRED PROOF: normalizeEvalPack rejects an assertion with no value field -- without this, a typo'd path resolving to undefined would silently PASS (undefined === undefined) instead of erroring or failing loudly", () => {
+  const pack = fakePack()
+  delete pack.cases[0].assertions[0].value
+  assert.throws(() => normalizeEvalPack(pack), /value is required/)
+})
+
+test('normalizeEvalPack accepts an assertion whose value is deliberately null', () => {
+  const pack = fakePack()
+  pack.cases[0].assertions[0].value = null
+  assert.doesNotThrow(() => normalizeEvalPack(pack))
+})
+
 test('normalizeEvalPack accepts and returns a well-formed pack unchanged in shape', () => {
   const normalized = normalizeEvalPack(fakePack())
   assert.equal(normalized.schemaVersion, 'TSF_EVAL_PACK_V1')

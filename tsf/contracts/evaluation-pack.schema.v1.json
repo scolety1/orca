@@ -31,13 +31,14 @@
             "items": {
               "type": "object",
               "additionalProperties": true,
-              "required": ["type", "path"],
+              "required": ["type", "path", "value"],
               "properties": {
                 "type": {
                   "type": "string",
                   "enum": ["EQUALS", "CONTAINS", "NOT_CONTAINS", "MATCHES", "GTE", "LTE"]
                 },
-                "path": { "type": "string" }
+                "path": { "type": "string" },
+                "value": {}
               }
             }
           }

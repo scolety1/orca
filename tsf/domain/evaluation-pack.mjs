@@ -80,6 +80,16 @@ export function normalizeEvalPack(raw) {
       if (typeof assertion.path !== 'string') {
         throw new Error(`eval case ${rawCase.id}, assertion ${index}: path is required`)
       }
+      // Without this, an assertion with a typo'd path (resolving to
+      // undefined) AND a forgotten value field would silently PASS --
+      // undefined === undefined -- rather than erroring or failing loudly,
+      // defeating the entire point of an eval engine whose job is
+      // trustworthy regression detection. `value: null` is a legitimate,
+      // deliberate assertion and stays allowed; only a missing key is
+      // rejected.
+      if (!('value' in assertion)) {
+        throw new Error(`eval case ${rawCase.id}, assertion ${index}: value is required`)
+      }
       return { ...assertion }
     })
     return {
