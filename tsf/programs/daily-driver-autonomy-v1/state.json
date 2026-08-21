@@ -1465,7 +1465,21 @@
       ],
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started"]
+      "gaps": [
+        "Wave 1 (research/design) done -- see docs/tsf/M5_CAPACITY_AWARE_ROUTING_V1.md and waves[0]. Confirmed 2 of 7 acceptance criteria already fully satisfied by existing code (routing.mjs's requested-vs-observed shape; live-planner.mjs's fallback-on-failure mechanism) -- the real, remaining gap is that no code anywhere calls orca account list or reads a capacity signal programmatically; every capacity check this whole program has performed was a manual shell call by the operating agent. Implementation (a capacity adapter, a pure capacity-policy function, one real dispatch-loop call site), tests, and a real live-capacity proof remain."
+      ],
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Research-first source inspection (per Tim's own standing execution model, and per the pattern M4 just demonstrated -- checking what already exists before assuming a gap, which caught 2 false gaps there) before any M5 design/implementation. Read tsf/domain/routing.mjs, live-planner.mjs's fallback logic, and searched tsf/domain, tsf/server, and tsf/adapters for any existing capacity/rate-limit-reading code. Found 2 of M5's 7 acceptance criteria already fully satisfied: 'shows requested role separately from effective provider/model' -- resolveRole already returns a {requested, observed, fallbackProfile, selectionAssurance} shape distinguishing a plan from an actual observed call; 'switches providers at mission boundaries, not mid-session' -- live-planner.mjs's PROVIDER_FAILURE fallback-to-fallbackProfile mechanism already exists and only ever resolves a role once per call, matching the existing per-wave dispatch boundary structurally. The one real, substantial gap: zero application code anywhere calls `orca account list` or parses a capacity/rate-limit structure -- every capacity check this entire program has performed (throughout M2/M3/M4) was a manual shell invocation by the operating agent, never real code. Wrote docs/tsf/M5_CAPACITY_AWARE_ROUTING_V1.md designing the 3 pieces needed to close this: a real capacity adapter (mirroring orca-orchestration-bridge.mjs's own spawn-and-fail-honestly pattern), a pure capacity-policy domain function (PROCEED/DOWNGRADE_WORKER/REDUCE_CONCURRENCY/PAUSE_AND_CHECKPOINT, honestly reporting UNKNOWN on adapter failure rather than guessing), and one real call site in keep-going-dispatch-loop.mjs's dispatchStep reusing M4's own checkpointRun/pauseRun for the pause case -- no new persistence mechanism.",
+          "testsAdded": 0,
+          "testsPassing": "310/310 full tsf suite GREEN (unaffected -- research/design only, no code changed)",
+          "verifier": "SELF",
+          "commit": null,
+          "status": "IN_PROGRESS",
+          "note": "Next: implement the capacity adapter, the capacity-policy function, and the dispatchStep call site, each with real tests, following the same bounded-wave/independent-review/checkpoint discipline used throughout M2/M3/M4. Then the required real live-capacity proof (a genuine orca account list --json call feeding a real policy decision, for both a PROCEED case and an honestly-forced degraded case). Then final holistic review + packaging/adoption if GREEN."
+        }
+      ]
     },
     {
       "id": "M6",
