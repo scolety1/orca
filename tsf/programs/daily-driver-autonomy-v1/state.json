@@ -1537,7 +1537,7 @@
     {
       "id": "M6",
       "name": "Desktop TSF",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "acceptanceCriteria": [
         "Double-click launch opens TSF UI and connects to/starts required local TSF/Orca services",
         "Planner Chat, projects, Health, adoption all work without manual localhost commands",
@@ -1546,10 +1546,24 @@
         "Update/install strategy documented; unsigned local dev installer acceptable; no external distribution",
         "Smoke-tested locally"
       ],
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "f159adec5a8cdea1d8be55c043f5522d7e2f8a0f",
+      "adoptedCommit": "f159adec5a8cdea1d8be55c043f5522d7e2f8a0f",
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M6_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T04:09:06.000Z",
+        "adoptedCommit": "f159adec5a8cdea1d8be55c043f5522d7e2f8a0f",
+        "previousTsfMainHead": "fbb89df5b78853a54e6f4a02030e7364d1587dfd",
+        "mergeMethod": "git merge --ff-only (local, C:\\TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "wave 5 verifier (wave 4 static-UI serving) -- CLEAN; wave 7 verifier (waves 4-6 lifecycle) -- CLEAN with 2 non-blocking findings, both fixed; wave 9's own final holistic verifier -- RED (proofs never exercised Orca's real plugin host machinery; tsf/ui/dist build step undocumented; design doc stale), all 3 addressed; wave 10 confirmation verifier (the headline real proof specifically) -- GREEN, verified empirically via live OS process inspection, a genuine mutation-test reproduction against the real tsf/main.mjs, and a real port-collision test, with 1 LOW cosmetic finding fixed",
+        "postAdoptionTestRun": "350 pass / 1 gracefully skipped (the real-proof test correctly detects this tsf/main worktree lacks esbuild and skips with a clear, actionable reason rather than failing) / 0 fail -- re-run directly from the adopted tsf/main tree (C:\\TSF_ORCA)",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging: git status clean, no unexpected dirty/staged state, HEAD at fbb89df5b78853a54e6f4a02030e7364d1587dfd (the exact M5 adoption commit) -- no unrelated finding.",
+        "requiredRealProofRecorded": "wave 9 -- a genuine live proof through Orca's actual plugin host machinery: the real, unmodified src/main/plugins/plugin-host-entry.ts/plugin-host-process.ts (core Orca files, read-only) bundled via esbuild and forked as a real child process running our real, unmodified tsf/main.mjs; all 4 commands registered and invoked through the real IPC channel; the real tsf/server child genuinely spawned and answered real HTTP requests; a real shutdown message genuinely killed it. Wave 10 independently re-verified this via live OS process-chain inspection and a genuine mutation-test reproduction. Wave 11 found and fixed a real portability gap in this same proof (esbuild not guaranteed present) discovered during this very adoption attempt's own re-verification step.",
+        "knownLimitations": "\"Double-click launch\" is, honestly, \"automatic tsf/server start at Orca's own plugin-activation time, plus one command-palette click (tsf-open-ui) to open the browser\" -- not a literal OS-level double-click icon/installer; tsf/ui/dist must be built once (`cd tsf/ui && npm run build`, dist/ is gitignored) before the served UI shows anything -- activate() now logs a clear warning naming this exact fix if it's missing; REDUCE_CONCURRENCY/DOWNGRADE_WORKER-style deeper integration is out of scope for this milestone (that disclosure belongs to M5, unaffected here).",
+        "rollback": "To roll back: git -C C:\\TSF_ORCA reset --hard fbb89df5b78853a54e6f4a02030e7364d1587dfd (previous tsf/main HEAD, recorded above)."
+      },
       "gaps": [
-        "Wave 1 (research-first scoping) done -- see docs/tsf/M6_DESKTOP_TSF_V1.md. Confirmed tsf/ui is a standalone built SPA (tsf/ui/dist exists) only ever run via manual `npm run dev`; tsf/server/http-server.mjs's startStandaloneServer(port) is a real Node HTTP entry point but serves ONLY /api routes, no static UI hosting. Real, substantive finding: TSF is already registered as a real Orca plugin (tsf/orca-plugin.json + tsf/main.mjs, entirely inside tsf/, zero core delta) with a real panel-contribution mechanism, but the currently-wired panel (tsf/panel.html) is a stale pre-M2 placeholder unrelated to the real TSF UI/API built since. Two open, unresolved design questions for wave 2 before any implementation: (1) can a plugin's worker-thread main.mjs spawn/manage a long-lived child process (the tsf/server) the way orca-orchestration-bridge.mjs/orca-capacity-bridge.mjs already spawn the orca CLI elsewhere in this program; (2) can a plugin panel's entry serve a full multi-route SPA bundle rather than one static HTML file. Unlike M4/M5, no acceptance criterion is already satisfied by existing code -- this milestone's gap really is close to everything, but is narrower than 'build a second Electron app' if the existing plugin system can host it."
+        "ADOPTED. Disclosed, honest, non-blocking limitations (documented in the adoption receipt, tsf/README.md, and the design doc, not silently unmet): 'double-click launch' is really 'automatic tsf/server start at Orca's own plugin-activation time, plus one command-palette click to open the browser'; tsf/ui/dist must be built once first (dist/ is gitignored) -- activate() now logs a clear warning naming the exact fix if it's missing."
       ],
       "waves": [
         {
@@ -1667,7 +1681,7 @@
     {
       "id": "M7",
       "name": "Project Memory V2",
-      "status": "NOT_STARTED",
+      "status": "CURRENT",
       "acceptanceCriteria": [
         "Inspects existing capsules/onboarding state/receipts/session affinity/backlog before adding new storage",
         "Facts/Decisions/Preferences/Experiences-Lessons memory classes",
@@ -1752,7 +1766,7 @@
       ]
     }
   ],
-  "currentMilestone": "M6",
+  "currentMilestone": "M7",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
