@@ -118,3 +118,98 @@ Wave 2's job is answering these with real evidence (reading
 `chat-responder.mjs`'s own context-building path) before writing any
 schema or storage code, exactly the research-first discipline this
 program has now validated across M4, M5, and M6.
+
+## Wave 2 findings (all 4 open questions answered with hard evidence)
+
+1. **Storage backend — settled: reuse `data-store.mjs`'s existing
+   pattern, no new store.** Read the whole file (57 lines): it's a
+   single flat, gitignored JSON file (`loadState`/`saveState`, atomic
+   write via temp-file + rename), and its own `DEFAULTS` object already
+   has FOUR per-project maps at the top level (`chatThreads`,
+   `plannerSessions`, `onboardedProjects`, `keepGoingRuns`, all
+   `projectId -> ...`). A new `projectMemory: {}` (`projectId ->` memory
+   record) key is a straight, additive continuation of this exact
+   established shape — not a new persistence mechanism.
+
+2. **Provenance shape — settled, modeled on two existing precedents.**
+   `receipts.mjs`'s own `identities`/`previousReceiptHash` fields and
+   `onboarding.mjs`'s "every reason cites the exact fact" discipline
+   both already establish the pattern: every memory record will carry a
+   `source: { kind, ref, at }` object (`kind` one of `RECEIPT` |
+   `RESULT_CAPSULE` | `CHAT` | `TIM_EXPLICIT`; `ref` the receipt hash,
+   mission id, or chat turn id it came from) so retrieval can always
+   show *why* something is remembered, never a bare, unsourced claim.
+
+3. **Supersession semantics — settled, and a REAL EXISTING MECHANISM
+   found for the "cannot be silently overwritten" half.**
+   `keep-going.mjs`'s `replaceGoal` (`tsf/domain/keep-going.mjs:125`) is
+   the exact, already-proven pattern for "explicit user decisions
+   cannot be silently overwritten": it rejects any caller where
+   `authorizedBy !== 'TIM'` (`TSF_GOAL_IMMUTABLE`), requires a non-empty
+   `reason`, and preserves the old value in an append-only
+   `goalHistory[]` rather than deleting it. **Decisions** (and any
+   Preference a user explicitly, deliberately states) reuse this same
+   shape: an `authorizedBy: 'TIM'`-gated replace, reason required, old
+   value preserved. **Facts** are the opposite, deliberately looser
+   policy: any newer, contradicting real observation may supersede an
+   old fact automatically (no `authorizedBy` gate) — but, matching this
+   program's own never-destroy-history ethos (receipts are append-only,
+   checkpoints are append-only, `goalHistory` is append-only), a
+   superseded fact is marked `supersededAt`/`supersededBy`, never
+   deleted.
+
+4. **Retrieval bound — settled, and a REAL, ALREADY-WIRED, CURRENTLY-
+   DORMANT mechanism found (a genuine "false gap," like M4/M5 found
+   elsewhere).** `tsf/contracts/project-context-capsule.schema.v1.json`
+   already has a `do_not_repeat_lessons` field (array of strings) —
+   and `tsf/server/live-planner.mjs`'s `buildProjectContextCapsule`
+   (the function that builds this exact capsule from the same real
+   `ProjectDetail` every other UI surface reads) already returns it as
+   part of the object — **hardcoded to `[]`, permanently empty, at
+   line 131**. Every other array field in that same function is already
+   bounded (`completed_missions: ....slice(-5)`, `active_blockers:
+   ....slice(0, 5)`, `approvals: ....slice(-5)`,
+   `artifacts_created: ....slice(0, 20)`). Confirmed the capsule
+   genuinely reaches the real LLM call: `buildSystemPrompt`
+   `JSON.stringify(capsule, null, 2)`s it directly into the system
+   prompt (`live-planner.mjs:183`), which `invokeLivePlanner` sends for
+   real. **The "no giant transcript injection" retrieval-bound
+   mechanism this milestone needs already exists and is already live**
+   — M7's job for Experiences-Lessons is only to stop hardcoding this
+   one field to `[]` and instead fill it, bounded the same
+   `.slice(-N)` way every sibling field already is, from the new
+   `projectMemory` store's Experience/Lesson records.
+
+## Revised scope after wave 2 (narrower than wave 1 assumed)
+
+Combining findings 1 (`receipts.mjs` already IS a real Decisions
+backbone) and this wave's findings: **Decisions likely need NO new
+storage at all** — only a thin, pure projection/retrieval function
+reading the existing receipt chain (`project.receipts.chain`, already
+in every `ProjectDetail`), not a new store. The real, additive work
+narrows to:
+
+- A new `tsf/domain/project-memory.mjs` (pure, domain-layer, tested):
+  record shapes for **Facts** and **Experiences-Lessons** (Preferences
+  likely fold into Facts with a `class: 'PREFERENCE'` discriminator
+  unless a real, distinct need for a separate shape turns up in wave 3
+  — keeping this open rather than assuming a 4-way split is required
+  when the acceptance criteria's own examples don't obviously demand
+  one); `addFact`/`supersedeFact` (loose, auto-supersede, history-
+  preserving); `addExperience` (append-only, same shape); a bounded,
+  project-scoped `retrieveForCapsule(memory, limit)` producing exactly
+  the `do_not_repeat_lessons`-shaped bounded array `live-planner.mjs`
+  already expects.
+- A projection function reading `project.receipts.chain` into whatever
+  "Decisions" shape retrieval needs (no new storage, no new mutation
+  path — the receipt chain's own append-only/hash-chained guarantees
+  already satisfy "cannot be silently overwritten").
+- Additive `projectMemory: {}` key in `data-store.mjs`'s `DEFAULTS`,
+  matching the existing per-project-map pattern exactly.
+- Wiring `live-planner.mjs`'s `do_not_repeat_lessons: []` to actually
+  call the new retrieval function instead of hardcoding empty.
+
+Next: wave 3 designs the concrete record shapes and writes the pure
+domain module with real tests (verified to genuinely fail without the
+fix, per the established discipline), before touching `data-store.mjs`
+or `live-planner.mjs` at all.
