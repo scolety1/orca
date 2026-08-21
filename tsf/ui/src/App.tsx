@@ -8,6 +8,7 @@ import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
 import { AgentsPage } from '@/pages/AgentsPage'
 import { AddProjectPage } from '@/pages/AddProjectPage'
 import { EvaluationPage } from '@/pages/EvaluationPage'
+import { FleetPage } from '@/pages/FleetPage'
 
 export function App() {
   return (
@@ -22,6 +23,7 @@ export function App() {
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/evaluation" element={<EvaluationPage />} />
+            <Route path="/fleet" element={<FleetPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

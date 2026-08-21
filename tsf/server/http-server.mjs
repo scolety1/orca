@@ -30,6 +30,7 @@ import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
 import { handleEstimateRoute } from './estimate-http-routes.mjs'
 import { handleEvalRoute } from './eval-http-routes.mjs'
 import { handleFlightRecorderRoute } from './flight-recorder-http-routes.mjs'
+import { handleFleetOptimizerRoute } from './fleet-optimizer-http-routes.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
@@ -599,6 +600,20 @@ export function createRequestHandler() {
 
       // GET /api/projects/:id/flight-recorder -- see flight-recorder-http-routes.mjs
       if (handleFlightRecorderRoute(parts, req, res, url, { map, opState }, { json, notFound })) {
+        return
+      }
+
+      // POST /api/fleet/schedule -- see fleet-optimizer-http-routes.mjs
+      if (
+        await handleFleetOptimizerRoute(
+          parts,
+          req,
+          res,
+          url,
+          { opState },
+          { json, notFound, readBody }
+        )
+      ) {
         return
       }
 

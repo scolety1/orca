@@ -11,6 +11,7 @@ import type {
 } from './estimate-types'
 import type { EvalComparison, EvalPackSummary, EvalRunResult } from './eval-types'
 import type { FlightRecorderView } from './flight-recorder-types'
+import type { FleetScheduleError, FleetScheduleResponse } from './fleet-types'
 import type {
   AgentEvidence,
   ChatAttachmentMeta,
@@ -198,5 +199,14 @@ export const api = {
       { ok: false; error: string }
     >(`/eval/${encodeURIComponent(packId)}/regression-check`, { method: 'POST' }),
   flightRecorder: (projectId: string) =>
-    request<FlightRecorderView>(`/projects/${encodeURIComponent(projectId)}/flight-recorder`)
+    request<FlightRecorderView>(`/projects/${encodeURIComponent(projectId)}/flight-recorder`),
+  fleetSchedule: (body: {
+    projectIds: string[]
+    priorities?: Record<string, number>
+    maxConcurrentWorkers?: number
+  }) =>
+    requestTolerant<FleetScheduleResponse, FleetScheduleError>('/fleet/schedule', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
 }
