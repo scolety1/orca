@@ -2068,6 +2068,16 @@
           "commit": "dd0fa8568023c85ead5ea2b7dc7475f6e8bb2f56",
           "status": "COMMITTED",
           "note": "Next: wave 5 -- routing, memory, autonomy, and estimator eval packs (the remaining 4 of 7 required categories), same self-contained pattern."
+        },
+        {
+          "wave": 5,
+          "summary": "Completes all 7 required M9 eval categories. ROUTING_BASICS_PACK measures resolveRole against the real, committed provider-role-mappings.v1.json/launch-profiles.v1.json config. MEMORY_BASICS_PACK measures project-memory.mjs's real isolation/immutability/supersession (M7). AUTONOMY_BASICS_PACK measures keep-going.mjs's real goal-retention/retry-budget enforcement. ESTIMATOR_BASICS_PACK measures estimation.mjs's real seeded-Monte-Carlo reproducibility/seed-sensitivity and estimate-calibration.mjs's real no-fake-precision gate (M8). All follow the established self-contained-case pattern; every regression proof exercises the SAME real function with genuinely different real input (a candidate config in memory, a widened budget, a zero-uncertainty WBS task, wrong-project memory query) -- never a hand-typed fake failure or a flipped assertion.\n\n16 tests, 4 REQUIRED PROOF regression-detection tests (one per pack).",
+          "testsAdded": 16,
+          "testsPassing": "527 full tsf suite GREEN",
+          "verifier": "SELF",
+          "commit": "84e0abfce2d4dbd50cf88e3cc97ddb5c30358e7d",
+          "status": "COMMITTED",
+          "note": "All 7 required eval categories (planner/worker/verifier/routing/memory/autonomy/estimator) now have a real, self-contained pack. Next: wave 6 -- the model-upgrade-gate wiring (CURRENT vs CANDIDATE routing-mapping comparison using these packs), persistence + HTTP routes for eval runs (never rewriting a past run), and a restrained UI surface. Then a final holistic review before packaging M9 as an immutable candidate and adopting into tsf/main."
         }
       ]
     },
