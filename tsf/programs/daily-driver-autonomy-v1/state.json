@@ -2048,6 +2048,16 @@
           "commit": "00a23af313b5076ce5afc8535de641e0eac92938",
           "status": "COMMITTED",
           "note": "Next: wave 4 -- a worker eval pack (task completion, scope adherence, false-success avoidance) and/or a verifier eval pack (planted-defect detection), reusing keep-going.mjs/plan-capsule-mapping.mjs's real settled-run shapes rather than a new provider integration. Then routing/memory/autonomy/estimator packs, the model-upgrade-gate comparison wiring against routing.mjs, persistence + HTTP routes, and a restrained UI surface."
+        },
+        {
+          "wave": "review-2-3",
+          "summary": "Independent review of M9 waves 2-3. Verdict: CLEAN WITH NOTES. Found and fixed 1 real bug via adversarial edge-case probing (not any existing test): scoreAssertion(actual, {type:'EQUALS', path:'typoedFieldName'}) with no value field returned true (undefined === undefined) -- a typo'd/nonexistent assertion path combined with a forgotten value would silently PASS, defeating the entire point of a regression-detection engine. Fixed: normalizeEvalPack now requires 'value' in assertion (key presence -- value: null stays legitimate), schema updated to match, 2 new tests. Also checked and disclosed (not fixed, low-impact) a deepEqual quirk: [1,2] vs {0:1,1:2} compares equal via Object.keys -- not a realistic misuse in this codebase's own assertion values.\n\nNon-blocking design note: the decomposes-into-a-real-multi-task-wbs case's description claims to verify \"real dependency structure\" but its assertions only check taskCount and one taskId -- dependency/effort-range correctness is already covered by M8's own tests, so not strengthened here, but the case's own description slightly overclaims what it measures. Re-confirmed regression-blocks-promotion and errored-never-a-pass guarantees directly from source (genuine, not just asserted). Re-ran full suite fresh (501 before fix, 503 after), max-lines ratchet unchanged, core delta re-confirmed empty.",
+          "testsAdded": 2,
+          "testsPassing": "503 full tsf suite GREEN (after the review's own fix)",
+          "verifier": "INDEPENDENT (forked review agent)",
+          "commit": "b2b43430114164a06e2145e61f3d637eefd4b9ac",
+          "status": "CLEAN_WITH_NOTES",
+          "note": "Next: wave 4 -- worker and/or verifier eval packs."
         }
       ]
     },
