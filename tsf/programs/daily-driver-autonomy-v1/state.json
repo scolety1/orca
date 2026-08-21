@@ -1715,6 +1715,16 @@
           "commit": null,
           "status": "IN_PROGRESS",
           "note": "Next: wave 3 -- design the concrete record shapes and write the pure tsf/domain/project-memory.mjs module with real tests (verified to genuinely fail without the fix), before touching data-store.mjs or live-planner.mjs at all."
+        },
+        {
+          "wave": 3,
+          "summary": "Implemented the pure domain module: tsf/domain/project-memory.mjs. One flat, append-only records[] array (mirroring receipts.mjs's own single-chain shape) rather than separate arrays per class -- class is a filter discriminator, not a storage split. Every record carries source:{kind,ref,at} (kind one of RECEIPT/RESULT_CAPSULE/CHAT/TIM_EXPLICIT) and an explicit boolean -- the ONE thing gating supersession, mapping directly onto the acceptance criterion's own wording: a non-explicit (inferred/observed) record can be superseded by anyone with no authorization (a stale fact ages out); an explicit (Tim directly stated it) record requires authorizedBy:'TIM' + a non-empty reason, throwing TSF_MEMORY_EXPLICIT_IMMUTABLE otherwise -- exactly keep-going.mjs's own replaceGoal pattern, reused rather than reinvented. supersedeMemoryRecord always preserves the old record (supersededAt/supersededBy set, never deleted) and rejects re-superseding an already-superseded record. retrieveExperiencesForCapsule(memory, limit) returns only active EXPERIENCE records, most recent first, capped at limit -- the exact shape live-planner.mjs's do_not_repeat_lessons field needs. projectDecisionsFromReceipts(receiptChain, limit) is a pure projection over the EXISTING receipt chain (no new storage) -- confirming wave 2's finding that Decisions need no new mutation path at all.\n\n13 tests, including a genuine mutation-testing spot check on the explicit-immutability gate (temporarily disabled the `if (existing.explicit)` check, confirmed the 2 exact expected tests failed with the exact expected mismatches, restored).",
+          "testsAdded": 13,
+          "testsPassing": "364 full tsf suite GREEN (0 skipped in this worktree -- esbuild is available here)",
+          "verifier": "SELF; the explicit-immutability gate (the safety-critical piece) verified genuine via mutation testing",
+          "commit": null,
+          "status": "IN_PROGRESS",
+          "note": "Next: wave 4 -- wire this domain module into the real system: add a projectMemory:{} key to data-store.mjs's DEFAULTS (matching the existing per-project-map pattern), and wire live-planner.mjs's do_not_repeat_lessons field to call retrieveExperiencesForCapsule instead of hardcoding []. Then wave 5+: HTTP routes/UI surface for adding/superseding memory records (if the acceptance criteria's own test list requires operator-visible interaction, not just internal wiring -- re-check the exact test list: cross-session recall, project isolation, stale-fact supersession, rejected-design recall, preference persistence, no giant transcript injection)."
         }
       ]
     },
