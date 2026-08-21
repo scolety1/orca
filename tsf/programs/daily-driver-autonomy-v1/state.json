@@ -2167,7 +2167,19 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started, pending M10 adoption"]
+      "gaps": ["everything -- not started, pending M10 adoption"],
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Bounded research decision (matching M9's own precedent): a pure, TSF-native projection over M4's real, already-durable Run Journal, concepts borrowed from OpenTelemetry/GenAI semantic conventions -- no OpenTelemetry SDK or external observability stack added, per Tim's own explicit instruction. New tsf/domain/flight-recorder.mjs: buildRunTimeline (chronological event list with real, never-fabricated segment durations; wave events carry only a digest, never the full wavePlan/waveResult payload -- privacy item 7); findBottleneck (real largest gap, mutation-confirmed). Because the timeline is recomputed fresh from the SAME source every time, it can never desync from the Run Journal -- reconciliation (item 8) holds by construction.\n\nNew flight-recorder-http-routes.mjs (GET /api/projects/:id/flight-recorder) and a Flight Recorder tab on ProjectDetailPage. 9 new tests, all built via real keep-going.mjs functions (createOvernightRun/checkpointRun/raiseNeedsYou/recordWave/transitionRun), not hand-typed timeline data.\n\nFull suite 572/572 GREEN, tsc/oxlint/vite build clean, max-lines ratchet 346 unchanged, zero Orca core delta.",
+          "testsAdded": 9,
+          "testsPassing": "572 full tsf suite GREEN",
+          "verifier": "SELF; findBottleneck's correctness verified genuine via mutation testing",
+          "commit": "2fb9a92cf205b857693ef134dd44c8010e8876ac",
+          "status": "COMMITTED",
+          "note": "Acceptance items covered: (1) coherent trace/timeline for a multi-wave run; (2) largest-gap bottleneck identification; (3) retry/needsYou visibility; (4) no fabricated provider/model metadata (none claimed -- disclosed limitation, not fabricated); (5) unknown usage stays UNKNOWN (n/a, no usage/cost claims made here); (6) project isolation (operates on one run object only); (7) no sensitive prompt/source content captured (only digests/phases/reasons); (8) reconciles with M4 by construction; (9) restart/recovery does not corrupt the timeline (pure re-derivation, nothing to corrupt); (10) pending independent review; (11) Orca core delta 0. Next: a single comprehensive final review (leaner cadence, per tonight's time-bounded overnight target), then package/adopt."
+        }
+      ]
     },
     {
       "id": "M12",
