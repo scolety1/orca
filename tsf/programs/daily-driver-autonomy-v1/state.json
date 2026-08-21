@@ -1391,7 +1391,7 @@
       "candidateCommit": null,
       "adoptedCommit": null,
       "gaps": [
-        "Wave 1 (research/design) done -- see docs/tsf/M4_RUN_JOURNAL_RECOVERY_V1.md and waves[0]. 3 concrete gaps identified against the existing M2 durable state model: task/wave outcomes persisted as bare IDs, not compact content; no checkpoint call before pause; no recovery-summary surface after restart. Implementation, tests, and a real intentional-restart proof remain."
+        "Waves 1-2 done -- see docs/tsf/M4_RUN_JOURNAL_RECOVERY_V1.md. Of the 3 originally-identified gaps, 2 turned out not to be real (wave-outcome content and checkpoint-before-pause were already correctly implemented in M2) -- only 'recovery summary after restart' was real, and it's now implemented (chat-responder.mjs's STATUS answer includes a recentCheckpointTrail-grounded history line). Independent review, the required real intentional process kill-and-restart proof, and final packaging/adoption remain."
       ],
       "waves": [
         {
@@ -1401,8 +1401,18 @@
           "testsPassing": "306/306 full tsf suite GREEN (unaffected -- research/design only, no code changed)",
           "verifier": "SELF",
           "commit": null,
+          "status": "SUPERSEDED_SEE_WAVE_2",
+          "note": "Gaps 1 and 2 turned out not to be real gaps -- see wave 2's honest correction. Superseded by wave 2's record."
+        },
+        {
+          "wave": 2,
+          "summary": "Before implementing anything, re-investigated gaps 1 and 2 against the ACTUAL current code (not this doc's own first-draft claims) and found both already correctly implemented: (1) settleInFlightWave already persists compact, real wave outcomes (workItemId/outcome/rawStatus) onto run.waves[] -- checkpointRun's evidence field being bare task IDs is correct as designed, a lightweight audit-trail pointer, not meant to duplicate that fuller history; (2) keep-going-controller.mjs's pauseKeepGoingRun/resumeKeepGoingRun already call checkpointRun immediately after pauseRun/resumeRun -- itself a real M2 wave 11 review finding, already fixed there. This design doc's first draft under-read the codebase by stopping at the bare domain functions instead of following the call chain into the controller that actually wraps them. Corrected docs/tsf/M4_RUN_JOURNAL_RECOVERY_V1.md honestly rather than building unnecessary/redundant work to satisfy gaps that turned out not to exist.\n\nImplemented the one gap that IS real -- 'recovery summary after restart': 'catch me up' already shares STATUS's own intent pattern (M3). Added keep-going.mjs's recentCheckpointTrail(run, limit=5), a pure read of the existing hash-chained checkpoints[] audit trail (no new persistence, no in-memory 'last seen' tracker), wired into chat-responder.mjs's STATUS answer as a short 'Recent history: PHASE_A -> PHASE_B -> ...' line, skipped when a run has nothing yet to recap (only its own RUN_STARTED checkpoint). This answers 'what happened while this was down/paused?' purely from durable state a fresh, restarted process already has on disk -- no restart-specific code needed, since the whole point is that persisted state already IS restart-safe.",
+          "testsAdded": 4,
+          "testsPassing": "310/310 full tsf suite GREEN",
+          "verifier": "SELF; 2 of the 4 new tests verified genuine by reverting the fix and confirming both failed with the exact expected mismatch before restoring",
+          "commit": "fde6722cf",
           "status": "IN_PROGRESS",
-          "note": "Next: implement gap 1 (compact wave-outcome persistence), gap 2 (checkpoint-before-pause), gap 3 (recovery-summary chat surface), each with real tests, following the same bounded-wave/independent-review/checkpoint discipline used throughout M2 and M3. Then the required real kill-and-restart proof. Then packaging/adoption if GREEN."
+          "note": "M4's design scope is now narrower than originally estimated -- only 1 of 3 originally-identified gaps was real, and it's now implemented. Next: commission an independent review of this wave (a genuine correction of 2 false gaps plus new production code, worth a real review pass), then perform the required real proof named in the design doc -- an actual process kill-and-restart (not simulated) against the safe scratch/fixture project, confirming a fresh process resumes the exact same run without redispatching the in-flight wave and can answer a real 'catch me up' query grounded in the durable checkpoint trail. Then final holistic review + packaging/adoption if GREEN."
         }
       ]
     },
