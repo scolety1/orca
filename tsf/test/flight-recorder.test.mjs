@@ -81,6 +81,25 @@ test('REQUIRED PROOF: findBottleneck identifies the real largest gap -- the 2-ho
   assert.equal(bottleneck.durationMs, 2 * 60 * 60 * 1000)
 })
 
+test('REQUIRED PROOF: findBottleneck correctly identifies the largest gap even when it is genuinely segments[0] (a real review finding: an off-by-one reduce that special-cases or skips the first element would silently miss this)', () => {
+  // A hand-constructed timeline, isolating findBottleneck's own reduce
+  // logic from buildRunTimeline's structural quirk (a real run's own
+  // segments[0] is always the 0-duration RUN_CREATED-to-initial-
+  // transition gap, so it can never itself be the answer in practice --
+  // this test exercises the function directly instead of only through
+  // real run shapes that happen to never put the answer at index 0).
+  const timeline = {
+    segments: [
+      { fromEvent: 'A', toEvent: 'B', durationMs: 10800000 },
+      { fromEvent: 'B', toEvent: 'C', durationMs: 300000 },
+      { fromEvent: 'C', toEvent: 'D', durationMs: 600000 }
+    ]
+  }
+  const bottleneck = findBottleneck(timeline)
+  assert.equal(bottleneck, timeline.segments[0])
+  assert.equal(bottleneck.durationMs, 10800000)
+})
+
 test('a freshly created run (RUN_CREATED and its own initial ACTIVE transition happen at the same instant) has a real, zero-duration bottleneck, not a fabricated gap', () => {
   const run = createOvernightRun(
     {
