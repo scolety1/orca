@@ -61,6 +61,22 @@ test('REQUIRED PROOF: a schema-conformant but domain-invalid scanner response fa
   assert.equal(result.reason, 'INVALID_SCAN_RESULT')
 })
 
+test('REQUIRED PROOF: a scanner that genuinely hangs past its real timeout is honestly SCANNER_TIMEOUT, not left hanging or silently treated as clean -- a real review finding: this path was previously asserted only in code, never actually triggered by any test', async () => {
+  process.env.TSF_SECURITY_SCANNER_COMMAND = STUB
+  process.env.STUB_SECURITY_MODE = 'timeout'
+  // Overridable only for this test -- the stub's own timeout mode sleeps
+  // 5000ms; a short override here proves the real SCANNER_TIMEOUT branch
+  // fires without waiting out the real 120000ms production default.
+  process.env.TSF_SECURITY_SCANNER_TIMEOUT_MS = '200'
+  try {
+    const result = await runSecurityScan(fixtureRepo())
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'SCANNER_TIMEOUT')
+  } finally {
+    delete process.env.TSF_SECURITY_SCANNER_TIMEOUT_MS
+  }
+})
+
 test('the scan never mutates the real fixture repo it points at', async () => {
   process.env.TSF_SECURITY_SCANNER_COMMAND = STUB
   process.env.STUB_SECURITY_MODE = 'success'

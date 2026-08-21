@@ -12,7 +12,21 @@
 import { spawn } from 'node:child_process'
 import { normalizeSecurityScanResult } from '../domain/security-health.mjs'
 
-const TIMEOUT_MS = 120000
+const DEFAULT_TIMEOUT_MS = 120000
+
+// Read at call time, not module load -- a module-level constant would
+// freeze whatever TSF_SECURITY_SCANNER_TIMEOUT_MS held at import time,
+// making the override useless for any test that sets the env var after
+// this module is already loaded (a real bug this review caught on the
+// override's own first use: the timeout test kept timing out at the
+// real 120000ms default instead of the intended short override).
+// Overridable only for tests -- the real production default stays
+// 120000ms. Without this override, the SCANNER_TIMEOUT path itself was
+// asserted only by inspection, never actually triggered by any test (a
+// real review finding).
+function resolveTimeoutMs() {
+  return Number(process.env.TSF_SECURITY_SCANNER_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS
+}
 
 // A single command/path, never a space-joined "command args" string --
 // naive space-splitting breaks the instant either the configured path or
@@ -42,6 +56,7 @@ export async function runSecurityScan(repoPath) {
         'No TSF_SECURITY_SCANNER_COMMAND configured -- security scanning is an optional, adapter-driven capability, not a required dependency.'
     }
   }
+  const timeoutMs = resolveTimeoutMs()
   return new Promise((resolve) => {
     let settled = false
     const child = spawn(entry.command, [...entry.args, repoPath], { windowsHide: true })
@@ -54,9 +69,9 @@ export async function runSecurityScan(repoPath) {
       resolve({
         ok: false,
         reason: 'SCANNER_TIMEOUT',
-        detail: `no response within ${TIMEOUT_MS}ms`
+        detail: `no response within ${timeoutMs}ms`
       })
-    }, TIMEOUT_MS)
+    }, timeoutMs)
 
     let stdout = ''
     let stderr = ''
