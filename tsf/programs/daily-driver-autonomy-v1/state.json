@@ -1641,6 +1641,16 @@
           "commit": null,
           "status": "IN_PROGRESS",
           "note": "M6 is now genuinely GREEN: implemented, independently reviewed at every wave, and proven live through Orca's actual plugin host machinery -- not just unit-level function calls. Next: re-commission a brief confirmation review of this wave's 3 fixes (the real proof deserves its own scrutiny given how load-bearing it is), then package as an immutable candidate and adopt into tsf/main via the established two-commit ff-only pattern if all Section H conditions hold."
+        },
+        {
+          "wave": 10,
+          "summary": "Focused confirmation review of wave 9's real proof (given how load-bearing it is) reported back GREEN. Independently confirmed, empirically not just by reasoning: (1) the fork is genuinely real -- live OS process inspection showed a real parent(test)->child(esbuild-bundled plugin-host-entry.cjs worker)->grandchild(real tsf/server) process chain, not an in-process fallback; (2) a genuine mutation (renaming the tsf-foundation-health command in the real tsf/main.mjs) made this specific test fail immediately with a clear, honest mismatch, not a timeout or false pass -- restored and re-confirmed green; (3) after dispose(), both the worker and the tsf/server grandchild were confirmed gone via direct PID inspection, not just the port-frees-up assertion already in the test; (4) occupying the real port 4610 with a real imposter HTTP server before running the test made it fail honestly against the wrong product value, rather than silently passing -- confirming the hardcoded-port trade-off (unlike main-plugin.test.mjs's ephemeral-port siblings, this one exercises the REAL activate() with no testOverrides, which has no port override) is safe, just previously undocumented; (5) no interference between the uiIndexPath build-warning check and the real proof. Full suite 351/351 (run twice, consistent ~6.6s), clean gates, zero orphaned processes after every run. One LOW, cosmetic finding: the hardcoded-port trade-off wasn't explained anywhere -- fixed with a one-line comment at the exact point in the test.",
+          "testsAdded": 0,
+          "testsPassing": "351/351 full tsf suite GREEN (unaffected -- comment-only fix)",
+          "verifier": "INDEPENDENT (forked review agent; live OS process inspection for the fork/cleanup claims, a genuine mutation-test reproduction against the real tsf/main.mjs, and a real imposter-server port-collision test -- not reasoning from code alone)",
+          "commit": null,
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "M6 is now genuinely GREEN end to end: implemented, independently reviewed at every wave (including a full milestone re-review and a focused confirmation of its own headline real proof), with that proof itself empirically verified rather than trusted. Next: package as an immutable candidate, re-read the tsf/main baseline fresh, verify every Section H condition, and locally adopt via the established two-commit ff-only pattern if all conditions hold."
         }
       ]
     },

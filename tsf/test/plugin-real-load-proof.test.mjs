@@ -108,6 +108,13 @@ test(
       // opens the OS's default browser, an unacceptable side effect for an
       // automated test; open-url-command.test.mjs already covers its logic
       // in isolation, and this test's job is proving the load/spawn path.
+      //
+      // Unlike main-plugin.test.mjs's ephemeral-port tests, this one is
+      // pinned to the real default port 4610: proving the REAL activate()
+      // with no testOverrides is the whole point, and that code path has
+      // no env-var override for the port. If something else already owns
+      // 4610, this fails honestly here (a real mismatch against whatever
+      // that server actually returns) rather than silently passing.
       const res = await waitForRealServer('http://127.0.0.1:4610')
       const body = await res.json()
       assert.equal(body.product, 'Thousand Sunny Fleet — Orca Foundation')
