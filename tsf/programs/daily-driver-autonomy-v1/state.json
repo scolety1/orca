@@ -2202,7 +2202,19 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started, pending M11 adoption"]
+      "gaps": ["everything -- not started, pending M11 adoption"],
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Bounded research (OR-Tools/CP-SAT verified Apache-2.0, active, v9.15 Jan 2026) + full TSF-native deterministic fleet scheduler in one wave, given tonight's time-bounded overnight target. New tsf/domain/fleet-optimizer.mjs's buildFleetSchedule reuses M8's real computeCriticalPathSchedule (per-project dependency-aware critical path) and M5's real decideCapacityAction (unchanged) to place every project's tasks onto ONE shared fleet-wide concurrency timeline, ordered by priority. A provider capacity action that isn't PROCEED genuinely changes effective concurrency (REDUCE_CONCURRENCY halves it, PAUSE_AND_CHECKPOINT zeroes it and produces an honestly empty schedule -- mutation-confirmed) -- never just noted while scheduling proceeds as normal. Pure and stateless: no dispatch, no authorization beyond a project's own existing Work Set/policy -- report-only.\n\n12 tests covering all 12 acceptance items directly (2+ projects on one timeline; dependencies change result; provider reset changes result, mutation-confirmed; priority changes result; concurrency limit changes result; impossible deadline honestly surfaced, mutation-confirmed; real reasoning; replan-after-stall via calling the same pure function again with updated remaining work; deterministic reproducibility). No dedicated HTTP route/UI built this wave -- none of the 12 acceptance items require one, and given tonight's time-bounded target the domain-level correctness (which IS fully covered) was prioritized; disclosed as a known limitation, not silently added scope creep.\n\nFull suite 585/585 GREEN, oxlint clean, max-lines ratchet 346 unchanged, zero Orca core delta.",
+          "testsAdded": 12,
+          "testsPassing": "585 full tsf suite GREEN",
+          "verifier": "SELF; provider-reset-changes-result and impossible-deadline-honesty guarantees verified genuine via mutation testing",
+          "commit": "b343dc9f3d1d936d65ea47cb42e77ed3135f7705",
+          "status": "COMMITTED",
+          "note": "Next: a single comprehensive final review (leaner cadence, per tonight's time-bounded overnight target), then package/adopt. M13 immediately after."
+        }
+      ]
     },
     {
       "id": "M13",
