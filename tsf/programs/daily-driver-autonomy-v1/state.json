@@ -2017,7 +2017,19 @@
       "note": "Tim sent a full M9-M13 roadmap extension mid-M8-session (received while M8 wave 5 was in progress) -- recorded verbatim in docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md so it survives context compaction. Explicit instruction: do NOT interrupt/restart/broaden/redo M8 because this message exists -- M8 finishes normally under the existing charter first. Once M8.status becomes ADOPTED, flip this entry's status to CURRENT and begin M9 wave 1 (research-first, per docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md's own bounded Promptfoo license/API verification instruction -- not a broad research phase) per the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M8.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started, pending M8 adoption"]
+      "gaps": ["everything -- not started, pending M8 adoption"],
+      "waves": [
+        {
+          "wave": 1,
+          "summary": "Bounded research (per Tim's own explicit instruction: no broad research phase). Verified Promptfoo's current real status via a targeted web search: still MIT-licensed and open source (v0.121.19 at time of check), but OpenAI announced acquiring Promptfoo in March 2026 -- a real, newly-discovered fact, not a licensing blocker but a genuine governance consideration for a tool that would sit inside a Claude/Codex-orchestrating program. Requires Node >=22.22.0 (tsf/package.json currently only floors >=22, a real compatibility gap if adopted as a dependency).\n\nDecision: build a TSF-native evaluation domain layer (concepts borrowed from Promptfoo -- test cases/assertions, side-by-side model/prompt comparison, regression thresholds, repeatable scoring, red-team/adversarial cases -- none of its code or config format taken as a dependency), per the handoff's own explicit permission (\"prefer a simple TSF-native domain layer over existing test infrastructure if that's cleaner\") and this program's unbroken M1-M8 precedent of zero new runtime dependencies added for any milestone so far (confirmed: the tsf/main worktree still has almost no installed node_modules, per M6 wave 11's own finding).\n\nAlso confirmed the exact real shape M9's \"model upgrade gate\" (CURRENT vs CANDIDATE mapping comparison) needs to consume: routing.mjs's mappings.roles[role] = {preferredProfile, modelClass, effortClass, fallbackProfile}, profiles.profiles[profileId] = {providerId, agentId, ...} -- reusable unchanged, no new routing-config format needed.",
+          "testsAdded": 0,
+          "testsPassing": "N/A -- research only",
+          "verifier": "SELF",
+          "commit": null,
+          "status": "COMMITTED",
+          "note": "Next: wave 2 -- pure TSF-native evaluation engine (tsf/domain/evaluation-pack.mjs): EvalCase/EvalPack contracts, assertion scoring, pack scoring, baseline-vs-candidate comparison with a real regression-blocks-promotion gate, all pure/deterministic and versioned/append-only (never rewriting a past eval run)."
+        }
+      ]
     },
     {
       "id": "M10",
