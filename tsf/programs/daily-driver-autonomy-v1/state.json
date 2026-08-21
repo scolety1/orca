@@ -1452,7 +1452,7 @@
     {
       "id": "M5",
       "name": "Capacity-Aware Routing",
-      "status": "CURRENT",
+      "status": "ADOPTED",
       "priority": "HIGHEST",
       "acceptanceCriteria": [
         "Uses trustworthy provider capacity signals when available; reports UNKNOWN otherwise, never fabricated",
@@ -1463,10 +1463,23 @@
         "Shows requested role separately from effective provider/model",
         "Proven fallback without faking exhaustion"
       ],
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "274ab638122db73939662cfaebba3a96effea38a",
+      "adoptedCommit": "274ab638122db73939662cfaebba3a96effea38a",
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_M5_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T01:57:38.000Z",
+        "adoptedCommit": "274ab638122db73939662cfaebba3a96effea38a",
+        "previousTsfMainHead": "41492728e4167831f98c48aee3f174515380b6de",
+        "mergeMethod": "git merge --ff-only (local, C:\\TSF_ORCA, branch tsf/main)",
+        "pushOrPublishPerformed": false,
+        "independentVerifier": "waves 2-4 verifier -- CLEAN, no findings (both real bugs re-derived independently, a fresh mutation-testing spot check, no new concurrency hazard, stub-pointer fix confirmed load-bearing); final holistic milestone verifier -- GREEN, 2 LOW-MEDIUM documentation-drift findings (both fixed: a stale ordering comment in keep-going-dispatch-loop.mjs, and the design doc's un-corrected REDUCE_CONCURRENCY/DOWNGRADE_WORKER claim)",
+        "postAdoptionTestRun": "325/325 GREEN, re-run directly from the adopted tsf/main tree (C:\\TSF_ORCA)",
+        "tsfMainBaselineCheck": "Re-read tsf/main fresh immediately before merging: git status clean, no unexpected dirty/staged state, HEAD at 41492728e4167831f98c48aee3f174515380b6de (the exact M4 adoption commit) -- no unrelated finding.",
+        "requiredRealProofRecorded": "wave 5 -- a genuine, live `orca account list --json` call via the real adapter (no stub) fed into decideCapacityAction: live snapshot -> PROCEED for both providers; an honestly-forced degraded case reused a REAL previously-observed value already on record in this program's own history (codex 91%, AT_EXPIRING_CAPACITY_SAFETY_RESERVE, traced via git log -S back to a pre-M5 commit) -> PAUSE_AND_CHECKPOINT via the safety-reserve override.",
+        "rollback": "To roll back: git -C C:\\TSF_ORCA reset --hard 41492728e4167831f98c48aee3f174515380b6de (previous tsf/main HEAD, recorded above)."
+      },
       "gaps": [
-        "Wave 1 (research/design) done -- see docs/tsf/M5_CAPACITY_AWARE_ROUTING_V1.md and waves[0]. Confirmed 2 of 7 acceptance criteria already fully satisfied by existing code (routing.mjs's requested-vs-observed shape; live-planner.mjs's fallback-on-failure mechanism) -- the real, remaining gap is that no code anywhere calls orca account list or reads a capacity signal programmatically; every capacity check this whole program has performed was a manual shell call by the operating agent. Implementation (a capacity adapter, a pure capacity-policy function, one real dispatch-loop call site), tests, and a real live-capacity proof remain."
+        "ADOPTED. Disclosed, real, non-blocking remaining scope boundary (documented in code comments, state.json, and the design doc, not silently unmet): decideCapacityAction can return REDUCE_CONCURRENCY/DOWNGRADE_WORKER, but dispatchStep only wires PAUSE_AND_CHECKPOINT -- planWave reads run.budget.maxConcurrentWorkers with no override hook, and this module doesn't choose a work item's requested agent. Wiring those two actions is left for a real follow-up milestone/wave rather than a rushed change to this adversarially-hardened dispatch path."
       ],
       "waves": [
         {
@@ -1524,7 +1537,7 @@
     {
       "id": "M6",
       "name": "Desktop TSF",
-      "status": "NOT_STARTED",
+      "status": "CURRENT",
       "acceptanceCriteria": [
         "Double-click launch opens TSF UI and connects to/starts required local TSF/Orca services",
         "Planner Chat, projects, Health, adoption all work without manual localhost commands",
@@ -1625,7 +1638,7 @@
       ]
     }
   ],
-  "currentMilestone": "M5",
+  "currentMilestone": "M6",
   "currentCandidate": null,
   "unresolvedGaps": [
     "M2's autonomous wave-dispatch loop mechanism is now implemented, unit-tested, independently reviewed, and (per Tim's explicit direction) concurrency-hardened with its own dedicated independent review (waves 15/15b/16/16b, tsf/server/keep-going-dispatch-loop.mjs + tsf/server/keep-going-run-store.mjs) -- 171/171 GREEN, including adversarial real-store-backed concurrency tests. Not yet done: live-dogfooded against the real orca CLI (blocked on CODEX_SANDBOX_HELPER_MISSING_001, a provider-runtime issue -- Codex rate-limit capacity itself has since genuinely reset and is healthy), wired to an HTTP/automation trigger for unattended use, or paired with a real independent verifier (so a live-dispatched run can ever see a non-empty verifiedSatisfied). Waves 1-16b delivered: the unit-tested governance module (now including in-flight-wave tracking and a tick-lock state machine), the unit-tested orchestration adapter (now including task-list polling), the mapOrchestrationFacts projection, one real (independently-verified) live Codex dispatch via a bare terminal (wave 3) and one through the full orchestration-bridge adapter (wave 11), the server controller + HTTP routes (now lock-aware), a browser-proven UI (Start/Pause/Resume/live display), and the dispatch-loop mechanism itself with two genuine independent (forked) review passes -- the milestone still needs a live dogfood of the loop, an unattended-trigger decision, and a real verifier hookup before this milestone can honestly be called complete/adopted."
