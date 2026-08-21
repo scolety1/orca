@@ -33,7 +33,8 @@ test('Orca plugin registers bounded TSF commands and events', async () => {
   )
   try {
     assert.deepEqual(await handlers.get('tsf-foundation-health')(), plugin.FOUNDATION)
-    assert.equal(handlers.size, 3)
+    assert.equal(handlers.size, 4)
+    assert.ok(handlers.has('tsf-open-ui'))
     assert.equal(events.size, 3)
   } finally {
     plugin.deactivate()

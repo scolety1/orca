@@ -60,6 +60,25 @@ test('activate() registers the existing commands unchanged', () => {
   }
 })
 
+test('the tsf-open-ui command opens the URL for the actual port this activation is using', async () => {
+  const { orca, registered } = fakeOrca()
+  const port = ephemeralPort()
+  const opened = []
+  activate(orca, {
+    port,
+    spawnFn: () => ({ stdout: null, stderr: null, on: () => {}, kill: () => {} }),
+    openUrl: (url) => opened.push(url)
+  })
+  try {
+    const result = await registered.get('tsf-open-ui')()
+    assert.deepEqual(opened, [`http://127.0.0.1:${port}`])
+    assert.equal(result.ok, true)
+    assert.equal(result.url, `http://127.0.0.1:${port}`)
+  } finally {
+    deactivate()
+  }
+})
+
 test('a re-entrant activate() stops the previous lifecycle rather than orphaning it', () => {
   const { orca } = fakeOrca()
   const stopCalls = []

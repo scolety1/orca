@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { startServerLifecycle } from './server/server-process-lifecycle.mjs'
+import { openUrl } from './server/open-url-command.mjs'
 
 const FOUNDATION = Object.freeze({
   foundation: 'ORCA',
@@ -42,14 +43,24 @@ export default function activate(orca, testOverrides = {}) {
   // plugin stays active -- "connects to/starts required local TSF/Orca
   // services" without Tim running any command. See server-process-
   // lifecycle.mjs for the bounded-backoff restart / already-running logic.
+  const serverPort = testOverrides.port ?? TSF_SERVER_PORT
   activeLifecycle = startServerLifecycle({
     spawnFn: testOverrides.spawnFn ?? realSpawnFn,
     serverEntryPath:
       testOverrides.serverEntryPath ?? join(import.meta.dirname, 'server', 'http-server.mjs'),
-    port: testOverrides.port ?? TSF_SERVER_PORT,
+    port: serverPort,
     log: (level, message) => orca.log(`[tsf-server:${level}] ${message}`.slice(0, 8192))
   })
   orca.commands.register('tsf-foundation-health', async () => ({ ...FOUNDATION }))
+  // M6: no host API can open a window/URL on the plugin's behalf (no
+  // shell.openExternal-equivalent exists, per wave 2's finding) -- this
+  // spawns the OS's own "open a URL" command directly, satisfying
+  // "double-click launch" as one command-palette invocation.
+  orca.commands.register('tsf-open-ui', async () => {
+    const openFn = testOverrides.openUrl ?? openUrl
+    openFn(`http://127.0.0.1:${serverPort}`)
+    return { ok: true, url: `http://127.0.0.1:${serverPort}` }
+  })
   orca.commands.register('tsf-status', async () => {
     const usage = await orca.host.call('storage.get', { key: 'usageMode' })
     const activeFleet = await orca.host.call('storage.get', { key: 'activeFleet' })

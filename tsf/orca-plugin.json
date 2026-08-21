@@ -35,6 +35,10 @@
       {
         "id": "tsf-set-usage-mode",
         "title": "TSF: Set Usage Mode"
+      },
+      {
+        "id": "tsf-open-ui",
+        "title": "TSF: Open UI"
       }
     ],
     "events": [

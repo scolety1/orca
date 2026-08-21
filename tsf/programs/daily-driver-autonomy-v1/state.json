@@ -1621,6 +1621,16 @@
           "commit": null,
           "status": "INDEPENDENTLY_VERIFIED_CLEAN",
           "note": "Confirmed no orphaned processes remain after the full suite run (PowerShell Get-CimInstance Win32_Process spot check). Next: wave 8 -- register the 'open TSF UI' command in tsf/orca-plugin.json's contributes.commands + main.mjs, spawning the OS's url-open command (start/open/xdg-open per platform) when invoked from Orca's command palette. Then a final holistic review of the whole M6 milestone before packaging/adoption."
+        },
+        {
+          "wave": 8,
+          "summary": "Registered the 'open TSF UI' command -- the last piece of the wave-2 architecture. New tsf/server/open-url-command.mjs: buildOpenUrlCommand(url, platform) is a pure function returning the exact {command, args} for each platform (Windows: cmd /c start \"\" <url> -- the empty-string quirk avoids the URL being misparsed as start's own window-title argument; macOS: open <url>; Linux: xdg-open <url>), and openUrl(url, options) spawns it as a detached, stdio-ignored subprocess -- no host API exists for this (confirmed no shell.openExternal-equivalent in wave 2), so this is a plain, unprivileged subprocess launch, the same class of operation as spawning tsf/server itself. tsf/main.mjs's activate() registers a new tsf-open-ui command that calls openUrl against the actual port this activation is using (not a hardcoded constant, so it stays correct even when testOverrides.port differs); tsf/orca-plugin.json's contributes.commands gained the matching manifest entry. Updated the pre-existing foundation-contracts.test.mjs's handler-count assertion (3 -> 4) since a new command is now genuinely registered -- not a workaround, a real count change.",
+          "testsAdded": 5,
+          "testsPassing": "348/348 full tsf suite GREEN",
+          "verifier": "SELF; confirmed no orphaned processes after the full suite run (PowerShell process inspection)",
+          "commit": null,
+          "status": "IN_PROGRESS",
+          "note": "All 3 pieces of the wave-2 architecture are now implemented: static-UI serving (wave 4), spawn/restart/shutdown lifecycle (wave 6-7), and the open-UI command (this wave). Next: a final holistic independent review of the whole M6 milestone (mirroring M2-M5's own final-packaging-gate discipline), then package as an immutable candidate and adopt into tsf/main via the established two-commit ff-only pattern if all Section H conditions hold."
         }
       ]
     },
