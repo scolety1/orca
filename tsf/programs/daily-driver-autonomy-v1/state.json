@@ -2339,6 +2339,11 @@
             "tsf/launcher/first-run-setup.html",
             "tsf/test/desktop-launcher-cold-start.test.mjs"
           ]
+        },
+        {
+          "wave": 5,
+          "summary": "Independent review of wave 4 confirmed the cold-start fix genuinely works (live re-verification on an isolated scratch port/mutex, regression test confirmed to catch the old buggy shape) but found one real, CONFIRMED gap: the top-level try/catch started after the Win32 P/Invoke Add-Type compilation and the Mutex construction, leaving a narrow but genuine window where a cold `Add-Type` compile failure or a restricted Mutex-creation environment could still throw before any window exists, reproducing the exact same silent-death shape this whole fix exists to eliminate. Fixed by moving the try block to wrap everything from the Win32 Add-Type call onward -- single-instance setup, the orca-CLI check, and all window/WebView2 setup are now inside one handler, with the early \"already running\" / \"orca not found\" exit paths unaffected (exit does not trigger catch). Re-verified: regression test still passes, live smoke test against the real backend still shows the window in under 1s and clean shutdown, full suite 593/594 (1 known pre-existing port-4610 collision, unrelated).",
+          "filesChanged": ["tsf/launcher/Launch-TSF.ps1"]
         }
       ],
       "gaps": [

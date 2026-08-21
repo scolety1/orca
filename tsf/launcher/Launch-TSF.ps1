@@ -79,45 +79,48 @@ function Show-HonestError {
     [System.Windows.MessageBox]::Show($Message, 'Thousand Sunny Fleet', 'OK', 'Error') | Out-Null
 }
 
-# --- Single-instance handling ---------------------------------------------
-# Relaunching while a window is already open should activate it, not spawn a
-# second one. A named Mutex is the standard reliable signal for this; window
-# activation itself uses plain Win32 calls (FindWindow/SetForegroundWindow) so
-# it works whether or not this exact script instance created that window.
-Add-Type -Namespace TsfNative -Name Win32 -MemberDefinition @'
+# Everything below -- including the single-instance Win32/Mutex setup and the
+# orca-CLI check -- is wrapped in one top-level handler. An earlier version of
+# this fix left the Win32 P/Invoke compilation and Mutex construction outside
+# the try/catch on the theory that they're simple/safe; an independent review
+# correctly pointed out that's exactly the same silent-death shape this whole
+# rewrite exists to eliminate (a cold `Add-Type` compile or a restricted
+# Mutex-creation environment could still throw before any window exists, with
+# nothing to catch it). Now nothing between here and Application.Run can fail
+# silently.
+try {
+    # --- Single-instance handling ---------------------------------------------
+    # Relaunching while a window is already open should activate it, not spawn a
+    # second one. A named Mutex is the standard reliable signal for this; window
+    # activation itself uses plain Win32 calls (FindWindow/SetForegroundWindow) so
+    # it works whether or not this exact script instance created that window.
+    Add-Type -Namespace TsfNative -Name Win32 -MemberDefinition @'
 [DllImport("user32.dll")] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
 '@
 
-$createdNew = $false
-$mutex = New-Object System.Threading.Mutex($true, $MutexName, [ref]$createdNew)
-if (-not $createdNew) {
-    Write-Log 'Already running -- activating the existing window instead of opening a second one.'
-    $hwnd = [TsfNative.Win32]::FindWindow($null, $WindowTitle)
-    if ($hwnd -ne [IntPtr]::Zero) {
-        if ([TsfNative.Win32]::IsIconic($hwnd)) { [TsfNative.Win32]::ShowWindow($hwnd, 9) | Out-Null } # SW_RESTORE
-        [TsfNative.Win32]::SetForegroundWindow($hwnd) | Out-Null
+    $createdNew = $false
+    $mutex = New-Object System.Threading.Mutex($true, $MutexName, [ref]$createdNew)
+    if (-not $createdNew) {
+        Write-Log 'Already running -- activating the existing window instead of opening a second one.'
+        $hwnd = [TsfNative.Win32]::FindWindow($null, $WindowTitle)
+        if ($hwnd -ne [IntPtr]::Zero) {
+            if ([TsfNative.Win32]::IsIconic($hwnd)) { [TsfNative.Win32]::ShowWindow($hwnd, 9) | Out-Null } # SW_RESTORE
+            [TsfNative.Win32]::SetForegroundWindow($hwnd) | Out-Null
+        }
+        exit 0
     }
-    exit 0
-}
 
-Write-Log 'Launch requested.'
+    Write-Log 'Launch requested.'
 
-$orcaCmd = Get-Command orca -ErrorAction SilentlyContinue
-if (-not $orcaCmd) {
-    Show-HonestError "Thousand Sunny Fleet needs Orca installed first. The 'orca' command was not found on this machine. Install Orca, then launch Thousand Sunny Fleet again."
-    exit 1
-}
+    $orcaCmd = Get-Command orca -ErrorAction SilentlyContinue
+    if (-not $orcaCmd) {
+        Show-HonestError "Thousand Sunny Fleet needs Orca installed first. The 'orca' command was not found on this machine. Install Orca, then launch Thousand Sunny Fleet again."
+        exit 1
+    }
 
-# Everything from here on used to run *before* any window existed -- a slow
-# cold boot meant nothing appeared for 30+ seconds, and any unhandled error
-# in this whole stretch died silently (hidden window, no console). Now the
-# window is created first (see below) and this top-level handler is the
-# actual backstop: if anything past this point genuinely throws, Tim sees a
-# real error instead of nothing.
-try {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
