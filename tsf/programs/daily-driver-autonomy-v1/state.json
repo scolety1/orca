@@ -1478,6 +1478,26 @@
           "commit": null,
           "status": "IN_PROGRESS",
           "note": "Next: implement the capacity adapter, the capacity-policy function, and the dispatchStep call site, each with real tests, following the same bounded-wave/independent-review/checkpoint discipline used throughout M2/M3/M4. Then the required real live-capacity proof (a genuine orca account list --json call feeding a real policy decision, for both a PROCEED case and an honestly-forced degraded case). Then final holistic review + packaging/adoption if GREEN."
+        },
+        {
+          "wave": 2,
+          "summary": "Implemented the real capacity adapter: tsf/adapters/orca-capacity-bridge.mjs's fetchCapacitySnapshot() wraps the exact real capacity signal this whole program has used by hand throughout M2/M3/M4 (`orca account list --json`, previously only ever invoked as a manual shell command) as real, callable application code, mirroring orca-orchestration-bridge.mjs's own spawn-and-fail-honestly pattern exactly (same CLI resolution order, same SPAWN_ERROR/TIMEOUT/CLI_ERROR/MALFORMED_RESPONSE failure shapes, never a fabricated snapshot). Reshapes the real rateLimits block into a compact {claude, codex} shape; a provider missing from the response reports null, never a guessed 0%. Added STUB_ORCA_RATE_LIMITS support to the shared stub-orca-cli.mjs test fixture (account list) so this and future capacity tests never depend on a live Orca runtime.",
+          "testsAdded": 5,
+          "testsPassing": "315/315 full tsf suite GREEN",
+          "verifier": "SELF; verified genuine by swapping in a fake always-succeeds stub adapter and confirming 2 tests failed with the exact expected mismatch, then restoring",
+          "commit": "f19ecd26b",
+          "status": "IN_PROGRESS",
+          "note": "Next: the pure capacity-policy domain function, then the dispatchStep call site."
+        },
+        {
+          "wave": 3,
+          "summary": "Implemented the pure capacity-policy domain function: tsf/domain/capacity-policy.mjs's decideCapacityAction(snapshot, providerId) -- no I/O, over the capacity-bridge's own real snapshot shape. Defaults to PROCEED with assurance:'UNKNOWN' when no signal is available for a provider (an absent signal is not evidence of exhaustion -- treating it as one would itself be a kind of fabrication, just pessimistic instead of optimistic, honoring the acceptance criterion's own 'never fabricated' wording in both directions). Otherwise decides PROCEED/DOWNGRADE_WORKER/REDUCE_CONCURRENCY/PAUSE_AND_CHECKPOINT from real observed session/weekly usage percentages (the worse of the two governs), with Orca's own computed status string (the exact AT_EXPIRING_CAPACITY_SAFETY_RESERVE value this program observed live in M2's own dogfood proof, per providerCapacityStatus in this same state.json file) overriding the raw percentage when present -- deferring to Orca's own capacity assessment rather than reinventing thresholds it might not match.",
+          "testsAdded": 8,
+          "testsPassing": "323/323 full tsf suite GREEN",
+          "verifier": "SELF; verified genuine by disabling the pause-threshold branch and confirming 2 tests failed with the exact expected mismatch, then restoring",
+          "commit": "f67374c07",
+          "status": "IN_PROGRESS",
+          "note": "Next: the one real call site in keep-going-dispatch-loop.mjs's dispatchStep -- the piece touching M2's own adversarially-hardened dispatch loop, so this specific wave gets its own careful review before proceeding further."
         }
       ]
     },
