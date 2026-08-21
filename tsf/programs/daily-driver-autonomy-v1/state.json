@@ -1915,6 +1915,51 @@
           "note": "Real, disclosed scope boundary carried into later waves: quantitative subscription-consumption projection and metered-cost estimation both genuinely require calibration data (settled-run hours vs. observed capacity/token usage) that doesn't exist yet -- wave 7 (estimate-vs-actual calibration, consuming real M4/M5 evidence) is the real fix, not a shortcut here. Next: wave 6 -- delivery scheduling (dependency-aware critical path over the WBS's own dependencies/conflictsWith fields, a working calendar, milestone dates, alternative scheduling modes) -- this is where wave 2's own honestly-disclosed wall-clock-is-a-naive-sum limitation finally gets replaced with real dependency-aware scheduling."
         }
       ]
+    },
+    {
+      "id": "M9",
+      "name": "Evaluation & Regression Lab",
+      "status": "AUTHORIZED_PENDING_M8_ADOPTION",
+      "note": "Tim sent a full M9-M13 roadmap extension mid-M8-session (received while M8 wave 5 was in progress) -- recorded verbatim in docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md so it survives context compaction. Explicit instruction: do NOT interrupt/restart/broaden/redo M8 because this message exists -- M8 finishes normally under the existing charter first. Once M8.status becomes ADOPTED, flip this entry's status to CURRENT and begin M9 wave 1 (research-first, per docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md's own bounded Promptfoo license/API verification instruction -- not a broad research phase) per the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M8.",
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started, pending M8 adoption"]
+    },
+    {
+      "id": "M10",
+      "name": "Security & Supply-Chain Health",
+      "status": "AUTHORIZED_PENDING_M9_ADOPTION",
+      "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M9 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started, pending M9 adoption"]
+    },
+    {
+      "id": "M11",
+      "name": "Observability / Agent Flight Recorder",
+      "status": "AUTHORIZED_PENDING_M10_ADOPTION",
+      "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started, pending M10 adoption"]
+    },
+    {
+      "id": "M12",
+      "name": "Fleet Optimizer",
+      "status": "AUTHORIZED_PENDING_M11_ADOPTION",
+      "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started, pending M11 adoption"]
+    },
+    {
+      "id": "M13",
+      "name": "TSF Full-System Acceptance + Operator Readiness",
+      "status": "AUTHORIZED_PENDING_M12_ADOPTION",
+      "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). NOT a feature-building milestone -- freezes feature scope at M1-M12; fixes genuine defects, closes integration gaps, simplifies UX, improves reliability/docs, only after all 18 acceptance phases in the handoff doc are worked through. Do NOT begin M14 or invent additional feature milestones without Tim's approval -- M13 is intentionally the end of this upgrade program. Begins only after M12 is genuinely ADOPTED.",
+      "candidateCommit": null,
+      "adoptedCommit": null,
+      "gaps": ["everything -- not started, pending M12 adoption"]
     }
   ],
   "currentMilestone": "M8",
