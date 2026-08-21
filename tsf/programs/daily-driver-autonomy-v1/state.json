@@ -705,7 +705,9 @@
           "testsPassing": "204/204 full tsf suite GREEN",
           "verifier": "SELF; an independent review of waves 26+27 combined is in flight",
           "commit": "0a4f0930f4985b0afa71055e31566d9509d048af",
-          "deferredToNextWave": ["independent review of this wiring (in flight)"]
+          "deferredToNextWave": [
+            "independent review of this wiring (in flight)"
+          ]
         },
         {
           "wave": 27,
@@ -1193,7 +1195,11 @@
       ],
       "liveWorkFeedRule": "No fabricated status -- every state shown must be sourced from real Orca/TSF facts (task/dispatch status, run state, checkpoint phase), the same discipline M2 established (projectKeepGoingRun never invents workers/verifierResults it cannot back with real data). Drill-down/Open in Orca available for raw technical detail; Tim should not normally need Orca terminals.",
       "chatAuthority": {
-        "preserve": ["AUTO_DECIDE", "RECOMMEND_AND_PROCEED", "TIM_REQUIRED"],
+        "preserve": [
+          "AUTO_DECIDE",
+          "RECOMMEND_AND_PROCEED",
+          "TIM_REQUIRED"
+        ],
         "chatMustNeverSilentlyAuthorize": [
           "adoption",
           "push/merge",
@@ -2017,7 +2023,9 @@
       "note": "Tim sent a full M9-M13 roadmap extension mid-M8-session (received while M8 wave 5 was in progress) -- recorded verbatim in docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md so it survives context compaction. Explicit instruction: do NOT interrupt/restart/broaden/redo M8 because this message exists -- M8 finishes normally under the existing charter first. Once M8.status becomes ADOPTED, flip this entry's status to CURRENT and begin M9 wave 1 (research-first, per docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md's own bounded Promptfoo license/API verification instruction -- not a broad research phase) per the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M8.",
       "candidateCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
       "adoptedCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
-      "gaps": ["everything -- not started, pending M8 adoption"],
+      "gaps": [
+        "everything -- not started, pending M8 adoption"
+      ],
       "waves": [
         {
           "wave": 1,
@@ -2132,7 +2140,9 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M9 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
       "adoptedCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
-      "gaps": ["everything -- not started, pending M9 adoption"],
+      "gaps": [
+        "everything -- not started, pending M9 adoption"
+      ],
       "waves": [
         {
           "wave": 1,
@@ -2167,7 +2177,9 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
       "adoptedCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
-      "gaps": ["everything -- not started, pending M10 adoption"],
+      "gaps": [
+        "everything -- not started, pending M10 adoption"
+      ],
       "waves": [
         {
           "wave": 1,
@@ -2202,7 +2214,9 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
       "adoptedCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
-      "gaps": ["everything -- not started, pending M11 adoption"],
+      "gaps": [
+        "everything -- not started, pending M11 adoption"
+      ],
       "waves": [
         {
           "wave": 1,
@@ -2257,7 +2271,9 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). NOT a feature-building milestone -- freezes feature scope at M1-M12; fixes genuine defects, closes integration gaps, simplifies UX, improves reliability/docs, only after all 18 acceptance phases in the handoff doc are worked through. Do NOT begin M14 or invent additional feature milestones without Tim's approval -- M13 is intentionally the end of this upgrade program. Begins only after M12 is genuinely ADOPTED.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started, pending M12 adoption"],
+      "gaps": [
+        "everything -- not started, pending M12 adoption"
+      ],
       "acceptancePass": {
         "schemaVersion": "TSF_M13_ACCEPTANCE_REPORT_V1",
         "completedAt": "2026-08-21T09:50:35.000Z",
@@ -2286,10 +2302,10 @@
     {
       "id": "M14",
       "name": "TSF Desktop Launch + V1 Release-Candidate Remediation",
-      "status": "CURRENT",
+      "status": "CODE_ADOPTED_AWAITING_TIM_HANDS_ON_TEST",
       "note": "Authorized directly by Tim after the M13 handoff (see docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md). Bounded remediation only -- no new product capabilities, no Orca fork, Orca core delta stays 0. Closes the one concrete defect M13 found: no real double-click TSF launch experience exists on the machine. Do NOT create M15.",
-      "candidateCommit": null,
-      "adoptedCommit": null,
+      "candidateCommit": "1bd53c549",
+      "adoptedCommit": "1bd53c549",
       "waves": [
         {
           "wave": 1,
@@ -2319,7 +2335,23 @@
       "gaps": [
         "The real end-to-end reachable path (plugin genuinely registered + enabled, dedicated window opens on the live TSF UI) has not been proven with real Orca settings -- reserved for Tim's own one-time guided setup + hands-on test, per his explicit instruction.",
         "No packaged/signed installer -- explicitly out of scope for this local V1 per Tim's own instruction."
-      ]
+      ],
+      "adoptionReceipt": {
+        "schemaVersion": "TSF_MILESTONE_ADOPTION_RECEIPT_V1",
+        "adoptedAt": "2026-08-21T18:53:00.754Z",
+        "adoptedIntoBranch": "tsf/main",
+        "candidateCommit": "1bd53c549",
+        "ffMergeCommit": "1bd53c549",
+        "reVerifiedFromMergedTree": {
+          "fullTestSuite": "589/589 (588 pass, 1 pre-existing skip, 0 failures)",
+          "orcaCoreDelta": "EMPTY (git diff --stat ded5c5381..1bd53c549 -- . ':!tsf/**' ':!docs/tsf/**' confirmed empty)",
+          "newRuntimeDependencies": "ZERO (tsf/package.json unchanged)",
+          "uiRebuiltAndProven": "tsf/ui/dist rebuilt from this exact merged tree; grepped bundle confirms 'Fleet Planning', 'Flight Recorder', 'regression-check' each present once -- current M9-M12 UI, not the stale M8 bundle",
+          "realShortcutsRepointed": "Install-TsfLauncher.ps1 re-run from C:/TSF_ORCA/tsf/launcher (the adopted tree) -- confirmed Desktop and Start Menu shortcuts now target C:/TSF_ORCA/tsf/launcher/Launch-TSF.ps1 with the correct icon, not the temporary session-branch worktree used during wave 1/2 development"
+        },
+        "whyNotPlainAdopted": "The launcher code itself is genuinely done, reviewed, fixed, and re-verified -- no different from any other M2-M12 milestone's adoption bar. What is NOT yet done is the one real-world step Tim's own M14 instruction reserves for him: registering the TSF plugin through Orca's real Settings UI on this machine and confirming the 'reachable' cold-launch path (dedicated window opens on the live TSF UI, not the first-run guide) actually works end to end. This status name keeps that distinction honest rather than claiming a human proof that hasn't happened.",
+        "singleRemainingManualAction": "Double-click the 'Thousand Sunny Fleet' Desktop shortcut. It will open the guided first-run setup page (plugin not yet registered on this machine) -- follow its 3 steps once in Orca's own Settings, then click 'Check again' (or just double-click the shortcut again). Once the plugin is enabled, every future launch is a plain double-click straight to the real TSF UI."
+      }
     }
   ],
   "currentMilestone": "M14",
@@ -2479,7 +2511,11 @@
         "Once usable capacity is effectively exhausted, checkpoint and wait/switch providers normally -- do not force further dispatch.",
         "Immediately after reset, reassess live capacity and restore the normal worker budget/concurrency for that provider."
       ],
-      "appliesToProviders": ["codex", "claude", "any future provider with a known reset window"],
+      "appliesToProviders": [
+        "codex",
+        "claude",
+        "any future provider with a known reset window"
+      ],
       "supersedesForNearResetWindowOnly": "The general 'hold off on new WORKER_* dispatch near a limit' base policy above -- this amendment only relaxes that base policy inside a known-reset window with a genuine bounded task available; it does not authorize dispatch when no such task exists or when the task risks stranding.",
       "mustStillHonor": [
         "Section F execution discipline (conflict-aware waves, independent verification, no worker self-report treated as done)",
@@ -2557,7 +2593,10 @@
       "worktreeRepoId": "443fd5dc-bd87-4019-a2a0-879188f97506",
       "operatorStateFile": "tsf/server/.local-state/operator-state.json (real default store, not a test override -- gitignored, inspect directly on disk)",
       "wave1Goal": "docs/m2-live-dogfood/wave-1-marker.md containing exactly the line 'M2 live dogfood wave 1 marker'",
-      "acceptanceCriteria": ["DOGFOOD_MARKER_WAVE_1_ADDED", "DOGFOOD_MARKER_WAVE_2_ADDED"],
+      "acceptanceCriteria": [
+        "DOGFOOD_MARKER_WAVE_1_ADDED",
+        "DOGFOOD_MARKER_WAVE_2_ADDED"
+      ],
       "dispatchedAt": "2026-08-20T07:12:51.241Z",
       "statusAtEntry": "orca orchestration task-list still reports status:'dispatched' as of 2026-08-20T07:42:35Z (~30 minutes elapsed, at/past the run's own stallThresholdMs of 30 minutes). orca terminal read on the worker terminal shows latestCursor/nextCursor UNCHANGED (14) since immediately after MCP startup -- zero new output in ~28 minutes, a genuine stall (the --inject dispatch mechanism appears to not have delivered visibly, or the terminal is deadlocked before echoing it), not a transient delay. This is being fenced as UNCERTAIN, not claimed as failed or stopped.",
       "scratchpadEvidence": "A non-committed mission driver script and its log live in this session's scratchpad temp dir (m2-live-dogfood.mjs / .log) -- NOT durable, may not survive a session loss; this state.json entry is the durable source of truth, not that log."
