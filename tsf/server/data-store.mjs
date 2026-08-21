@@ -29,7 +29,8 @@ const DEFAULTS = {
   keepGoingRuns: {}, // projectId -> TSF_OVERNIGHT_RUN_V1 (see tsf/domain/keep-going.mjs)
   projectMemory: {}, // projectId -> TSF_PROJECT_MEMORY_V1 (see tsf/domain/project-memory.mjs)
   projectEstimates: {}, // projectId -> TSF_PROJECT_ESTIMATE_RESULT_V1 (see tsf/server/estimate-http-routes.mjs)
-  estimateActuals: {} // projectId -> TSF_ESTIMATE_ACTUAL_V1[] (see tsf/domain/estimate-calibration.mjs)
+  estimateActuals: {}, // projectId -> TSF_ESTIMATE_ACTUAL_V1[] (see tsf/domain/estimate-calibration.mjs)
+  evalRuns: {} // packId -> TSF_EVAL_RUN_RESULT_V1[], append-only (see tsf/server/eval-http-routes.mjs)
 }
 
 // Exposes the real state file path (honoring the same TSF_UI_STATE_FILE
