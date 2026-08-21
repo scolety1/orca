@@ -195,24 +195,27 @@
     <div class="spinner"></div>
     <h1 id="starting-title">Starting Thousand Sunny Fleet…</h1>
     <p class="lede" id="starting-lede">
-      Waiting for Orca and the TSF backend to come up. This can take a little longer
-      the first time, or right after a reboot.
+      Waiting for Orca and the TSF backend to come up.
     </p>
     <div id="stalled-hint">
-      This is taking longer than usual. If Orca hasn't opened at all, make sure it's
-      installed and try again. If Orca <em>is</em> open, this machine may not have TSF
-      registered as a plugin yet -- the setup steps below will appear shortly if so.
+      This is unusually long, even for a slow cold start. Orca is still open and
+      working towards this, so there's nothing to redo -- if it hasn't resolved after
+      several more minutes, it may be worth restarting Orca once.
     </div>
   </div>
 
-  <!-- Revealed only if the wait crosses a "this probably isn't just a cold
-       boot" threshold -- see REVEAL_SETUP_AFTER_MS below. -->
+  <!-- Revealed only well past a normal (if slow) cold-boot window -- see
+       REVEAL_SETUP_AFTER_MS below. Framed as a thing to double-check, not a
+       diagnosis: activation can legitimately still be in progress even with
+       everything already configured correctly, so this must not read as
+       "you forgot a step" when the truth may just be "still starting." -->
   <div id="setup-phase">
-    <h1>One-time setup</h1>
+    <h1>Still starting — double-check these if it's your first launch</h1>
     <p class="lede">
-      Thousand Sunny Fleet runs as a plugin inside Orca. This machine hasn't registered it
-      yet, so before the app can open, Orca needs to be told where to find it — a one-time
-      step done once per machine, in Orca's own Settings.
+      The first activation after enabling Thousand Sunny Fleet (or after restarting
+      Orca) can genuinely take a few minutes -- Orca is still working on this, and no
+      action is needed yet. If it's been several minutes with no change, confirm these
+      one-time steps in Orca's own Settings:
     </p>
 
     <div class="step">
@@ -255,17 +258,31 @@
 
 <script>
   const TSF_URL = 'http://127.0.0.1:4610';
-  // If the backend still isn't reachable after this long, reveal the setup
-  // steps -- a normal cold boot (Orca starting fresh, then the plugin
-  // spawning tsf/server) is expected to finish well before this, so crossing
-  // it is the actual signal that registration is the more likely blocker.
-  const REVEAL_SETUP_AFTER_MS = 20000;
-  // Past this much total waiting, say so plainly rather than spinning
-  // forever with no acknowledgement that something may be wrong.
-  const STALLED_HINT_AFTER_MS = 75000;
+  // M14: real live evidence (process creation timestamps on Tim's own
+  // machine) confirmed Orca's own plugin-host activation for TSF can
+  // genuinely take several minutes past Orca itself becoming ready --
+  // observed once at ~4.5 minutes, with nothing wrong: Orca's main process,
+  // GPU/network/renderer subprocesses all started within seconds, but the
+  // plugin-host-entry.js process for TSF specifically didn't appear until
+  // 4m23s later. There is no supported way for this launcher (or Tim) to
+  // make that faster -- no CLI surface exists for plugin reconciliation --
+  // so these thresholds exist only to keep the *messaging* honest during a
+  // long-but-normal wait, never to imply registration is broken when it
+  // likely isn't.
+  //
+  // Past this long, acknowledge the wait explicitly rather than silently
+  // spinning as if a normal ~5-10s activation were still in progress.
+  const REASSURE_AFTER_MS = 90000;
+  // Only past this point does a registration issue become a *plausible*
+  // explanation worth double-checking -- well beyond the ~4m23s observed
+  // for a genuine, correctly-configured activation on Tim's own machine.
+  const REVEAL_SETUP_AFTER_MS = 300000;
+  // Genuinely unusual even accounting for the above -- say so plainly.
+  const STALLED_HINT_AFTER_MS = 600000;
   const POLL_INTERVAL_MS = 2000;
 
   const startedAt = Date.now();
+  let reassured = false;
   let setupRevealed = false;
   let stalledShown = false;
 
@@ -299,16 +316,23 @@
     document.body.removeChild(ta);
   });
 
+  function reassureIfDue() {
+    if (reassured || Date.now() - startedAt < REASSURE_AFTER_MS) {
+      return;
+    }
+    reassured = true;
+    document.getElementById('starting-title').textContent = 'Still starting…';
+    document.getElementById('starting-lede').textContent =
+      'Orca is still working on activating Thousand Sunny Fleet. The first activation ' +
+      'after enabling the plugin, or after restarting Orca, can genuinely take a few ' +
+      "minutes -- there's nothing to do yet.";
+  }
+
   function revealSetupIfDue() {
     if (setupRevealed || Date.now() - startedAt < REVEAL_SETUP_AFTER_MS) {
       return;
     }
     setupRevealed = true;
-    document.getElementById('starting-title').textContent = 'Still starting…';
-    document.getElementById('starting-lede').textContent =
-      "This is taking longer than a normal cold start usually does. It's most likely " +
-      "that Orca hasn't been told where to find Thousand Sunny Fleet yet -- follow the " +
-      'steps below once, in Orca\'s own Settings.';
     document.getElementById('setup-phase').style.display = 'block';
   }
 
@@ -339,6 +363,7 @@
     } catch (e) {
       // Backend still unreachable -- stay on this page.
     }
+    reassureIfDue();
     revealSetupIfDue();
     showStalledHintIfDue();
     text.textContent = setupRevealed ? 'Still waiting for the TSF backend…' : 'Checking…';

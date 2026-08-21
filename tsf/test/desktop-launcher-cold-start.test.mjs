@@ -126,3 +126,58 @@ test('first-run-setup.html shows something immediately and only escalates copy o
     'a long-stalled wait must eventually say so plainly rather than spinning forever unacknowledged'
   )
 })
+
+// M14 real live-state regression: Tim's own machine showed the plugin
+// genuinely registered, enabled, and Orca running -- yet the backend still
+// took several minutes to activate, confirmed via real process-creation
+// timestamps (Orca's own subprocesses started within seconds; the TSF
+// plugin-host-entry.js process didn't appear until 4m23s later, with no
+// error anywhere -- there is no supported lever, CLI or otherwise, for this
+// launcher to make Orca's own plugin reconciliation faster). The bug this
+// guards against: showing "you haven't registered this" language during a
+// wait that is completely normal for an already-correctly-configured
+// machine, which actively misleads someone who (correctly) already
+// completed setup and is now just waiting on Orca itself.
+function readNumericConst(name) {
+  const match = guideSource.match(new RegExp(`const ${name} = (\\d+)`))
+  assert.ok(match, `expected to find a numeric const ${name}`)
+  return Number(match[1])
+}
+
+test('first-run-setup.html tolerates a multi-minute activation delay before ever suggesting registration is the cause', () => {
+  const reassureAfterMs = readNumericConst('REASSURE_AFTER_MS')
+  const revealSetupAfterMs = readNumericConst('REVEAL_SETUP_AFTER_MS')
+  const stalledHintAfterMs = readNumericConst('STALLED_HINT_AFTER_MS')
+
+  // The real, observed activation delay was ~4m23s with nothing wrong.
+  // Suggesting a registration problem meaningfully before that window has
+  // fully elapsed would reproduce exactly the misleading message Tim's
+  // real machine surfaced.
+  const OBSERVED_REAL_ACTIVATION_DELAY_MS = 4 * 60 * 1000 + 23 * 1000
+  assert.ok(
+    revealSetupAfterMs >= OBSERVED_REAL_ACTIVATION_DELAY_MS,
+    `REVEAL_SETUP_AFTER_MS (${revealSetupAfterMs}ms) must be at least as long as the ` +
+      `real observed activation delay (${OBSERVED_REAL_ACTIVATION_DELAY_MS}ms) -- ` +
+      'otherwise a correctly-configured machine gets told to double-check settings ' +
+      'that were never the problem'
+  )
+  assert.ok(
+    reassureAfterMs < revealSetupAfterMs && revealSetupAfterMs < stalledHintAfterMs,
+    'the three escalation thresholds must be strictly increasing'
+  )
+})
+
+test("first-run-setup.html's setup-phase copy double-checks rather than diagnoses", () => {
+  // Must not claim the machine definitely hasn't registered the plugin --
+  // it may well have, and just still be waiting on Orca's own activation.
+  assert.ok(
+    !/hasn'?t registered/i.test(guideSource),
+    'setup-phase copy must not assert the plugin is unregistered as a fact -- a ' +
+      'correctly-registered machine can still be mid-activation for several minutes'
+  )
+  assert.match(
+    guideSource,
+    /double-check/i,
+    'setup-phase copy should invite double-checking, not declare a diagnosis'
+  )
+})

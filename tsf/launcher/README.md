@@ -55,14 +55,18 @@ checkout.
 3. In the background, it fires `orca open` (non-blocking, retried a bounded number of
    times) to make sure Orca itself is coming up.
 4. The window navigates straight to `first-run-setup.html`, which owns all of the
-   actual waiting from here: an immediate neutral "Starting…" state, a guided
-   registration walkthrough revealed only if the wait crosses a real-cold-boot-shaped
-   threshold (with the exact folder path to paste and a copy button), and an honest
-   "this is taking a while" note if it's genuinely stalled -- polling indefinitely and
-   never giving up, then auto-navigating the same window to the real UI the instant the
-   backend answers. No relaunch needed, whether that takes one second or two minutes.
-   This registration step runs once per machine; every later launch goes straight to
-   the real UI within about a second.
+   actual waiting from here: an immediate neutral "Starting…" state, a reassurance
+   after 90 seconds that a multi-minute wait can be entirely normal (Orca's own
+   plugin activation was observed taking ~4.5 minutes on real hardware with nothing
+   wrong -- there is no supported lever, for this launcher or for Tim, to make that
+   faster), a registration walkthrough revealed only past 5 minutes and framed as
+   something to double-check rather than a diagnosis, and an honest "this is
+   genuinely unusual" note past 10 minutes -- polling indefinitely throughout and
+   never giving up, then auto-navigating the same window to the real UI the instant
+   the backend answers, however long that takes. Once registered, every later launch
+   still goes straight to the real UI within about a second on a machine where Orca
+   and the plugin are already warm; the multi-minute case is specifically the
+   activation-after-enabling / post-restart path, not the everyday one.
 5. Any genuine failure anywhere in this sequence shows a real, visible error dialog --
    there is no silent-death path left.
 

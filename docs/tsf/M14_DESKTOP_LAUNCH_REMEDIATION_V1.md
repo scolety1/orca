@@ -1,6 +1,54 @@
 # M14 — TSF Desktop Launch + V1 Release-Candidate Remediation
 
-## Second hands-on-test remediation: the real cold-start failure (read first)
+## Third hands-on-test remediation: the real plugin-activation delay (read first)
+
+Tim's third hands-on test was a genuine partial pass: cold launch, immediate window,
+and Orca auto-starting all confirmed working. But with the plugin visibly registered
+*and* Enabled in Orca's own Settings, the window stayed on "Still starting…"
+indefinitely, with Tim deliberately changing nothing (no uninstall/toggle/refresh) so
+the live state could be diagnosed as-is.
+
+**Diagnosed from the live machine, not guessed at.** `netstat`/`Get-NetTCPConnection`
+showed port 4610 genuinely `LISTENING`, with an `ESTABLISHED` connection from Tim's
+own real launcher window -- so the backend *was* reachable, and (confirmed by direct
+`curl -H "Origin: null"`) still correctly sending the CORS header from the M14
+wave-3 fix. The real question was why activation took so long in the first place.
+Cross-referencing real process-creation timestamps answered it: Orca's main process
+and every one of its own subprocesses (GPU, network service, renderer, crashpad
+handler, parcel watcher, session scanner) all started within 5 seconds of each
+other -- but the one process that actually runs the TSF plugin
+(`plugin-host-entry.js`) didn't appear until **4 minutes 23 seconds** later, with no
+error anywhere in Orca's own logs. Reading Orca's own plugin-service source
+(`src/main/plugins/plugin-service.ts`, read-only, confirms no core changes are
+needed) confirmed there is no bug to point at here and no supported lever this
+launcher (or Tim) has to make that reconciliation faster -- `orca` has no
+plugin-management CLI surface at all, confirmed both by `orca --help` and by
+`orca status --json`'s capability list. This is Orca's own internal activation
+timing, observed once at ~4.5 minutes, and Orca core stays untouched per this whole
+program's constraint.
+
+**What was actually wrong, and the fix.** Given a multi-minute wait can be entirely
+normal, the real defect was the *page's own messaging*: `first-run-setup.html`
+declared "Orca hasn't been told where to find Thousand Sunny Fleet yet" as fact only
+20 seconds in -- actively misleading on a machine that, like Tim's, is already
+correctly configured and simply still activating. Fixed by re-timing and re-wording
+the escalation entirely around the real observed delay: a plain "Starting…" for the
+first 90 seconds, an honest "this can take a few minutes, nothing to do yet" from
+90s, the registration steps revealed only past 5 minutes and framed as something to
+*double-check* rather than a diagnosis, and a "this is genuinely unusual" note only
+past 10 minutes. The backend readiness poll itself was already correct (indefinite,
+CORS-fixed, auto-transitioning) -- confirmed unchanged and still working via the same
+live specimen. `Launch-TSF.ps1`'s background `orca open` retry window was also
+extended (6 attempts/90s -> 24 attempts/6 minutes) as cheap insurance in case a
+repeated call ever does help an unusually slow Orca instance specifically, though the
+observed delay here was in Orca's plugin reconciliation, not its own startup.
+Added regression coverage asserting the escalation thresholds are provably longer
+than the real observed delay, and that the setup-phase copy never asserts
+non-registration as fact.
+
+---
+
+## Second hands-on-test remediation: the real cold-start failure
 
 Tim's second hands-on test ("I clicked the shortcut. Orca launched successfully.
 Thousand Sunny Fleet itself never opened.") reproduced a real, confirmed defect in

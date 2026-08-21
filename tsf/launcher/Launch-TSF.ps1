@@ -61,8 +61,14 @@ $WindowTitle = 'Thousand Sunny Fleet'
 # Retried, not just fired once: if Orca's own launch is slow or hiccups,
 # repeating this bounded number of times gives it real chances to recover
 # rather than the launcher assuming one attempt was enough. `orca open` is
-# documented idempotent/safe to call repeatedly.
-$OrcaOpenRetryCount = 6
+# documented idempotent/safe to call repeatedly. Bounded to comfortably
+# outlast the real, observed plugin-activation delay (~4m23s on Tim's own
+# machine, Orca itself already fully up within seconds -- see
+# first-run-setup.html's own thresholds for the fuller evidence/rationale)
+# in case a repeated call ever turns out to help nudge a stalled Orca
+# instance specifically, even though ordinary plugin reconciliation timing
+# is Orca's own internal behavior this launcher has no supported lever over.
+$OrcaOpenRetryCount = 24
 $OrcaOpenRetryIntervalMs = 15000
 
 function Write-Log {
