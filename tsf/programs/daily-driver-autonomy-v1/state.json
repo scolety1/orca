@@ -1973,6 +1973,26 @@
           "commit": "37932cc3ec1de3e2606dd332b62f2921b0c24a92",
           "status": "COMMITTED",
           "note": "All 10 of Tim's named adversarial scenarios are now accounted for (9 proven by test, 1 -- competing Work Set commitments -- explicitly and disclosedly deferred to M12). Next: a final holistic independent review of the whole M8 milestone (waves 1-11), then package as an immutable candidate and adopt into tsf/main via the established two-commit ff-only pattern."
+        },
+        {
+          "wave": "final-review",
+          "summary": "Final holistic independent review of the whole M8 milestone (waves 1-11), commissioned via a forked agent told not to trust prior narration. Verdict: RED -- not on code quality, but because 2 of Tim's own named acceptance-bar items (12: existing project commitments can create deadline/capacity conflicts; 13: client quote remains separate from internal cost forecast) were entirely unaddressed, not partially done. The review also found and fixed 2 real bugs on its own initiative (commit 4f1afbcf5): (a) a real, reproducible stale-opState race in both estimate-http-routes.mjs mutating handlers -- captured opState before their own slow (up to 180s) awaits, exactly the bug class the chat route already carries a fix for; (b) applyCalibrationBias (built and unit-tested in wave 10) was dead code from the live route's perspective -- wave 9/11's POST handler never actually called it, so calibration could never affect a live estimate even with 5+ real samples. Also caught estimate-types.ts had silently drifted from the real wire contract. All independently re-derived: full suite run fresh (462/462), max-lines ratchet re-checked, core delta re-confirmed empty, reproducibility/scheduling/calibration guarantees re-derived via the reviewer's own fresh mutations (not ones already tried).",
+          "testsAdded": 2,
+          "testsPassing": "462 full tsf suite GREEN (after the review's own fixes)",
+          "verifier": "INDEPENDENT (forked review agent)",
+          "commit": "4f1afbcf5b6072c469dd1f0b8e3a338efea78e14",
+          "status": "RED_FIXES_REQUIRED",
+          "note": "Blocking items 12 and 13 addressed in wave 12 below, not silently deferred."
+        },
+        {
+          "wave": 12,
+          "summary": "Closes acceptance items 12 and 13, the 2 blocking gaps from the final review. Item 12: new tsf/domain/competing-commitments.mjs's detectCompetingCommitments -- disclosure-only (deliberately NOT a scheduling attempt; multi-project scheduling remains M12 Fleet Optimizer's job). Flags capacityContentionLikely only when BOTH a real competing Work Set run exists AND a real, evidenced provider-capacity signal (reused from wave 11) shows pressure -- never from either fact alone, mutation-confirmed. Wired into the POST estimate route as a new competingCommitments field. Self-caught bug on the way in: initially wired to opState.portfolio.workSet (a separate, still-empty-by-default structure) instead of opState.workSet (the flat field live-planner.mjs already treats as the real, populated Work Set signal) -- caught immediately by a real HTTP-level test against the fixture project's own default Work Set membership (0 vs 1 mismatch).\n\nItem 13: new tsf/domain/client-estimate.mjs's buildClientEstimate, exposed as GET /api/projects/:id/estimate/client. Reads ONLY scope/assumptions/schedule/wall-clock-delivery off the internal estimate -- never providerForecast/costForecast/calibration/competingCommitments (mutation-confirmed no field leaks by construction). Delivery range uses wallClockHours P50/P80 via hourOffsetToDate -- Tim's own spec names wall-clock delivery time as literally the client-delivery clock. Pricing honestly absent (NO_PRICING_POLICY_CONFIGURED) unless a real pricingPolicy function is supplied -- mutation-confirmed no default rate/margin fabricated, per Tim's own \"must not invent Tim's commercial margin\" rule.\n\n12 new domain tests + 3 new real HTTP-level tests. Full suite: 477/477 GREEN. oxlint clean. max-lines ratchet 346 unchanged. Zero Orca core delta across the full M8 range (629952922^..HEAD).",
+          "testsAdded": 15,
+          "testsPassing": "477 full tsf suite GREEN",
+          "verifier": "SELF; both new isolation/honesty guarantees (competingCommitments both-facts-required, client-estimate never-leaks/never-fabricates-pricing) verified genuine via mutation testing",
+          "commit": "194cd7661c865ea6b038d4d64645c3b31f685e32",
+          "status": "COMMITTED",
+          "note": "Next: a focused confirmation review of just wave 12 (matching M7's own precedent for a load-bearing post-RED fix) before packaging M8 as an immutable candidate and adopting into tsf/main."
         }
       ]
     },
