@@ -128,14 +128,53 @@ process (confirmed unrestricted in Q1), not its panel:
    renders when `tsf/server` isn't reachable (needs checking in wave 3
    whether that already exists or needs adding).
 
-Remaining open items for wave 3 (implementation design, not yet
-resolved): exact child-process lifecycle (restart-on-crash? single
-instance across Orca restarts? port conflict handling?), whether
-`tsf/ui`'s existing fetch-error handling is adequate for "graceful
-backend-unavailable," and the Windows packaging/install-strategy
-criterion (this whole design stays inside `tsf/`'s existing plugin — no
-second Electron app, no new installer needed beyond what a plugin
-already ships as).
+## Wave 3 findings (all 3 remaining open items resolved)
+
+1. **Child-process lifecycle**: `tsf/server/http-server.mjs`'s
+   `startStandaloneServer(port)` (line 582) has NO restart-on-crash or
+   port-conflict handling built in — it's a bare `server.listen(port,
+   '127.0.0.1', ...)` with no `'error'` listener. This is correctly the
+   launcher's job, not the server's — but confirmed there is no existing
+   precedent to copy: `orca-orchestration-bridge.mjs`/`orca-capacity-
+   bridge.mjs` are single-shot, timeout-bounded CLI calls, not long-lived
+   process supervisors. **This is genuinely new logic the plugin's
+   `activate()`/`deactivate()` must write**: spawn the server child,
+   listen for its exit and restart with backoff (bounded — not an
+   infinite crash loop), and handle `EADDRINUSE` by treating it as "a
+   TSF server is likely already running" (single-instance-across-
+   restarts) rather than fatally erroring, matching this program's
+   established honest-failure-over-silent-guessing pattern.
+
+2. **`tsf/ui`'s backend-unavailable handling — ALREADY ADEQUATE, no new
+   UI code needed** (another criterion already satisfied by existing
+   code, like M4/M5 found elsewhere): `tsf/ui/src/lib/use-api.ts`'s
+   `useApi` hook (the shared read-path data loader used across pages)
+   already catches a non-`ApiError` rejection (exactly what `fetch()`
+   throws on connection-refused/network failure) and sets an honest
+   `'Unavailable — could not reach the TSF operator API.'` message
+   rather than crashing or hanging. Spot-checked the write path too:
+   `PlannerChatPanel.tsx`'s `send()` has the same pattern (`'Could not
+   reach the planner right now.'`). Nothing to add here.
+
+3. **Windows packaging/install-strategy — confirmed no separate
+   installer is needed**: `src/main/index.ts` wires plugin discovery to
+   `store.getSettings().devPluginPaths`/`pluginSystemEnabled`/
+   `pluginConsents` — real local dev-plugin support already exists in
+   Orca's own Settings UI. TSF's plugin isn't automatically active out
+   of the box; Tim must (once) enable the plugin system, add `tsf/`'s
+   plugin root as a dev plugin path, and approve/consent to it — all
+   through Orca's existing Settings surface, not a new installer or raw
+   localhost commands. After that one-time setup, Orca's own startup
+   plugin reconciliation (wave 2's finding) activates it automatically
+   on every future launch. "Update/install strategy documented" for M6
+   becomes: document this one-time Settings setup, not build a
+   packaging pipeline.
+
+All three wave-3 questions are answered. Implementation (wave 4+) can
+now proceed: static-file serving in `tsf/server/http-server.mjs`, the
+real spawn/restart/shutdown lifecycle in `tsf/main.mjs`'s
+`activate()`/`deactivate()`, and a registered "open TSF UI" command
+wired into `tsf/orca-plugin.json`'s `contributes.commands`.
 
 ## The real, remaining gap (confirmed, not assumed)
 
