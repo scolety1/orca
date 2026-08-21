@@ -50,7 +50,36 @@ export type MonteCarloEstimate = {
   humanEffortHours: MonteCarloPercentiles
   wallClockHours: MonteCarloPercentiles
   deadlineProbability: number | null
+  // Present only once a real historical calibration was applied (see
+  // tsf/domain/estimate-calibration.mjs's own uncalibrated-is-unchanged
+  // contract) -- absent, not zero/false, when no correction was applied.
+  calibrationApplied?: { sampleSize: number; medianActualOverPredictedRatio: number }
 }
+
+export type ProviderCapacityForecast = {
+  schemaVersion: string
+  providerId: string
+  currentAction: string
+  assurance: string
+  reason: string
+  likelyBottleneck: boolean
+  subscriptionIncrementalCostUsd: number
+  note: string
+}
+
+export type ProviderCostForecast = {
+  schemaVersion: string
+  providerId: string
+  costUsd: number | null
+  reason: string
+  note: string
+  priceSource?: string
+  priceAsOf?: string
+}
+
+export type CalibrationVerdict =
+  | { calibrated: false; reason: string; sampleSize: number; minimumRequired: number }
+  | { calibrated: true; sampleSize: number; medianActualOverPredictedRatio: number }
 
 export type ScheduledTask = {
   id: string
@@ -81,6 +110,9 @@ export type ProjectEstimateResult = {
   preliminary: boolean
   wbs: WbsTask[]
   plan: DeliveryPlan
+  calibration: CalibrationVerdict
+  providerForecast: Record<string, ProviderCapacityForecast>
+  costForecast: Record<string, ProviderCostForecast>
   generatedAt: string
 }
 

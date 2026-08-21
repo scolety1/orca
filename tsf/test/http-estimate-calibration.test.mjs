@@ -160,3 +160,50 @@ test('GET .../estimate/calibration on a project with no history at all returns a
     assert.equal(res.body.calibration.sampleSize, 0)
   })
 })
+
+test('REQUIRED PROOF (final-review finding): once 5+ real samples exist, a NEWLY GENERATED estimate is actually calibrated -- not just computed and left unused', async () => {
+  await withServer(async (base) => {
+    const first = await post(base, `/api/projects/${FIXTURE_PROJECT_ID}/estimate`, {
+      startDate: '2026-01-05T00:00:00.000Z'
+    })
+    assert.equal(first.body.estimate.calibration.calibrated, false)
+    const baselineP50 = first.body.estimate.plan.estimate.wallClockHours.p50
+
+    // 5 real settled runs, each taking exactly 100 real hours -- a
+    // consistent, known actual/predicted ratio.
+    for (let i = 0; i < 5; i++) {
+      seedSettledRun({
+        id: `calib-run-${i}`,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-05T04:00:00.000Z' // exactly 100 hours later
+      })
+      const recorded = await post(base, `/api/projects/${FIXTURE_PROJECT_ID}/estimate/actuals`, {
+        runId: `calib-run-${i}`
+      })
+      assert.equal(recorded.status, 200)
+    }
+
+    const calibration = await get(base, `/api/projects/${FIXTURE_PROJECT_ID}/estimate/calibration`)
+    assert.equal(calibration.body.calibration.calibrated, true)
+    assert.equal(calibration.body.calibration.sampleSize, 5)
+
+    // Regenerate (same project/seed -- same raw Monte Carlo output) --
+    // the fresh estimate must now be visibly calibrated, not identical to
+    // the first, uncalibrated one.
+    const second = await post(base, `/api/projects/${FIXTURE_PROJECT_ID}/estimate`, {
+      startDate: '2026-01-05T00:00:00.000Z'
+    })
+    assert.equal(second.body.estimate.calibration.calibrated, true)
+    const calibratedP50 = second.body.estimate.plan.estimate.wallClockHours.p50
+    assert.notEqual(calibratedP50, baselineP50)
+    // All 5 actuals took exactly 100 hours against the same predicted P50
+    // -- the median ratio is exact, so the calibrated P50 lands on 100
+    // (baselineP50 * (100 / baselineP50)), modulo floating-point error.
+    assert.ok(Math.abs(calibratedP50 - 100) < 1e-9)
+    // activeEffortHours is untouched by a wall-clock-only calibration.
+    assert.equal(
+      second.body.estimate.plan.estimate.activeEffortHours.p50,
+      first.body.estimate.plan.estimate.activeEffortHours.p50
+    )
+  })
+})

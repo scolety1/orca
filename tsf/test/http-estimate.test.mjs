@@ -26,6 +26,8 @@ process.env.STUB_ORCA_REPOS = '[]'
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 const { FIXTURE_PROJECT_ID } = await import('../server/fixture-project.mjs')
+const { handleEstimateRoute } = await import('../server/estimate-http-routes.mjs')
+const { loadState, saveState } = await import('../server/data-store.mjs')
 
 async function withServer(fn) {
   const handler = createRequestHandler()
@@ -138,4 +140,54 @@ test('an unavailable planner produces an honest 422, not a fabricated estimate',
   } finally {
     process.env.TSF_PLANNER_CLAUDE_COMMAND = priorClaude
   }
+})
+
+test("REQUIRED PROOF (final-review finding): a stale opState captured before generateWbs/buildProviderForecasts' real awaits does not clobber a field a concurrent request committed during that window", async () => {
+  await withServer(async (base) => {
+    // opState captured once, before this "request"'s own slow awaits --
+    // exactly like http-server.mjs captures it near the top of every
+    // request, before this route's readBody/generateWbs/
+    // fetchCapacitySnapshot calls.
+    const staleOpState = loadState()
+
+    // A different, concurrent request commits a real change to another
+    // field while our route's own (real, potentially minutes-long)
+    // generateWbs/fetchCapacitySnapshot calls are still in flight.
+    const afterConcurrentWrite = loadState()
+    saveState({
+      ...afterConcurrentWrite,
+      chatThreads: { concurrentProof: ['IMPORTANT_CONCURRENT_DATA'] }
+    })
+
+    const map = new Map()
+    map.set(FIXTURE_PROJECT_ID, {
+      id: FIXTURE_PROJECT_ID,
+      displayName: 'Fixture',
+      purpose: 'test',
+      mission: { state: 'ACTIVE', blockedReason: null },
+      health: { status: 'HEALTHY', findings: [] }
+    })
+    const json = (res, status, body) => {
+      res.statusCode = status
+      res.body = body
+    }
+    const notFound = (res, msg) => json(res, 404, { ok: false, error: msg ?? 'not found' })
+    const readBody = async () => ({ startDate: '2026-01-05T00:00:00.000Z' })
+    const fakeRes = {}
+    const parts = ['api', 'projects', FIXTURE_PROJECT_ID, 'estimate']
+
+    await handleEstimateRoute(
+      parts,
+      { method: 'POST' },
+      fakeRes,
+      new URL(`${base}/api/projects/${FIXTURE_PROJECT_ID}/estimate`),
+      { map, opState: staleOpState },
+      { json, notFound, readBody, saveState }
+    )
+
+    assert.equal(fakeRes.statusCode, 200)
+    const finalState = loadState()
+    assert.deepEqual(finalState.chatThreads, { concurrentProof: ['IMPORTANT_CONCURRENT_DATA'] })
+    assert.ok(finalState.projectEstimates?.[FIXTURE_PROJECT_ID])
+  })
 })

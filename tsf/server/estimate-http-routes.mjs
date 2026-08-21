@@ -2,15 +2,18 @@
 // alongside project-memory-http-routes.mjs -- same reasoning (keeps
 // http-server.mjs under the max-lines cap). Pure route glue over
 // tsf/server/wbs-generation.mjs and tsf/domain/delivery-plan.mjs -- no
-// domain logic here. Follows onboarding-http-routes.mjs's simpler
-// snapshot-read/saveState pattern (a project's estimate isn't racing an
-// autonomous dispatch loop).
+// domain logic here.
 import { generateWbs } from './wbs-generation.mjs'
 import { buildDeliveryPlan } from '../domain/delivery-plan.mjs'
-import { buildEstimateActual, summarizeCalibration } from '../domain/estimate-calibration.mjs'
+import {
+  applyCalibrationBias,
+  buildEstimateActual,
+  summarizeCalibration
+} from '../domain/estimate-calibration.mjs'
 import { forecastMeteredCost, forecastProviderCapacity } from '../domain/provider-forecast.mjs'
 import { readKeepGoingRun } from './keep-going-run-store.mjs'
 import { fetchCapacitySnapshot } from '../adapters/orca-capacity-bridge.mjs'
+import { loadState } from './data-store.mjs'
 
 // The 2 real providers this program dispatches work to (keep-going-
 // dispatch-loop.mjs's own default worker agent is 'codex'; 'claude' also
@@ -116,11 +119,17 @@ export async function handleEstimateRoute(
       return true
     }
     const actual = buildEstimateActual({ estimate, run })
+    // Re-read fresh right before saving -- opState was captured once at
+    // the top of this request, before readBody's own await. A blind save
+    // from that stale snapshot would silently discard any OTHER field a
+    // concurrent request committed in the meantime (the same class of
+    // real, live-confirmed bug the chat route above was fixed for).
+    const freshState = loadState()
     saveState({
-      ...opState,
+      ...freshState,
       estimateActuals: {
-        ...opState.estimateActuals,
-        [projectId]: [...existingActuals, actual]
+        ...freshState.estimateActuals,
+        [projectId]: [...(freshState.estimateActuals?.[projectId] ?? []), actual]
       }
     })
     json(res, 200, { ok: true, projectId, actual, alreadyRecorded: false })
@@ -169,19 +178,41 @@ export async function handleEstimateRoute(
       return true
     }
     const { providerForecast, costForecast } = await buildProviderForecasts()
+    // Real gap closed (M8 final review): calibration.mjs's own bias
+    // correction was built and unit-tested in wave 10 but never actually
+    // reached a live-generated estimate. Applied here, using this
+    // project's own real settled-run history -- calibration stays a
+    // disclosed, separate field (not silently baked into wallClockHours
+    // with no visibility) precisely because applyCalibrationBias
+    // deliberately does NOT recompute plan.status/plan.deadlineProbability
+    // from the scaled distribution (see its own doc comment) -- so a
+    // calibrated wallClockHours percentile can legitimately sit next to an
+    // uncalibrated status/deadlineProbability, and callers need to be able
+    // to tell that apart rather than assume full internal consistency.
+    const calibration = summarizeCalibration(opState.estimateActuals?.[projectId] ?? [])
+    const calibratedMonteCarlo = applyCalibrationBias(plan.estimate, calibration)
     const estimate = {
       schemaVersion: 'TSF_PROJECT_ESTIMATE_RESULT_V1',
       projectId,
       preliminary: wbsResult.preliminary,
       wbs: wbsResult.wbs,
-      plan,
+      plan: { ...plan, estimate: calibratedMonteCarlo },
+      calibration,
       providerForecast,
       costForecast,
       generatedAt: new Date().toISOString()
     }
+    // Re-read fresh right before saving -- generateWbs and
+    // buildProviderForecasts both make real, potentially slow (up to
+    // 180s) external calls between this request's initial opState capture
+    // and this commit. A blind save from the stale snapshot would
+    // silently discard any OTHER field a concurrent request committed
+    // during that window (the same class of real, live-confirmed bug the
+    // chat route above was fixed for).
+    const freshState = loadState()
     saveState({
-      ...opState,
-      projectEstimates: { ...opState.projectEstimates, [projectId]: estimate }
+      ...freshState,
+      projectEstimates: { ...freshState.projectEstimates, [projectId]: estimate }
     })
     json(res, 200, { ok: true, projectId, estimate })
     return true
