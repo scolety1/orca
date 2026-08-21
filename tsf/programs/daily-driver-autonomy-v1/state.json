@@ -2286,10 +2286,10 @@
     {
       "id": "M14",
       "name": "TSF Desktop Launch + V1 Release-Candidate Remediation",
-      "status": "CURRENT",
+      "status": "CODE_ADOPTED_AWAITING_TIM_HANDS_ON_TEST",
       "note": "Authorized directly by Tim after the M13 handoff (see docs/tsf/M14_DESKTOP_LAUNCH_REMEDIATION_V1.md). Bounded remediation only -- no new product capabilities, no Orca fork, Orca core delta stays 0. Closes the one concrete defect M13 found: no real double-click TSF launch experience exists on the machine. Do NOT create M15.",
-      "candidateCommit": "54dfa6936",
-      "adoptedCommit": "54dfa6936",
+      "candidateCommit": "2e98c4f4e",
+      "adoptedCommit": "2e98c4f4e",
       "waves": [
         {
           "wave": 1,
@@ -2347,26 +2347,27 @@
         }
       ],
       "gaps": [
-        "The real end-to-end reachable path has now been proven with a real live backend (Tim's own actual tsf/server, port 4610, currently up) and a real dedicated window -- but the specific act of Tim double-clicking the shortcut himself and confirming it feels right is still reserved for him, per his own explicit instruction not to claim that human proof without him.",
+        "The real cold-start failure Tim reported (window never appearing) was diagnosed from a live specimen of the actual bug, fixed structurally, and re-verified live -- but Tim's own specific test (Orca fully closed, then double-click) has not been literally reproduced by this session, since closing Orca would end this session's own execution environment. The fix is grounded in direct evidence (the stuck specimen had loaded neither WinForms nor WebView2, proving it never reached window creation; the new version creates the window in ~1s measured against the live backend, before touching Orca or the network at all) rather than a literal cold-Orca re-run. Tim's own hands-on test remains the specific, irreplaceable confirmation this instruction reserves for him.",
         "No packaged/signed installer -- explicitly out of scope for this local V1 per Tim's own instruction.",
-        "Low-severity, non-blocking (per independent review): FindWindow(null, \"Thousand Sunny Fleet\") has a theoretical, negligible risk of matching an unrelated window that happens to share this exact title on a real machine -- accepted as-is rather than adding complexity for a near-zero-probability collision."
+        "Low-severity, non-blocking (per wave-3 review): FindWindow(null, \"Thousand Sunny Fleet\") has a theoretical, negligible risk of matching an unrelated window that happens to share this exact title -- accepted as-is."
       ],
       "adoptionReceipt": {
         "schemaVersion": "TSF_MILESTONE_ADOPTION_RECEIPT_V1",
-        "adoptedAt": "2026-08-21T19:54:26.121Z",
+        "adoptedAt": "2026-08-21T21:06:41.567Z",
         "adoptedIntoBranch": "tsf/main",
-        "candidateCommit": "54dfa6936",
-        "ffMergeCommit": "54dfa6936",
+        "candidateCommit": "2e98c4f4e",
+        "ffMergeCommit": "2e98c4f4e",
         "reVerifiedFromMergedTree": {
-          "fullTestSuite": "589/589 (588 pass, 1 skip via esbuild-unavailable self-skip, 0 failures)",
-          "orcaCoreDelta": "EMPTY (git diff --stat b92a548d5..54dfa6936 -- . ':!tsf/**' ':!docs/tsf/**' confirmed empty)",
-          "newRuntimeDependencies": "ZERO (tsf/package.json unchanged; WebView2 SDK vendored as binary files, not a package dependency)",
-          "realShortcutsRepointed": "Install-TsfLauncher.ps1 re-run from C:/TSF_ORCA/tsf/launcher (the adopted tree) -- Desktop and Start Menu shortcuts confirmed targeting C:/TSF_ORCA/tsf/launcher/Launch-TSF.ps1",
-          "realSmokeTest": "Ran the real Desktop shortcut post-merge against Tim's actual live tsf/server (port 4610): launcher.log shows 'TSF backend reachable -- opening the dedicated window on the real UI', real window opened titled 'Thousand Sunny Fleet' with the TSF icon, then closed cleanly with zero orphaned processes -- left in a closed state so Tim's own hands-on test is a genuine cold click, not a refocus of an already-open window."
+          "fullTestSuite": "594/594 (593 pass, 1 skip, 0 failures)",
+          "orcaCoreDelta": "EMPTY (git diff --stat 0f75fd4a7..2e98c4f4e -- . ':!tsf/**' ':!docs/tsf/**' confirmed empty)",
+          "newRuntimeDependencies": "ZERO (tsf/package.json unchanged)",
+          "realShortcutsRepointed": "Install-TsfLauncher.ps1 re-run from C:/TSF_ORCA/tsf/launcher (the adopted tree)",
+          "realSmokeTest": "Launched the actual real Desktop shortcut post-merge: window appeared in 1.14s, launcher.log confirms navigation to first-run-setup.html then immediately to the real UI (http://127.0.0.1:4610), closed cleanly with zero orphaned processes -- left in a closed state so Tim's own hands-on test is a genuine cold click."
         },
-        "independentReview": "Fresh fork review of wave 3 (adversarial re-derivation, not narration-trusting) confirmed: the CORS header is genuinely present and load-bearing on every JSON response; the server is hardcoded to bind 127.0.0.1 only (no exposure from the permissive header); no recurrence of the earlier New-Object-silently-drops-args bug anywhere in Launch-TSF.ps1 (empirically tested the 3 multi-arg candidates); Mutex release is sound (OS auto-releases on process exit); the 3 vendored WebView2 DLLs are byte-identical (SHA-256) to the official NuGet package, no tampering; the abandoned compiled-exe project is confirmed absent from git history and the working tree; and the reviewer independently reproduced the full auto-transition proof on a separate scratch port, screenshotted. One low-severity, non-blocking finding (FindWindow title-collision theoretical risk) recorded above, accepted as-is.",
-        "whyNotPlainAdopted": "Same distinction as the first M14 adoption: the code is genuinely done, reviewed, fixed, and re-verified -- including now a real live-backend smoke test through the real shortcut. What remains is specifically Tim's own act of double-clicking it himself and confirming the experience feels like a real dedicated app, which this status name keeps honest rather than claiming on his behalf.",
-        "singleRemainingManualAction": "Double-click the 'Thousand Sunny Fleet' Desktop shortcut. The plugin is already registered and enabled on this machine, so it should open directly to the real TSF UI in its own dedicated window -- no first-run guide, no browser chrome, no Edge branding. Confirm it looks and feels like a real app to you."
+        "rootCauseAndFix": "Tim's second real hands-on test failed: 'Orca launched successfully. Thousand Sunny Fleet itself never opened.' Diagnosed from a live specimen of the actual stuck process (10+ minutes old, mutex held, zero window, zero WinForms/WebView2 modules loaded) rather than guesswork -- proved the previous version's synchronous orca-open-then-poll sequence, running entirely before any window existed, could stall silently and indefinitely (a hidden-window process has no console to show an error on even if one is thrown). Fixed structurally: the window now appears immediately (measured ~0.7-1.1s), orca open is fired non-blocking and retried in the background, all reachability waiting moved into the hosted page's own indefinite polling, and a top-level + ThreadException handler now surfaces any genuine failure visibly. An independent review of that fix found and this program then closed one further gap (the try/catch did not yet cover the earliest Win32/Mutex setup) before adoption. A structural regression test (test/desktop-launcher-cold-start.test.mjs) guards the exact invariant whose violation caused this, confirmed to catch the old buggy shape.",
+        "independentReview": "Two independent fork reviews covered this remediation: one on the initial cold-start fix (wave 4) which empirically re-tested the timer/closure mechanism, hand-traced the new page state machine, confirmed the regression test genuinely catches the old bug, independently reproduced the full live fix end-to-end on an isolated scratch port, and surfaced the one real gap (pre-try-block Win32/Mutex setup) that wave 5 then closed. No further review issues outstanding.",
+        "whyNotPlainAdopted": "The code is genuinely done, root-caused from live evidence, fixed structurally (not a bigger timeout), independently reviewed, and re-verified end-to-end including through the real shortcut against the real live backend. What remains is specifically Tim's own act of closing Orca and TSF, double-clicking, and confirming TSF itself opens automatically -- the literal test this session cannot perform on itself, and which his own instruction reserves for him.",
+        "singleRemainingManualAction": "Close Orca and Thousand Sunny Fleet completely, then double-click the 'Thousand Sunny Fleet' Desktop shortcut. A window should appear within about a second (showing 'Starting...'), and should reach the real TSF UI on its own once Orca and the backend come up -- however long that takes, with no other action from you. Confirm this is what happens."
       }
     }
   ],
