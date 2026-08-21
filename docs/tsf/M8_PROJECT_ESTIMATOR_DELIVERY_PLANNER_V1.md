@@ -86,7 +86,12 @@ Scope for wave 2, deliberately bounded:
   probability given a target date; the three distinct clocks (active
   engineering effort, human/operator effort, wall-clock delivery) kept
   as separate distributions throughout, never collapsed into one
-  number.
+  number. **Honestly bounded**: this wave's `wallClockHours` is a
+  no-parallelism sum of all 3 clocks (active + human review + external
+  wait) for every task, not a scheduled delivery date — real
+  dependency-aware critical-path scheduling is the Delivery Planner's
+  job (a later wave), matching the same caveat already stated in
+  `estimation.mjs`'s own header comment and the wave-2 commit message.
 - Real tests: same fixed input + seed produces byte-identical output
   (Tim's own #1 acceptance requirement); percentile monotonicity
   (P10 ≤ P50 ≤ P80 ≤ P95); deadline probability sanity (an impossible

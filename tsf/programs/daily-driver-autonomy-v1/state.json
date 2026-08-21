@@ -1893,6 +1893,16 @@
           "commit": null,
           "status": "IN_PROGRESS",
           "note": "Next: wave 4 -- provider/cost forecasting, reusing M5's capacity-policy.mjs (subscription vs. metered modes per Tim's own spec, a price-adapter interface, never converting an observed allowance percentage into fake raw-token counts). Read capacity-policy.mjs's decideCapacityAction and orca-capacity-bridge.mjs's real orca account list wiring fully before designing anything new."
+        },
+        {
+          "wave": 4,
+          "summary": "Independent review of M8 waves 1-3 reported back CLEAN -- confirmed the reproducibility guarantee from a fresh angle (interleaved a different-seed call between two same-seed calls, byte-identical results, confirming no hidden shared/global mutable state); confirmed the triangular-distribution sampler's actual mathematical correctness (200,000 real samples of a symmetric min=0/expected=50/max=100 case landed at empirical mean 49.986 vs analytical (min+mode+max)/3=50); confirmed task-array order is preserved end to end (no sorting/reordering anywhere) so a fixed WBS + seed is genuinely reproducible in practice, not just in theory; confirmed defense-in-depth with 2 NEW mutations (duplicate task id, dangling dependency reference) beyond the one already tested (min>expected) -- both failed honestly as INVALID_WBS with the correct detail message, not crashes. One minor, non-blocking observation: the design doc didn't restate the wall-clock no-parallelism-sum caveat as explicitly as the code/commit message already did -- fixed with one clarifying sentence.",
+          "testsAdded": 0,
+          "testsPassing": "403 full tsf suite GREEN (unaffected -- doc clarification only)",
+          "verifier": "INDEPENDENT (forked review agent; a fresh angle on reproducibility, real empirical distribution-mean verification, 2 new adversarial mutations beyond what was already tested)",
+          "commit": null,
+          "status": "INDEPENDENTLY_VERIFIED_CLEAN",
+          "note": "M8 waves 1-3 are now independently verified clean, including genuine mathematical correctness (not just 'stays in range') of the core Monte Carlo sampler. Next: wave 5 -- provider/cost forecasting, reusing M5's capacity-policy.mjs (subscription vs. metered modes, a price-adapter interface, never converting an observed allowance percentage into fake raw-token counts). Read capacity-policy.mjs's decideCapacityAction and orca-capacity-bridge.mjs's real orca account list wiring fully before designing anything new."
         }
       ]
     }
