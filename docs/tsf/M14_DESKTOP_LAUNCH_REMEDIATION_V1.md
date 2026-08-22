@@ -60,10 +60,13 @@ detected the loss (~17-20s later), logged it, navigated back to the guide, and
 re-armed the retry/nudge sequence (all logged); restarted the scratch server; confirmed
 the guide's own polling detected recovery and auto-navigated the same window straight
 back to the real UI, fully automatically, with zero manual action. One honest,
-disclosed limitation: recovery re-navigates the whole page, so *client-side* view state
-(which tab/page was open) is not preserved across an outage -- the actual operator data
-(projects, Work Set, Keep Going runs, all server-persisted) is never touched by this
-mechanism and is never at risk.
+disclosed limitation, tightened after independent review flagged the first wording as
+understating it: recovery re-navigates the whole page, so it discards *all* unsaved
+client-side state, not just which tab was open -- any in-progress typing (a chat
+message, a form field) at the exact moment of an outage is lost along with the view,
+same as any other full page reload. The actual operator data (projects, Work Set, Keep
+Going runs, all server-persisted) is never touched by this mechanism and is never at
+risk -- only whatever was being typed and not yet submitted at that instant.
 
 Added 4 new regression tests (structural, matching this whole program's established
 approach for Windows GUI behavior with no CI harness): the health-check timer never has
