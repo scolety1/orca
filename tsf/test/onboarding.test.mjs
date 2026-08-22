@@ -252,6 +252,22 @@ test('reconcileHandoff: historical WIP terminology that does not describe curren
   assert.equal(result.hasConflict, false)
 })
 
+// Independent-review finding (post-adoption hardening): a handoff mentioning
+// a committed-unadopted claim in one sentence must not silently swallow a
+// genuine uncommitted-work claim made in a different sentence -- each claim
+// is judged per-clause, not from a single whole-text classification that
+// only keeps the first match it happens to find.
+test('reconcileHandoff: a genuine uncommitted-work claim is still flagged even when an unrelated committed-candidate claim also appears in the handoff', () => {
+  const result = reconcileHandoff({
+    handoffText:
+      'The research was committed as a candidate but has not been adopted. Separately, there are uncommitted debugging changes on disk that have not been committed yet.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, true)
+  assert.match(result.discrepancies.join(' '), /uncommitted/i)
+  assert.ok(result.agreements.some((a) => /committed-but-unadopted/i.test(a)))
+})
+
 // --- repo-inspector.mjs against real temp Git repos ---
 
 test('snapshotRepository: clean repo reports correct identity and clean state', async () => {

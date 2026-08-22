@@ -187,19 +187,37 @@ const PLANNED_WORK_PATTERN = /\b(?:planned|not\s+yet\s+implemented|to\s+be\s+bui
 const UNFINISHED_PRODUCT_PATTERN = /\b(?:unfinished|incomplete)\b/i
 const BARE_WIP_PATTERN = /\b(?:wip|work[\s-]in[\s-]progress|dirty)\b/i
 
-function classifyWorkStatusClaim(text) {
-  if (GIT_STATE_COMMITTED_UNADOPTED_PATTERN.test(text)) return 'COMMITTED_UNADOPTED_WORK'
-  if (GIT_STATE_UNCOMMITTED_PATTERN.test(text)) return 'UNCOMMITTED_WORK'
-  if (PLANNED_WORK_PATTERN.test(text)) return 'PLANNED_WORK'
-  if (UNFINISHED_PRODUCT_PATTERN.test(text)) return 'UNFINISHED_PRODUCT_WORK'
-  if (BARE_WIP_PATTERN.test(text)) {
+function classifyWorkStatusClaimInClause(clause) {
+  if (GIT_STATE_COMMITTED_UNADOPTED_PATTERN.test(clause)) return 'COMMITTED_UNADOPTED_WORK'
+  if (GIT_STATE_UNCOMMITTED_PATTERN.test(clause)) return 'UNCOMMITTED_WORK'
+  if (PLANNED_WORK_PATTERN.test(clause)) return 'PLANNED_WORK'
+  if (UNFINISHED_PRODUCT_PATTERN.test(clause)) return 'UNFINISHED_PRODUCT_WORK'
+  if (BARE_WIP_PATTERN.test(clause)) {
     // A bare "WIP"/"dirty" adjective alongside an explicit "committed" claim
-    // describes HISTORY (work that used to be WIP and has since been
-    // committed), not a live uncommitted-changes assertion — nothing here
-    // actually claims the working tree itself is dirty right now.
-    return /\bcommitted\b/i.test(text) ? 'COMMITTED_UNADOPTED_WORK' : 'UNCOMMITTED_WORK'
+    // IN THE SAME CLAUSE describes HISTORY (work that used to be WIP and has
+    // since been committed), not a live uncommitted-changes assertion.
+    return /\bcommitted\b/i.test(clause) ? 'COMMITTED_UNADOPTED_WORK' : 'UNCOMMITTED_WORK'
   }
   return null
+}
+
+// Per-clause, not whole-text: a real independent-review finding showed a
+// single whole-text classification lets an unrelated COMMITTED_UNADOPTED_WORK
+// claim elsewhere in the handoff silently swallow a genuine UNCOMMITTED_WORK
+// claim (whichever pattern matched first won, discarding the other) — a real
+// two-topic handoff ("committed as a candidate ... separately, uncommitted
+// debugging changes have not been committed yet") would lose its own
+// legitimate "work may be lost" warning. Classifying clause-by-clause and
+// returning every distinct claim actually present fixes that: each claim is
+// judged only against its own sentence, and nothing is discarded because a
+// different claim also appears elsewhere in the same handoff.
+function classifyWorkStatusClaims(text) {
+  const claims = new Set()
+  for (const clause of text.split(/(?<=[.!?;\n])/)) {
+    const claim = classifyWorkStatusClaimInClause(clause)
+    if (claim) claims.add(claim)
+  }
+  return claims
 }
 
 // What Known Projects / Active Fleet / Work Set toggles are allowed and
@@ -260,14 +278,18 @@ export function reconcileHandoff({ handoffText, repoFacts }) {
   // unadopted", and "unfinished research" all naturally leave a clean
   // working tree — only a genuine UNCOMMITTED_WORK claim against a clean
   // repo is real evidence something might be lost.
-  const workStatusClaim = classifyWorkStatusClaim(text)
-  if (workStatusClaim === 'UNCOMMITTED_WORK') {
+  const workStatusClaims = classifyWorkStatusClaims(text)
+  // Both checked independently (a handoff can legitimately make both claims
+  // about different work in the same message) — a COMMITTED_UNADOPTED_WORK
+  // claim elsewhere must never suppress a genuine UNCOMMITTED_WORK warning.
+  if (workStatusClaims.has('UNCOMMITTED_WORK')) {
     if (!repoFacts.dirty) {
       discrepancies.push('Handoff describes uncommitted work. Repository is currently clean — that work may already be committed, lost, or in a different location.')
     } else {
       agreements.push('Handoff describes uncommitted work, matching the repository\'s current dirty state.')
     }
-  } else if (workStatusClaim === 'COMMITTED_UNADOPTED_WORK') {
+  }
+  if (workStatusClaims.has('COMMITTED_UNADOPTED_WORK')) {
     agreements.push('Handoff describes committed-but-unadopted work — a clean working tree is expected here, not a sign anything was lost.')
   }
   // PLANNED_WORK and UNFINISHED_PRODUCT_WORK describe product/roadmap
