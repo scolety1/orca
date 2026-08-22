@@ -32,6 +32,25 @@
   classic Windows PowerShell, so isolating it here means a slow or hung
   attempt can never freeze the dedicated TSF window, only this disposable
   helper process, which itself still enforces an overall deadline below.
+
+  Also owns the "launch Orca if it isn't running" decision (M14 live-use
+  finding, post-GA): Launch-TSF.ps1 used to call `orca open --json` itself on
+  every retry/recovery tick, unconditionally. Reading src/cli/runtime/
+  client.ts's openOrca() (read-only, no core changes) shows it calls
+  launchOrcaApp() -- which re-spawns the Orca executable -- *before* checking
+  whether a desktop window is already available, not after; Electron's own
+  single-instance handling in the already-running Orca then answers that
+  second launch by focusing Orca's existing window (src/main/index.ts's
+  requestDesktopActivation -> focusExistingWindow -> app.focus({steal:true}),
+  plus moveTop()/an always-on-top pulse/a 100ms focus retry on win32).
+  Confirmed live: a single manual `orca open --json` call while Orca was
+  already running with a visible window visibly stole OS foreground focus to
+  Orca within ~1-2 seconds, with zero effect on TSF's own window -- matching
+  Tim's live-use report exactly (TSF never minimized; Orca kept surfacing in
+  front of it). `orca open` is only ever actually needed to start Orca in the
+  first place, so that decision now lives here, gated on Orca's own runtime
+  metadata pointing at a still-live process, rather than firing blindly on
+  every tick from the launcher's UI thread.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -87,6 +106,37 @@ function Read-LineBounded {
 
 try {
     $metaPath = Join-Path $env:APPDATA 'orca\orca-runtime.json'
+
+    # Is Orca genuinely running right now? Metadata presence alone isn't
+    # enough -- a crashed/killed Orca can leave a stale file behind pointing
+    # at a dead pid -- so confirm the pid is actually alive before treating
+    # `orca open` as unnecessary.
+    $orcaConfirmedRunning = $false
+    if (Test-Path $metaPath) {
+        try {
+            $probeMeta = Get-Content $metaPath -Raw | ConvertFrom-Json
+            if ($probeMeta.pid -and (Get-Process -Id $probeMeta.pid -ErrorAction SilentlyContinue)) {
+                $orcaConfirmedRunning = $true
+            }
+        } catch {
+            # Malformed/unreadable metadata -- fall through and treat as "not confirmed running".
+        }
+    }
+
+    if (-not $orcaConfirmedRunning) {
+        $orcaCmd = Get-Command orca -ErrorAction SilentlyContinue
+        if ($orcaCmd) {
+            try {
+                Start-Process -FilePath $orcaCmd.Source -ArgumentList @('open', '--json') -WindowStyle Hidden
+                Write-NudgeLog 'Orca not confirmed running -- launched it.'
+            } catch {
+                Write-NudgeLog "Failed to launch Orca: $_"
+            }
+        } else {
+            Write-NudgeLog "'orca' command not found -- cannot launch Orca."
+        }
+    }
+
     if (-not (Test-Path $metaPath)) {
         Write-NudgeLog 'No orca-runtime.json yet -- Orca is not up far enough to nudge.'
         exit 0

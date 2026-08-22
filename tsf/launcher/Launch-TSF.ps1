@@ -86,6 +86,25 @@
     idempotent (never a second backend worker), with the ongoing health
     check itself being the only unbounded-duration part, which is simply
     cheap, continuous monitoring, not a recovery attempt.
+  - v7 (this version's actual changes) fixes a real post-acceptance defect
+    found during ordinary live use: Tim reported TSF appearing to repeatedly
+    fall behind another window; closer observation showed TSF itself never
+    minimized -- Orca was repeatedly stealing OS foreground focus and
+    surfacing in front of whatever app Tim was using. Root cause, confirmed
+    both by reading source (src/cli/runtime/client.ts's openOrca(),
+    src/main/index.ts's requestDesktopActivation/focusExistingWindow) and by
+    a live, controlled reproduction: this launcher called `orca open --json`
+    on every retry/recovery tick unconditionally, and that CLI command
+    re-launches the Orca executable even when Orca is already running with a
+    visible window, which Electron's single-instance handling in the
+    already-running Orca answers by force-focusing its own window --
+    entirely unrelated to TSF's window, which was never touched. Fixed by
+    moving the "launch Orca if it isn't running" decision into
+    Invoke-TsfActivationNudge.ps1, gated on Orca's own runtime metadata
+    pointing at a still-live process, so `orca open` only ever fires when
+    Orca is genuinely not running -- never repeatedly while it's already
+    healthy, during either the cold-launch retry window or a backend-loss
+    recovery cycle.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -188,25 +207,32 @@ try {
         Show-HonestError "Thousand Sunny Fleet hit an unexpected error: $($e.Exception.Message)"
     })
 
-    # Fire-and-forget, retried, both non-blocking (never gates window
-    # creation or freezes the UI thread): (1) ensures Orca is launching/
-    # running -- idempotent per its own contract, harmless to repeat once
-    # Orca is already up; (2) nudges Orca into activating TSF's own plugin
+    # Fire-and-forget, retried, non-blocking (never gates window creation or
+    # freezes the UI thread): nudges Orca into activating TSF's own plugin
     # worker via Orca's real runtime RPC (see Invoke-TsfActivationNudge.ps1)
     # -- the actual fix for the real, confirmed lazy-activation gap above.
     # Run as a genuinely separate process each time (not inline here) since
     # named-pipe I/O has no reliable timeout API in classic PowerShell.
+    #
+    # This launcher no longer calls `orca open` directly on every tick (M14
+    # live-use finding, post-GA): that unconditionally re-launches the Orca
+    # executable even when Orca is already running with a visible window,
+    # which Electron's own single-instance handling in the already-running
+    # Orca answers by force-focusing Orca's window -- confirmed live to
+    # visibly steal OS foreground focus away from whatever app Tim was using,
+    # every ~15s for the whole retry/recovery window, with TSF's own window
+    # never actually minimizing (see Invoke-TsfActivationNudge.ps1's header
+    # for the full evidence trail). The nudge script now owns the "launch
+    # Orca if it isn't running" decision itself, gated on Orca's own runtime
+    # metadata pointing at a still-live process, so `orca open` only ever
+    # fires when Orca is genuinely not running -- never repeatedly while it's
+    # already healthy.
     $orcaRetryTimer = New-Object System.Windows.Forms.Timer
     $orcaRetryTimer.Interval = $OrcaOpenRetryIntervalMs
     $script:orcaOpenAttempts = 0
     $nudgeScriptPath = Join-Path $ScriptDir 'Invoke-TsfActivationNudge.ps1'
     $invokeOrcaOpen = {
         $script:orcaOpenAttempts++
-        try {
-            Start-Process -FilePath $orcaCmd.Source -ArgumentList @('open', '--json') -WindowStyle Hidden
-        } catch {
-            Write-Log "orca open attempt $($script:orcaOpenAttempts) failed to start: $_"
-        }
         try {
             Start-Process -FilePath 'powershell.exe' -ArgumentList @(
                 '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$nudgeScriptPath`""

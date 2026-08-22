@@ -46,16 +46,18 @@ test('Launch-TSF.ps1 never gates window creation behind a blocking network/proce
       'networking stack.'
   )
   assert.ok(
-    !/&\s*orca\s+open/.test(launcherSource),
+    !/&\s*orca\s+open/.test(launcherSource) && !/&\s*orca\s+open/.test(nudgeSource),
     'orca open must be invoked as a non-blocking, fire-and-forget call ' +
       '(Start-Process), never as a direct synchronous invocation that could ' +
-      'block the whole script on a slow/cold Orca startup before any window ' +
-      'exists.'
+      'block the whole script (or the disposable nudge helper) on a slow/cold ' +
+      'Orca startup before any window exists.'
   )
   assert.match(
-    launcherSource,
+    nudgeSource,
     /Start-Process\s+-FilePath\s+\$orcaCmd\.Source\s+-ArgumentList\s+@\(\s*'open'/,
-    'orca open must be launched via Start-Process (non-blocking).'
+    'orca open must be launched via Start-Process (non-blocking) -- see ' +
+      'Invoke-TsfActivationNudge.ps1, which now owns this decision (see the ' +
+      'foreground-focus-steal regression test below for why it moved there).'
   )
 })
 
@@ -232,6 +234,87 @@ test('Launch-TSF.ps1 fires the activation nudge on every background retry tick, 
     /-WindowStyle\s+Hidden/,
     'the nudge must be launched non-blocking (Start-Process), never inline, since named-pipe ' +
       'I/O has no reliable timeout API in classic PowerShell and could otherwise freeze the window'
+  )
+})
+
+// M14 real post-acceptance live-use defect (found during ordinary use, after
+// GA): Tim reported the TSF window repeatedly appearing to fall behind
+// another window every ~30s; closer observation showed TSF's own window
+// never actually minimized -- Orca was repeatedly stealing OS foreground
+// focus and surfacing in front of whatever app Tim was using instead. Root-
+// caused by reading Orca's own CLI (src/cli/runtime/client.ts's openOrca(),
+// read-only, no core changes): it calls launchOrcaApp() -- which re-spawns
+// the Orca executable -- *before* checking whether a desktop window is
+// already available, not after. Electron's own single-instance handling in
+// the already-running Orca then answers that second launch by force-
+// focusing its own window (src/main/index.ts's requestDesktopActivation ->
+// focusExistingWindow -> app.focus({steal:true}), plus moveTop()/an always-
+// on-top pulse/a 100ms focus retry on win32) -- entirely unrelated to TSF's
+// own window, which this never touches. Confirmed live: a single manual
+// `orca open --json` call while Orca was already running with a visible
+// window visibly stole OS foreground focus to Orca within ~1-2 seconds, with
+// zero effect on TSF's own window. Launch-TSF.ps1 called this on every
+// retry/recovery tick, unconditionally -- fixed by moving the "launch Orca
+// if it isn't running" decision into Invoke-TsfActivationNudge.ps1, gated on
+// Orca's own runtime metadata pointing at a still-live process, so it only
+// ever fires when Orca is genuinely not running.
+test('Launch-TSF.ps1 no longer calls `orca open` itself on any retry/recovery tick', () => {
+  const tickHandlerStart = launcherSource.indexOf('$invokeOrcaOpen = {')
+  const tickHandlerEnd = launcherSource.indexOf(
+    '$orcaRetryTimer.Add_Tick($invokeOrcaOpen)',
+    tickHandlerStart
+  )
+  assert.ok(
+    tickHandlerStart > 0 && tickHandlerEnd > tickHandlerStart,
+    'expected to find the retry-tick handler body'
+  )
+  const tickHandlerBody = launcherSource.slice(tickHandlerStart, tickHandlerEnd)
+  assert.ok(
+    !/-ArgumentList\s+@\(\s*'open'/.test(tickHandlerBody),
+    'the retry-tick handler must never call `orca open` directly -- doing so ' +
+      'unconditionally re-launches the Orca executable even when Orca is already ' +
+      'running with a visible window, which triggers Electron single-instance ' +
+      'focus-stealing on the ALREADY-RUNNING Orca (confirmed live: this is the ' +
+      'real cause of the reported repeated foreground steal)'
+  )
+  assert.ok(
+    !/\$orcaCmd\b/.test(tickHandlerBody),
+    'the retry-tick handler should no longer reference the resolved orca ' +
+      'executable at all -- the launch-if-not-running decision now lives ' +
+      'entirely in the nudge helper'
+  )
+})
+
+test('Invoke-TsfActivationNudge.ps1 only launches Orca when it is confirmed not already running', () => {
+  assert.match(
+    nudgeSource,
+    /Get-Process\s+-Id\s+\$probeMeta\.pid/,
+    'must verify the pid in orca-runtime.json actually corresponds to a live ' +
+      'process -- metadata presence alone is not enough (a crashed/killed Orca ' +
+      'can leave a stale file behind pointing at a dead pid)'
+  )
+  const gateStart = nudgeSource.indexOf('if (-not $orcaConfirmedRunning) {')
+  const gateEnd = nudgeSource.indexOf('if (-not (Test-Path $metaPath))', gateStart)
+  assert.ok(
+    gateStart > 0 && gateEnd > gateStart,
+    'expected a confirmed-running gate wrapping the orca-open launch, ending ' +
+      'before the existing metadata-read-for-RPC block'
+  )
+  const gateBody = nudgeSource.slice(gateStart, gateEnd)
+  assert.match(
+    gateBody,
+    /Start-Process\s+-FilePath\s+\$orcaCmd\.Source\s+-ArgumentList\s+@\(\s*'open'/,
+    '`orca open` must be launched via Start-Process, and only from within the ' +
+      '"not confirmed running" branch'
+  )
+  const afterGate = nudgeSource.slice(gateEnd)
+  assert.match(
+    afterGate,
+    /plugins\.invokeCommand/,
+    'the plugin-activation RPC nudge must still run unconditionally after the ' +
+      'gate, regardless of whether Orca needed to be launched -- only the ' +
+      'redundant `orca open` re-launch is now conditional, so backend-loss ' +
+      'recovery keeps working even when Orca itself never went down'
   )
 })
 

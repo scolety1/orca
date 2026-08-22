@@ -1,5 +1,68 @@
 # M14 — TSF Desktop Launch + V1 Release-Candidate Remediation
 
+## Post-acceptance stabilization: Orca stealing OS foreground focus (read first)
+
+Tim reported the TSF window repeatedly appearing to fall behind another window during
+ordinary live use, roughly every ~30 seconds. He later corrected the observation after
+watching more closely: TSF's own window never actually minimized -- a brief Windows
+loading spinner appeared, then **Orca** suddenly jumped to the foreground in front of
+whatever app he was using. Investigated as a foreground-focus defect, not a window
+lifecycle defect, once that correction came in; the prior "TSF minimizes" hypothesis
+(including an extensive isolated retry-timer reproduction effort) was abandoned once it
+became clear it could not explain the real symptom, and the retry-timer/health-check
+logic itself was independently re-confirmed correct (a careful recount of the real
+`launcher.log` showed the retry timer stopping cleanly at its 24-attempt bound both
+times it ran, contrary to an earlier miscount).
+
+**Root cause, confirmed from source and a live reproduction.** `Launch-TSF.ps1`'s
+retry-tick handler called `orca open --json` via `Start-Process` on every tick --
+unconditionally, every ~15 seconds, for up to 24 attempts, both at cold launch and
+again on every backend-loss recovery cycle -- regardless of whether Orca was already
+running and healthy. Reading Orca's own CLI (`src/cli/runtime/client.ts`'s
+`openOrca()`, read-only, no core changes) shows it calls `launchOrcaApp()` -- which
+re-spawns the Orca executable -- *before* checking whether a desktop window is already
+available, not after. The already-running Orca's own Electron single-instance handling
+then answers that second launch (`src/main/index.ts`'s
+`requestDesktopActivation -> focusExistingWindow`, wrapping
+`src/main/window/focus-existing-window.ts`) by force-focusing *its own* window:
+`app.focus({steal: true})`, `window.show()/.focus()`, and on win32 additionally
+`window.moveTop()`, a brief always-on-top pulse, and a 100ms delayed re-focus retry --
+entirely unrelated to TSF's own window, which this never touches (explaining exactly
+why TSF never appeared to minimize: it never did). Confirmed live: a single manual
+`orca open --json` call, issued while Orca was already running and focused elsewhere,
+visibly stole OS foreground focus to Orca within ~1-2 seconds, measured via a read-only
+`GetForegroundWindow`/`GetWindowThreadProcessId` poll, with zero effect on TSF's own
+`IsIconic` state. Tim independently observed the exact steal happen in real time when
+this manual reproduction was run.
+
+**The fix: move the "launch Orca if it isn't running" decision off the UI-thread
+retry timer entirely.** `Invoke-TsfActivationNudge.ps1` (the existing disposable,
+already-isolated helper process used for the RPC-based plugin-activation nudge) now
+checks Orca's own runtime metadata (`%APPDATA%\orca\orca-runtime.json`) for a `pid`
+confirmed alive via `Get-Process -Id` before deciding whether `orca open` is even
+necessary. `orca open` now fires only when Orca is genuinely not confirmed running;
+the pre-existing RPC-based plugin-activation nudge (`plugins.invokeCommand` over the
+named pipe, zero window/focus side effects) still runs unconditionally every tick as
+before, so backend-loss recovery keeps working even when Orca itself never went down.
+`Launch-TSF.ps1`'s own retry-tick handler no longer references `orca open`/the resolved
+`orca` executable at all.
+
+**Verified live, on isolated scratch copies (Tim's real running specimen never
+touched).** Three scratch reproductions with the fix applied -- one using the exact
+production timing values -- confirmed zero "launched it" log lines while Orca was
+already running (`orca open` correctly never fires), and a clean, fully hands-off run
+(no background-task-wait mechanism of this session's own tooling involved, which two
+earlier runs showed can itself cause an unrelated, legitimate Orca foreground surface
+unconnected to TSF's code -- traced and ruled out as a false lead) showed zero
+foreground-to-Orca transitions across a complete retry cycle. Two new regression tests
+assert the retry-tick handler no longer calls `orca open` directly, and that the nudge
+script's `orca open` launch is gated behind the confirmed-running check while the RPC
+nudge itself remains unconditional. Independently re-reviewed: the causal chain was
+re-derived from source line by line (not taken on narration), the fix's git diff
+confirmed to touch only the two launcher scripts and the test file (zero Orca core
+delta), and the reviewer ran its own separate, freshly-isolated live reproduction that
+independently confirmed the fix.
+
 ## Post-acceptance stabilization: recovering from a live backend loss (read first)
 
 M14 closed GREEN after Tim's own cold-start test passed. During ordinary live use
