@@ -10,7 +10,22 @@ import { spawn } from 'node:child_process'
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
-const TIMEOUT_MS = 15000
+// Read per-call, not frozen at module load, so tests can override it without
+// needing a fresh process (mirrors tsf/server/live-planner.mjs's timeoutMs()).
+function timeoutMs() {
+  return Number(process.env.TSF_ORCA_CLI_TIMEOUT_MS) || 15000
+}
+// One bounded retry, not endless: a real M7 migration finding showed
+// `orca repo list` failing transiently (e.g. right after Orca itself just
+// started, before its own RPC surface was fully up) even though Orca was
+// genuinely running and TSF was itself hosted inside it — retrying once,
+// briefly, distinguishes that from Orca genuinely being unreachable.
+const RETRY_DELAY_MS = 400
+const TRANSIENT_REASONS = new Set(['TIMEOUT', 'SPAWN_ERROR'])
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 // Known install locations, checked in order; overridable for tests/other
 // machines. Mirrors the resolution pattern in
@@ -56,7 +71,7 @@ function spawnCli(entry, args) {
     const timer = setTimeout(() => {
       timedOut = true
       child.kill('SIGTERM')
-    }, TIMEOUT_MS)
+    }, timeoutMs())
     child.stdout.on('data', (chunk) => (stdout += chunk))
     child.stderr.on('data', (chunk) => (stderr += chunk))
     child.on('error', (error) => {
@@ -65,7 +80,7 @@ function spawnCli(entry, args) {
     })
     child.on('close', (code) => {
       clearTimeout(timer)
-      if (timedOut) return resolve({ ok: false, reason: 'TIMEOUT', detail: `orca CLI did not respond within ${TIMEOUT_MS}ms` })
+      if (timedOut) return resolve({ ok: false, reason: 'TIMEOUT', detail: `orca CLI did not respond within ${timeoutMs()}ms` })
       if (code !== 0) return resolve({ ok: false, reason: 'CLI_ERROR', detail: (stderr || stdout).trim().slice(0, 500) || `exit code ${code}` })
       let parsed
       try {
@@ -106,12 +121,26 @@ function normalizeForCompare(p) {
 // Read-only: lists Orca-registered repos and looks for one matching this
 // path (case/slash-normalized so Windows path variants don't create
 // duplicate registrations).
-export async function findRegisteredOrcaRepo(repoPath) {
-  const listed = await runOrca(['repo', 'list'])
-  if (!listed.ok) return { ok: false, reason: listed.reason, detail: listed.detail }
+//
+// `status` distinguishes what onboarding actually needs to show, rather than
+// collapsing every non-success outcome into a single "unreachable": a
+// transient failure (worth a bounded retry, and worth telling Tim it's
+// probably temporary) is not the same as the CLI genuinely not existing on
+// this machine (ORCA_UNKNOWN — no real signal either way) or a real answer
+// (REGISTERED / NOT_REGISTERED).
+export async function findRegisteredOrcaRepo(repoPath, { retry = true } = {}) {
+  let listed = await runOrca(['repo', 'list'])
+  if (!listed.ok && retry && TRANSIENT_REASONS.has(listed.reason)) {
+    await delay(RETRY_DELAY_MS)
+    listed = await runOrca(['repo', 'list'])
+  }
+  if (!listed.ok) {
+    const status = listed.reason === 'CLI_UNAVAILABLE' ? 'ORCA_UNKNOWN' : 'ORCA_TEMPORARILY_UNAVAILABLE'
+    return { ok: false, reason: listed.reason, detail: listed.detail, status }
+  }
   const target = normalizeForCompare(repoPath)
   const match = (listed.result?.repos ?? []).find((repo) => normalizeForCompare(repo.path) === target)
-  return { ok: true, registered: !!match, repo: match ?? null }
+  return { ok: true, registered: !!match, repo: match ?? null, status: match ? 'REGISTERED' : 'NOT_REGISTERED' }
 }
 
 // Only called from the onboarding commit step, never during read-only

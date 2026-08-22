@@ -516,6 +516,16 @@ export function providerLabel({ agentId, model }) {
   return `PLANNER_DEEP · ${display}`
 }
 
+// Reasons worth one bounded retry of the SAME agent before falling back to a
+// different profile: a real M7 migration finding showed onboarding's
+// Direction analysis surfacing "Planner unavailable ... provider returned an
+// error" with no real recommendation, for what looked like a one-off
+// provider hiccup rather than a persistent failure. PROVIDER_UNAVAILABLE (no
+// runnable entry at all) and MALFORMED_RESPONSE (a schema/parsing mismatch
+// that will reproduce identically on the same input) are NOT retried here —
+// retrying either would just burn time before falling back for no benefit.
+const RETRYABLE_REASONS = new Set(['TIMEOUT', 'SPAWN_ERROR', 'PROVIDER_ERROR'])
+
 // One-shot, schema-validated PLANNER_DEEP analysis — used by onboarding's
 // direction analysis (tsf/server/onboarding.mjs), not the chat session
 // affinity path. No --resume (each onboarding analysis is independent), and
@@ -543,6 +553,19 @@ export async function invokeLiveStructuredAnalysis({
     timeoutOverrideMs
   })
   let agentUsed = preferredAgent
+
+  // Exactly one retry, never endless: a persistent failure still falls
+  // through to the fallback profile (or an honest unavailable result) below
+  // rather than being hidden behind further attempts.
+  if (!result.ok && RETRYABLE_REASONS.has(result.reason)) {
+    result = await runOnce({
+      agentId: preferredAgent,
+      prompt,
+      systemPrompt,
+      jsonSchema,
+      timeoutOverrideMs
+    })
+  }
 
   if (!result.ok && roleResolution.fallbackProfile) {
     const fallbackAgentId = launchProfiles.profiles[roleResolution.fallbackProfile]?.agentId

@@ -165,6 +165,38 @@ test('GET /api/onboarding/browse lists subdirectories of a real path without mut
   })
 })
 
+test('POST /api/onboarding/orca-status refreshes Orca registration alone, without re-running discovery/health/the planner', async () => {
+  await withServer(async (base) => {
+    const dir = createTempRepo()
+    tempDirs.push(dir)
+    const { status, body } = await post(base, '/api/onboarding/orca-status', { repoPath: dir })
+    assert.equal(status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.orcaRegistration.registered, false)
+    assert.equal(body.orcaRegistration.status, 'NOT_REGISTERED')
+    assert.deepEqual(Object.keys(body).sort(), ['ok', 'orcaRegistration'])
+  })
+})
+
+test('POST /api/onboarding/orca-status on a missing repoPath returns an honest 400', async () => {
+  await withServer(async (base) => {
+    const { status, body } = await post(base, '/api/onboarding/orca-status', {})
+    assert.equal(status, 400)
+    assert.equal(body.ok, false)
+  })
+})
+
+test('POST /api/onboarding/retry-direction re-runs only the live planner call', async () => {
+  await withServer(async (base) => {
+    const dir = createTempRepo()
+    tempDirs.push(dir)
+    const { status, body } = await post(base, '/api/onboarding/retry-direction', { repoPath: dir })
+    assert.equal(status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.direction.live, true)
+  })
+})
+
 test('POST /api/onboarding/refresh reruns read-only facts but preserves the durable Known/Active Fleet/Work Set decision', async () => {
   await withServer(async (base) => {
     const dir = createTempRepo()

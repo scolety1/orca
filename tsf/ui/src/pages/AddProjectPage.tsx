@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, CircleSlash, Folder, Loader2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, CircleSlash, Folder, Loader2, Paperclip, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
-import { CLASSIFICATION_META, classificationBadge, healthBadge } from '@/lib/onboarding-labels'
+import { CLASSIFICATION_META, classificationBadge, healthBadge, orcaStatusLabel, ProvenanceTag } from '@/lib/onboarding-labels'
+import { extractAttachmentContext, type MigrationContextAttachment } from '@/lib/migration-context-attachments'
 import type { DirectoryBrowseResult, OnboardingAnalysis, OnboardingAnalysisError, OnboardingCommitResult } from '@/lib/types'
 
 type Step = 'repository' | 'context' | 'analyzing' | 'review' | 'onboarded'
@@ -32,6 +33,11 @@ export function AddProjectPage() {
   const [committing, setCommitting] = useState(false)
   const [commitResult, setCommitResult] = useState<OnboardingCommitResult | null>(null)
 
+  const [attachments, setAttachments] = useState<MigrationContextAttachment[]>([])
+  const [attachmentDragActive, setAttachmentDragActive] = useState(false)
+  const [refreshingOrcaStatus, setRefreshingOrcaStatus] = useState(false)
+  const [retryingDirection, setRetryingDirection] = useState(false)
+
   async function openBrowser(dirPath?: string) {
     setBrowsing(true)
     setBrowseError(null)
@@ -46,13 +52,24 @@ export function AddProjectPage() {
     }
   }
 
+  // Repo truth outranks document claims — attachments/paste are evidence fed
+  // into the same handoffText the reconciliation logic already treats as
+  // untrusted prose, never injected as a separate authority. Bounded: only
+  // the extracted text/summary is appended, never the entire raw file.
+  function combinedHandoffText(): string {
+    const attachmentBlocks = attachments
+      .filter((a) => a.extractedText)
+      .map((a) => `=== Attached: ${a.name} (${a.type || 'unknown type'}) ===\n${a.extractedText}`)
+    return [handoffText.trim(), ...attachmentBlocks].filter(Boolean).join('\n\n')
+  }
+
   async function analyze() {
     if (!repoPath.trim()) return
     setError(null)
     setAnalysisError(null)
     setStep('analyzing')
     try {
-      const result = await api.analyzeRepo(repoPath.trim(), handoffText.trim())
+      const result = await api.analyzeRepo(repoPath.trim(), combinedHandoffText())
       if (result.ok) {
         setAnalysis(result)
         setAddToKnown(result.portfolioGating.knownProjects.default)
@@ -65,6 +82,50 @@ export function AddProjectPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not analyze this repository.')
       setStep('context')
+    }
+  }
+
+  async function addFiles(files: FileList | File[]) {
+    const extracted = await Promise.all(Array.from(files).map(extractAttachmentContext))
+    setAttachments((prev) => [...prev, ...extracted])
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  // Standalone "Refresh Orca status" action (defect 3): re-checks
+  // registration alone, without re-running the whole analysis.
+  async function refreshOrcaStatus() {
+    if (!analysis) return
+    setRefreshingOrcaStatus(true)
+    try {
+      const result = await api.refreshOrcaStatus(analysis.repoPath)
+      setAnalysis({ ...analysis, orcaRegistration: result.orcaRegistration })
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not refresh Orca status.')
+    } finally {
+      setRefreshingOrcaStatus(false)
+    }
+  }
+
+  // Standalone "Retry direction analysis" action (defect 4): re-runs only
+  // the live planner call, never re-persists, never fabricates a mission if
+  // the planner is still down.
+  async function retryDirection() {
+    if (!analysis) return
+    setRetryingDirection(true)
+    try {
+      const result = await api.retryDirection(analysis.repoPath, combinedHandoffText())
+      if (result.ok) {
+        setAnalysis({ ...analysis, direction: result.direction })
+      } else {
+        setError(result.detail ?? 'Direction analysis is still unavailable.')
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not retry direction analysis.')
+    } finally {
+      setRetryingDirection(false)
     }
   }
 
@@ -187,6 +248,63 @@ export function AddProjectPage() {
                 rows={6}
               />
             </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Attachments (optional)</label>
+              <div
+                onDragOver={(e) => { e.preventDefault(); setAttachmentDragActive(true) }}
+                onDragLeave={() => setAttachmentDragActive(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setAttachmentDragActive(false)
+                  if (e.dataTransfer.files.length) void addFiles(e.dataTransfer.files)
+                }}
+                className={cn(
+                  'flex flex-col items-center gap-2 rounded-md border-2 border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground transition-colors',
+                  attachmentDragActive && 'border-primary bg-primary/5'
+                )}
+              >
+                <Paperclip className="size-4" />
+                <div>Drag files here, or</div>
+                <label className="cursor-pointer text-primary underline underline-offset-2">
+                  choose files
+                  <input
+                    type="file"
+                    multiple
+                    accept=".md,.txt,.json,.pdf,.docx"
+                    className="hidden"
+                    onChange={(e) => { if (e.target.files?.length) void addFiles(e.target.files); e.target.value = '' }}
+                  />
+                </label>
+                <div className="text-[10px]">.md, .txt, .json, .pdf, .docx — read-only evidence, never sent to the repository.</div>
+              </div>
+
+              {attachments.length > 0 && (
+                <ul className="mt-2 space-y-1.5">
+                  {attachments.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate font-medium">{a.name}</span>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">{(a.size / 1024).toFixed(1)} KB</span>
+                          {a.extractionStatus === 'EXTRACTED' && <Badge variant="healthy">extracted</Badge>}
+                          {a.extractionStatus === 'TRUNCATED' && <Badge variant="degraded">truncated</Badge>}
+                          {(a.extractionStatus === 'UNSUPPORTED_FORMAT' || a.extractionStatus === 'MALFORMED' || a.extractionStatus === 'EMPTY') && (
+                            <Badge variant="unknown">{a.extractionStatus.replace(/_/g, ' ').toLowerCase()}</Badge>
+                          )}
+                        </div>
+                        {a.extractionNote && <div className="mt-0.5 text-[10px] text-muted-foreground">{a.extractionNote}</div>}
+                        {a.sha256 && <div className="mt-0.5 truncate font-mono text-[9px] text-muted-foreground" title={a.sha256}>sha256:{a.sha256.slice(0, 16)}…</div>}
+                      </div>
+                      <Button variant="ghost" size="icon-sm" onClick={() => removeAttachment(a.id)} aria-label={`Remove ${a.name}`}>
+                        <X className="size-3.5" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <div className="flex justify-between">
               <Button variant="ghost" onClick={() => setStep('repository')}>
                 <ArrowLeft className="size-4" /> Back
@@ -249,17 +367,38 @@ export function AddProjectPage() {
                   This exact repository path is already onboarded as <strong>{analysis.existingProjectId}</strong>. Onboarding again will update its record rather than create a duplicate.
                 </div>
               )}
+              <div className="flex items-center gap-1.5">
+                <ProvenanceTag kind="LIVE_REPO" />
+                <span className="text-[10px] text-muted-foreground">Repository facts below are read live from Git just now.</span>
+              </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-3">
                 <div>Branch: <span className="text-foreground">{analysis.identity.branch ?? 'unknown'}{analysis.identity.detached ? ' (detached)' : ''}</span></div>
                 <div>HEAD: <span className="font-mono text-foreground">{analysis.identity.head?.slice(0, 10) ?? 'none'}</span></div>
                 <div>Commits: <span className="text-foreground">{analysis.identity.commitCount ?? 'unknown'}</span></div>
                 <div>Maturity: <span className="text-foreground">{analysis.maturity.replace(/_/g, ' ')}</span></div>
                 <div>Working tree: <span className="text-foreground">{analysis.currentState.dirty ? 'dirty' : 'clean'}</span></div>
-                <div>
-                  Orca: <span className="text-foreground">{analysis.orcaRegistration.checked ? (analysis.orcaRegistration.registered ? 'already registered' : 'not registered yet') : 'unknown (Orca unreachable)'}</span>
+                <div className="flex items-center gap-1.5">
+                  Orca:{' '}
+                  <span className="text-foreground">{orcaStatusLabel(analysis.orcaRegistration.status).label}</span>
+                  {!analysis.orcaRegistration.checked && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-4"
+                      disabled={refreshingOrcaStatus}
+                      onClick={refreshOrcaStatus}
+                      aria-label="Refresh Orca status"
+                      title="Refresh Orca status"
+                    >
+                      <RefreshCw className={cn('size-3', refreshingOrcaStatus && 'animate-spin')} />
+                    </Button>
+                  )}
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground">{CLASSIFICATION_META[analysis.migrationClassification.classification].description}</div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ProvenanceTag kind="RECONCILED" />
+                {CLASSIFICATION_META[analysis.migrationClassification.classification].description}
+              </div>
               <ul className="list-inside list-disc space-y-0.5 text-xs text-muted-foreground">
                 {analysis.migrationClassification.reasons.map((reason, i) => <li key={i}>{reason}</li>)}
               </ul>
@@ -269,7 +408,9 @@ export function AddProjectPage() {
           {analysis.handoffReconciliation.hasHandoff && (
             <Card>
               <CardContent className="space-y-2 p-5">
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Handoff reconciliation</div>
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Handoff reconciliation <ProvenanceTag kind="RECONCILED" />
+                </div>
                 {analysis.handoffReconciliation.discrepancies.length > 0 ? (
                   analysis.handoffReconciliation.discrepancies.map((d, i) => (
                     <div key={i} className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
@@ -289,7 +430,9 @@ export function AddProjectPage() {
           <Card>
             <CardContent className="space-y-3 p-5">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Direction</div>
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Direction <ProvenanceTag kind={analysis.direction.live ? 'PLANNER' : 'FALLBACK'} />
+                </div>
                 <div className="text-[10px] text-muted-foreground">{analysis.direction.providerLabel}</div>
               </div>
               {analysis.direction.live ? (
@@ -314,7 +457,13 @@ export function AddProjectPage() {
                   )}
                 </>
               ) : (
-                <div className="text-xs text-muted-foreground">Direction analysis unavailable ({analysis.direction.unavailableReason}). Repository facts above are still real and read-only.</div>
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground">Direction analysis unavailable ({analysis.direction.unavailableReason}). Repository facts above are still real and read-only.</div>
+                  <Button variant="outline" size="xs" disabled={retryingDirection} onClick={retryDirection}>
+                    {retryingDirection ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                    Retry direction analysis
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>

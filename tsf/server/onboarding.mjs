@@ -220,19 +220,120 @@ export async function analyzeRepository({ repoPath, handoffText = '' }) {
     migrationClassification: migration,
     portfolioGating: portfolioGatingForClassification(migration.classification),
     handoffReconciliation: reconciliation,
-    orcaRegistration: orcaCheck.ok
-      ? { checked: true, registered: orcaCheck.registered, repo: orcaCheck.repo }
-      : { checked: false, registered: false, reason: orcaCheck.reason, detail: orcaCheck.detail },
+    orcaRegistration: shapeOrcaRegistration(orcaCheck),
     discovery: {
       priorityFiles: discovery.priorityFiles.map((f) => ({ relativePath: f.relativePath, kind: f.kind, truncated: f.truncated, bytes: f.bytes })),
       discoveredDirectories: discovery.discoveredDirectories,
       scanTruncated: discovery.scanTruncated,
       commandGuidance
     },
-    direction: direction.ok
-      ? { ...direction.data, live: true, providerLabel: providerLabel({ agentId: direction.agentId, model: direction.model }) }
-      : { live: false, providerLabel: fallbackLabel(direction.reason), unavailableReason: direction.reason, unavailableDetail: direction.detail, purpose: null, completedSummary: null, unfinishedSummary: null, alignment: 'UNKNOWN', recommendedNextMission: null, upgradeCandidates: [] }
+    direction: shapeDirection(direction)
   }
+}
+
+// Shared shaping so /analyze, /refresh, and the standalone direction-retry
+// path never drift into three slightly different "unavailable" shapes.
+function shapeDirection(direction) {
+  return direction.ok
+    ? { ...direction.data, live: true, providerLabel: providerLabel({ agentId: direction.agentId, model: direction.model }) }
+    : { live: false, providerLabel: fallbackLabel(direction.reason), unavailableReason: direction.reason, unavailableDetail: direction.detail, purpose: null, completedSummary: null, unfinishedSummary: null, alignment: 'UNKNOWN', recommendedNextMission: null, upgradeCandidates: [] }
+}
+
+// Real M7 migration finding: onboarding showed "Orca: unknown (Orca
+// unreachable)" even though TSF itself is hosted inside a genuinely-running
+// Orca — a single transient `orca repo list` failure (findRegisteredOrcaRepo
+// now retries once, see orca-cli-bridge.mjs) collapsed into the same generic
+// "unavailable" shown for a machine with no Orca install at all. `status`
+// distinguishes what the UI actually needs: REGISTERED / NOT_REGISTERED are
+// real answers; ORCA_TEMPORARILY_UNAVAILABLE means "ask again, this is
+// probably transient"; ORCA_UNKNOWN means "no real signal either way" (no
+// CLI found). Never fabricates `registered: true` in any branch.
+function shapeOrcaRegistration(orcaCheck) {
+  return orcaCheck.ok
+    ? { checked: true, registered: orcaCheck.registered, repo: orcaCheck.repo, status: orcaCheck.status }
+    : { checked: false, registered: false, reason: orcaCheck.reason, detail: orcaCheck.detail, status: orcaCheck.status }
+}
+
+// Standalone "Refresh Orca status" action: re-checks registration alone,
+// without re-running repository discovery/health/migration/the live planner
+// call. Read-only, same as analyzeRepository's own orca check. Health and
+// sensitivity classification never depend on this — they are computed from
+// Git/filesystem facts alone, before this is ever awaited, so a transient
+// Orca hiccup can never poison either.
+export async function refreshOrcaRegistrationStatus(repoPath) {
+  const orcaCheck = await findRegisteredOrcaRepo(repoPath)
+  return { ok: true, orcaRegistration: shapeOrcaRegistration(orcaCheck) }
+}
+
+// Standalone "Retry direction analysis" action: re-runs only the live
+// planner call against freshly re-read (cheap, filesystem-only) repository
+// facts — never re-persists anything, never touches Orca registration. Lets
+// Tim retry a PROVIDER_ERROR/timeout without waiting through the entire
+// analysis again, and without ever fabricating a next mission if the
+// planner is still down.
+export async function retryDirectionAnalysis({ repoPath, handoffText = '' }) {
+  const snapshot = await snapshotRepository(repoPath)
+  if (!snapshot.ok) return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
+
+  const discovery = await discoverProjectFiles(snapshot.root)
+  const packageJson = discovery.priorityFiles.find((f) => f.relativePath === 'package.json')
+  const commandGuidance = discoverCommandGuidance(snapshot.root, packageJson?.text)
+  const readmeFile = discovery.priorityFiles.find((f) => f.kind === 'README')
+  const agentsFile = discovery.priorityFiles.find((f) => f.kind === 'AGENTS')
+  const claudeFile = discovery.priorityFiles.find((f) => f.kind === 'CLAUDE')
+  const deploymentFiles = discovery.priorityFiles.filter((f) => f.kind === 'DEPLOYMENT_CONFIG')
+  const hasPackageManifest = discovery.priorityFiles.some((f) => f.kind === 'PACKAGE_MANIFEST')
+  const largeUntracked = boundedUntrackedDirectorySizes(snapshot.root, snapshot.untracked)
+
+  const reconciliation = reconcileHandoff({ handoffText, repoFacts: snapshot })
+  const migration = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: [...new Set([...snapshot.trackedFiles, ...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked])],
+    readmeExcerpt: readmeFile?.text,
+    instructionsExcerpt: [agentsFile?.text, claudeFile?.text].filter(Boolean).join('\n'),
+    handoffText,
+    declaredSensitive: false,
+    activeGitOperation: snapshot.activeGitOperation,
+    activeGitOperationKind: snapshot.activeGitOperationKind,
+    handoffConflict: reconciliation.hasConflict,
+    handoffConflictSummary: reconciliation.discrepancies.join(' '),
+    dirty: snapshot.dirty,
+    stagedCount: snapshot.stagedCount,
+    unstagedCount: snapshot.unstagedCount,
+    untrackedCount: snapshot.untrackedCount,
+    discoveryConfidence: readmeFile || agentsFile || commandGuidance.hasKnownTestCommand ? 'HIGH' : discovery.priorityFiles.length ? 'MEDIUM' : 'LOW'
+  })
+  const health = assessRepositoryOnboardingHealth({
+    activeGitOperation: snapshot.activeGitOperation,
+    activeGitOperationKind: snapshot.activeGitOperationKind,
+    conflicted: snapshot.conflicted,
+    detached: snapshot.detached,
+    dirty: snapshot.dirty,
+    stagedCount: snapshot.stagedCount,
+    unstagedCount: snapshot.unstagedCount,
+    untrackedCount: snapshot.untrackedCount,
+    missingWorktrees: [],
+    largeUntrackedDirectories: largeUntracked,
+    hasKnownTestCommand: commandGuidance.hasKnownTestCommand,
+    hasReadme: !!readmeFile,
+    hasInstructions: !!(agentsFile || claudeFile),
+    hasPackageManifest,
+    dependenciesInstalled: commandGuidance.dependenciesInstalled,
+    handoffConflict: reconciliation.hasConflict,
+    handoffConflictSummary: reconciliation.discrepancies.join(' '),
+    deploymentConfigPresent: deploymentFiles.length > 0,
+    deploymentConfigFiles: deploymentFiles.map((f) => f.relativePath)
+  })
+
+  const direction = await invokeLiveStructuredAnalysis({
+    systemPrompt: DIRECTION_SYSTEM_PROMPT,
+    prompt: buildDirectionPrompt({ snapshot, discovery, commandGuidance, reconciliation, health, migration }),
+    jsonSchema: DIRECTION_SCHEMA,
+    timeoutOverrideMs: 180000
+  })
+
+  return { ok: true, direction: shapeDirection(direction) }
 }
 
 // Commit step: persists into the real tsf/domain/portfolio.mjs structure and

@@ -40,6 +40,23 @@ if (mode === 'provider-error') {
   process.exit(0)
 }
 
+// Fails once (a real PROVIDER_ERROR shape), then succeeds on the very next
+// call — proves invokeLiveStructuredAnalysis's one bounded retry recovers
+// from a one-off provider hiccup without ever falling back to a different
+// profile or fabricating a result. A call-count counter file distinguishes
+// "first call" from "second call" across separate stub process invocations.
+if (mode === 'flaky-then-success') {
+  const { existsSync, writeFileSync } = await import('node:fs')
+  const counterFile = process.env.STUB_FLAKY_COUNTER_FILE
+  if (!existsSync(counterFile)) {
+    writeFileSync(counterFile, '1')
+    process.stdout.write(
+      JSON.stringify({ is_error: true, result: 'deliberate one-off stub provider error', session_id: sessionId })
+    )
+    process.exit(0)
+  }
+}
+
 const resume = argValue('--resume')
 if (resume && resume !== sessionId) {
   process.stderr.write(`No conversation found with session ID: ${resume}`)

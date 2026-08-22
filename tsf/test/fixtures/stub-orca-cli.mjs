@@ -25,6 +25,27 @@ if (mode === 'malformed') {
   process.stdout.write('not json')
   process.exit(0)
 }
+// Simulates a real transient failure (Orca genuinely running, one `orca
+// repo list` call just happens to time out) followed by a real success on
+// retry -- a call-count counter file distinguishes "first call" from
+// "second call" across separate stub process invocations, since each `orca`
+// call is its own fresh child process. First call: hang past the caller's
+// (test-shortened) timeout so it gets killed with reason: 'TIMEOUT'.
+// Subsequent calls: answer normally.
+if (mode === 'flaky-then-success') {
+  const { existsSync, writeFileSync } = await import('node:fs')
+  const counterFile = process.env.STUB_ORCA_FLAKY_COUNTER_FILE
+  if (!existsSync(counterFile)) {
+    writeFileSync(counterFile, '1')
+    // A bare top-level `await new Promise(() => {})` is not enough to hang
+    // this process -- Node detects the event loop has nothing else keeping
+    // it alive and exits early with an "unsettled top-level await" warning.
+    // A live timer genuinely keeps the process (and the event loop) alive
+    // until the caller's own SIGTERM arrives.
+    setInterval(() => {}, 1_000_000)
+    await new Promise(() => {})
+  }
+}
 
 if (args[0] === 'account' && args[1] === 'list') {
   ok({ rateLimits: seededRateLimits })

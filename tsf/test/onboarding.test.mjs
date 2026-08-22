@@ -9,7 +9,7 @@ import { classifyMigration, portfolioGatingForClassification, reconcileHandoff }
 import { createPortfolio } from '../domain/portfolio.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { snapshotRepository, discoverProjectFiles, discoverCommandGuidance, boundedUntrackedDirectorySizes } from '../server/repo-inspector.mjs'
-import { analyzeRepository, commitOnboarding } from '../server/onboarding.mjs'
+import { analyzeRepository, commitOnboarding, refreshOrcaRegistrationStatus, retryDirectionAnalysis } from '../server/onboarding.mjs'
 import { findRegisteredOrcaRepo } from '../adapters/orca-cli-bridge.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -112,6 +112,144 @@ test('reconcileHandoff: conflict when handoff claims clean but repo is dirty', (
   const result = reconcileHandoff({ handoffText: 'main is clean at abc123def456.', repoFacts: { dirty: true, untrackedCount: 3, head: 'fedcba987654', branch: 'main' } })
   assert.equal(result.hasConflict, true)
   assert.match(result.discrepancies.join(' '), /dirty/i)
+})
+
+// --- Defect 1 (M7 real-migration finding): negation-aware sensitivity ---
+// classification. The original single regex matched a bare phrase anywhere
+// in the text, so a project explicitly describing what it is NOT ("no
+// production deployment") classified identically to one asserting that
+// condition IS true. These are the exact adversarial cases from Tim's real
+// Route Reader migration report.
+
+function cleanFacts(overrides = {}) {
+  return {
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: [],
+    dirty: false,
+    discoveryConfidence: 'HIGH',
+    activeGitOperation: false,
+    handoffConflict: false,
+    ...overrides
+  }
+}
+
+test('classifyMigration: "no production deployment exists" is explicit absence, not SENSITIVE', () => {
+  const result = classifyMigration(cleanFacts({ readmeExcerpt: 'This is a research prototype. No production deployment exists yet.' }))
+  assert.equal(result.classification, 'SAFE_TO_ONBOARD_NOW')
+})
+
+test('classifyMigration: "production database is active" (no negation) is SENSITIVE', () => {
+  const result = classifyMigration(cleanFacts({ readmeExcerpt: 'The production database is active and serving real traffic.' }))
+  assert.equal(result.classification, 'SENSITIVE')
+})
+
+test('classifyMigration: "no credentials are required" is explicit absence, not SENSITIVE', () => {
+  const result = classifyMigration(cleanFacts({ readmeExcerpt: 'This is a local-only tool. No credentials are required to run it.' }))
+  assert.equal(result.classification, 'SAFE_TO_ONBOARD_NOW')
+})
+
+test('classifyMigration: "credentials are required" (no negation) is SENSITIVE', () => {
+  const result = classifyMigration(cleanFacts({ readmeExcerpt: 'To use the API, real credentials are required.' }))
+  assert.equal(result.classification, 'SENSITIVE')
+})
+
+test('classifyMigration: "future real GPS data will be sensitive" is READ_ONLY_ONBOARDING_ONLY, not SENSITIVE', () => {
+  const result = classifyMigration(cleanFacts({ readmeExcerpt: 'Today this uses synthetic location data. Future real GPS data will be sensitive once we integrate a live feed.' }))
+  assert.equal(result.classification, 'READ_ONLY_ONBOARDING_ONLY')
+  assert.ok(result.evidence.futureSensitiveSignals?.length > 0)
+})
+
+test('classifyMigration: "current repo contains live customer data" is SENSITIVE', () => {
+  const result = classifyMigration(cleanFacts({ readmeExcerpt: 'Warning: the current repo contains live customer data from a real deployment.' }))
+  assert.equal(result.classification, 'SENSITIVE')
+})
+
+test('classifyMigration: mixed/ambiguous wording — an unrelated negation does not suppress a genuine current signal elsewhere', () => {
+  const result = classifyMigration(
+    cleanFacts({ readmeExcerpt: 'We have no production deployment yet. However, real customer data already flows through the staging environment for testing.' })
+  )
+  assert.equal(result.classification, 'SENSITIVE')
+  assert.ok(result.evidence.currentSensitiveSignals?.some((s) => s.code === 'REAL_USER_DATA'))
+})
+
+test('classifyMigration: genuinely sensitive project text is still detected (does not weaken real detection)', () => {
+  const result = classifyMigration(cleanFacts({ readmeExcerpt: 'HouseOS manages the live production database with real customer payment records.' }))
+  assert.equal(result.classification, 'SENSITIVE')
+})
+
+test('classifyMigration: sensitive paths still force SENSITIVE even with hedged prose elsewhere', () => {
+  const result = classifyMigration(
+    cleanFacts({ trackedAndUntrackedPaths: ['.env', 'src/index.js'], readmeExcerpt: 'No production deployment exists yet.' })
+  )
+  assert.equal(result.classification, 'SENSITIVE')
+  assert.ok(result.evidence.sensitivePaths.length > 0)
+})
+
+// --- Defect 2 (M7 real-migration finding): committed-unadopted vs actual ---
+// uncommitted-WIP reconciliation. The original detector treated any mention
+// of "committed"/"uncommitted"/"WIP" identically, so "committed YELLOW
+// research" against a clean repo was flagged as if real work might be lost.
+
+test('reconcileHandoff: clean repo + handoff says committed candidate is an agreement, not a discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText: 'The research was committed as a YELLOW candidate but has not been adopted into main.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, false)
+  assert.ok(result.agreements.some((a) => /committed-but-unadopted/i.test(a)))
+})
+
+test('reconcileHandoff: clean repo + handoff says uncommitted files is still a real discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText: 'There are several uncommitted files with in-progress edits.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, true)
+  assert.match(result.discrepancies.join(' '), /uncommitted/i)
+})
+
+test('reconcileHandoff: dirty repo + handoff says clean is still a real discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText: 'The repository is clean.',
+    repoFacts: { dirty: true, untrackedCount: 2, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, true)
+  assert.match(result.discrepancies.join(' '), /dirty/i)
+})
+
+test('reconcileHandoff: branch containing unadopted commits is recognized when it exists locally, even if not checked out', () => {
+  const result = reconcileHandoff({
+    handoffText: 'Branch feature/unadopted-research is clean.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main', localBranches: [{ name: 'main' }, { name: 'feature/unadopted-research' }] }
+  })
+  assert.equal(result.hasConflict, false)
+  assert.ok(result.agreements.some((a) => /feature\/unadopted-research/.test(a)))
+})
+
+test('reconcileHandoff: a claimed branch that genuinely does not exist anywhere is still a real discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText: 'Branch feature/ghost is clean.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main', localBranches: [{ name: 'main' }] }
+  })
+  assert.equal(result.hasConflict, true)
+  assert.match(result.discrepancies.join(' '), /feature\/ghost/)
+})
+
+test('reconcileHandoff: planned work only is neither a discrepancy nor forced agreement against a clean repo', () => {
+  const result = reconcileHandoff({
+    handoffText: 'A GPS integration is planned as future work; nothing has been implemented yet.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, false)
+})
+
+test('reconcileHandoff: historical WIP terminology that does not describe current Git state is not a false discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText: 'The WIP research phase concluded and was committed as YELLOW research for later review.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, false)
 })
 
 // --- repo-inspector.mjs against real temp Git repos ---
@@ -387,5 +525,133 @@ test('findRegisteredOrcaRepo: Windows 8.3 short-name path variants resolve to th
       assert.equal(result.ok, true)
       assert.equal(result.registered, true, '8.3 short-name and long-name forms of the same real directory must match, not register a duplicate')
     })
+  })
+})
+
+// --- Defect 3 (M7 real-migration finding): Orca status resilience ---
+// Real Route Reader onboarding report: "Orca: unknown (Orca unreachable)"
+// even though TSF itself is hosted inside a genuinely-running Orca. A single
+// transient `orca repo list` failure must not collapse into the same
+// "unavailable" shown when Orca genuinely isn't installed at all.
+
+test('findRegisteredOrcaRepo: a transient timeout recovers via one bounded retry, reported as REGISTERED', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tsf-orca-flaky-'))
+  const counterFile = path.join(dir, 'flaky-counter')
+  const repoDir = createTempRepo()
+  tracked(repoDir)
+  try {
+    await withEnv(
+      {
+        TSF_ORCA_CLI_COMMAND: ORCA_STUB,
+        STUB_ORCA_MODE: 'flaky-then-success',
+        STUB_ORCA_FLAKY_COUNTER_FILE: counterFile,
+        STUB_ORCA_REPOS: JSON.stringify([{ id: 'r1', path: repoDir, displayName: 'r1' }]),
+        TSF_ORCA_CLI_TIMEOUT_MS: '300'
+      },
+      async () => {
+        const result = await findRegisteredOrcaRepo(repoDir)
+        assert.equal(result.ok, true)
+        assert.equal(result.registered, true)
+        assert.equal(result.status, 'REGISTERED')
+      }
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('findRegisteredOrcaRepo: a persistent failure is reported as ORCA_TEMPORARILY_UNAVAILABLE, not silently retried forever', async () => {
+  await withEnv({ TSF_ORCA_CLI_COMMAND: ORCA_STUB, STUB_ORCA_MODE: 'error', TSF_ORCA_CLI_TIMEOUT_MS: '300' }, async () => {
+    const result = await findRegisteredOrcaRepo('/tmp/whatever')
+    assert.equal(result.ok, false)
+    assert.equal(result.status, 'ORCA_TEMPORARILY_UNAVAILABLE')
+  })
+})
+
+// Note: reaching CLI_UNAVAILABLE (-> status ORCA_UNKNOWN) specifically
+// requires resolveEntry() to find no candidate at all; candidateEntries()'s
+// final fallback candidate ({ command: 'orca' }) is unconditionally accepted
+// by resolveEntry()'s own `candidate.command === 'orca'` check regardless of
+// whether it actually exists on PATH, so a bad/missing binary is always
+// reported via a real spawn attempt (SPAWN_ERROR -> ORCA_TEMPORARILY_UNAVAILABLE)
+// rather than CLI_UNAVAILABLE in practice — pre-existing resolveEntry
+// behavior, out of scope for this fix. The mapping itself is still correct
+// and exercised by the SPAWN_ERROR case below.
+test('findRegisteredOrcaRepo: a missing/unresolvable CLI binary never fabricates a registered result', async () => {
+  await withEnv({ TSF_ORCA_CLI_COMMAND: NONEXISTENT }, async () => {
+    const result = await findRegisteredOrcaRepo('/tmp/whatever')
+    assert.equal(result.ok, false)
+    assert.equal(result.registered, undefined)
+    assert.ok(['ORCA_TEMPORARILY_UNAVAILABLE', 'ORCA_UNKNOWN'].includes(result.status))
+  })
+})
+
+test('findRegisteredOrcaRepo: a genuinely not-registered repo is reported as NOT_REGISTERED, distinct from any unavailable status', async () => {
+  const repoDir = createTempRepo()
+  tracked(repoDir)
+  await withEnv({ TSF_ORCA_CLI_COMMAND: ORCA_STUB, STUB_ORCA_MODE: 'success', STUB_ORCA_REPOS: '[]' }, async () => {
+    const result = await findRegisteredOrcaRepo(repoDir)
+    assert.equal(result.ok, true)
+    assert.equal(result.registered, false)
+    assert.equal(result.status, 'NOT_REGISTERED')
+  })
+})
+
+test('refreshOrcaRegistrationStatus: re-checks Orca registration alone, without re-running discovery/health/migration/the planner', async () => {
+  const repoDir = createTempRepo()
+  tracked(repoDir)
+  await withEnv({ TSF_ORCA_CLI_COMMAND: ORCA_STUB, STUB_ORCA_MODE: 'success', STUB_ORCA_REPOS: JSON.stringify([{ id: 'r1', path: repoDir, displayName: 'r1' }]) }, async () => {
+    const result = await refreshOrcaRegistrationStatus(repoDir)
+    assert.equal(result.ok, true)
+    assert.equal(result.orcaRegistration.registered, true)
+    assert.equal(result.orcaRegistration.status, 'REGISTERED')
+    // Only the orca registration shape — no repository/health/migration/direction facts.
+    assert.deepEqual(Object.keys(result).sort(), ['ok', 'orcaRegistration'])
+  })
+})
+
+test('analyzeRepository: a transient Orca hiccup never changes Health or migration classification', async () => {
+  const repoDir = createTempRepo()
+  tracked(repoDir)
+  const healthyRun = await withEnv({ ...BASE_ENV, TSF_ORCA_CLI_COMMAND: ORCA_STUB, STUB_ORCA_MODE: 'success', STUB_ORCA_REPOS: '[]' }, () =>
+    analyzeRepository({ repoPath: repoDir })
+  )
+  const orcaDownRun = await withEnv({ ...BASE_ENV, TSF_ORCA_CLI_COMMAND: ORCA_STUB, STUB_ORCA_MODE: 'error', TSF_ORCA_CLI_TIMEOUT_MS: '300' }, () =>
+    analyzeRepository({ repoPath: repoDir })
+  )
+  assert.equal(orcaDownRun.ok, true)
+  // Health and migration classification come from Git/filesystem facts
+  // alone, computed before the Orca check is ever awaited — a transient
+  // Orca outage must produce identical results for both (aside from the
+  // observedAt timestamp, which naturally differs between the two calls).
+  assert.deepEqual({ ...orcaDownRun.health, observedAt: null }, { ...healthyRun.health, observedAt: null })
+  assert.deepEqual(orcaDownRun.migrationClassification, healthyRun.migrationClassification)
+  assert.equal(orcaDownRun.orcaRegistration.checked, false)
+  assert.equal(orcaDownRun.orcaRegistration.status, 'ORCA_TEMPORARILY_UNAVAILABLE')
+  assert.notEqual(orcaDownRun.orcaRegistration.status, healthyRun.orcaRegistration.status)
+})
+
+// --- Defect 4 (M7 real-migration finding): retryDirectionAnalysis re-runs ---
+// only the live planner call, never re-persisting or re-checking Orca.
+
+test('retryDirectionAnalysis: re-runs only the planner call against freshly-read repo facts', async () => {
+  const repoDir = createTempRepo()
+  tracked(repoDir)
+  await withEnv(BASE_ENV, async () => {
+    const result = await retryDirectionAnalysis({ repoPath: repoDir })
+    assert.equal(result.ok, true)
+    assert.equal(result.direction.live, true)
+    assert.deepEqual(Object.keys(result).sort(), ['direction', 'ok'])
+  })
+})
+
+test('retryDirectionAnalysis: a persistent planner failure is an honest fallback, never a fabricated mission', async () => {
+  const repoDir = createTempRepo()
+  tracked(repoDir)
+  await withEnv({ ...BASE_ENV, STUB_MODE: 'provider-error' }, async () => {
+    const result = await retryDirectionAnalysis({ repoPath: repoDir })
+    assert.equal(result.ok, true)
+    assert.equal(result.direction.live, false)
+    assert.equal(result.direction.recommendedNextMission, null)
   })
 })

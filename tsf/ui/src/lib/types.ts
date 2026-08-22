@@ -229,12 +229,15 @@ export interface HandoffReconciliation {
   hasConflict?: boolean
 }
 
+export type OrcaStatusLabel = 'REGISTERED' | 'NOT_REGISTERED' | 'ORCA_TEMPORARILY_UNAVAILABLE' | 'ORCA_UNKNOWN'
+
 export interface OrcaRegistrationStatus {
   checked: boolean
   registered: boolean
   repo?: Record<string, unknown> | null
   reason?: string
   detail?: string
+  status?: OrcaStatusLabel
 }
 
 export interface UpgradeCandidate {
@@ -327,6 +330,16 @@ export interface OnboardingCommitResult {
   orcaRegistration: { attempted: boolean; ok: boolean; alreadyRegistered?: boolean; repo?: Record<string, unknown> | null; reason?: string; detail?: string } | null
   activeFleet: boolean
   workSet: boolean
+}
+
+export interface OrcaStatusRefreshResult {
+  ok: true
+  orcaRegistration: OrcaRegistrationStatus
+}
+
+export interface DirectionRetryResult {
+  ok: true
+  direction: OnboardingDirection
 }
 
 export interface OnboardingRefreshResult {

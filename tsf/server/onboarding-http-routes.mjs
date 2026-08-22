@@ -8,7 +8,7 @@
 import { readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { analyzeRepository, commitOnboarding } from './onboarding.mjs'
+import { analyzeRepository, commitOnboarding, refreshOrcaRegistrationStatus, retryDirectionAnalysis } from './onboarding.mjs'
 
 // Returns true and writes the response if this request matched an
 // onboarding route; returns false (writes nothing) otherwise, so the
@@ -81,6 +81,42 @@ export async function handleOnboardingRoute(
         record.lastAnalysis.repoPath.replace(/\\/g, '/').toLowerCase() === normalizedTarget
     )
     json(res, 200, { ...analysis, existingProjectId: existing?.lastAnalysis.projectId ?? null })
+    return true
+  }
+
+  // POST /api/onboarding/orca-status { repoPath } — standalone "Refresh Orca
+  // status" action (M7 real-migration finding, defect 3): re-checks
+  // registration alone, without re-running discovery/health/migration/the
+  // live planner call. Read-only, same as the check /analyze already does.
+  if (parts[2] === 'orca-status' && req.method === 'POST') {
+    const body = await readBody(req)
+    const repoPath = String(body.repoPath ?? '').trim()
+    if (!repoPath) {
+      json(res, 400, { ok: false, error: 'repoPath is required' })
+      return true
+    }
+    const result = await refreshOrcaRegistrationStatus(repoPath)
+    json(res, 200, result)
+    return true
+  }
+
+  // POST /api/onboarding/retry-direction { repoPath, handoffText? } —
+  // standalone "Retry direction analysis" action (M7 real-migration finding,
+  // defect 4): re-runs only the live planner call against freshly re-read
+  // repository facts, without re-persisting anything or re-checking Orca.
+  if (parts[2] === 'retry-direction' && req.method === 'POST') {
+    const body = await readBody(req)
+    const repoPath = String(body.repoPath ?? '').trim()
+    if (!repoPath) {
+      json(res, 400, { ok: false, error: 'repoPath is required' })
+      return true
+    }
+    const result = await retryDirectionAnalysis({ repoPath, handoffText: String(body.handoffText ?? '') })
+    if (!result.ok) {
+      json(res, 422, result)
+      return true
+    }
+    json(res, 200, result)
     return true
   }
 

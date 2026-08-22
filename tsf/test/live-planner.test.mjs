@@ -5,6 +5,7 @@ import { readFileSync, rmSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
   invokeLivePlanner,
+  invokeLiveStructuredAnalysis,
   buildProjectContextCapsule,
   providerLabel,
   fallbackLabel,
@@ -449,4 +450,72 @@ test('strips $schema and $id before a schema reaches the real CLI, leaving every
 test("a schema with neither key (e.g. onboarding.mjs's inline DIRECTION_SCHEMA) passes through unchanged", () => {
   const schema = { type: 'object', properties: { purpose: { type: 'string' } } }
   assert.deepEqual(stripSchemaMetaKeys(schema), schema)
+})
+
+// --- Defect 4 (M7 real-migration finding): invokeLiveStructuredAnalysis's ---
+// one bounded retry, used by onboarding's Direction analysis. Real Route
+// Reader migration report: "Planner unavailable — using recorded
+// project-state fallback (provider returned an error)" with no real
+// Direction recommendation, for what looked like a one-off provider hiccup.
+
+test('invokeLiveStructuredAnalysis: a one-off PROVIDER_ERROR recovers via a single bounded retry, without falling back to a different profile', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tsf-planner-flaky-'))
+  const counterFile = path.join(dir, 'flaky-counter')
+  try {
+    await withStubEnv(
+      {
+        TSF_PLANNER_CLAUDE_COMMAND: STUB,
+        TSF_PLANNER_CODEX_COMMAND: path.join(HERE, 'fixtures', 'does-not-exist-binary'),
+        STUB_MODE: 'flaky-then-success',
+        STUB_FLAKY_COUNTER_FILE: counterFile,
+        STUB_SESSION_ID: 'retry-recovered-session'
+      },
+      async () => {
+        const result = await invokeLiveStructuredAnalysis({
+          systemPrompt: 'system',
+          prompt: 'analyze this',
+          jsonSchema: { type: 'object', properties: { purpose: { type: 'string' } } }
+        })
+        assert.equal(result.ok, true)
+        assert.equal(result.agentId, 'claude-code')
+        assert.equal(result.data.purpose, 'stub-answer-for::analyze this')
+      }
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('invokeLiveStructuredAnalysis: a persistent PROVIDER_ERROR is not hidden behind endless retry — it still surfaces as a real failure', async () => {
+  await withStubEnv(
+    {
+      TSF_PLANNER_CLAUDE_COMMAND: STUB,
+      TSF_PLANNER_CODEX_COMMAND: path.join(HERE, 'fixtures', 'does-not-exist-binary'),
+      STUB_MODE: 'provider-error'
+    },
+    async () => {
+      const result = await invokeLiveStructuredAnalysis({
+        systemPrompt: 'system',
+        prompt: 'analyze this',
+        jsonSchema: { type: 'object', properties: { purpose: { type: 'string' } } }
+      })
+      assert.equal(result.ok, false)
+      assert.equal(result.reason, 'PROVIDER_ERROR')
+    }
+  )
+})
+
+test('invokeLiveStructuredAnalysis: MALFORMED_RESPONSE is not retried (a schema/parsing mismatch would just reproduce)', async () => {
+  await withStubEnv(
+    { TSF_PLANNER_CLAUDE_COMMAND: STUB, TSF_PLANNER_CODEX_COMMAND: path.join(HERE, 'fixtures', 'does-not-exist-binary'), STUB_MODE: 'malformed' },
+    async () => {
+      const result = await invokeLiveStructuredAnalysis({
+        systemPrompt: 'system',
+        prompt: 'analyze this',
+        jsonSchema: { type: 'object', properties: { purpose: { type: 'string' } } }
+      })
+      assert.equal(result.ok, false)
+      assert.equal(result.reason, 'MALFORMED_RESPONSE')
+    }
+  )
 })

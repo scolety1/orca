@@ -18,10 +18,12 @@ import type {
   ChatMessage,
   ChatResponse,
   DirectoryBrowseResult,
+  DirectionRetryResult,
   OnboardingAnalysis,
   OnboardingAnalysisError,
   OnboardingCommitResult,
   OnboardingRefreshResult,
+  OrcaStatusRefreshResult,
   Portfolio,
   ProjectCard,
   ProjectDetail,
@@ -133,6 +135,16 @@ export const api = {
     request<OnboardingRefreshResult>('/onboarding/refresh', {
       method: 'POST',
       body: JSON.stringify({ projectId })
+    }),
+  refreshOrcaStatus: (repoPath: string) =>
+    request<OrcaStatusRefreshResult>('/onboarding/orca-status', {
+      method: 'POST',
+      body: JSON.stringify({ repoPath })
+    }),
+  retryDirection: (repoPath: string, handoffText: string) =>
+    requestTolerant<DirectionRetryResult, OnboardingAnalysisError>('/onboarding/retry-direction', {
+      method: 'POST',
+      body: JSON.stringify({ repoPath, handoffText })
     }),
   keepGoing: (projectId: string) =>
     request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}`),
