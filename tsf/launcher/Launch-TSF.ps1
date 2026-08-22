@@ -62,6 +62,30 @@
     for the full mechanism and evidence) -- activating the worker exactly the
     way a real command invocation would, just automated instead of requiring
     Tim to use the command palette.
+  - v6 (this version's actual changes) fixes a real *post*-acceptance defect
+    found during ordinary live use: with TSF's real UI already open and
+    working, Orca itself restarted (a real, live process-timestamp specimen
+    confirmed an entirely new Orca process tree, the old one's plugin-host/
+    tsf/server included, gone) -- the new Orca session hits the exact same
+    lazy-activation gap v5 fixed, but v5's own nudge/retry timer had already
+    finished its bounded cold-launch window long before and never runs
+    again, so the SPA's existing generic "Unavailable" error was the only
+    thing Tim ever saw, with no automatic recovery and no working Retry (the
+    SPA's retry only re-fetches; it has no way to reach Orca's plugin
+    activation from inside the web page). Fixed with an ongoing, low-cost
+    health-check timer that runs the whole window's lifetime (not just at
+    launch), executing a tiny script in the already-loaded page's own
+    context (`fetch()`, not PowerShell's own unreliable-timeout networking)
+    to check reachability every 20s. On detecting a reachable -> unreachable
+    transition *after* the real UI had already loaded once, it navigates
+    back to the same first-run-setup.html guide (which already polls
+    indefinitely, escalates messaging honestly, and has its own "Check
+    again" button) and re-arms the same bounded orca-open/activation-nudge
+    retry sequence used at cold launch -- the identical supported mechanism,
+    not a new one, and still bounded (no infinite retry spam), still
+    idempotent (never a second backend worker), with the ongoing health
+    check itself being the only unbounded-duration part, which is simply
+    cheap, continuous monitoring, not a recovery attempt.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -89,6 +113,11 @@ $WindowTitle = 'Thousand Sunny Fleet'
 # is Orca's own internal behavior this launcher has no supported lever over.
 $OrcaOpenRetryCount = 24
 $OrcaOpenRetryIntervalMs = 15000
+# Ongoing connectivity watchdog (v6): cheap, continuous monitoring for the
+# whole window's lifetime, distinct from the bounded cold-launch retry above
+# -- this only ever *detects* a lost backend and re-arms that same bounded
+# retry sequence; it never itself retries anything without limit.
+$HealthCheckIntervalMs = 20000
 
 function Write-Log {
     param([string]$Message)
@@ -230,9 +259,19 @@ try {
             Show-HonestError "Thousand Sunny Fleet couldn't start its display component: $($e.InitializationException.Message)"
         }
     })
+    $script:tsfEverConnected = $false
+    $script:onGuidePage = $true
     $webView.add_NavigationCompleted({
         param($s, $e)
         Write-Log "Navigation completed: success=$($e.IsSuccess) status=$($e.WebErrorStatus) url=$($webView.Source)"
+        # Tracks which of the two pages this window is currently showing --
+        # the health-check timer below needs this to know whether a detected
+        # outage is a fresh one (real UI was showing) or one it's already
+        # handling (still on the guide page from an earlier detection).
+        $script:onGuidePage = $webView.Source -and $webView.Source.IsFile
+        if (-not $script:onGuidePage) {
+            $script:tsfEverConnected = $true
+        }
     })
 
     # The page itself (first-run-setup.html) owns all subsequent
@@ -246,7 +285,68 @@ try {
         $webView.Source = [Uri]$fileUrl
     })
 
+    # --- Ongoing connectivity watchdog (v6) ---------------------------------
+    # Runs for the whole window's lifetime, not just at cold launch: v5's
+    # activation nudge only ever ran during the initial bounded launch
+    # window, so a *later* backend loss (e.g. Orca itself restarting while
+    # TSF was already open and working -- confirmed via a real process-
+    # timestamp specimen) had no automatic recovery at all, only the SPA's
+    # own generic "Unavailable" error with a Retry button that could never
+    # actually work (retrying just re-fetches; the SPA has no way to reach
+    # Orca's plugin activation from inside the web page). This timer detects
+    # exactly that transition and re-arms the same bounded, supported
+    # recovery sequence used at cold launch -- never a new mechanism, and
+    # never unbounded: only the detection itself runs indefinitely, which is
+    # cheap, ordinary monitoring, not a retry loop.
+    #
+    # The health check's own result comes back via WebMessageReceived, not
+    # ExecuteScriptAsync's return value -- confirmed empirically that
+    # ExecuteScriptAsync does NOT await a returned promise (it serializes
+    # whatever the synchronous top-level evaluation produces, which for an
+    # async/promise expression is the pending Promise object itself, i.e.
+    # always the literal text "{}", never the eventual resolved value).
+    # postMessage from inside the resolved callback is the correct, reliable
+    # async round-trip for this.
+    $webView.add_WebMessageReceived({
+        param($s, $e)
+        $msg = $e.TryGetWebMessageAsString()
+        if ($msg -ne 'tsf-health:true' -and $msg -ne 'tsf-health:false') {
+            return # not ours -- ignore
+        }
+        $reachable = $msg -eq 'tsf-health:true'
+        if ($reachable) {
+            return # first-run-setup.html's own polling handles navigating away from the guide page
+        }
+        if ($script:tsfEverConnected -and -not $script:onGuidePage) {
+            Write-Log 'Backend became unreachable while the real UI was showing -- entering recovery.'
+            $script:onGuidePage = $true
+            try {
+                $webView.CoreWebView2.Navigate((([System.Uri]$FirstRunSetupPath).AbsoluteUri))
+            } catch {
+                Write-Log "failed to navigate to the recovery guide: $_"
+            }
+            $script:orcaOpenAttempts = 0
+            $orcaRetryTimer.Stop()
+            $orcaRetryTimer.Start()
+            & $invokeOrcaOpen
+        }
+    })
+    $healthCheckTimer = New-Object System.Windows.Forms.Timer
+    $healthCheckTimer.Interval = $HealthCheckIntervalMs
+    $checkHealth = {
+        if ($null -eq $webView.CoreWebView2) { return }
+        try {
+            $js = "(async () => { try { const r = await fetch('http://127.0.0.1:4610/api/meta', { cache: 'no-store' }); window.chrome.webview.postMessage(r.ok ? 'tsf-health:true' : 'tsf-health:false'); } catch (e) { window.chrome.webview.postMessage('tsf-health:false'); } })();"
+            $webView.CoreWebView2.ExecuteScriptAsync($js) | Out-Null
+        } catch {
+            Write-Log "health check itself failed to start (treated as inconclusive, not an outage): $_"
+        }
+    }
+    $healthCheckTimer.Add_Tick($checkHealth)
+    $healthCheckTimer.Start()
+
     [System.Windows.Forms.Application]::Run($form)
+    $healthCheckTimer.Stop()
     $orcaRetryTimer.Stop()
     Write-Log 'Window closed -- launcher exiting.'
 } catch {

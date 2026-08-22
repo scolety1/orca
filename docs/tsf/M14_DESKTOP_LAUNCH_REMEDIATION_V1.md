@@ -1,6 +1,80 @@
 # M14 — TSF Desktop Launch + V1 Release-Candidate Remediation
 
-## Fourth hands-on-test remediation: the real root cause and the real fix (read first)
+## Post-acceptance stabilization: recovering from a live backend loss (read first)
+
+M14 closed GREEN after Tim's own cold-start test passed. During ordinary live use
+afterward, the UI suddenly showed the SPA's existing generic error ("Unavailable --
+could not reach the TSF operator API") with Orca still open and nothing intentionally
+changed. Treated as a runtime lifecycle/recovery defect (not a registration/install
+regression), diagnosed from real evidence before any fix:
+
+**What actually happened, from real process timestamps.** A second, entirely new Orca
+process tree existed on the machine (a fresh main process, fresh GPU/network/renderer/
+crashpad/parcel-watcher/session-scanner subprocesses, all within seconds of each other)
+-- the *old* Orca session, and everything under it including the old plugin-host/
+tsf/server, was simply gone. Orca itself had restarted (independent of anything Tim did
+to TSF) while the TSF window was open and working. The new session hit the exact same
+lazy-activation gap the earlier fix (the activation nudge) already closes -- but that
+fix's own retry timer is scoped to the *initial* cold-launch window only, and had long
+since finished by the time this happened. With no further nudge attempts and nothing
+else re-checking connectivity, the SPA's own generic fetch-failure error was the only
+thing that ever showed, and its existing Retry button could never actually help (it
+only re-fetches; the SPA has no way to reach Orca's plugin activation from inside the
+web page).
+
+**The fix: an ongoing health check, for the window's whole lifetime, not just at
+launch.** Every 20 seconds, `Launch-TSF.ps1` checks reachability by running a small
+script in the already-loaded page's own context (the browser engine's `fetch()`, with
+its reliable timeout behavior, not PowerShell's own). On detecting a reachable ->
+unreachable transition *after* the real UI had already loaded at least once, it
+navigates the same window back to the existing `first-run-setup.html` guide (which
+already polls indefinitely, escalates its messaging honestly, and has its own "Check
+again" button -- reused as-is, not rebuilt) and re-arms the *same* bounded orca-open +
+activation-nudge retry sequence used at cold launch. Nothing new is introduced: the
+same supported recovery mechanism, the same bound (no infinite retry spam), the same
+idempotent nudge (never a second backend worker) -- only the *ongoing monitoring* runs
+for the whole session, and that alone is cheap, continuous health-checking, not a retry
+loop.
+
+**A real bug found and fixed during this fix's own development.** The first
+implementation tried to read the health check's true/false result from
+`ExecuteScriptAsync`'s own return value, awaited via `Task.Wait(ms)`. Confirmed
+empirically, with a scratch WebView2 window, that this never works: WebView2's
+`ExecuteScriptAsync` does **not** await a returned JS promise -- it serializes whatever
+the *synchronous* top-level evaluation of the script produces, which for any
+promise-returning expression (including a bare `async () => true` with no I/O at all)
+is always the literal text `"{}"`, the JSON-serialized *pending* Promise object, never
+the value it eventually resolves to. This held regardless of `Task.Wait`, `.ContinueWith`
+scheduled back on the UI thread, or a message-pumping wait loop via `Application.DoEvents()`
+-- the return-value channel itself simply doesn't carry an awaited result. Fixed by
+having the script report its own result via `window.chrome.webview.postMessage(...)`
+once the fetch genuinely resolves, and listening for it host-side via the WebView2
+control's own `WebMessageReceived` event -- the correct, documented async round-trip
+for exactly this case.
+
+**Verified for real, the complete lifecycle, end-to-end, on an isolated scratch
+copy** (its own Mutex/window-title/data-dir/port -- Tim's real session was never
+touched): started a real scratch `tsf/server`, launched the scratch copy, confirmed it
+reached the real UI; killed the scratch server outright; confirmed the health check
+detected the loss (~17-20s later), logged it, navigated back to the guide, and
+re-armed the retry/nudge sequence (all logged); restarted the scratch server; confirmed
+the guide's own polling detected recovery and auto-navigated the same window straight
+back to the real UI, fully automatically, with zero manual action. One honest,
+disclosed limitation: recovery re-navigates the whole page, so *client-side* view state
+(which tab/page was open) is not preserved across an outage -- the actual operator data
+(projects, Work Set, Keep Going runs, all server-persisted) is never touched by this
+mechanism and is never at risk.
+
+Added 4 new regression tests (structural, matching this whole program's established
+approach for Windows GUI behavior with no CI harness): the health-check timer never has
+a bounded give-up condition (only stops at window close); the result is read via
+`postMessage`, never `ExecuteScriptAsync`'s return value; recovery only triggers after
+a real prior connection and only while the real UI was showing; and recovery re-arms
+the existing bounded retry sequence rather than a new, unbounded one.
+
+---
+
+## Fourth hands-on-test remediation: the real root cause and the real fix
 
 Tim's fourth hands-on test again showed the backend genuinely absent (`Test-NetConnection
 127.0.0.1 -Port 4610` failed twice, real evidence, no guessing) with the plugin visibly
@@ -348,6 +422,13 @@ delta, zero new runtime dependencies):
    - A top-level error handler plus a WinForms `ThreadException` handler show a real,
      visible `MessageBox` for any genuine failure, anywhere in the launch sequence --
      no more silent death behind `-WindowStyle Hidden`.
+   - An ongoing health-check timer runs for the window's whole lifetime (not just at
+     launch), checking reachability via a script executed in the already-loaded page's
+     own context and reporting the result back via `WebMessageReceived` (see the
+     stabilization section above for why -- `ExecuteScriptAsync`'s own return value
+     does not await a promise). On detecting the backend disappearing after the real UI
+     was already showing, it navigates back to the guide page and re-arms the same
+     bounded recovery sequence used at cold launch.
 2. **`tsf/launcher/first-run-setup.html`** — a small, self-contained static page (TSF's
    own dark/purple palette, no network calls) that is now the *first* thing shown on
    every launch, not just an error path -- see its own state machine above.

@@ -75,6 +75,13 @@ checkout.
    everyday path.
 5. Any genuine failure anywhere in this sequence shows a real, visible error dialog --
    there is no silent-death path left.
+6. Once the real UI is showing, the launcher keeps checking every 20 seconds for as
+   long as the window stays open -- if the backend ever disappears afterward (e.g. Orca
+   itself restarting for reasons unrelated to TSF), the window automatically drops back
+   to the same guided reconnect page and retries, recovering on its own once the
+   backend returns. No reinstall, no re-registering the plugin, no manually operating
+   Orca -- the identical recovery this launcher already uses at cold start, just
+   re-armed automatically instead of requiring a relaunch.
 
 Logs (for diagnosing "it didn't open" reports) are written to
 `%LOCALAPPDATA%\ThousandSunnyFleet\launcher.log`.

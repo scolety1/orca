@@ -283,3 +283,103 @@ test('Invoke-TsfActivationNudge.ps1 bounds its own runtime instead of relying on
     'the whole attempt must have an overall wall-clock deadline, not just a per-call timeout'
   )
 })
+
+// M14 real post-acceptance-live-use regression: with TSF's real UI already
+// open and working, Orca itself restarted (a real live process-timestamp
+// specimen confirmed an entirely new Orca process tree, the old plugin-host/
+// tsf/server included, gone). The new Orca session hit the exact same lazy-
+// activation gap the earlier fix closed, but that fix's own retry timer only
+// ever ran during the initial bounded cold-launch window and never restarted
+// -- so the SPA's generic "Unavailable -- could not reach the TSF operator
+// API" error was the only thing Tim ever saw, with no automatic recovery and
+// no working Retry (the SPA can only re-fetch; it has no way to reach Orca's
+// plugin activation from inside the web page). Fixed with an ongoing health
+// check that detects exactly this transition and re-arms the same bounded,
+// supported recovery sequence used at cold launch.
+//
+// Also guards a real bug found and fixed *during this fix's own development*:
+// WebView2's ExecuteScriptAsync does not await a returned JS promise -- it
+// serializes whatever the synchronous top-level evaluation produces, which
+// for a promise-returning expression is always the literal text "{}" (the
+// pending Promise object), confirmed empirically with a scratch WebView2
+// window before this fix used postMessage instead.
+test("Launch-TSF.ps1 runs an ongoing health check for the window's whole lifetime, not just at launch", () => {
+  const healthCheckTimerIndex = launcherSource.indexOf('$healthCheckTimer = New-Object')
+  assert.ok(healthCheckTimerIndex > 0, 'expected to find the health-check timer')
+  // The only place this timer may ever be stopped is when the window itself
+  // closes (right before Application.Run returns) -- never as a bounded
+  // give-up, unlike the cold-launch retry timer, which does have a bound.
+  const stopMatches = [...launcherSource.matchAll(/\$healthCheckTimer\.Stop\(\)/g)]
+  assert.equal(
+    stopMatches.length,
+    1,
+    'the health-check timer must only ever be stopped once, at window close -- ' +
+      'it must never have a bounded give-up condition like the cold-launch retry timer does'
+  )
+  const applicationRunIndex = launcherSource.indexOf(
+    '[System.Windows.Forms.Application]::Run($form)'
+  )
+  assert.ok(
+    stopMatches[0].index > applicationRunIndex,
+    'the single Stop() call must come after Application.Run (i.e. only once the window closes), ' +
+      'not as an early bounded exit condition'
+  )
+})
+
+test("Launch-TSF.ps1 gets the health check result via postMessage, not ExecuteScriptAsync's return value", () => {
+  // Confirmed empirically: ExecuteScriptAsync does NOT await a returned
+  // promise (it returns "{}" -- the serialized pending Promise object --
+  // regardless of what the promise eventually resolves to). Relying on its
+  // return value for an async check would make the health check silently
+  // never detect anything, in either direction.
+  assert.match(
+    launcherSource,
+    /window\.chrome\.webview\.postMessage/,
+    'the health-check script must report its result via postMessage, not rely on ' +
+      "ExecuteScriptAsync's return value awaiting the promise (it doesn't)"
+  )
+  assert.match(
+    launcherSource,
+    /add_WebMessageReceived/,
+    "the host must listen for the health check's result via WebMessageReceived"
+  )
+  assert.match(launcherSource, /tsf-health:true/)
+  assert.match(launcherSource, /tsf-health:false/)
+})
+
+test('Launch-TSF.ps1 only enters recovery after a real prior connection, on the real UI, never during initial cold start', () => {
+  const webMessageHandlerStart = launcherSource.indexOf('$webView.add_WebMessageReceived(')
+  const webMessageHandlerEnd = launcherSource.indexOf('})', webMessageHandlerStart)
+  assert.ok(webMessageHandlerStart > 0, 'expected to find the WebMessageReceived handler')
+  const handlerBody = launcherSource.slice(webMessageHandlerStart, webMessageHandlerEnd)
+  assert.match(
+    handlerBody,
+    /\$script:tsfEverConnected/,
+    'recovery must only trigger after the real UI was reached at least once -- never mistake ' +
+      'a still-in-progress cold start for a lost connection'
+  )
+  assert.match(
+    handlerBody,
+    /-not \$script:onGuidePage/,
+    'recovery must only trigger while the real UI was actually showing, not while already on ' +
+      'the guide page (which is already polling on its own)'
+  )
+})
+
+test('Launch-TSF.ps1 recovery re-arms the same bounded retry sequence, never an unbounded one', () => {
+  const webMessageHandlerStart = launcherSource.indexOf('$webView.add_WebMessageReceived(')
+  const webMessageHandlerEnd = launcherSource.indexOf('})', webMessageHandlerStart)
+  const handlerBody = launcherSource.slice(webMessageHandlerStart, webMessageHandlerEnd)
+  assert.match(
+    handlerBody,
+    /\$script:orcaOpenAttempts\s*=\s*0/,
+    'recovery must reset the attempt counter so the SAME bounded retry count applies again, ' +
+      'rather than resuming a counter that may already be near its bound'
+  )
+  assert.match(
+    handlerBody,
+    /\$orcaRetryTimer\.Start\(\)/,
+    'recovery must re-arm the existing, already-bounded orca-open/activation-nudge retry timer ' +
+      '-- not spin up a second, separate, unbounded mechanism'
+  )
+})
