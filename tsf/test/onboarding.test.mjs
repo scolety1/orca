@@ -126,52 +126,10 @@ test('classifyMigration: dirty with untracked/staged work is DIRTY_PRESERVE', ()
   assert.equal(result.classification, 'DIRTY_PRESERVE')
 })
 
-test('classifyMigration: sensitive paths force SENSITIVE regardless of cleanliness', () => {
-  const result = classifyMigration({
-    gitRepositoryFound: true,
-    repositoryUnavailable: false,
-    trackedAndUntrackedPaths: ['.env', 'src/index.js'],
-    dirty: false,
-    discoveryConfidence: 'HIGH',
-    activeGitOperation: false,
-    handoffConflict: false
-  })
-  assert.equal(result.classification, 'SENSITIVE')
-})
-
-// Real V1 stabilization finding (fleet-wide false positive, found refreshing
-// real Known Projects): a committed `.env.example`/`.env.sample` template
-// (placeholder values, the recommended safe convention) was flagged
-// identically to a real `.env` file, wrongly forcing SENSITIVE. A real
-// `.env` variant (bare, or a real environment like `.env.local`/
-// `.env.production`) must still force SENSITIVE.
-test('classifyMigration: a committed .env.example/.env.sample template is not itself SENSITIVE', () => {
-  const result = classifyMigration({
-    gitRepositoryFound: true,
-    repositoryUnavailable: false,
-    trackedAndUntrackedPaths: ['app/.env.example', '.env.sample', 'src/index.js'],
-    dirty: false,
-    discoveryConfidence: 'HIGH',
-    activeGitOperation: false,
-    handoffConflict: false
-  })
-  assert.notEqual(result.classification, 'SENSITIVE')
-})
-
-test('classifyMigration: a real .env variant (bare, .local, .production) still forces SENSITIVE', () => {
-  for (const envPath of ['.env', '.env.local', '.env.production']) {
-    const result = classifyMigration({
-      gitRepositoryFound: true,
-      repositoryUnavailable: false,
-      trackedAndUntrackedPaths: [envPath, 'src/index.js'],
-      dirty: false,
-      discoveryConfidence: 'HIGH',
-      activeGitOperation: false,
-      handoffConflict: false
-    })
-    assert.equal(result.classification, 'SENSITIVE', `${envPath} must still be SENSITIVE`)
-  }
-})
+// PATH-based SENSITIVE detection (sensitive paths, .env templates,
+// security-tooling/vendored-dependency exclusions) is covered in
+// onboarding-sensitivity-paths.test.mjs -- split out to stay under the
+// repo's max-lines lint cap.
 
 test('classifyMigration: active Git operation is TIM_REQUIRED', () => {
   const result = classifyMigration({

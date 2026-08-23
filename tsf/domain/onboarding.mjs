@@ -60,6 +60,31 @@ const SENSITIVE_ENV_TEMPLATE_SUFFIX = /\.env\.(example|sample|template|dist)$/i
 const SENSITIVE_PATH_PATTERN =
   /(^|[\\/])(\.env(\..*)?|.*\bcredentials?\b.*|.*\bsecrets?\b.*|.*\bprivate[-_]?key.*|id_rsa|id_ed25519)$/i
 
+// Real V1 stabilization finding (flagged during the Health Repair Center
+// build, fixed here): `.*\bcredentials?\b.*` / `.*\bsecrets?\b.*` match the
+// word ANYWHERE in a path, so they fired identically on a project's own
+// SECURITY-TOOLING filenames (real evidence: password-remediation's
+// scripts/secret-scan.mjs, live/secret-safe-logger.mjs, tests/verify-
+// rotate-credential-gate.test.mjs) and on VENDORED third-party dependency
+// internals (real evidence: NWR's own .codex-cfbd-test-deps/pydantic_
+// settings/sources/providers/secrets.py, .pycache-.../Lib/secrets.cpython-
+// 312.pyc — that .pyc is the compiled bytecode of Python's own standard-
+// library `secrets` module, nothing to do with a secret at all). Narrowed
+// by exclusion, not by weakening the base pattern — a real secrets.json,
+// .aws/credentials, or my-secret.pem is untouched by any of these three
+// exclusions and still matches exactly as before.
+const COMPILED_BYTECODE_ARTIFACT = /\.(pyc|pyo)$/i
+const VENDORED_OR_DEPENDENCY_PATH =
+  /(^|[\\/])(node_modules|\.venv|venv|site-packages|dist-packages|vendor|__pycache__|\.pycache-[^\\/]*|\.[a-z0-9]+-[a-z0-9-]*-deps)([\\/]|$)/i
+// A filename carrying its own security-tooling/test marker (scans FOR
+// secrets, gates/verifies credential handling, or is itself a test of
+// that behavior) is evidence the project is testing/guarding against
+// exposure, not exposing something — matched only against the final path
+// segment so a directory named e.g. "safe" elsewhere in the path can't
+// exempt an unrelated real secret file living inside it.
+const SECURITY_TOOLING_OR_TEST_FILENAME =
+  /(^|[\\/])[^\\/]*\b(scan|gate|audit|lint|verify|safe)\b[^\\/]*\.[a-z0-9]+$|\.(test|spec)\.[cm]?[jt]sx?$/i
+
 // Prose signals: each pattern captures a phrase that, read at face value with
 // no surrounding negation/future framing, asserts a CURRENT sensitive-
 // operational condition (real production data, real users, live payments/
@@ -167,7 +192,12 @@ export function classifyMigration(facts) {
   }
 
   const sensitivePaths = (facts.trackedAndUntrackedPaths ?? []).filter(
-    (p) => SENSITIVE_PATH_PATTERN.test(p) && !SENSITIVE_ENV_TEMPLATE_SUFFIX.test(p)
+    (p) =>
+      SENSITIVE_PATH_PATTERN.test(p) &&
+      !SENSITIVE_ENV_TEMPLATE_SUFFIX.test(p) &&
+      !COMPILED_BYTECODE_ARTIFACT.test(p) &&
+      !VENDORED_OR_DEPENDENCY_PATH.test(p) &&
+      !SECURITY_TOOLING_OR_TEST_FILENAME.test(p)
   )
   const proseSignals = [
     ...detectSensitiveProseSignals(facts.readmeExcerpt, 'README'),
