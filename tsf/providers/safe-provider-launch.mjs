@@ -1,7 +1,16 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
+import { ensureWindowsUserEnv } from '../adapters/windows-user-env.mjs'
+
+// Real V1 stabilization finding: this is a genuinely separate process
+// entry point (Orca invokes it directly, not as a child of tsf/server),
+// so it needs its own call -- fixing tsf/server's own environment does
+// not reach here. Must run before npmAgentEntry()'s own process.env.APPDATA
+// read below. See adapters/windows-user-env.mjs for the real, reproduced
+// root cause.
+ensureWindowsUserEnv()
 
 const FORBIDDEN_ARGUMENTS = [
   '--dangerously-bypass-approvals-and-sandbox',
@@ -22,7 +31,7 @@ function parseArguments(argv) {
   const providerArguments = separator === -1 ? [] : argv.slice(separator + 1)
   const value = (flag) => {
     const index = control.indexOf(flag)
-    return index === -1 ? null : control[index + 1] ?? null
+    return index === -1 ? null : (control[index + 1] ?? null)
   }
   return {
     provider: value('--provider'),
@@ -84,7 +93,9 @@ function rejectUnsafeArguments(args) {
 
 function npmAgentEntry(packageName, entryName) {
   const appData = process.env.APPDATA
-  if (!appData) return null
+  if (!appData) {
+    return null
+  }
   const candidate = join(appData, 'npm', 'node_modules', packageName, entryName)
   return existsSync(candidate) ? candidate : null
 }
@@ -92,23 +103,35 @@ function npmAgentEntry(packageName, entryName) {
 function resolveProviderCommand(provider) {
   if (provider === 'codex') {
     const entry = process.env.TSF_CODEX_ENTRY || npmAgentEntry('@openai/codex', 'bin/codex.js')
-    if (entry && existsSync(entry)) return { command: process.execPath, prefix: [entry] }
-    if (process.platform !== 'win32') return { command: 'codex', prefix: [] }
+    if (entry && existsSync(entry)) {
+      return { command: process.execPath, prefix: [entry] }
+    }
+    if (process.platform !== 'win32') {
+      return { command: 'codex', prefix: [] }
+    }
     fail('Codex executable entry is unavailable')
   }
   if (provider === 'claude') {
     const entry =
       process.env.TSF_CLAUDE_ENTRY || npmAgentEntry('@anthropic-ai/claude-code', 'cli.js')
-    if (entry && existsSync(entry)) return { command: process.execPath, prefix: [entry] }
-    if (process.platform !== 'win32') return { command: 'claude', prefix: [] }
+    if (entry && existsSync(entry)) {
+      return { command: process.execPath, prefix: [entry] }
+    }
+    if (process.platform !== 'win32') {
+      return { command: 'claude', prefix: [] }
+    }
     fail('Claude Code executable entry is unavailable')
   }
   fail(`unsupported provider: ${provider}`)
 }
 
 const input = parseArguments(process.argv.slice(2))
-if (!input.provider || !input.workspace) fail('provider and workspace are required')
-if (!['codex', 'claude'].includes(input.provider)) fail('provider must be codex or claude')
+if (!input.provider || !input.workspace) {
+  fail('provider and workspace are required')
+}
+if (!['codex', 'claude'].includes(input.provider)) {
+  fail('provider must be codex or claude')
+}
 rejectUnsafeArguments(input.providerArguments)
 const worktree = validateIsolatedWorktree(input.workspace)
 const resolvedCommand = resolveProviderCommand(input.provider)
@@ -128,12 +151,7 @@ const safeArguments =
         worktree.root,
         ...input.providerArguments
       ]
-    : [
-        ...resolvedCommand.prefix,
-        '--permission-mode',
-        'default',
-        ...input.providerArguments
-      ]
+    : [...resolvedCommand.prefix, '--permission-mode', 'default', ...input.providerArguments]
 
 if (input.checkOnly) {
   console.log(
@@ -168,4 +186,4 @@ const child = spawn(resolvedCommand.command, safeArguments, {
   windowsHide: true
 })
 child.on('error', (error) => fail(error.message))
-child.on('exit', (code, signal) => process.exitCode = signal ? 1 : (code ?? 1))
+child.on('exit', (code, signal) => (process.exitCode = signal ? 1 : (code ?? 1)))

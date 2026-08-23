@@ -6,7 +6,15 @@
 import { createServer } from 'node:http'
 import { pathToFileURL } from 'node:url'
 import path from 'node:path'
+import { ensureWindowsUserEnv } from '../adapters/windows-user-env.mjs'
 import { createStaticUiHandler } from './static-ui-server.mjs'
+
+// Real V1 stabilization finding: run first, before any other module in
+// this process spawns a subprocess -- see windows-user-env.mjs for the
+// real, reproduced root cause (a real Orca-hosted TSF process can start
+// with APPDATA missing from its own environment, breaking Orca CLI calls
+// and the live planner's own credential/config resolution alike).
+ensureWindowsUserEnv()
 import { loadRealPilotProjects } from './portfolio-projection.mjs'
 import {
   createFixtureState,

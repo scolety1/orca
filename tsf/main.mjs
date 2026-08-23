@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { ensureWindowsUserEnv } from './adapters/windows-user-env.mjs'
 import { startServerLifecycle } from './server/server-process-lifecycle.mjs'
 import { openUrl } from './server/open-url-command.mjs'
 
@@ -22,8 +23,16 @@ const TSF_SERVER_PORT = 4610
 let activeLifecycle = null
 
 function realSpawnFn(serverEntryPath, port) {
+  // Real V1 stabilization finding: `activate(orca)` can run in a process
+  // context whose own environment is already missing APPDATA -- fixing it
+  // here, before it is spread into the child server's env, means
+  // tsf/server/http-server.mjs's own defensive call (belt and suspenders)
+  // is usually already a no-op by the time it runs. See
+  // adapters/windows-user-env.mjs for the real, reproduced root cause.
+  const env = { ...process.env }
+  ensureWindowsUserEnv(env)
   return spawn(process.execPath, [serverEntryPath], {
-    env: { ...process.env, TSF_API_PORT: String(port) },
+    env: { ...env, TSF_API_PORT: String(port) },
     stdio: ['ignore', 'pipe', 'pipe']
   })
 }
