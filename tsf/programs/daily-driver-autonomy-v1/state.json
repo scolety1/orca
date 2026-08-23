@@ -2001,6 +2001,36 @@
           "commit": "e3d7d6a35 / b4cff8032",
           "status": "ADOPTED",
           "note": "Prerequisite V1 stabilization pass complete (points 1-5). Point 2 (real planner availability) re-verified this pass via fresh live checks against 3 real Known Projects (quoteloop, password-remediation, shopify-catalog-qa) plus 30/30 on test/live-planner.test.mjs + test/onboarding-orca-resilience.test.mjs. Point 4 (fleet recheck) confirmed 15 Known Projects unchanged, no repo mutated, Health Repair receipts/state (waves 13-16) intact. Adopted via git merge --ff-only (ccc97d486..b4cff8032). Not M15 -- filed as M7 waves per established program discipline."
+        },
+        {
+          "wave": 21,
+          "summary": "QUEUED live-use defect: Planner Chat live but ungrounded. A real desktop reproduction showed a healthy PLANNER_DEEP -- Claude Code -- Sonnet 5 indicator (live:true, real observed session/model) answering real project-grounded questions with generic/ungrounded text (\"Hi! How can I help you today?\" / \"It looks like your message got cut off...\"). Reproduced live, twice, against the real running desktop server (specimen deliberately preserved, not restarted) -- both responses matched byte-for-byte. Root-caused end to end: providers/resolve-agent-entry.mjs's last-resort PATH fallback returned viaShell:true on Windows whenever the primary npm-global resolution failed (tonight's real trigger: the wave-17 APPDATA defect, on the still-running pre-fix live process). Node's shell:true spawn does zero argument escaping on Windows -- reproduced directly and precisely that a real multi-line system prompt and a real multi-word chat message both arrive at the child process as wrongly-split fragments, while the CLI still exits 0 with well-formed JSON and a real session/model (so every existing malformed-response/error check legitimately passes). Fixed at the root: resolveAgentEntry never returns viaShell:true on Windows any more (falls through to an honest PROVIDER_UNAVAILABLE instead); a second npm-global candidate derived from os.homedir() added as defense in depth; live-planner.mjs's spawnAgent itself now hard-refuses any viaShell:true entry before ever spawning, as a structural regression guard. Verified fixed via an isolated instance running the patched code: the exact two reported messages now produce fully grounded, session-aware responses (confirmed session continuity: \"Same project as a sec ago\"). Session affinity, bounded retry, malformed-response handling, and provider fallback all re-verified unaffected (24/24 existing tests, re-run fresh).",
+          "filesChanged": [
+            "tsf/providers/resolve-agent-entry.mjs",
+            "tsf/server/live-planner.mjs",
+            "tsf/test/resolve-agent-entry.test.mjs",
+            "tsf/test/planner-chat-arg-safety.test.mjs"
+          ],
+          "testsPassing": "39/39 on the touched test files; full backend suite 757/758 (only the pre-existing unrelated port-4610 flake)",
+          "verifier": "INDEPENDENT (forked review agent, GREEN -- independently reproduced the corruption mechanism directly, and independently confirmed the new tests fail as expected when the fix is reverted)",
+          "commit": "c95aca8c2",
+          "status": "ADOPTED",
+          "note": "QUEUED live-use defect, begun once the prerequisite stabilization pass (waves 17-20) was settled and tsf/main was clean/current, per explicit instruction. Zero Orca core delta. Not M15."
+        },
+        {
+          "wave": 22,
+          "summary": "Sibling finding from wave 21's independent review (GREEN overall, one flagged sibling risk): adapters/orca-cli-bridge.mjs, orca-capacity-bridge.mjs, and orca-orchestration-bridge.mjs shared the identical last-resort bare-PATH fallback, { command: 'orca', viaShell: process.platform === 'win32' }. orca-cli-bridge.mjs's registerOrcaRepo(repoPath) passes a real, arbitrary filesystem path -- which can contain spaces -- through this same fallback-then-shell:true chain; not triggered tonight (an earlier viaShell:false candidate already resolves on this machine) but live on any other real install shape. Confirmed directly this is closeable, not merely theoretical: unlike claude (an npm-shipped .cmd/.ps1 shim genuinely requiring a shell hop), orca on PATH is a real installed .exe -- confirmed via Get-Command and a direct spawn test that it runs correctly with shell:false, so shell:true was never actually needed here at all. Fixed by correcting the fallback to viaShell:false in all three files.",
+          "filesChanged": [
+            "tsf/adapters/orca-cli-bridge.mjs",
+            "tsf/adapters/orca-capacity-bridge.mjs",
+            "tsf/adapters/orca-orchestration-bridge.mjs",
+            "tsf/test/orca-bridge-shell-safety.test.mjs"
+          ],
+          "testsPassing": "36/36 on the touched test files; full backend suite 760/761 (only the pre-existing unrelated port-4610 flake)",
+          "verifier": "SELF; a mechanical, minimal, same-pattern fix as wave 21's already-GREEN-reviewed fix, empirically verified (orca.exe confirmed to run correctly via spawn with shell:false)",
+          "commit": "b8c473f42",
+          "status": "ADOPTED",
+          "note": "Adopted via git merge --ff-only (32c8a45d2..b8c473f42) alongside wave 21. Zero Orca core delta. Not M15."
         }
       ]
     },
