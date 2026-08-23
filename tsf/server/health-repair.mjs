@@ -120,13 +120,25 @@ function runCommand(command, cwd, timeoutOverrideMs) {
   })
 }
 
+// Defense in depth (independent-review finding, confirmed with a live
+// exploit): repo-inspector.mjs's discoverCommandGuidance now excludes an
+// unsafe script name at the source, but this function must never assume
+// every commandGuidance it is ever handed came from that one trusted path
+// -- a command string is only ever spawned here if it matches exactly the
+// shape discovery is documented to produce (`<runner> <safe-name>` or
+// `UNKNOWN run <safe-name>`), never a raw string accepted on faith.
+const SAFE_COMMAND_LINE = /^(?:npm run|yarn|pnpm run|UNKNOWN run) [A-Za-z0-9][A-Za-z0-9_.:-]*$/
+
 // Real baseline verification: actually runs the repo's own discovered
 // typecheck/test/build/lint commands (never invented ones) and reports the
 // honest result per category — PASS/FAIL from a real exit code, UNKNOWN
-// only for a real spawn/timeout failure, NOT_APPLICABLE only when discovery
-// found no command for that category at all. This is what lets Health
-// Repair Center tell a real BUILD_FAILING/TESTS_FAILING apart from "no
-// build/test step exists" — the two must never be reported the same way.
+// only for a real spawn/timeout failure, NOT_APPLICABLE when discovery
+// found no command for that category, or when the command it found does
+// not match the safe shape above (treated the same as "none found" —
+// never run, never silently coerced into something safe). This is what
+// lets Health Repair Center tell a real BUILD_FAILING/TESTS_FAILING apart
+// from "no build/test step exists" — the two must never be reported the
+// same way.
 export async function runBaselineVerification(repoPath, commandGuidance, timeoutOverrideMs) {
   const categories = {
     typecheck: commandGuidance?.typecheckCommands?.[0],
@@ -136,7 +148,7 @@ export async function runBaselineVerification(repoPath, commandGuidance, timeout
   }
   const result = {}
   for (const [key, command] of Object.entries(categories)) {
-    if (!command) {
+    if (!command || !SAFE_COMMAND_LINE.test(command)) {
       result[key] = 'NOT_APPLICABLE'
       continue
     }

@@ -6,7 +6,7 @@ import test from 'node:test'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
 const HERE = import.meta.dirname
@@ -216,6 +216,136 @@ test('POST /api/health-repair/repair-selected repairs multiple real projects ind
     assert.equal(byId[p1].ok, true)
     assert.equal(byId[p2].ok, true)
     assert.equal(byId['does-not-exist'].ok, false)
+  })
+})
+
+function readState() {
+  return JSON.parse(readFileSync(STATE_FILE, 'utf8'))
+}
+function writeState(state) {
+  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+}
+
+// Independent-review finding, confirmed with a live exploit against the
+// old code: checking only the REQUESTED cause's own repair class let an
+// otherwise-safe cause be auto-repaired on a project that ALSO carries a
+// TIM_REQUIRED cause -- a direct violation of "sensitive projects retain
+// stronger authority... regardless of anything else found."
+test('POST /api/health-repair/:projectId/repair refuses ANY repair on a project that also carries a TIM_REQUIRED cause, even for an otherwise-safe requested cause', async () => {
+  await withServer(async (base) => {
+    const { projectId } = await onboardRealProject(base)
+    // Directly inject a SENSITIVE classification onto the real, already-
+    // onboarded record -- simulating a project that is both SENSITIVE
+    // (TIM_REQUIRED) and has an otherwise-safe ORCA_NOT_REGISTERED cause,
+    // exactly the real-world shape that mattered here.
+    const state = readState()
+    state.onboardedProjects[projectId].lastAnalysis.migrationClassification = {
+      classification: 'SENSITIVE',
+      reasons: ['a real secret was found']
+    }
+    writeState(state)
+
+    const repair = await post(base, `/api/health-repair/${projectId}/repair`, {
+      cause: 'ORCA_NOT_REGISTERED'
+    })
+    assert.equal(repair.status, 422)
+    assert.equal(repair.body.ok, false)
+
+    // And confirm nothing was actually run: orcaRegistration on record is
+    // unchanged from before the (refused) repair attempt.
+    const after = readState()
+    assert.deepEqual(
+      after.onboardedProjects[projectId].lastAnalysis.orcaRegistration,
+      state.onboardedProjects[projectId].lastAnalysis.orcaRegistration
+    )
+  })
+})
+
+test('POST /api/health-repair/repair-selected skips a SENSITIVE project entirely but still repairs the others', async () => {
+  await withServer(async (base) => {
+    const { projectId: sensitive } = await onboardRealProject(base)
+    const { projectId: safe } = await onboardRealProject(base)
+    const state = readState()
+    state.onboardedProjects[sensitive].lastAnalysis.migrationClassification = {
+      classification: 'SENSITIVE',
+      reasons: ['a real secret was found']
+    }
+    writeState(state)
+
+    const { body } = await post(base, '/api/health-repair/repair-selected', {
+      projectIds: [sensitive, safe]
+    })
+    const byId = Object.fromEntries(body.results.map((r) => [r.projectId, r]))
+    assert.equal(byId[sensitive].ok, false)
+    assert.equal(byId[safe].ok, true)
+  })
+})
+
+// Independent-review finding, confirmed with a live exploit against the
+// old code: no try/catch around the per-project loop, and a single
+// saveState after the WHOLE batch -- a real exception on project 2 of 3
+// discarded project 1's already-completed real repair (never persisted)
+// and never attempted project 3.
+test("POST /api/health-repair/repair-selected: a real exception on one project neither loses an earlier project's completed repair nor skips a later project", async () => {
+  await withServer(async (base) => {
+    const { projectId: p1 } = await onboardRealProject(base)
+    const { projectId: p3 } = await onboardRealProject(base)
+    // p2: a real onboarded record with a deliberately malformed repoPath
+    // (a number, not a string) -- path.resolve() throws synchronously on
+    // this, a genuine uncaught exception deep in the real repair call
+    // chain (repairProject -> analyzeRepository -> snapshotRepository),
+    // not a contrived ok:false.
+    const state = readState()
+    const p2 = 'malformed-repo-path-project'
+    state.onboardedProjects[p2] = {
+      repoPath: 12345,
+      lastAnalysis: JSON.parse(JSON.stringify(state.onboardedProjects[p1].lastAnalysis)),
+      receipts: [],
+      acceptedAt: new Date().toISOString()
+    }
+    state.onboardedProjects[p2].lastAnalysis.projectId = p2
+    // Force this record to need PLANNER_UNAVAILABLE -> REFRESH_ANALYSIS,
+    // the repair action that actually calls analyzeRepository (and so
+    // actually reaches the malformed repoPath).
+    state.onboardedProjects[p2].lastAnalysis.direction = {
+      live: false,
+      recommendedNextMission: null
+    }
+    state.onboardedProjects[p2].lastAnalysis.orcaRegistration = {
+      checked: true,
+      registered: true,
+      status: 'REGISTERED'
+    }
+    writeState(state)
+
+    const { status, body } = await post(base, '/api/health-repair/repair-selected', {
+      projectIds: [p1, p2, p3]
+    })
+    assert.equal(status, 200, 'the route itself must not crash even though one project threw')
+    const byId = Object.fromEntries(body.results.map((r) => [r.projectId, r]))
+    assert.equal(
+      byId[p1].ok,
+      true,
+      'project 1, repaired before the throw, must still report success'
+    )
+    assert.equal(
+      byId[p2].ok,
+      false,
+      'project 2, which genuinely threw, must report failure honestly'
+    )
+    assert.equal(byId[p3].ok, true, 'project 3 must still be attempted after project 2 threw')
+
+    // And project 1's real repair was actually persisted, not discarded --
+    // refreshedAt genuinely moved forward from its pre-repair value (the
+    // stub Orca CLI is stateless/keyed only off a fixed STUB_ORCA_REPOS
+    // list, so `registered` itself honestly cannot flip true here -- that
+    // would be the stub fabricating state it was never told about).
+    const after = readState()
+    assert.notEqual(
+      after.onboardedProjects[p1].refreshedAt,
+      state.onboardedProjects[p1].refreshedAt,
+      "project 1's record must show a genuinely fresh write, not the pre-repair state"
+    )
   })
 })
 

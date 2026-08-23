@@ -141,6 +141,23 @@ export async function handleHealthRepairRoute(
     const body = await readBody(req)
     const causeCode = String(body.cause ?? '')
     const diagnosis = diagnoseRecord(opState, projectId, record)
+    // Independent-review finding, confirmed with a live exploit: checking
+    // only the REQUESTED cause's own repair class let an otherwise-safe
+    // cause (e.g. DEPENDENCY_HEALTH) be auto-repaired on a project that
+    // ALSO carries a TIM_REQUIRED cause (e.g. SENSITIVE_RESTRICTION) --
+    // directly violating "sensitive projects retain stronger authority...
+    // regardless of anything else found." Once a project's own overall
+    // rollup is TIM_REQUIRED for ANY reason, TSF takes no autonomous
+    // action on it at all, not even for a sub-cause that would otherwise
+    // be safe on its own.
+    if (diagnosis.repairClass === 'TIM_REQUIRED') {
+      json(res, 422, {
+        ok: false,
+        error:
+          'This project has a TIM_REQUIRED cause on record -- no autonomous repair action is taken on it, even for an otherwise-safe cause.'
+      })
+      return true
+    }
     const target = diagnosis.causes.find((c) => c.cause === causeCode)
     if (!target) {
       json(res, 422, {
@@ -230,57 +247,80 @@ export async function handleHealthRepairRoute(
   // fleet-level "Prepare Projects for Work" action: applies every
   // AUTO_REPAIR_SAFE cause found for each selected project, in sequence.
   // One project's failure never stops another's -- each result is
-  // reported independently.
+  // reported independently, and each project's completed repairs are
+  // persisted before moving to the next (independent-review finding: a
+  // single saveState after the whole loop meant an exception partway
+  // through silently discarded every already-completed real repair before
+  // it, and never persisted, since nothing had been saved yet -- fixed by
+  // saving incrementally and wrapping each project in try/catch so one
+  // project's real failure genuinely cannot take another down with it).
   if (parts[2] === 'repair-selected' && req.method === 'POST') {
     const body = await readBody(req)
     const projectIds = Array.isArray(body.projectIds) ? body.projectIds : []
     const results = []
     let currentState = opState
     for (const projectId of projectIds) {
-      const record = recordFor(currentState, projectId)
-      if (!record) {
-        results.push({ projectId, ok: false, error: 'not an onboarded project' })
-        continue
-      }
-      const diagnosis = diagnoseRecord(currentState, projectId, record)
-      const autoRepairable = diagnosis.causes.filter((c) => c.repairClass === 'AUTO_REPAIR_SAFE')
-      let analysis = record.lastAnalysis
-      const actionsTaken = []
-      // Sequential by design, not parallel: one repair action at a time
-      // across the fleet, matching the same "one heavy worker at a time"
-      // posture already used for real dispatch.
-      for (const cause of autoRepairable) {
-        const repairResult = await repairProject({
-          repoPath: record.repoPath,
-          cause: cause.cause,
-          packageManager: analysis.discovery?.commandGuidance?.packageManager,
-          handoffTextExcerpt: analysis.handoffTextExcerpt
-        })
-        analysis = mergeRepairResult(analysis, repairResult)
-        actionsTaken.push({ cause: cause.cause, ok: repairResult.ok, action: repairResult.action })
-      }
-      const onboardedProjects = {
-        ...currentState.onboardedProjects,
-        [projectId]: { ...record, lastAnalysis: analysis, refreshedAt: new Date().toISOString() }
-      }
-      currentState = { ...currentState, onboardedProjects }
-      const after = diagnoseProjectHealth({
-        analysis,
-        membership: {
-          activeFleet: (currentState.portfolio?.activeFleet ?? []).includes(projectId),
-          workSet: (currentState.portfolio?.workSet ?? []).includes(projectId)
+      try {
+        const record = recordFor(currentState, projectId)
+        if (!record) {
+          results.push({ projectId, ok: false, error: 'not an onboarded project' })
+          continue
         }
-      })
-      results.push({
-        projectId,
-        ok: true,
-        actionsTaken,
-        readyForWork: isReadyForWork(after),
-        remainingCauses: after
-      })
-    }
-    if (projectIds.length) {
-      saveState(currentState)
+        const diagnosis = diagnoseRecord(currentState, projectId, record)
+        // Same SENSITIVE-authority gate as /repair -- a project with any
+        // TIM_REQUIRED cause on record gets no autonomous action at all,
+        // even for an otherwise-safe sub-cause.
+        if (diagnosis.repairClass === 'TIM_REQUIRED') {
+          results.push({
+            projectId,
+            ok: false,
+            error: 'TIM_REQUIRED cause on record -- skipped, no autonomous repair taken'
+          })
+          continue
+        }
+        const autoRepairable = diagnosis.causes.filter((c) => c.repairClass === 'AUTO_REPAIR_SAFE')
+        let analysis = record.lastAnalysis
+        const actionsTaken = []
+        // Sequential by design, not parallel: one repair action at a time
+        // across the fleet, matching the same "one heavy worker at a time"
+        // posture already used for real dispatch.
+        for (const cause of autoRepairable) {
+          const repairResult = await repairProject({
+            repoPath: record.repoPath,
+            cause: cause.cause,
+            packageManager: analysis.discovery?.commandGuidance?.packageManager,
+            handoffTextExcerpt: analysis.handoffTextExcerpt
+          })
+          analysis = mergeRepairResult(analysis, repairResult)
+          actionsTaken.push({
+            cause: cause.cause,
+            ok: repairResult.ok,
+            action: repairResult.action
+          })
+        }
+        const onboardedProjects = {
+          ...currentState.onboardedProjects,
+          [projectId]: { ...record, lastAnalysis: analysis, refreshedAt: new Date().toISOString() }
+        }
+        currentState = { ...currentState, onboardedProjects }
+        saveState(currentState)
+        const after = diagnoseProjectHealth({
+          analysis,
+          membership: {
+            activeFleet: (currentState.portfolio?.activeFleet ?? []).includes(projectId),
+            workSet: (currentState.portfolio?.workSet ?? []).includes(projectId)
+          }
+        })
+        results.push({
+          projectId,
+          ok: true,
+          actionsTaken,
+          readyForWork: isReadyForWork(after),
+          remainingCauses: after
+        })
+      } catch (error) {
+        results.push({ projectId, ok: false, error: error.message })
+      }
     }
     json(res, 200, { ok: true, results })
     return true

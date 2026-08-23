@@ -421,9 +421,23 @@ export function discoverCommandGuidance(root, packageJsonExcerptText) {
           : null
   const pkg = packageJsonExcerptText ? parsePackageJson(packageJsonExcerptText) : null
   const scripts = pkg?.scripts ?? {}
+  // Real vulnerability found via independent review, confirmed with a live
+  // exploit: a package.json script NAME (not its body) is repo-controlled
+  // content, and only the PREFIX was validated by the category regexes
+  // below (`/^test(:|$)/` matches `test:$(evil)` just as happily as
+  // `test:unit`). Every downstream consumer of *Commands builds a shell
+  // command line by string-concatenating this name -- health-repair.mjs's
+  // real command execution included -- so an unsafe name became a real
+  // shell-injection RCE the moment anything actually ran it. Gating here,
+  // at discovery, protects every current and future consumer at once,
+  // rather than trusting each call site to re-validate. A script name
+  // outside this safe set is simply excluded from discovery, not
+  // "fixed up" -- it was very likely never a real, human-authored script
+  // name to begin with.
+  const isSafeScriptName = (name) => /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(name)
   const commandsFor = (pattern) =>
     Object.keys(scripts)
-      .filter((name) => pattern.test(name))
+      .filter((name) => pattern.test(name) && isSafeScriptName(name))
       .map((name) => (runner ? `${runner} ${name}` : `UNKNOWN run ${name}`))
   return {
     packageManager: manager,

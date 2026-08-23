@@ -416,6 +416,35 @@ test('discoverCommandGuidance: discovers a typecheck script, separate from test/
   assert.deepEqual(guidance.typecheckCommands, ['UNKNOWN run typecheck'])
 })
 
+// Real shell-injection vulnerability found via independent adversarial
+// review, confirmed with a live exploit: only the PREFIX of a script NAME
+// was validated (`/^test(:|$)/` matches `test:$(evil)` just as happily as
+// `test:unit`), and every downstream consumer of *Commands builds a shell
+// command line by string-concatenating that name -- so an attacker-
+// controlled package.json script name became real command execution the
+// moment anything actually ran the discovered command. A script name
+// outside a safe identifier shape must be excluded from discovery
+// entirely, protecting every current and future consumer at once.
+test('discoverCommandGuidance: a package.json script name containing shell metacharacters is excluded from every *Commands list, never surfaced as a runnable command', () => {
+  const guidance = discoverCommandGuidance(
+    '/fake/repo',
+    JSON.stringify({
+      scripts: {
+        'test:unit': 'vitest',
+        'test:$(touch pwned)': 'echo hi',
+        'test: && touch pwned2': 'echo hi',
+        'build;rm -rf /': 'echo hi',
+        'lint`touch pwned3`': 'echo hi',
+        'typecheck|touch pwned4': 'echo hi'
+      }
+    })
+  )
+  assert.deepEqual(guidance.testCommands, ['UNKNOWN run test:unit'])
+  assert.deepEqual(guidance.buildCommands, [])
+  assert.deepEqual(guidance.lintCommands, [])
+  assert.deepEqual(guidance.typecheckCommands, [])
+})
+
 test('boundedUntrackedDirectorySizes: large untracked directory is a bounded, capped scan, not a full recursive walk', async () => {
   const dir = tracked(createTempRepo())
   const bigDir = path.join(dir, 'generated-output')

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
   scanFleetHealth,
@@ -128,13 +128,26 @@ test('scanFleetHealth: never mutates opState -- a pure read over what is already
   assert.equal(JSON.stringify(opState), snapshot)
 })
 
+// Commands passed here must match the real safe shape runBaselineVerification
+// now enforces (`npm run <safe-name>`, etc. -- see health-repair.mjs's
+// SAFE_COMMAND_LINE) -- a real package.json script actually being run, not
+// an arbitrary raw shell string standing in for one.
+function withScripts(dir, scripts) {
+  writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts }))
+  writeFileSync(path.join(dir, 'package-lock.json'), '{}')
+  return dir
+}
+
 test('runBaselineVerification: a real passing command reports PASS with a real exit code, a real failing command reports FAIL', async () => {
-  const dir = tracked(createTempRepo())
+  const dir = withScripts(tracked(createTempRepo()), {
+    test: 'node -e "process.exit(0)"',
+    build: 'node -e "process.exit(1)"'
+  })
   const result = await runBaselineVerification(
     dir,
     {
-      testCommands: [`node -e "process.exit(0)"`],
-      buildCommands: [`node -e "process.exit(1)"`],
+      testCommands: ['npm run test'],
+      buildCommands: ['npm run build'],
       lintCommands: [],
       typecheckCommands: []
     },
@@ -157,16 +170,13 @@ test('runBaselineVerification: a real passing command reports PASS with a real e
 // configured timeout -- this asserts the wait is ACTUALLY bounded in wall-
 // clock time, not just that the eventual result label says TIMEOUT.
 test('runBaselineVerification: a real command that hangs past the bounded timeout is actually killed within that bound, not left running', async () => {
-  const dir = tracked(createTempRepo())
+  const dir = withScripts(tracked(createTempRepo()), {
+    test: 'node -e "setTimeout(()=>{}, 60000)"'
+  })
   const startedAt = Date.now()
   const result = await runBaselineVerification(
     dir,
-    {
-      testCommands: [`node -e "setTimeout(()=>{}, 60000)"`],
-      buildCommands: [],
-      lintCommands: [],
-      typecheckCommands: []
-    },
+    { testCommands: ['npm run test'], buildCommands: [], lintCommands: [], typecheckCommands: [] },
     500
   )
   const elapsedMs = Date.now() - startedAt
@@ -176,6 +186,32 @@ test('runBaselineVerification: a real command that hangs past the bounded timeou
     elapsedMs < 10000,
     `expected the hung command to be killed within a few seconds of its 500ms timeout, took ${elapsedMs}ms`
   )
+})
+
+// Defense in depth (independent-review finding, confirmed with a live
+// exploit against the old code): even though discovery no longer
+// surfaces an unsafe script name, runBaselineVerification must never
+// trust a command string on faith -- it is only ever spawned if it
+// matches exactly the shape discovery is documented to produce. A
+// hand-crafted malicious command string (as if some other path had
+// bypassed discovery's own filtering) must be refused, never executed.
+test('runBaselineVerification: a command string outside the safe discovered shape is refused as NOT_APPLICABLE, never spawned', async () => {
+  const dir = tracked(createTempRepo())
+  const markerFile = path.join(dir, 'pwned.txt')
+  const result = await runBaselineVerification(
+    dir,
+    {
+      testCommands: [
+        `npm run test:unit; node -e "require('fs').writeFileSync(${JSON.stringify(markerFile)}, 'x')"`
+      ],
+      buildCommands: [],
+      lintCommands: [],
+      typecheckCommands: []
+    },
+    5000
+  )
+  assert.equal(result.test, 'NOT_APPLICABLE')
+  assert.equal(existsSync(markerFile), false, 'the injected command must never actually run')
 })
 
 test('repairProject: ORCA_NOT_REGISTERED calls the real refresh action and returns the fresh registration status', async () => {
