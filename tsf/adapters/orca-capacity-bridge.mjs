@@ -15,7 +15,9 @@ import path from 'node:path'
 const TIMEOUT_MS = 15000
 
 // Mirrors orca-orchestration-bridge.mjs's own resolution order exactly.
-function candidateEntries() {
+// Exported for a direct regression test of the bare-'orca'-fallback safety
+// fix below (normal callers never call this directly).
+export function candidateEntries() {
   const override = process.env.TSF_ORCA_CLI_COMMAND
   const candidates = []
   if (override && (override.endsWith('.mjs') || override.endsWith('.js'))) {
@@ -44,7 +46,14 @@ function candidateEntries() {
     args: [],
     viaShell: false
   })
-  candidates.push({ command: 'orca', args: [], viaShell: process.platform === 'win32' })
+  // Real V1 stabilization finding (sibling of the Planner Chat live-use
+  // defect, see providers/resolve-agent-entry.mjs): viaShell:true was never
+  // actually needed here -- `orca` on PATH is a real installed .exe, not an
+  // npm-shipped .cmd/.ps1 shim, and runs correctly via spawn with
+  // shell:false, no shell hop required at all. Never using shell:true also
+  // closes the same argument-corruption class this program's own Planner
+  // Chat fix reproduced and fixed elsewhere.
+  candidates.push({ command: 'orca', args: [], viaShell: false })
   return candidates
 }
 

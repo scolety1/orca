@@ -31,7 +31,9 @@ function delay(ms) {
 // machines. Mirrors the resolution pattern in
 // tsf/providers/resolve-agent-entry.mjs (env override, then known
 // locations, then bare PATH command as a last resort).
-function candidateEntries() {
+// Exported for a direct regression test of the bare-'orca'-fallback safety
+// fix below (normal callers never call this directly).
+export function candidateEntries() {
   const override = process.env.TSF_ORCA_CLI_COMMAND
   const candidates = []
   // Tests point this at a .mjs/.js stub script, which needs a node hop; a
@@ -39,20 +41,51 @@ function candidateEntries() {
   // `forced: true` so resolveEntry() returns it unconditionally — an
   // explicit override must win (or fail explicitly on spawn) rather than
   // silently falling through to a different, unintended real install.
-  if (override && (override.endsWith('.mjs') || override.endsWith('.js'))) candidates.push({ command: process.execPath, args: [override], viaShell: false, forced: true })
-  else if (override) candidates.push({ command: override, args: [], viaShell: false, forced: true })
+  if (override && (override.endsWith('.mjs') || override.endsWith('.js'))) {
+    candidates.push({ command: process.execPath, args: [override], viaShell: false, forced: true })
+  } else if (override) {
+    candidates.push({ command: override, args: [], viaShell: false, forced: true })
+  }
   const localAppData = process.env.LOCALAPPDATA
   const programFiles = process.env.ProgramFiles
-  if (localAppData) candidates.push({ command: path.join(localAppData, 'Programs', 'orca', 'resources', 'bin', 'orca.exe'), args: [], viaShell: false })
-  if (programFiles) candidates.push({ command: path.join(programFiles, 'orca', 'resources', 'bin', 'orca.exe'), args: [], viaShell: false })
-  candidates.push({ command: 'C:\\TSF_FOUNDATION_EVAL\\installed\\orca\\resources\\bin\\orca.exe', args: [], viaShell: false })
-  candidates.push({ command: 'orca', args: [], viaShell: process.platform === 'win32' })
+  if (localAppData) {
+    candidates.push({
+      command: path.join(localAppData, 'Programs', 'orca', 'resources', 'bin', 'orca.exe'),
+      args: [],
+      viaShell: false
+    })
+  }
+  if (programFiles) {
+    candidates.push({
+      command: path.join(programFiles, 'orca', 'resources', 'bin', 'orca.exe'),
+      args: [],
+      viaShell: false
+    })
+  }
+  candidates.push({
+    command: 'C:\\TSF_FOUNDATION_EVAL\\installed\\orca\\resources\\bin\\orca.exe',
+    args: [],
+    viaShell: false
+  })
+  // Real V1 stabilization finding (sibling of the Planner Chat live-use
+  // defect, see providers/resolve-agent-entry.mjs): viaShell:true was never
+  // actually needed here and is unsafe for registerOrcaRepo's real,
+  // arbitrary repoPath argument (can contain spaces) -- Node's shell:true
+  // spawn does zero argument escaping on Windows, silently shredding a
+  // space-containing path via cmd.exe's own re-tokenization. Unlike an
+  // npm-installed CLI (which ships a .cmd/.ps1 shim requiring a shell hop),
+  // `orca` on PATH is a real installed .exe (confirmed directly: `orca`
+  // resolves and runs correctly via spawn with shell:false, no shell needed
+  // at all) -- corrected to false.
+  candidates.push({ command: 'orca', args: [], viaShell: false })
   return candidates
 }
 
 function resolveEntry() {
   for (const candidate of candidateEntries()) {
-    if (candidate.forced || candidate.command === 'orca' || existsSync(candidate.command)) return candidate
+    if (candidate.forced || candidate.command === 'orca' || existsSync(candidate.command)) {
+      return candidate
+    }
   }
   return null
 }
@@ -61,7 +94,11 @@ function spawnCli(entry, args) {
   return new Promise((resolve) => {
     let child
     try {
-      child = spawn(entry.command, args, { shell: !!entry.viaShell, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(entry.command, args, {
+        shell: !!entry.viaShell,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
     } catch (error) {
       return resolve({ ok: false, reason: 'SPAWN_ERROR', detail: error.message })
     }
@@ -80,15 +117,33 @@ function spawnCli(entry, args) {
     })
     child.on('close', (code) => {
       clearTimeout(timer)
-      if (timedOut) return resolve({ ok: false, reason: 'TIMEOUT', detail: `orca CLI did not respond within ${timeoutMs()}ms` })
-      if (code !== 0) return resolve({ ok: false, reason: 'CLI_ERROR', detail: (stderr || stdout).trim().slice(0, 500) || `exit code ${code}` })
+      if (timedOut) {
+        return resolve({
+          ok: false,
+          reason: 'TIMEOUT',
+          detail: `orca CLI did not respond within ${timeoutMs()}ms`
+        })
+      }
+      if (code !== 0) {
+        return resolve({
+          ok: false,
+          reason: 'CLI_ERROR',
+          detail: (stderr || stdout).trim().slice(0, 500) || `exit code ${code}`
+        })
+      }
       let parsed
       try {
         parsed = JSON.parse(stdout)
       } catch {
         return resolve({ ok: false, reason: 'MALFORMED_RESPONSE', detail: stdout.slice(0, 500) })
       }
-      if (parsed.ok === false) return resolve({ ok: false, reason: 'CLI_ERROR', detail: parsed.error?.message ?? JSON.stringify(parsed).slice(0, 500) })
+      if (parsed.ok === false) {
+        return resolve({
+          ok: false,
+          reason: 'CLI_ERROR',
+          detail: parsed.error?.message ?? JSON.stringify(parsed).slice(0, 500)
+        })
+      }
       resolve({ ok: true, result: parsed.result })
     })
   })
@@ -96,7 +151,9 @@ function spawnCli(entry, args) {
 
 async function runOrca(args) {
   const entry = resolveEntry()
-  if (!entry) return { ok: false, reason: 'CLI_UNAVAILABLE', detail: 'orca CLI not found on this machine' }
+  if (!entry) {
+    return { ok: false, reason: 'CLI_UNAVAILABLE', detail: 'orca CLI not found on this machine' }
+  }
   return spawnCli(entry, [...entry.args, ...args, '--json'])
 }
 
@@ -135,12 +192,20 @@ export async function findRegisteredOrcaRepo(repoPath, { retry = true } = {}) {
     listed = await runOrca(['repo', 'list'])
   }
   if (!listed.ok) {
-    const status = listed.reason === 'CLI_UNAVAILABLE' ? 'ORCA_UNKNOWN' : 'ORCA_TEMPORARILY_UNAVAILABLE'
+    const status =
+      listed.reason === 'CLI_UNAVAILABLE' ? 'ORCA_UNKNOWN' : 'ORCA_TEMPORARILY_UNAVAILABLE'
     return { ok: false, reason: listed.reason, detail: listed.detail, status }
   }
   const target = normalizeForCompare(repoPath)
-  const match = (listed.result?.repos ?? []).find((repo) => normalizeForCompare(repo.path) === target)
-  return { ok: true, registered: !!match, repo: match ?? null, status: match ? 'REGISTERED' : 'NOT_REGISTERED' }
+  const match = (listed.result?.repos ?? []).find(
+    (repo) => normalizeForCompare(repo.path) === target
+  )
+  return {
+    ok: true,
+    registered: !!match,
+    repo: match ?? null,
+    status: match ? 'REGISTERED' : 'NOT_REGISTERED'
+  }
 }
 
 // Only called from the onboarding commit step, never during read-only
@@ -148,9 +213,15 @@ export async function findRegisteredOrcaRepo(repoPath, { retry = true } = {}) {
 // first and returns the existing repo rather than double-adding.
 export async function registerOrcaRepo(repoPath) {
   const existing = await findRegisteredOrcaRepo(repoPath)
-  if (existing.ok && existing.registered) return { ok: true, alreadyRegistered: true, repo: existing.repo }
-  if (!existing.ok) return { ok: false, reason: existing.reason, detail: existing.detail }
+  if (existing.ok && existing.registered) {
+    return { ok: true, alreadyRegistered: true, repo: existing.repo }
+  }
+  if (!existing.ok) {
+    return { ok: false, reason: existing.reason, detail: existing.detail }
+  }
   const added = await runOrca(['repo', 'add', '--path', repoPath])
-  if (!added.ok) return { ok: false, reason: added.reason, detail: added.detail }
+  if (!added.ok) {
+    return { ok: false, reason: added.reason, detail: added.detail }
+  }
   return { ok: true, alreadyRegistered: false, repo: added.result?.repo ?? null }
 }
