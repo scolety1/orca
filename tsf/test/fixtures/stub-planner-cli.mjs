@@ -16,7 +16,10 @@ function argValue(flag) {
 
 if (process.env.STUB_DEBUG_FILE) {
   const fs = await import('node:fs')
-  fs.writeFileSync(process.env.STUB_DEBUG_FILE, JSON.stringify({ args }, null, 2))
+  fs.writeFileSync(
+    process.env.STUB_DEBUG_FILE,
+    JSON.stringify({ args, cwd: process.cwd() }, null, 2)
+  )
 }
 
 if (mode === 'timeout') {
@@ -51,7 +54,11 @@ if (mode === 'flaky-then-success') {
   if (!existsSync(counterFile)) {
     writeFileSync(counterFile, '1')
     process.stdout.write(
-      JSON.stringify({ is_error: true, result: 'deliberate one-off stub provider error', session_id: sessionId })
+      JSON.stringify({
+        is_error: true,
+        result: 'deliberate one-off stub provider error',
+        session_id: sessionId
+      })
     )
     process.exit(0)
   }

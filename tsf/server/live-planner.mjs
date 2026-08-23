@@ -10,6 +10,7 @@
 // never fabricates a live answer or a provider/model identity.
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveRole } from '../domain/routing.mjs'
 import {
@@ -22,11 +23,18 @@ import { resolveAgentEntry } from '../providers/resolve-agent-entry.mjs'
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import launchProfiles from '../providers/launch-profiles.v1.json' with { type: 'json' }
 
-const HERE = import.meta.dirname
-// Neutral cwd with no CLAUDE.md/AGENTS.md of its own, so the planner persona
-// comes only from the system prompt this module builds, not this repo's own
-// coding-agent instructions. Gitignored (sibling of .local-state/).
-const NEUTRAL_CWD = join(HERE, '.local-state', 'planner-cwd')
+// Real V1 stabilization finding: this was previously `join(import.meta.dirname,
+// '.local-state', 'planner-cwd')` -- still nested inside THIS git repo, so a
+// spawned `claude -p` process walked up from it, discovered this repo's own
+// CLAUDE.md/AGENTS.md (the ones governing this very session), and injected
+// them as ITS project instructions -- contaminating every onboarding
+// direction analysis with this repo's own name/instructions instead of the
+// analyzed project's. Reproduced directly: probing a `claude -p` call from
+// the old cwd returned "I have project instructions loaded from CLAUDE.md
+// ... located in ... 'tsf-autonomy-program-v1'". Rooting the neutral cwd
+// under the OS temp dir instead puts it outside any git repo's instruction
+// walk-up entirely.
+const NEUTRAL_CWD = join(tmpdir(), 'tsf-planner-neutral-cwd')
 
 // Read per-call, not frozen at module load, so tests (and ops) can override
 // it without needing a fresh process.

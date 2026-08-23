@@ -194,6 +194,44 @@ test('project context is actually transmitted to the provider process, bound to 
   }
 })
 
+// Real V1 stabilization finding: the planner subprocess's cwd was nested
+// inside THIS repo (tsf/server/.local-state/planner-cwd), so a real `claude
+// -p` call there walked up, found this repo's own CLAUDE.md/AGENTS.md, and
+// leaked them into onboarding direction-analysis narratives -- reproduced
+// live against two real repos (both misidentified the analyzed project as
+// "TSF Autonomy Program v1"). The neutral cwd now lives outside any git
+// repo's instruction walk-up entirely (under the OS temp dir); this proves
+// the actual `cwd` the subprocess is spawned with is never this repo.
+test('the planner subprocess cwd is never inside this repo (regression: instruction leak via nested neutral cwd)', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tsf-planner-cwd-check-'))
+  const debugFile = path.join(dir, 'argv.json')
+  try {
+    await withStubEnv(
+      { TSF_PLANNER_CLAUDE_COMMAND: STUB, STUB_MODE: 'success', STUB_DEBUG_FILE: debugFile },
+      async () => {
+        await invokeLivePlanner({
+          project: project(),
+          message: 'status?',
+          opState: opState(),
+          recentHistory: []
+        })
+      }
+    )
+    const seen = JSON.parse(readFileSync(debugFile, 'utf8'))
+    const repoRoot = path.resolve(HERE, '..', '..')
+    assert.ok(
+      !path.resolve(seen.cwd).startsWith(repoRoot + path.sep),
+      `planner subprocess cwd (${seen.cwd}) must not be inside this repo (${repoRoot})`
+    )
+    assert.ok(
+      path.resolve(seen.cwd).startsWith(path.resolve(tmpdir())),
+      `planner subprocess cwd (${seen.cwd}) must be rooted under the OS temp dir`
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 // REQUIRED PROOF (M7): real project memory genuinely reaches the real
 // planner chat call end to end -- not just buildProjectContextCapsule
 // called directly (every other test above/below does that), but through
@@ -507,7 +545,11 @@ test('invokeLiveStructuredAnalysis: a persistent PROVIDER_ERROR is not hidden be
 
 test('invokeLiveStructuredAnalysis: MALFORMED_RESPONSE is not retried (a schema/parsing mismatch would just reproduce)', async () => {
   await withStubEnv(
-    { TSF_PLANNER_CLAUDE_COMMAND: STUB, TSF_PLANNER_CODEX_COMMAND: path.join(HERE, 'fixtures', 'does-not-exist-binary'), STUB_MODE: 'malformed' },
+    {
+      TSF_PLANNER_CLAUDE_COMMAND: STUB,
+      TSF_PLANNER_CODEX_COMMAND: path.join(HERE, 'fixtures', 'does-not-exist-binary'),
+      STUB_MODE: 'malformed'
+    },
     async () => {
       const result = await invokeLiveStructuredAnalysis({
         systemPrompt: 'system',
