@@ -705,9 +705,7 @@
           "testsPassing": "204/204 full tsf suite GREEN",
           "verifier": "SELF; an independent review of waves 26+27 combined is in flight",
           "commit": "0a4f0930f4985b0afa71055e31566d9509d048af",
-          "deferredToNextWave": [
-            "independent review of this wiring (in flight)"
-          ]
+          "deferredToNextWave": ["independent review of this wiring (in flight)"]
         },
         {
           "wave": 27,
@@ -1195,11 +1193,7 @@
       ],
       "liveWorkFeedRule": "No fabricated status -- every state shown must be sourced from real Orca/TSF facts (task/dispatch status, run state, checkpoint phase), the same discipline M2 established (projectKeepGoingRun never invents workers/verifierResults it cannot back with real data). Drill-down/Open in Orca available for raw technical detail; Tim should not normally need Orca terminals.",
       "chatAuthority": {
-        "preserve": [
-          "AUTO_DECIDE",
-          "RECOMMEND_AND_PROCEED",
-          "TIM_REQUIRED"
-        ],
+        "preserve": ["AUTO_DECIDE", "RECOMMEND_AND_PROCEED", "TIM_REQUIRED"],
         "chatMustNeverSilentlyAuthorize": [
           "adoption",
           "push/merge",
@@ -1851,6 +1845,24 @@
           "commit": "2d4aa1ac6",
           "status": "ADOPTED",
           "note": "Real onboarding/reconciliation deadlock closed on real evidence from two more real projects. Adopted directly into tsf/main via git merge --ff-only (a39cbab09..2d4aa1ac6). Not M15 -- V1 stabilization per established program discipline."
+        },
+        {
+          "wave": 11,
+          "summary": "Phase 2 of the authorized overnight run (V1 stabilization, not M15): three real V1 failures found and fixed via real evidence, not synthetic cases.\n\nA. Planner Chat authority false positive (server/chat-responder.mjs) -- the same negation/clause-scoping bug class already fixed twice this session in the onboarding classifiers, now fixed in the chat authority gate too, across three independent-review rounds. Round 1: TSF refused an entire read-only readiness-assessment request as TIM_REQUIRED purely because Tim's own prompt listed the consequential actions he was explicitly ruling OUT -- fixed by judging each clause on its own (genuine inquiry/explicit prohibition no longer force TIM_REQUIRED; an unhedged, non-negated directive still does), with \"can/could/would/will YOU ...?\" kept as a directive (English's own polite-request form). Round 2 (independent review, RED before adoption): splitting only on .!?;\\n let an inquiry/prohibition earlier in a comma- or \"but\"/em-dash-joined run-on sentence exempt a genuine, unrelated directive later in the same loose sentence -- including one reviewer example that silently authorized a destructive repo delete. Fixed by normalizing comma/but/em-dash into hard clause boundaries first. Round 3 (independent review, RED again, narrower): that normalization then let a mid-sentence interjection split a polite \"can you ... push this to production?\" request away from its own verb+keyword clause. Fixed by checking the polite-request marker against the whole sentence a clause came from (not the post-comma clause fragment), while staying sentence-scoped so an earlier sentence's polite marker never sweeps up a later, unrelated sentence's own prohibition. Independently re-verified GREEN across 43+ constructed phrasings plus cross-sentence leak probing in both directions.\n\nD. Project Health DEGRADED catch-all (server/onboarded-project-projection.mjs) -- HEALTHY_WITH_CAVEATS (no more than a non-blocking caveat: no README, dirty-but-preserved, a linked worktree, a now-resolved handoff discrepancy) was folded into the same DEGRADED fleet-card badge as a genuine NEEDS_ATTENTION finding. A paused/read-only/dirty-preserve project is not inherently unhealthy -- only a real NEEDS_ATTENTION finding reads as DEGRADED now. Underlying findings remain fully visible on the project detail page either way; only the one-word fleet badge changes.\n\nNew, found during real NWR + WorldForge overnight readiness analysis (not on Tim's original list, same stabilization pass): the onboarding direction-analysis planner subprocess's \"neutral\" cwd (tsf/server/.local-state/planner-cwd) was still nested INSIDE this repo, so a real `claude -p` call from it walked up, discovered this repo's own CLAUDE.md (which imports AGENTS.md), and loaded them as its own project instructions -- contaminating the direction/purpose narrative for every onboarded project analyzed. Reproduced live twice independently (both the real NWR and the real WorldForge-Sablewake-Live-Runtime-Repair-V3 direction analyses misidentified the analyzed repo as \"TSF Autonomy Program v1\" / referenced \"the CLAUDE.md/AGENTS.md content actually present in this session\"). Fixed by rooting the neutral cwd under the OS temp dir instead, outside any git repo's instruction walk-up entirely -- reproduced-then-confirmed-closed via a direct live `claude -p` probe from both the old and new cwd, plus a new regression test that spawns the real invokeLivePlanner path and asserts the actual subprocess cwd is never inside this repo.\n\nB/C verified, not modified: live Claude/Codex provider capacity confirmed healthy via `orca account list --json` before any overnight dispatch; Orca registration's REGISTERED/NOT_REGISTERED/ORCA_TEMPORARILY_UNAVAILABLE/ORCA_UNKNOWN distinction and bounded retry (M7 wave 9) and the reconciliation deadlock fix's own bounded Direction retry (wave 10) already satisfy this phase's requirements untouched.",
+          "filesChanged": [
+            "tsf/server/chat-responder.mjs",
+            "tsf/server/live-planner.mjs",
+            "tsf/server/onboarded-project-projection.mjs",
+            "tsf/test/chat-responder.test.mjs",
+            "tsf/test/fixtures/stub-planner-cli.mjs",
+            "tsf/test/live-planner.test.mjs",
+            "tsf/test/onboarded-project-projection.test.mjs"
+          ],
+          "testsPassing": "681 tests, 680 pass, 1 fail (pre-existing, unrelated port-4610 collision flake), 0 skip",
+          "verifier": "INDEPENDENT (forked review agent ab2017bba1d01957f, three adversarial rounds on the chat-authority classifier: round 1 GREEN-then-RED on deeper adversarial probing, round 2 RED with a dangerous-direction miss, round 3 GREEN across 43+ phrasings and cross-sentence leak probing; Health DEGRADED fix and neutral-cwd leak fix verified directly via reproduction probes and full local suite, not yet routed through the same forked reviewer)",
+          "commit": "ee2c29fc5..aff6a345b",
+          "status": "ADOPTED",
+          "note": "Real Planner Chat authority, Health presentation, and planner-narrative-integrity defects closed on real evidence from tonight's use plus NWR/WorldForge overnight readiness analysis. Adopted directly into tsf/main via git merge --ff-only. Not M15 -- V1 stabilization per established program discipline."
         }
       ]
     },
@@ -2078,9 +2090,7 @@
       "note": "Tim sent a full M9-M13 roadmap extension mid-M8-session (received while M8 wave 5 was in progress) -- recorded verbatim in docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md so it survives context compaction. Explicit instruction: do NOT interrupt/restart/broaden/redo M8 because this message exists -- M8 finishes normally under the existing charter first. Once M8.status becomes ADOPTED, flip this entry's status to CURRENT and begin M9 wave 1 (research-first, per docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md's own bounded Promptfoo license/API verification instruction -- not a broad research phase) per the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M8.",
       "candidateCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
       "adoptedCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
-      "gaps": [
-        "everything -- not started, pending M8 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M8 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2195,9 +2205,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M9 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
       "adoptedCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
-      "gaps": [
-        "everything -- not started, pending M9 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M9 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2232,9 +2240,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
       "adoptedCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
-      "gaps": [
-        "everything -- not started, pending M10 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M10 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2269,9 +2275,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
       "adoptedCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
-      "gaps": [
-        "everything -- not started, pending M11 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M11 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2326,9 +2330,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). NOT a feature-building milestone -- freezes feature scope at M1-M12; fixes genuine defects, closes integration gaps, simplifies UX, improves reliability/docs, only after all 18 acceptance phases in the handoff doc are worked through. Do NOT begin M14 or invent additional feature milestones without Tim's approval -- M13 is intentionally the end of this upgrade program. Begins only after M12 is genuinely ADOPTED.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": [
-        "everything -- not started, pending M12 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M12 adoption"],
       "acceptancePass": {
         "schemaVersion": "TSF_M13_ACCEPTANCE_REPORT_V1",
         "completedAt": "2026-08-21T09:50:35.000Z",
@@ -2454,9 +2456,7 @@
         {
           "wave": 5,
           "summary": "Independent review of wave 4 confirmed the cold-start fix genuinely works (live re-verification on an isolated scratch port/mutex, regression test confirmed to catch the old buggy shape) but found one real, CONFIRMED gap: the top-level try/catch started after the Win32 P/Invoke Add-Type compilation and the Mutex construction, leaving a narrow but genuine window where a cold `Add-Type` compile failure or a restricted Mutex-creation environment could still throw before any window exists, reproducing the exact same silent-death shape this whole fix exists to eliminate. Fixed by moving the try block to wrap everything from the Win32 Add-Type call onward -- single-instance setup, the orca-CLI check, and all window/WebView2 setup are now inside one handler, with the early \"already running\" / \"orca not found\" exit paths unaffected (exit does not trigger catch). Re-verified: regression test still passes, live smoke test against the real backend still shows the window in under 1s and clean shutdown, full suite 593/594 (1 known pre-existing port-4610 collision, unrelated).",
-          "filesChanged": [
-            "tsf/launcher/Launch-TSF.ps1"
-          ]
+          "filesChanged": ["tsf/launcher/Launch-TSF.ps1"]
         },
         {
           "wave": 6,
@@ -2472,9 +2472,7 @@
         {
           "wave": 7,
           "summary": "Independent review of wave 6 found no functional gap in the fix itself (live evidence, process-timestamp gap, and lack of any CLI reconciliation lever were all independently re-confirmed) but flagged one low-severity test-quality issue: the new regression test's negative assertion (!/hasn'?t registered/i) never actually matched the real old buggy copy's wording (\"hasn't been told where to find...\"), so it was a no-op guard -- the test still correctly distinguished old from new via its sibling positive assertion, so this was never a functional gap in the suite's outcome, but the assertion itself was ineffective. Fixed by broadening the pattern to hasn't (?:been told|registered), confirmed to now genuinely match the real old phrasing. Full suite re-run clean: 596/596, 595 pass, 1 fail (same pre-existing port-4610 collision, unrelated).",
-          "filesChanged": [
-            "tsf/test/desktop-launcher-cold-start.test.mjs"
-          ]
+          "filesChanged": ["tsf/test/desktop-launcher-cold-start.test.mjs"]
         },
         {
           "wave": 8,
@@ -2719,11 +2717,7 @@
         "Once usable capacity is effectively exhausted, checkpoint and wait/switch providers normally -- do not force further dispatch.",
         "Immediately after reset, reassess live capacity and restore the normal worker budget/concurrency for that provider."
       ],
-      "appliesToProviders": [
-        "codex",
-        "claude",
-        "any future provider with a known reset window"
-      ],
+      "appliesToProviders": ["codex", "claude", "any future provider with a known reset window"],
       "supersedesForNearResetWindowOnly": "The general 'hold off on new WORKER_* dispatch near a limit' base policy above -- this amendment only relaxes that base policy inside a known-reset window with a genuine bounded task available; it does not authorize dispatch when no such task exists or when the task risks stranding.",
       "mustStillHonor": [
         "Section F execution discipline (conflict-aware waves, independent verification, no worker self-report treated as done)",
@@ -2801,10 +2795,7 @@
       "worktreeRepoId": "443fd5dc-bd87-4019-a2a0-879188f97506",
       "operatorStateFile": "tsf/server/.local-state/operator-state.json (real default store, not a test override -- gitignored, inspect directly on disk)",
       "wave1Goal": "docs/m2-live-dogfood/wave-1-marker.md containing exactly the line 'M2 live dogfood wave 1 marker'",
-      "acceptanceCriteria": [
-        "DOGFOOD_MARKER_WAVE_1_ADDED",
-        "DOGFOOD_MARKER_WAVE_2_ADDED"
-      ],
+      "acceptanceCriteria": ["DOGFOOD_MARKER_WAVE_1_ADDED", "DOGFOOD_MARKER_WAVE_2_ADDED"],
       "dispatchedAt": "2026-08-20T07:12:51.241Z",
       "statusAtEntry": "orca orchestration task-list still reports status:'dispatched' as of 2026-08-20T07:42:35Z (~30 minutes elapsed, at/past the run's own stallThresholdMs of 30 minutes). orca terminal read on the worker terminal shows latestCursor/nextCursor UNCHANGED (14) since immediately after MCP startup -- zero new output in ~28 minutes, a genuine stall (the --inject dispatch mechanism appears to not have delivered visibly, or the terminal is deadlocked before echoing it), not a transient delay. This is being fenced as UNCERTAIN, not claimed as failed or stopped.",
       "scratchpadEvidence": "A non-committed mission driver script and its log live in this session's scratchpad temp dir (m2-live-dogfood.mjs / .log) -- NOT durable, may not survive a session loss; this state.json entry is the durable source of truth, not that log."
@@ -2867,12 +2858,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M7_WAVE_10_ONBOARDING_RECONCILIATION_DEADLOCK_CLOSED",
-    "at": "2026-08-23T09:37:35.373Z",
-    "commit": "2d4aa1ac6",
+    "phase": "M7_WAVE_11_PLANNER_CHAT_AUTHORITY_AND_NARRATIVE_INTEGRITY_CLOSED",
+    "at": "2026-08-23T10:18:06.306Z",
+    "commit": "aff6a345b",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "M7 wave 10 adopted: onboarding reconciliation deadlock (TIM_REQUIRED with no resolution UI, blocking even Known Projects) fixed on real evidence from silent-visual-speech-spike and WorldForge/Nytheria. New UNRESOLVED_HANDOFF_DISCREPANCY classification, structured discrepancy evidence + 3-way resolution UI, canonical-vs-linked-worktree detection, repository-identity-mismatch detection, server-side Known Projects gating fix. Independent review GREEN (second pass, after fixing 1 blocking + 2 non-blocking findings from the first pass). 668/667/1-skip/0-fail, build clean, zero Orca core delta. Next: Phase 2 of the authorized overnight run (real V1 failures from tonight's use: Planner Chat authority false positive, planner/Orca resilience re-verification, Health/DEGRADED-catch-all presentation, refresh of existing Known Projects), then NWR + Nytheria/WorldForge overnight readiness and dispatch per Tim's explicit authorization. TSF HEALTH REPAIR CENTER V1 is queued strictly behind that overnight work."
+    "note": "M7 wave 11 adopted: Planner Chat authority false positive fully closed across 3 independent-review rounds (clause-scoped negation/inquiry awareness, run-on-sentence clause normalization, sentence-scoped polite-request check), Health DEGRADED catch-all fixed, and a real planner-subprocess instruction leak (neutral cwd nested inside this repo, contaminating onboarding direction-analysis narratives with this repo's own identity) found and closed during real NWR + WorldForge readiness analysis. 681/680/1-fail(pre-existing flake)/0-skip, lint clean, zero Orca core delta, no UI files touched. Next: Phase 2E (refresh existing Known Projects), then NWR + Nytheria/WorldForge overnight readiness and dispatch per Tim's explicit authorization. TSF HEALTH REPAIR CENTER V1 remains queued strictly behind that overnight work."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
