@@ -199,6 +199,56 @@ test('classifyMigration: a *.test.js file with no real tooling verb stays SENSIT
   assert.equal(result.classification, 'SENSITIVE')
 })
 
+// Round 3 (independent adversarial review, RED): the SAME flaw round 2
+// fixed for "safe" applied identically to audit/gate/lint/verify -- a
+// human-facing data export can pair any of those words with "credential"/
+// "secret" with no tooling behavior. Now requires the marker word to sit
+// directly hyphen/underscore-adjacent to the secret/credential word AND
+// the file to carry a source/script extension, never a data/export one.
+test('classifyMigration: a data export merely pairing a tooling word with "credential"/"secret" stays SENSITIVE', () => {
+  const result = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: [
+      'exports/credentials-audit-export.json',
+      'exports/credential-gate-export.json',
+      'exports/identity-verify-credentials.json',
+      'exports/secret-lint-report.json',
+      'src/index.js'
+    ],
+    dirty: false,
+    discoveryConfidence: 'HIGH',
+    activeGitOperation: false,
+    handoffConflict: false
+  })
+  assert.equal(result.classification, 'SENSITIVE')
+  assert.equal(result.evidence.sensitivePaths.length, 4)
+})
+
+// Round 3 (independent adversarial review, RED): the module-token check
+// stripped only the FIRST dot-segment, so a multi-part data filename could
+// fake an exact module-name match (secret.config.json, credentials.backup.
+// pem). Now also requires the file's own real extension to be a source/
+// bytecode one -- never a data/config/credential-storage format.
+test('classifyMigration: a multi-part data filename faking an exact module-name match stays SENSITIVE', () => {
+  const result = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: [
+      'node_modules/pkg/secret.config.json',
+      '.venv/credentials.backup.pem',
+      'src/index.js'
+    ],
+    dirty: false,
+    discoveryConfidence: 'HIGH',
+    activeGitOperation: false,
+    handoffConflict: false
+  })
+  assert.equal(result.classification, 'SENSITIVE')
+  assert.ok(result.evidence.sensitivePaths.includes('node_modules/pkg/secret.config.json'))
+  assert.ok(result.evidence.sensitivePaths.includes('.venv/credentials.backup.pem'))
+})
+
 test('classifyMigration: real secret-like files are still SENSITIVE -- the narrowing never weakens genuine detection', () => {
   const genuinelySensitive = [
     'secrets.json',

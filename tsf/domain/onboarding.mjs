@@ -89,10 +89,24 @@ const SENSITIVE_PATH_PATTERN =
 // local-project-secrets.txt, which stay SENSITIVE even inside node_modules/
 // .venv — the exact accidental-commit case this system exists to catch).
 // "vendor" and the standalone .pyc/.pyo carve-out are removed outright.
+//
+// Round 3 (independent adversarial review, RED again on round 2): the
+// module-token check stripped only the FIRST dot-segment
+// (`"secret.config.json".split('.')[0]` is exactly "secret"), so a
+// multi-part data filename could still fake an exact module-name match --
+// node_modules/pkg/secret.config.json, .venv/credentials.backup.pem.
+// Neither is a plausible real vendored PACKAGE-internal module: a real
+// module is source or compiled-bytecode (.py/.pyc/.pyo/.js/.mjs/.cjs/.ts),
+// never a data/config/credential-storage format (.json/.pem/...). Now
+// requires the path's own real (last) extension to be a source/bytecode
+// one too, closing both without touching the exact-module-token check that
+// already correctly protects build-credentials.json/local-project-
+// secrets.txt.
 const VENDORED_MODULE_DIRECTORY =
   /(^|[\\/])(node_modules|\.venv|venv|site-packages|dist-packages|__pycache__|\.pycache-[^\\/]*|\.[a-z0-9]+-[a-z0-9-]*-deps)([\\/]|$)/i
+const VENDORED_MODULE_SOURCE_EXTENSION = /\.(py|pyc|pyo|js|mjs|cjs|ts)$/i
 function isVendoredSensitiveModuleFile(p) {
-  if (!VENDORED_MODULE_DIRECTORY.test(p)) {
+  if (!VENDORED_MODULE_DIRECTORY.test(p) || !VENDORED_MODULE_SOURCE_EXTENSION.test(p)) {
     return false
   }
   const finalSegment = p.split(/[\\/]/).pop() ?? ''
@@ -106,19 +120,38 @@ function isVendoredSensitiveModuleFile(p) {
 }
 // A filename carrying its own security-tooling/test marker (scans FOR
 // secrets, gates/verifies credential handling) is evidence the project is
-// testing/guarding against exposure, not exposing something — matched only
-// against the final path segment so a directory named e.g. "verify"
-// elsewhere in the path can't exempt an unrelated real secret file living
-// inside it. "safe" was removed (round 2) — too common an English word in a
-// real credentials filename to be a reliable tooling signal. The standalone
-// .test./.spec. carve-out was removed too (round 2) — it exempted a real
-// hardcoded-credentials test fixture like credentials.test.js on filename
-// shape alone; every real tooling-test file in evidence already carries one
-// of the marker words below on its own (secret-scan-*.test.mjs, verify-
-// rotate-credential-gate.test.mjs), so the separate carve-out was never
-// actually needed for genuine tooling and only widened the hole.
-const SECURITY_TOOLING_FILENAME_MARKER =
-  /(^|[\\/])[^\\/]*\b(scan|gate|audit|lint|verify)\b[^\\/]*\.[a-z0-9]+$/i
+// testing/guarding against exposure, not exposing something. "safe" was
+// removed (round 2) — too common an English word in a real credentials
+// filename to be a reliable tooling signal. The standalone .test./.spec.
+// carve-out was removed too (round 2) — it exempted a real hardcoded-
+// credentials test fixture like credentials.test.js on filename shape
+// alone; every real tooling-test file in evidence already carries one of
+// the marker words below on its own (secret-scan-*.test.mjs, verify-
+// rotate-credential-gate.test.mjs).
+//
+// Round 3: the SAME flaw round 2 fixed for "safe" applied identically to
+// audit/gate/lint/verify -- a human-facing data EXPORT can pair any of
+// those words with "credential"/"secret" with no tooling behavior at all
+// (credentials-audit-export.json, credential-gate-export.json, identity-
+// verify-credentials.json, secret-lint-report.json all real-shaped
+// bypasses). Fixed with two more requirements, both backed by the real
+// evidence shape (secret-scan.mjs, secret-scan-*.test.mjs, verify-rotate-
+// credential-gate.test.mjs — never a data file): the marker word must sit
+// DIRECTLY hyphen/underscore-adjacent to the secret/credential word itself
+// (a verb-object compound, not merely present anywhere in the segment),
+// and the file's own extension must be a source/script one, never a data/
+// export format such as .json/.csv/.pem/.txt.
+const SECURITY_TOOLING_SOURCE_EXTENSION =
+  /\.(mjs|cjs|js|jsx|ts|tsx|py|rb|go|java|kt|swift|c|cc|cpp|h|hpp|rs|sh|ps1)$/i
+const SECURITY_TOOLING_ADJACENT_MARKER =
+  /\b(?:credentials?|secrets?)[-_](?:scan|gate|audit|lint|verify)\b|\b(?:scan|gate|audit|lint|verify)[-_](?:credentials?|secrets?)\b/i
+function isSecurityToolingFile(p) {
+  if (!SECURITY_TOOLING_SOURCE_EXTENSION.test(p)) {
+    return false
+  }
+  const finalSegment = p.split(/[\\/]/).pop() ?? ''
+  return SECURITY_TOOLING_ADJACENT_MARKER.test(finalSegment)
+}
 
 // Prose signals: each pattern captures a phrase that, read at face value with
 // no surrounding negation/future framing, asserts a CURRENT sensitive-
@@ -231,7 +264,7 @@ export function classifyMigration(facts) {
       SENSITIVE_PATH_PATTERN.test(p) &&
       !SENSITIVE_ENV_TEMPLATE_SUFFIX.test(p) &&
       !isVendoredSensitiveModuleFile(p) &&
-      !SECURITY_TOOLING_FILENAME_MARKER.test(p)
+      !isSecurityToolingFile(p)
   )
   const proseSignals = [
     ...detectSensitiveProseSignals(facts.readmeExcerpt, 'README'),
