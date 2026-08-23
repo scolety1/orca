@@ -2031,6 +2031,83 @@
           "commit": "b8c473f42",
           "status": "ADOPTED",
           "note": "Adopted via git merge --ff-only (32c8a45d2..b8c473f42) alongside wave 21. Zero Orca core delta. Not M15."
+        },
+        {
+          "wave": 23,
+          "summary": "TSF V1 Operator UX + Multi-Project Control pass (Tim's 20-section spec), begun once the two prerequisite workstreams -- prereq V1 stabilization (waves 17-20) and the Planner Chat shell-corruption fix (waves 21-22) -- were settled and tsf/main was clean. Real-use V1 stabilization, not a new architecture program. Fixed left sidebar (spec section 1): AppShell.tsx's outer shell was min-h-screen with no height cap, so once main content grew taller than the viewport the whole flex row grew with it and the sidebar scrolled away with the page. Fixed: shell capped at h-screen overflow-hidden, sidebar h-full (now genuinely the viewport), <main> owns all vertical scroll; the sidebar's own nav list gets its own overflow-y-auto so a short window scrolls the nav internally rather than clipping the header/footer.",
+          "filesChanged": ["tsf/ui/src/components/AppShell.tsx"],
+          "testsPassing": "typecheck/build/lint clean",
+          "verifier": "INDEPENDENT (forked review agent, GREEN across the whole pass -- see wave 26)",
+          "commit": "5ca1b4240",
+          "status": "ADOPTED",
+          "note": "Real browser proof: sidebar confirmed fixed while scrolling a genuinely long Project Detail page."
+        },
+        {
+          "wave": 24,
+          "summary": "Backend composition for the rest of the Operator UX pass -- reuses existing, already-adopted systems throughout, no second implementation of anything. Capacity view (section 6): GET /api/capacity, new -- reshapes the real, unchanged M5 signal (fetchCapacitySnapshot + decideCapacityAction); extended orca-capacity-bridge.mjs's extractSnapshot additively (session/weekly resetsAt + resetDescription, real fields the CLI always returned but the adapter previously dropped) so the UI can show a real 'resets in Xh Ym' instead of an honest-but-useless UNKNOWN -- existing fields and every existing caller unchanged. Bulk Active Fleet / Work Set membership (section 3): POST /api/portfolio/active-fleet, /api/portfolio/work-set, new -- new pure domain/portfolio-membership.mjs composes the existing, unchanged portfolioGatingForClassification + setActiveFleet/setWorkSet; an ineligible project is skipped with an explained reason rather than blocking (or silently widening the rule for) the rest of the batch. 'Prepare Projects for Work' (section 4): POST /api/projects/prepare-for-work, new -- composes existing primitives in sequence per project (analyzeRepository refresh -> Health diagnosis -> runBaselineVerification -> re-diagnosis -> every AUTO_REPAIR_SAFE cause repaired via repairProject -> final re-diagnosis -> recomputed work eligibility), same bulk-safety posture as the existing /repair-selected.",
+          "filesChanged": [
+            "tsf/adapters/orca-capacity-bridge.mjs",
+            "tsf/server/capacity-http-routes.mjs",
+            "tsf/domain/portfolio-membership.mjs",
+            "tsf/server/portfolio-membership-http-routes.mjs",
+            "tsf/server/prepare-for-work-http-routes.mjs",
+            "tsf/server/http-server.mjs"
+          ],
+          "testsPassing": "44 new tests across 5 new test files; full suite 786/787 (only the pre-existing unrelated port-4610 flake)",
+          "verifier": "INDEPENDENT (forked review agent, GREEN across the whole pass -- see wave 26)",
+          "commit": "5ca1b4240",
+          "status": "ADOPTED",
+          "note": "No new authority model -- every route composes existing, already-reviewed gating (portfolioGatingForClassification, TIM_REQUIRED rollup) rather than inventing new rules."
+        },
+        {
+          "wave": 25,
+          "summary": "Frontend for the Operator UX pass, wiring wave 24's backend into a real, working UI. Projects page (sections 2/3/5) rebuilt as a project control board: lifecycle filter chips (Needs You/Needs Repair/Ready for Work/Working/Ready for Adoption/Paused/Blocked, plus counts) derived purely from real, already-present ProjectCard fields (new lib/project-lifecycle.ts); multi-select with a contextual bulk-action bar reusing every wave-24 endpoint; self-explaining cards (blockedReason, real onboarding classification, restrictions, top health finding) via an additive summarizeCard extension -- no new health computation; Usage Mode moved out of the page header into the new mission-launch dialogs (section 7). Mission/Overnight launchers (sections 7-9), new: StartMissionDialog (common or per-project goals, real per-project Keep Going start, never one shared session) and StartOvernightFleetDialog (priority-ordered sequential real Keep Going starts, a real capacity-derived recommendation note, no second scheduler); reachable from Projects' bulk bar and as '+ Start Mission'/'+ Start Overnight Fleet' entry points on Work and Fleet. Home (section 11) redesigned around 'what needs my attention' with a real 'N projects need Health preparation -> Prepare Projects for Work' action; a distinct 'Overnight' section was deliberately not fabricated since Keep Going runs don't record their launch origin yet. Work (section 12) reframed as the mission command center with an actionable empty state. Fleet (section 13) kept its already-correct per-project scheduling reasoning and added a real Start Overnight Fleet entry point. Known/Active Fleet/Work Set (section 10): new MembershipPanel explains all three and, when unavailable, gives the real reason (correctly distinguishes DIRTY_PRESERVE's Active-Fleet-yes/Work-Set-no split) with a real toggle, not an unexplained disabled checkbox. CapacityIndicator (section 6): a compact, non-dominant sidebar entry point. A same-wave follow-up commit split project-catalog.mjs out of http-server.mjs (pure extraction, no behavior change) to satisfy the max-lines cap after the summarizeCard extension pushed it over. TSF Mobile Companion V1 (section 17): a durable future-project spec recorded, explicitly not implemented, per instruction.",
+          "filesChanged": [
+            "tsf/ui/src/pages/ProjectsPage.tsx",
+            "tsf/ui/src/pages/WorkPage.tsx",
+            "tsf/ui/src/pages/FleetPage.tsx",
+            "tsf/ui/src/pages/HomePage.tsx",
+            "tsf/ui/src/pages/ProjectDetailPage.tsx",
+            "tsf/ui/src/components/ProjectCard.tsx",
+            "tsf/ui/src/components/CapacityIndicator.tsx",
+            "tsf/ui/src/components/projects/BulkActionBar.tsx",
+            "tsf/ui/src/components/projects/LifecycleBadge.tsx",
+            "tsf/ui/src/components/projects/LifecycleFilterBar.tsx",
+            "tsf/ui/src/components/projects/MembershipPanel.tsx",
+            "tsf/ui/src/components/missions/StartMissionDialog.tsx",
+            "tsf/ui/src/components/missions/StartOvernightFleetDialog.tsx",
+            "tsf/ui/src/lib/project-lifecycle.ts",
+            "tsf/ui/src/lib/capacity-types.ts",
+            "tsf/ui/src/lib/prepare-for-work-types.ts",
+            "tsf/ui/src/lib/api.ts",
+            "tsf/ui/src/lib/types.ts",
+            "tsf/server/project-catalog.mjs",
+            "docs/tsf/TSF_MOBILE_COMPANION_V1.md"
+          ],
+          "testsPassing": "typecheck/build/lint clean; full backend suite unaffected",
+          "verifier": "INDEPENDENT (forked review agent, GREEN across the whole pass -- see wave 26)",
+          "commit": "d404c2be9 / f2c5692ad / bc8a891a1",
+          "status": "ADOPTED",
+          "note": "No duplicate scheduler: both launchers fan out to the existing single-project Keep Going start endpoint, client-side ordering only."
+        },
+        {
+          "wave": 26,
+          "summary": "Real product proof (spec section 18): validated the whole Operator UX pass in a real running desktop TSF server (an isolated preview instance, real Orca CLI, real onboarded projects, real live capacity data) via Chrome browser automation, since the AGENTS.md-referenced $electron skill is not available in this environment -- a real, known gap, worked around the same way earlier tonight rather than falling back to computer-use. Confirmed working end to end: the sticky sidebar on a genuinely long page, lifecycle filters/search, self-explaining cards, the bulk action bar, the Capacity panel, the Fleet Membership panel's live toggle, and the Start Mission dialog. Found and fixed 3 real defects: (1) bulk-action/mission-launch result summaries were invisible -- ProjectsPage/WorkPage/FleetPage gated their entire render on bare `loading`, and a bulk action's own reload() flips that true for an instant, unmounting the child holding the result-summary state; fixed by gating on `loading && !data` in every affected page, and by fixing FleetPage's overnight launcher to match Projects/Work's onStarted={reload} pattern instead of closing the dialog immediately. (2) Codex's Capacity panel showed a bare '%' with no number -- a strict `=== null` check let `undefined` (Codex has no session window) fall through as present; fixed with a loose `!= null` check. (3) A DIRTY_PRESERVE project showed as 'Ready for work' instead of 'Needs You,' contradicting the spec's own worked example; classifyProjectLifecycle now buckets DIRTY_PRESERVE as NEEDS_YOU. Independent review (separate forked agent, full pass 5ca1b4240..831f0db8e) returned GREEN: verified bulk authority safety directly (per-project gating/try-catch correctly ordered), independently re-ran all bulk-safety tests plus its own fresh isolated-preview check, confirmed all 3 real-testing fixes are genuine (traced the loading/data/error state machine, confirmed 0-used-percent is correctly treated as a real signal, confirmed DIRTY_PRESERVE's new bucket ordering is unreachable-conflict-free since Work Set membership -- required to dispatch -- is already forbidden for DIRTY_PRESERVE), confirmed zero Orca core delta, confirmed no scheduler duplication, ran full suite/lint/build/typecheck clean, confirmed no max-lines disables anywhere. One LOW-severity pre-existing (not introduced by this pass) observation noted for a future pass: a background reload *failure* (as opposed to the loading-flash bug fixed here) still replaces the current view with a full-page ErrorState.",
+          "filesChanged": [
+            "tsf/server/capacity-http-routes.mjs",
+            "tsf/test/http-capacity.test.mjs",
+            "tsf/ui/src/lib/project-lifecycle.ts",
+            "tsf/ui/src/pages/FleetPage.tsx",
+            "tsf/ui/src/pages/HomePage.tsx",
+            "tsf/ui/src/pages/ProjectDetailPage.tsx",
+            "tsf/ui/src/pages/ProjectsPage.tsx",
+            "tsf/ui/src/pages/WorkPage.tsx"
+          ],
+          "testsPassing": "786/787 full backend suite (only the pre-existing unrelated port-4610 flake); UI typecheck/build/lint clean",
+          "verifier": "INDEPENDENT (forked review agent, GREEN -- full-pass review, own isolated-preview re-verification, own fresh test runs)",
+          "commit": "831f0db8e",
+          "status": "ADOPTED",
+          "note": "Operator UX pass complete (points 1-19 of the spec's acceptance list; point 20's TSF Mobile Companion path and 60-second overnight-fleet instructions delivered in the morning report). Adopted via git merge --ff-only (b87ffc1c9..831f0db8e). Zero Orca core delta. Not M15 -- filed as M7 waves per established program discipline. Per explicit instruction: stop here, do not invent another feature milestone, return TSF to real-world operator testing."
         }
       ]
     },
