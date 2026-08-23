@@ -8,7 +8,13 @@
 import { readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { analyzeRepository, commitOnboarding, refreshOrcaRegistrationStatus, retryDirectionAnalysis } from './onboarding.mjs'
+import {
+  analyzeRepository,
+  commitOnboarding,
+  refreshOrcaRegistrationStatus,
+  retryDirectionAnalysis,
+  resolveReconciliation
+} from './onboarding.mjs'
 
 // Returns true and writes the response if this request matched an
 // onboarding route; returns false (writes nothing) otherwise, so the
@@ -66,7 +72,8 @@ export async function handleOnboardingRoute(
     }
     const analysis = await analyzeRepository({
       repoPath,
-      handoffText: String(body.handoffText ?? '')
+      handoffText: String(body.handoffText ?? ''),
+      resolution: body.resolution ?? null
     })
     if (!analysis.ok) {
       json(res, 422, analysis)
@@ -100,6 +107,32 @@ export async function handleOnboardingRoute(
     return true
   }
 
+  // POST /api/onboarding/resolve { repoPath, handoffText?, resolution: { mode } }
+  // — V1 stabilization finding: the onboarding reconciliation deadlock. A
+  // handoff/live-repo conflict could be detected but never resolved through
+  // any UI control, and every downstream toggle stayed disabled forever.
+  // Read-only, same as /analyze's own facts; never re-runs the live planner
+  // or touches Orca/TSF-state persistence.
+  if (parts[2] === 'resolve' && req.method === 'POST') {
+    const body = await readBody(req)
+    const repoPath = String(body.repoPath ?? '').trim()
+    if (!repoPath) {
+      json(res, 400, { ok: false, error: 'repoPath is required' })
+      return true
+    }
+    const result = await resolveReconciliation({
+      repoPath,
+      handoffText: String(body.handoffText ?? ''),
+      resolution: body.resolution
+    })
+    if (!result.ok) {
+      json(res, 422, result)
+      return true
+    }
+    json(res, 200, result)
+    return true
+  }
+
   // POST /api/onboarding/retry-direction { repoPath, handoffText? } —
   // standalone "Retry direction analysis" action (M7 real-migration finding,
   // defect 4): re-runs only the live planner call against freshly re-read
@@ -111,7 +144,11 @@ export async function handleOnboardingRoute(
       json(res, 400, { ok: false, error: 'repoPath is required' })
       return true
     }
-    const result = await retryDirectionAnalysis({ repoPath, handoffText: String(body.handoffText ?? '') })
+    const result = await retryDirectionAnalysis({
+      repoPath,
+      handoffText: String(body.handoffText ?? ''),
+      resolution: body.resolution ?? null
+    })
     if (!result.ok) {
       json(res, 422, result)
       return true
@@ -130,7 +167,7 @@ export async function handleOnboardingRoute(
     }
     try {
       const existingRecord = opState.onboardedProjects[analysis.projectId]
-      const { portfolio, receipt, orcaRegistration } = await commitOnboarding({
+      const { portfolio, receipt, orcaRegistration, knownProjects } = await commitOnboarding({
         portfolio: opState.portfolio,
         analysis,
         addTo: body.addTo ?? {},
@@ -152,16 +189,27 @@ export async function handleOnboardingRoute(
             }
           }
         : analysis
-      const onboardedProjects = {
-        ...opState.onboardedProjects,
-        [analysis.projectId]: {
-          repoPath: analysis.repoPath,
-          lastAnalysis: settledAnalysis,
-          receipts: [...(existingRecord?.receipts ?? []), receipt],
-          acceptedAt: existingRecord?.acceptedAt ?? now,
-          refreshedAt: now
-        }
-      }
+      // V1 stabilization finding: this projection is what /api/projects
+      // actually reads (see http-server.mjs's `onboarded` list) — it must
+      // stay in lockstep with commitOnboarding's own Known Projects gating.
+      // Previously this always recorded/refreshed an entry regardless of
+      // `knownProjects`, so a genuinely identity-ambiguous project — one
+      // commitOnboarding itself just refused to register — could still
+      // appear as a real project (or a previously-known project's record
+      // could be overwritten by a since-refused analysis). A refused commit
+      // leaves any existing record untouched and creates no new one.
+      const onboardedProjects = knownProjects
+        ? {
+            ...opState.onboardedProjects,
+            [analysis.projectId]: {
+              repoPath: analysis.repoPath,
+              lastAnalysis: settledAnalysis,
+              receipts: [...(existingRecord?.receipts ?? []), receipt],
+              acceptedAt: existingRecord?.acceptedAt ?? now,
+              refreshedAt: now
+            }
+          }
+        : opState.onboardedProjects
       saveState({ ...opState, portfolio, onboardedProjects })
       json(res, 200, {
         ok: true,

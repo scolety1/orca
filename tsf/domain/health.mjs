@@ -123,13 +123,38 @@ export function assessRepositoryOnboardingHealth(facts, clock) {
     )
   }
 
-  // Source-of-truth ambiguity
+  // Real onboarding evidence (WorldForge real-migration case): a linked Git
+  // worktree is a bounded workstream, not the project's canonical checkout
+  // — worth an honest, non-blocking heads-up so it isn't mistaken for "the
+  // project root" purely because it's the path that got selected.
+  if (facts.isLinkedWorktree) {
+    add(
+      'REPOSITORY_IS_LINKED_WORKTREE',
+      'HEALTHY_WITH_CAVEATS',
+      'This repository is a linked Git worktree, not the canonical project checkout.',
+      `It is a bounded workstream on branch \`${facts.branch ?? 'unknown'}\`${facts.worktreeSiblingCount ? `, one of ${facts.worktreeSiblingCount} worktree(s) sharing the same admin directory` : ''} — confirm this is the intended location before treating it as the project's main identity.`,
+      { gitDir: facts.gitDir ?? null, siblingCount: facts.worktreeSiblingCount ?? null }
+    )
+  }
+
+  // Source-of-truth ambiguity. `facts.handoffConflict` here is the
+  // EFFECTIVE conflict (see reconcileHandoff/classifyMigration) — once
+  // resolved, this becomes a lighter, non-blocking note rather than
+  // disappearing silently, so the resolution itself stays visible.
   if (facts.handoffConflict) {
     add(
       'HANDOFF_REPOSITORY_MISMATCH',
       'NEEDS_ATTENTION',
       'The migration handoff disagrees with observed repository state.',
       'An authoritative source must be chosen before trusting handoff claims.',
+      { summary: facts.handoffConflictSummary ?? null }
+    )
+  } else if (facts.handoffWasResolved) {
+    add(
+      'HANDOFF_REPOSITORY_MISMATCH_RESOLVED',
+      'HEALTHY_WITH_CAVEATS',
+      'A handoff/repository discrepancy was resolved by the operator.',
+      'The original handoff text is preserved as historical evidence.',
       { summary: facts.handoffConflictSummary ?? null }
     )
   }

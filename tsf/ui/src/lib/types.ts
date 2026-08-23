@@ -1,9 +1,22 @@
+import type {
+  HandoffReconciliation,
+  MigrationClassification,
+  OrcaRegistrationStatus,
+  UpgradeCandidate
+} from './onboarding-types'
+
 export type SourceClass = 'REAL' | 'FIXTURE' | 'SYSTEM' | 'INTERNAL'
 export type HealthStatus = 'HEALTHY' | 'UNKNOWN' | 'DEGRADED' | 'BLOCKED'
 export type DecisionClass = 'AUTO_DECIDE' | 'RECOMMEND_AND_PROCEED' | 'TIM_REQUIRED'
-export type CandidateState = 'READY_FOR_ADOPTION' | 'ADOPTED' | 'REJECTED' | 'REVISION_REQUESTED' | 'BLOCKED' | 'NOT_READY'
+export type CandidateState =
+  | 'READY_FOR_ADOPTION'
+  | 'ADOPTED'
+  | 'REJECTED'
+  | 'REVISION_REQUESTED'
+  | 'BLOCKED'
+  | 'NOT_READY'
 
-export interface HealthFinding {
+export type HealthFinding = {
   code: string
   status: string
   summary: string
@@ -11,7 +24,7 @@ export interface HealthFinding {
   evidence?: Record<string, unknown>
 }
 
-export interface Health {
+export type Health = {
   schemaVersion: string
   status: HealthStatus
   findings: HealthFinding[]
@@ -19,13 +32,13 @@ export interface Health {
   authority: string
 }
 
-export interface ReleaseRef {
+export type ReleaseRef = {
   head: string | null
   tree: string | null
   branch?: string | null
 }
 
-export interface Release {
+export type Release = {
   stable: ReleaseRef
   previousStable: ReleaseRef | null
   upgrade: ReleaseRef | null
@@ -34,22 +47,29 @@ export interface Release {
   published: string
 }
 
-export interface Mission {
+export type Mission = {
   id: string | null
   state: string
   blockedReason: string | null
 }
 
-export interface ResultCapsuleView {
+export type ResultCapsuleView = {
   id: string | null
   status: string
   filesChanged: string[]
-  testsRun: Array<{ command?: string; passed?: number; failed?: number; exitCode?: number }>
+  testsRun: { command?: string; passed?: number; failed?: number; exitCode?: number }[]
   implementationSummary: string | null
-  workerIdentity: { orcaSessionId?: string; worktreeId?: string | null; role?: string; providerId?: string; agentId?: string; modelObserved?: string } | null
+  workerIdentity: {
+    orcaSessionId?: string
+    worktreeId?: string | null
+    role?: string
+    providerId?: string
+    agentId?: string
+    modelObserved?: string
+  } | null
 }
 
-export interface CandidateView {
+export type CandidateView = {
   id: string
   projectId: string
   missionId: string | null
@@ -66,7 +86,7 @@ export interface CandidateView {
   residualRisks: string | null
 }
 
-export interface ReceiptEntry {
+export type ReceiptEntry = {
   kind: string
   timestamp: string
   receiptHash: string
@@ -74,10 +94,15 @@ export interface ReceiptEntry {
   chainValid: boolean
   decision: string | null
   result: string | null
-  execution: { role: string | null; providerId: string | null; agentId: string | null; modelObserved: string | null }
+  execution: {
+    role: string | null
+    providerId: string | null
+    agentId: string | null
+    modelObserved: string | null
+  }
 }
 
-export interface ProjectCard {
+export type ProjectCard = {
   id: string
   displayName: string
   sourceClass: SourceClass
@@ -90,7 +115,7 @@ export interface ProjectCard {
   candidateState: CandidateState | null
 }
 
-export interface ProjectDetail {
+export type ProjectDetail = {
   id: string
   displayName: string
   sourceClass: SourceClass
@@ -120,7 +145,7 @@ export interface ProjectDetail {
   candidate: CandidateView | null
 }
 
-export interface OnboardingSummary {
+export type OnboardingSummary = {
   maturity: string
   migrationClassification: MigrationClassification
   upgradeCandidates: UpgradeCandidate[]
@@ -133,21 +158,26 @@ export interface OnboardingSummary {
   directionLive: boolean
 }
 
-export interface Portfolio {
+export type Portfolio = {
   usageMode: string
   workSet: string[]
   activeFleet: string[]
   knownProjects: ProjectCard[]
 }
 
-export interface WorkSummary {
+export type WorkSummary = {
   active: ProjectDetail[]
   blocked: ProjectDetail[]
   readyForAdoption: ProjectDetail[]
-  recentlyCompleted: Array<{ id: string; displayName: string; missionId: string | null; adoptedAt: string | null }>
+  recentlyCompleted: {
+    id: string
+    displayName: string
+    missionId: string | null
+    adoptedAt: string | null
+  }[]
 }
 
-export interface UsageModeConfig {
+export type UsageModeConfig = {
   plannerTier: string
   workerTier: string
   verifierDepth: string
@@ -160,14 +190,22 @@ export interface UsageModeConfig {
   highAssuranceChecks: boolean
 }
 
-export interface RoutingInfo {
+export type RoutingInfo = {
   usageModes: Record<string, UsageModeConfig>
   reservedModes: string[]
-  providerRoles: Record<string, { preferredProfile: string; fallbackProfile: string | null; modelClass: string; effortClass: string }>
+  providerRoles: Record<
+    string,
+    {
+      preferredProfile: string
+      fallbackProfile: string | null
+      modelClass: string
+      effortClass: string
+    }
+  >
   activeUsageMode: string
 }
 
-export interface ChatResponse {
+export type ChatResponse = {
   intent: string
   decisionClass: DecisionClass
   text: string
@@ -180,12 +218,12 @@ export interface ChatResponse {
   unavailableReason?: string
 }
 
-export interface ChatAttachmentMeta {
+export type ChatAttachmentMeta = {
   name: string
   type: string
 }
 
-export interface ChatMessage {
+export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
   at: string
@@ -193,171 +231,9 @@ export interface ChatMessage {
   intent?: string
 }
 
-export interface AgentEvidence {
+export type AgentEvidence = {
   projectId: string
-  sessions: Array<Record<string, unknown>>
+  sessions: Record<string, unknown>[]
   worktrees: string[]
   note: string
-}
-
-// --- Project Onboarding V1 ---
-
-export type MigrationClassificationLabel = 'SAFE_TO_ONBOARD_NOW' | 'READ_ONLY_ONBOARDING_ONLY' | 'DIRTY_PRESERVE' | 'SENSITIVE' | 'NOT_READY' | 'TIM_REQUIRED'
-
-export interface MigrationClassification {
-  classification: MigrationClassificationLabel
-  reasons: string[]
-  evidence: Record<string, unknown>
-}
-
-export interface PortfolioGatingRule {
-  allowed: boolean
-  default: boolean
-}
-
-export interface PortfolioGating {
-  knownProjects: PortfolioGatingRule
-  activeFleet: PortfolioGatingRule
-  workSet: PortfolioGatingRule
-}
-
-export interface HandoffReconciliation {
-  hasHandoff: boolean
-  claims: Array<{ field: string; claimed: string }>
-  discrepancies: string[]
-  agreements: string[]
-  hasConflict?: boolean
-}
-
-export type OrcaStatusLabel = 'REGISTERED' | 'NOT_REGISTERED' | 'ORCA_TEMPORARILY_UNAVAILABLE' | 'ORCA_UNKNOWN'
-
-export interface OrcaRegistrationStatus {
-  checked: boolean
-  registered: boolean
-  repo?: Record<string, unknown> | null
-  reason?: string
-  detail?: string
-  status?: OrcaStatusLabel
-}
-
-export interface UpgradeCandidate {
-  title: string
-  rationale: string
-  evidence?: string
-  category: string
-  importance: 'LOW' | 'MEDIUM' | 'HIGH'
-  confidence: 'LOW' | 'MEDIUM' | 'HIGH'
-  blocksCurrentWork: boolean
-  safeToDefer: boolean
-}
-
-export interface OnboardingHealthFinding {
-  code: string
-  status: 'HEALTHY' | 'HEALTHY_WITH_CAVEATS' | 'NEEDS_ATTENTION' | 'BLOCKED' | 'UNKNOWN'
-  summary: string
-  remediation: string
-  evidence?: Record<string, unknown>
-}
-
-export interface OnboardingHealth {
-  status: 'HEALTHY' | 'HEALTHY_WITH_CAVEATS' | 'NEEDS_ATTENTION' | 'BLOCKED' | 'UNKNOWN'
-  findings: OnboardingHealthFinding[]
-  observedAt: string
-  authority: string
-}
-
-export interface OnboardingDirection {
-  live: boolean
-  providerLabel: string
-  unavailableReason?: string
-  unavailableDetail?: string
-  purpose: string | null
-  completedSummary: string | null
-  unfinishedSummary: string | null
-  alignment: string
-  alignmentRationale?: string
-  recommendedNextMission: { title: string; rationale: string } | null
-  upgradeCandidates: UpgradeCandidate[]
-}
-
-export interface OnboardingAnalysis {
-  ok: true
-  schemaVersion: string
-  analyzedAt: string
-  projectId: string
-  displayName: string
-  repoPath: string
-  existingProjectId?: string | null
-  identity: { root: string; gitDir: string; branch: string | null; detached: boolean; head: string | null; tree: string | null; remotes: Array<{ name: string; url: string; direction: string }>; commitCount: number | null }
-  currentState: {
-    dirty: boolean
-    staged: string[]
-    unstaged: string[]
-    untracked: string[]
-    untrackedTruncated: boolean
-    conflicted: string[]
-    activeGitOperation: boolean
-    activeGitOperationKind: string | null
-    recentCommits: Array<{ sha: string; short: string; date: string; author: string; subject: string }>
-    localBranches: Array<{ name: string; lastCommitAt: string }>
-    worktrees: Array<Record<string, unknown>>
-  }
-  maturity: string
-  health: OnboardingHealth
-  migrationClassification: MigrationClassification
-  portfolioGating: PortfolioGating
-  handoffReconciliation: HandoffReconciliation
-  orcaRegistration: OrcaRegistrationStatus
-  discovery: {
-    priorityFiles: Array<{ relativePath: string; kind: string; truncated: boolean; bytes: number }>
-    discoveredDirectories: Array<{ relativePath: string; fileCount: number }>
-    scanTruncated: boolean
-    commandGuidance: { packageManager: string; dependenciesInstalled: boolean; testCommands: string[]; buildCommands: string[]; lintCommands: string[]; devCommands: string[]; hasKnownTestCommand: boolean }
-  }
-  direction: OnboardingDirection
-}
-
-export interface OnboardingAnalysisError {
-  ok: false
-  reason: string
-  detail?: string
-}
-
-export interface OnboardingCommitResult {
-  ok: true
-  projectId: string
-  receipt: Record<string, unknown>
-  orcaRegistration: { attempted: boolean; ok: boolean; alreadyRegistered?: boolean; repo?: Record<string, unknown> | null; reason?: string; detail?: string } | null
-  activeFleet: boolean
-  workSet: boolean
-}
-
-export interface OrcaStatusRefreshResult {
-  ok: true
-  orcaRegistration: OrcaRegistrationStatus
-}
-
-export interface DirectionRetryResult {
-  ok: true
-  direction: OnboardingDirection
-}
-
-export interface OnboardingRefreshResult {
-  ok: true
-  analysis: OnboardingAnalysis
-  changes: {
-    headMoved: boolean
-    dirtyStateChanged: boolean
-    healthStatusChanged: boolean
-    migrationClassificationChanged: boolean
-    recommendedNextMissionChanged: boolean
-    deploymentSensitivityChanged: boolean
-  }
-}
-
-export interface DirectoryBrowseResult {
-  ok: true
-  path: string
-  parent: string | null
-  directories: string[]
 }

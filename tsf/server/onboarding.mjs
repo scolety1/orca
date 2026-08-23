@@ -5,8 +5,20 @@
 // writes to the target repository, Orca, or TSF state — that's the whole
 // point of the read-only-first design in the mission brief.
 import path from 'node:path'
-import { snapshotRepository, discoverProjectFiles, discoverCommandGuidance, boundedUntrackedDirectorySizes } from './repo-inspector.mjs'
-import { classifyMigration, portfolioGatingForClassification, reconcileHandoff, buildOnboardingReceipt } from '../domain/onboarding.mjs'
+import {
+  snapshotRepository,
+  discoverProjectFiles,
+  discoverCommandGuidance,
+  boundedUntrackedDirectorySizes
+} from './repo-inspector.mjs'
+import {
+  classifyMigration,
+  portfolioGatingForClassification,
+  reconcileHandoff,
+  buildOnboardingReceipt,
+  isLinkedWorktreeGitDir,
+  RECONCILIATION_RESOLUTION_MODES
+} from '../domain/onboarding.mjs'
 import { assessRepositoryOnboardingHealth } from '../domain/health.mjs'
 import { invokeLiveStructuredAnalysis, providerLabel, fallbackLabel } from './live-planner.mjs'
 import { findRegisteredOrcaRepo, registerOrcaRepo } from '../adapters/orca-cli-bridge.mjs'
@@ -15,7 +27,14 @@ import { registerProject, setActiveFleet, setWorkSet } from '../domain/portfolio
 const DIRECTION_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['purpose', 'completedSummary', 'unfinishedSummary', 'alignment', 'recommendedNextMission', 'upgradeCandidates'],
+  required: [
+    'purpose',
+    'completedSummary',
+    'unfinishedSummary',
+    'alignment',
+    'recommendedNextMission',
+    'upgradeCandidates'
+  ],
   properties: {
     purpose: { type: 'string' },
     completedSummary: { type: 'string' },
@@ -33,12 +52,33 @@ const DIRECTION_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['title', 'rationale', 'category', 'importance', 'confidence', 'blocksCurrentWork', 'safeToDefer'],
+        required: [
+          'title',
+          'rationale',
+          'category',
+          'importance',
+          'confidence',
+          'blocksCurrentWork',
+          'safeToDefer'
+        ],
         properties: {
           title: { type: 'string' },
           rationale: { type: 'string' },
           evidence: { type: 'string' },
-          category: { type: 'string', enum: ['PRODUCT_UX', 'RELIABILITY', 'ARCHITECTURE', 'TEST_COVERAGE', 'DEVELOPER_TOOLING', 'PERFORMANCE', 'SECURITY', 'RESEARCH', 'OPERATOR_WORKFLOW'] },
+          category: {
+            type: 'string',
+            enum: [
+              'PRODUCT_UX',
+              'RELIABILITY',
+              'ARCHITECTURE',
+              'TEST_COVERAGE',
+              'DEVELOPER_TOOLING',
+              'PERFORMANCE',
+              'SECURITY',
+              'RESEARCH',
+              'OPERATOR_WORKFLOW'
+            ]
+          },
           importance: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'] },
           confidence: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'] },
           blocksCurrentWork: { type: 'boolean' },
@@ -58,11 +98,13 @@ const DIRECTION_SYSTEM_PROMPT = [
 ].join('\n')
 
 function slugify(name) {
-  return String(name || 'project')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64) || 'project'
+  return (
+    String(name || 'project')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64) || 'project'
+  )
 }
 
 // Simple, deterministic maturity signal from concrete facts — not an LLM
@@ -70,31 +112,74 @@ function slugify(name) {
 function assessMaturity({ snapshot, hasReadme, hasTestCommand, hasInstructions }) {
   const commits = snapshot.commitCount ?? 0
   const signals = [hasReadme, hasTestCommand, hasInstructions, commits >= 10].filter(Boolean).length
-  if (commits === 0) return 'UNINITIALIZED'
-  if (commits < 5 || signals <= 1) return 'EARLY'
-  if (signals >= 3 && commits >= 20) return 'ESTABLISHED'
+  if (commits === 0) {
+    return 'UNINITIALIZED'
+  }
+  if (commits < 5 || signals <= 1) {
+    return 'EARLY'
+  }
+  if (signals >= 3 && commits >= 20) {
+    return 'ESTABLISHED'
+  }
   return 'DEVELOPING'
 }
 
-function buildDirectionPrompt({ snapshot, discovery, commandGuidance, reconciliation, health, migration }) {
+function buildDirectionPrompt({
+  snapshot,
+  discovery,
+  commandGuidance,
+  reconciliation,
+  health,
+  migration
+}) {
   const readme = discovery.priorityFiles.find((f) => f.kind === 'README')
   const agents = discovery.priorityFiles.find((f) => f.kind === 'AGENTS')
   const claude = discovery.priorityFiles.find((f) => f.kind === 'CLAUDE')
   const roadmap = discovery.priorityFiles.filter((f) => f.kind === 'ROADMAP')
   const facts = {
-    repository: { branch: snapshot.branch, head: snapshot.head?.slice(0, 10), dirty: snapshot.dirty, commitCount: snapshot.commitCount, recentCommits: snapshot.recentCommits.slice(0, 8).map((c) => ({ subject: c.subject, date: c.date })) },
-    discoveredDocs: discovery.priorityFiles.map((f) => ({ path: f.relativePath, kind: f.kind, truncated: f.truncated })),
+    repository: {
+      branch: snapshot.branch,
+      head: snapshot.head?.slice(0, 10),
+      dirty: snapshot.dirty,
+      commitCount: snapshot.commitCount,
+      recentCommits: snapshot.recentCommits
+        .slice(0, 8)
+        .map((c) => ({ subject: c.subject, date: c.date }))
+    },
+    discoveredDocs: discovery.priorityFiles.map((f) => ({
+      path: f.relativePath,
+      kind: f.kind,
+      truncated: f.truncated
+    })),
     discoveredDirectories: discovery.discoveredDirectories,
-    commandGuidance: { packageManager: commandGuidance.packageManager, testCommands: commandGuidance.testCommands, buildCommands: commandGuidance.buildCommands, hasKnownTestCommand: commandGuidance.hasKnownTestCommand },
-    health: { status: health.status, findings: health.findings.map((f) => ({ code: f.code, status: f.status, summary: f.summary })) },
+    commandGuidance: {
+      packageManager: commandGuidance.packageManager,
+      testCommands: commandGuidance.testCommands,
+      buildCommands: commandGuidance.buildCommands,
+      hasKnownTestCommand: commandGuidance.hasKnownTestCommand
+    },
+    health: {
+      status: health.status,
+      findings: health.findings.map((f) => ({ code: f.code, status: f.status, summary: f.summary }))
+    },
     migrationClassification: migration.classification,
-    handoffReconciliation: reconciliation.hasHandoff ? { discrepancies: reconciliation.discrepancies, agreements: reconciliation.agreements } : null
+    handoffReconciliation: reconciliation.hasHandoff
+      ? { discrepancies: reconciliation.discrepancies, agreements: reconciliation.agreements }
+      : null
   }
   const excerpts = [
-    readme ? `=== README.md (excerpt${readme.truncated ? ', truncated' : ''}) ===\n${readme.text}` : null,
-    agents ? `=== AGENTS.md (excerpt${agents.truncated ? ', truncated' : ''}) ===\n${agents.text}` : null,
-    claude ? `=== CLAUDE.md (excerpt${claude.truncated ? ', truncated' : ''}) ===\n${claude.text}` : null,
-    ...roadmap.map((f) => `=== ${f.relativePath} (excerpt${f.truncated ? ', truncated' : ''}) ===\n${f.text}`)
+    readme
+      ? `=== README.md (excerpt${readme.truncated ? ', truncated' : ''}) ===\n${readme.text}`
+      : null,
+    agents
+      ? `=== AGENTS.md (excerpt${agents.truncated ? ', truncated' : ''}) ===\n${agents.text}`
+      : null,
+    claude
+      ? `=== CLAUDE.md (excerpt${claude.truncated ? ', truncated' : ''}) ===\n${claude.text}`
+      : null,
+    ...roadmap.map(
+      (f) => `=== ${f.relativePath} (excerpt${f.truncated ? ', truncated' : ''}) ===\n${f.text}`
+    )
   ].filter(Boolean)
 
   return [
@@ -108,9 +193,15 @@ function buildDirectionPrompt({ snapshot, discovery, commandGuidance, reconcilia
 }
 
 // Read-only. Never writes to the target repository, TSF state, or Orca.
-export async function analyzeRepository({ repoPath, handoffText = '' }) {
+// `resolution` (optional): an explicit operator choice among
+// RECONCILIATION_RESOLUTION_MODES, re-applied to a fresh reconciliation —
+// see reconcileHandoff/classifyMigration in domain/onboarding.mjs for what
+// this actually changes (never what `snapshot` itself reports).
+export async function analyzeRepository({ repoPath, handoffText = '', resolution = null }) {
   const snapshot = await snapshotRepository(repoPath)
-  if (!snapshot.ok) return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
+  if (!snapshot.ok) {
+    return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
+  }
 
   const discovery = await discoverProjectFiles(snapshot.root)
   const packageJson = discovery.priorityFiles.find((f) => f.relativePath === 'package.json')
@@ -123,27 +214,40 @@ export async function analyzeRepository({ repoPath, handoffText = '' }) {
   const deploymentFiles = discovery.priorityFiles.filter((f) => f.kind === 'DEPLOYMENT_CONFIG')
   const hasPackageManifest = discovery.priorityFiles.some((f) => f.kind === 'PACKAGE_MANIFEST')
 
-  const reconciliation = reconcileHandoff({ handoffText, repoFacts: snapshot })
+  const reconciliation = reconcileHandoff({ handoffText, repoFacts: snapshot, resolution })
 
   const migration = classifyMigration({
     gitRepositoryFound: true,
     repositoryUnavailable: false,
     // Full tracked-file list, not just today's dirty diff — a sensitive file
     // already committed and sitting clean must still be detected.
-    trackedAndUntrackedPaths: [...new Set([...snapshot.trackedFiles, ...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked])],
+    trackedAndUntrackedPaths: [
+      ...new Set([
+        ...snapshot.trackedFiles,
+        ...snapshot.staged,
+        ...snapshot.unstaged,
+        ...snapshot.untracked
+      ])
+    ],
     readmeExcerpt: readmeFile?.text,
     instructionsExcerpt: [agentsFile?.text, claudeFile?.text].filter(Boolean).join('\n'),
     handoffText,
     declaredSensitive: false,
     activeGitOperation: snapshot.activeGitOperation,
     activeGitOperationKind: snapshot.activeGitOperationKind,
-    handoffConflict: reconciliation.hasConflict,
+    handoffConflict: reconciliation.effectiveConflict,
+    handoffIdentityAmbiguous: reconciliation.identityAmbiguous,
     handoffConflictSummary: reconciliation.discrepancies.join(' '),
     dirty: snapshot.dirty,
     stagedCount: snapshot.stagedCount,
     unstagedCount: snapshot.unstagedCount,
     untrackedCount: snapshot.untrackedCount,
-    discoveryConfidence: readmeFile || agentsFile || commandGuidance.hasKnownTestCommand ? 'HIGH' : discovery.priorityFiles.length ? 'MEDIUM' : 'LOW'
+    discoveryConfidence:
+      readmeFile || agentsFile || commandGuidance.hasKnownTestCommand
+        ? 'HIGH'
+        : discovery.priorityFiles.length
+          ? 'MEDIUM'
+          : 'LOW'
   })
 
   const health = assessRepositoryOnboardingHealth({
@@ -162,19 +266,36 @@ export async function analyzeRepository({ repoPath, handoffText = '' }) {
     hasInstructions: !!(agentsFile || claudeFile),
     hasPackageManifest,
     dependenciesInstalled: commandGuidance.dependenciesInstalled,
-    handoffConflict: reconciliation.hasConflict,
+    handoffConflict: reconciliation.effectiveConflict,
+    handoffWasResolved: reconciliation.hasConflict && !reconciliation.effectiveConflict,
     handoffConflictSummary: reconciliation.discrepancies.join(' '),
     deploymentConfigPresent: deploymentFiles.length > 0,
-    deploymentConfigFiles: deploymentFiles.map((f) => f.relativePath)
+    deploymentConfigFiles: deploymentFiles.map((f) => f.relativePath),
+    branch: snapshot.branch,
+    gitDir: snapshot.gitDir,
+    isLinkedWorktree: isLinkedWorktreeGitDir(snapshot.gitDir),
+    worktreeSiblingCount: snapshot.worktrees?.length ?? null
   })
 
-  const maturity = assessMaturity({ snapshot, hasReadme: !!readmeFile, hasTestCommand: commandGuidance.hasKnownTestCommand, hasInstructions: !!(agentsFile || claudeFile) })
+  const maturity = assessMaturity({
+    snapshot,
+    hasReadme: !!readmeFile,
+    hasTestCommand: commandGuidance.hasKnownTestCommand,
+    hasInstructions: !!(agentsFile || claudeFile)
+  })
 
   const orcaCheck = await findRegisteredOrcaRepo(snapshot.root)
 
   const direction = await invokeLiveStructuredAnalysis({
     systemPrompt: DIRECTION_SYSTEM_PROMPT,
-    prompt: buildDirectionPrompt({ snapshot, discovery, commandGuidance, reconciliation, health, migration }),
+    prompt: buildDirectionPrompt({
+      snapshot,
+      discovery,
+      commandGuidance,
+      reconciliation,
+      health,
+      migration
+    }),
     jsonSchema: DIRECTION_SCHEMA,
     // Schema-constrained multi-part reasoning genuinely takes longer than a
     // conversational chat turn (observed ~35s for a small repo, sometimes
@@ -200,7 +321,9 @@ export async function analyzeRepository({ repoPath, handoffText = '' }) {
       head: snapshot.head,
       tree: snapshot.tree,
       remotes: snapshot.remotes,
-      commitCount: snapshot.commitCount
+      commitCount: snapshot.commitCount,
+      isLinkedWorktree: isLinkedWorktreeGitDir(snapshot.gitDir),
+      worktreeSiblingCount: snapshot.worktrees?.length ?? null
     },
     currentState: {
       dirty: snapshot.dirty,
@@ -222,7 +345,12 @@ export async function analyzeRepository({ repoPath, handoffText = '' }) {
     handoffReconciliation: reconciliation,
     orcaRegistration: shapeOrcaRegistration(orcaCheck),
     discovery: {
-      priorityFiles: discovery.priorityFiles.map((f) => ({ relativePath: f.relativePath, kind: f.kind, truncated: f.truncated, bytes: f.bytes })),
+      priorityFiles: discovery.priorityFiles.map((f) => ({
+        relativePath: f.relativePath,
+        kind: f.kind,
+        truncated: f.truncated,
+        bytes: f.bytes
+      })),
       discoveredDirectories: discovery.discoveredDirectories,
       scanTruncated: discovery.scanTruncated,
       commandGuidance
@@ -235,8 +363,23 @@ export async function analyzeRepository({ repoPath, handoffText = '' }) {
 // path never drift into three slightly different "unavailable" shapes.
 function shapeDirection(direction) {
   return direction.ok
-    ? { ...direction.data, live: true, providerLabel: providerLabel({ agentId: direction.agentId, model: direction.model }) }
-    : { live: false, providerLabel: fallbackLabel(direction.reason), unavailableReason: direction.reason, unavailableDetail: direction.detail, purpose: null, completedSummary: null, unfinishedSummary: null, alignment: 'UNKNOWN', recommendedNextMission: null, upgradeCandidates: [] }
+    ? {
+        ...direction.data,
+        live: true,
+        providerLabel: providerLabel({ agentId: direction.agentId, model: direction.model })
+      }
+    : {
+        live: false,
+        providerLabel: fallbackLabel(direction.reason),
+        unavailableReason: direction.reason,
+        unavailableDetail: direction.detail,
+        purpose: null,
+        completedSummary: null,
+        unfinishedSummary: null,
+        alignment: 'UNKNOWN',
+        recommendedNextMission: null,
+        upgradeCandidates: []
+      }
 }
 
 // Real M7 migration finding: onboarding showed "Orca: unknown (Orca
@@ -250,8 +393,19 @@ function shapeDirection(direction) {
 // CLI found). Never fabricates `registered: true` in any branch.
 function shapeOrcaRegistration(orcaCheck) {
   return orcaCheck.ok
-    ? { checked: true, registered: orcaCheck.registered, repo: orcaCheck.repo, status: orcaCheck.status }
-    : { checked: false, registered: false, reason: orcaCheck.reason, detail: orcaCheck.detail, status: orcaCheck.status }
+    ? {
+        checked: true,
+        registered: orcaCheck.registered,
+        repo: orcaCheck.repo,
+        status: orcaCheck.status
+      }
+    : {
+        checked: false,
+        registered: false,
+        reason: orcaCheck.reason,
+        detail: orcaCheck.detail,
+        status: orcaCheck.status
+      }
 }
 
 // Standalone "Refresh Orca status" action: re-checks registration alone,
@@ -265,44 +419,68 @@ export async function refreshOrcaRegistrationStatus(repoPath) {
   return { ok: true, orcaRegistration: shapeOrcaRegistration(orcaCheck) }
 }
 
-// Standalone "Retry direction analysis" action: re-runs only the live
-// planner call against freshly re-read (cheap, filesystem-only) repository
-// facts — never re-persists anything, never touches Orca registration. Lets
-// Tim retry a PROVIDER_ERROR/timeout without waiting through the entire
-// analysis again, and without ever fabricating a next mission if the
-// planner is still down.
-export async function retryDirectionAnalysis({ repoPath, handoffText = '' }) {
+// Standalone "resolve reconciliation" action (V1 stabilization finding: the
+// onboarding deadlock — a handoff/live-repo conflict with no UI control to
+// ever resolve it). Re-reads only the cheap, Git/filesystem facts (never the
+// live planner) and re-applies classification/gating/health with the
+// operator's explicit resolution choice — never re-persists anything, never
+// touches Orca registration, and never lets the handoff override live Git
+// truth for any of the current-state facts themselves (see
+// reconcileHandoff in domain/onboarding.mjs).
+export async function resolveReconciliation({ repoPath, handoffText = '', resolution }) {
+  if (!RECONCILIATION_RESOLUTION_MODES.includes(resolution?.mode)) {
+    return {
+      ok: false,
+      reason: 'INVALID_RESOLUTION_MODE',
+      detail: `resolution.mode must be one of ${RECONCILIATION_RESOLUTION_MODES.join(', ')}`
+    }
+  }
   const snapshot = await snapshotRepository(repoPath)
-  if (!snapshot.ok) return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
+  if (!snapshot.ok) {
+    return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
+  }
 
   const discovery = await discoverProjectFiles(snapshot.root)
-  const packageJson = discovery.priorityFiles.find((f) => f.relativePath === 'package.json')
-  const commandGuidance = discoverCommandGuidance(snapshot.root, packageJson?.text)
   const readmeFile = discovery.priorityFiles.find((f) => f.kind === 'README')
   const agentsFile = discovery.priorityFiles.find((f) => f.kind === 'AGENTS')
   const claudeFile = discovery.priorityFiles.find((f) => f.kind === 'CLAUDE')
   const deploymentFiles = discovery.priorityFiles.filter((f) => f.kind === 'DEPLOYMENT_CONFIG')
   const hasPackageManifest = discovery.priorityFiles.some((f) => f.kind === 'PACKAGE_MANIFEST')
+  const packageJson = discovery.priorityFiles.find((f) => f.relativePath === 'package.json')
+  const commandGuidance = discoverCommandGuidance(snapshot.root, packageJson?.text)
   const largeUntracked = boundedUntrackedDirectorySizes(snapshot.root, snapshot.untracked)
 
-  const reconciliation = reconcileHandoff({ handoffText, repoFacts: snapshot })
+  const reconciliation = reconcileHandoff({ handoffText, repoFacts: snapshot, resolution })
   const migration = classifyMigration({
     gitRepositoryFound: true,
     repositoryUnavailable: false,
-    trackedAndUntrackedPaths: [...new Set([...snapshot.trackedFiles, ...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked])],
+    trackedAndUntrackedPaths: [
+      ...new Set([
+        ...snapshot.trackedFiles,
+        ...snapshot.staged,
+        ...snapshot.unstaged,
+        ...snapshot.untracked
+      ])
+    ],
     readmeExcerpt: readmeFile?.text,
     instructionsExcerpt: [agentsFile?.text, claudeFile?.text].filter(Boolean).join('\n'),
     handoffText,
     declaredSensitive: false,
     activeGitOperation: snapshot.activeGitOperation,
     activeGitOperationKind: snapshot.activeGitOperationKind,
-    handoffConflict: reconciliation.hasConflict,
+    handoffConflict: reconciliation.effectiveConflict,
+    handoffIdentityAmbiguous: reconciliation.identityAmbiguous,
     handoffConflictSummary: reconciliation.discrepancies.join(' '),
     dirty: snapshot.dirty,
     stagedCount: snapshot.stagedCount,
     unstagedCount: snapshot.unstagedCount,
     untrackedCount: snapshot.untrackedCount,
-    discoveryConfidence: readmeFile || agentsFile || commandGuidance.hasKnownTestCommand ? 'HIGH' : discovery.priorityFiles.length ? 'MEDIUM' : 'LOW'
+    discoveryConfidence:
+      readmeFile || agentsFile || commandGuidance.hasKnownTestCommand
+        ? 'HIGH'
+        : discovery.priorityFiles.length
+          ? 'MEDIUM'
+          : 'LOW'
   })
   const health = assessRepositoryOnboardingHealth({
     activeGitOperation: snapshot.activeGitOperation,
@@ -320,15 +498,117 @@ export async function retryDirectionAnalysis({ repoPath, handoffText = '' }) {
     hasInstructions: !!(agentsFile || claudeFile),
     hasPackageManifest,
     dependenciesInstalled: commandGuidance.dependenciesInstalled,
-    handoffConflict: reconciliation.hasConflict,
+    handoffConflict: reconciliation.effectiveConflict,
+    handoffWasResolved: reconciliation.hasConflict && !reconciliation.effectiveConflict,
     handoffConflictSummary: reconciliation.discrepancies.join(' '),
     deploymentConfigPresent: deploymentFiles.length > 0,
-    deploymentConfigFiles: deploymentFiles.map((f) => f.relativePath)
+    deploymentConfigFiles: deploymentFiles.map((f) => f.relativePath),
+    branch: snapshot.branch,
+    gitDir: snapshot.gitDir,
+    isLinkedWorktree: isLinkedWorktreeGitDir(snapshot.gitDir),
+    worktreeSiblingCount: snapshot.worktrees?.length ?? null
+  })
+
+  return {
+    ok: true,
+    migrationClassification: migration,
+    portfolioGating: portfolioGatingForClassification(migration.classification),
+    handoffReconciliation: reconciliation,
+    health
+  }
+}
+
+// Standalone "Retry direction analysis" action: re-runs only the live
+// planner call against freshly re-read (cheap, filesystem-only) repository
+// facts — never re-persists anything, never touches Orca registration. Lets
+// Tim retry a PROVIDER_ERROR/timeout without waiting through the entire
+// analysis again, and without ever fabricating a next mission if the
+// planner is still down.
+export async function retryDirectionAnalysis({ repoPath, handoffText = '', resolution = null }) {
+  const snapshot = await snapshotRepository(repoPath)
+  if (!snapshot.ok) {
+    return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
+  }
+
+  const discovery = await discoverProjectFiles(snapshot.root)
+  const packageJson = discovery.priorityFiles.find((f) => f.relativePath === 'package.json')
+  const commandGuidance = discoverCommandGuidance(snapshot.root, packageJson?.text)
+  const readmeFile = discovery.priorityFiles.find((f) => f.kind === 'README')
+  const agentsFile = discovery.priorityFiles.find((f) => f.kind === 'AGENTS')
+  const claudeFile = discovery.priorityFiles.find((f) => f.kind === 'CLAUDE')
+  const deploymentFiles = discovery.priorityFiles.filter((f) => f.kind === 'DEPLOYMENT_CONFIG')
+  const hasPackageManifest = discovery.priorityFiles.some((f) => f.kind === 'PACKAGE_MANIFEST')
+  const largeUntracked = boundedUntrackedDirectorySizes(snapshot.root, snapshot.untracked)
+
+  const reconciliation = reconcileHandoff({ handoffText, repoFacts: snapshot, resolution })
+  const migration = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: [
+      ...new Set([
+        ...snapshot.trackedFiles,
+        ...snapshot.staged,
+        ...snapshot.unstaged,
+        ...snapshot.untracked
+      ])
+    ],
+    readmeExcerpt: readmeFile?.text,
+    instructionsExcerpt: [agentsFile?.text, claudeFile?.text].filter(Boolean).join('\n'),
+    handoffText,
+    declaredSensitive: false,
+    activeGitOperation: snapshot.activeGitOperation,
+    activeGitOperationKind: snapshot.activeGitOperationKind,
+    handoffConflict: reconciliation.effectiveConflict,
+    handoffIdentityAmbiguous: reconciliation.identityAmbiguous,
+    handoffConflictSummary: reconciliation.discrepancies.join(' '),
+    dirty: snapshot.dirty,
+    stagedCount: snapshot.stagedCount,
+    unstagedCount: snapshot.unstagedCount,
+    untrackedCount: snapshot.untrackedCount,
+    discoveryConfidence:
+      readmeFile || agentsFile || commandGuidance.hasKnownTestCommand
+        ? 'HIGH'
+        : discovery.priorityFiles.length
+          ? 'MEDIUM'
+          : 'LOW'
+  })
+  const health = assessRepositoryOnboardingHealth({
+    activeGitOperation: snapshot.activeGitOperation,
+    activeGitOperationKind: snapshot.activeGitOperationKind,
+    conflicted: snapshot.conflicted,
+    detached: snapshot.detached,
+    dirty: snapshot.dirty,
+    stagedCount: snapshot.stagedCount,
+    unstagedCount: snapshot.unstagedCount,
+    untrackedCount: snapshot.untrackedCount,
+    missingWorktrees: [],
+    largeUntrackedDirectories: largeUntracked,
+    hasKnownTestCommand: commandGuidance.hasKnownTestCommand,
+    hasReadme: !!readmeFile,
+    hasInstructions: !!(agentsFile || claudeFile),
+    hasPackageManifest,
+    dependenciesInstalled: commandGuidance.dependenciesInstalled,
+    handoffConflict: reconciliation.effectiveConflict,
+    handoffWasResolved: reconciliation.hasConflict && !reconciliation.effectiveConflict,
+    handoffConflictSummary: reconciliation.discrepancies.join(' '),
+    deploymentConfigPresent: deploymentFiles.length > 0,
+    deploymentConfigFiles: deploymentFiles.map((f) => f.relativePath),
+    branch: snapshot.branch,
+    gitDir: snapshot.gitDir,
+    isLinkedWorktree: isLinkedWorktreeGitDir(snapshot.gitDir),
+    worktreeSiblingCount: snapshot.worktrees?.length ?? null
   })
 
   const direction = await invokeLiveStructuredAnalysis({
     systemPrompt: DIRECTION_SYSTEM_PROMPT,
-    prompt: buildDirectionPrompt({ snapshot, discovery, commandGuidance, reconciliation, health, migration }),
+    prompt: buildDirectionPrompt({
+      snapshot,
+      discovery,
+      commandGuidance,
+      reconciliation,
+      health,
+      migration
+    }),
     jsonSchema: DIRECTION_SCHEMA,
     timeoutOverrideMs: 180000
   })
@@ -341,9 +621,21 @@ export async function retryDirectionAnalysis({ repoPath, handoffText = '' }) {
 // analysis — registration is the one write-adjacent action onboarding is
 // allowed to take automatically (section 17), and it only registers repo
 // metadata in Orca, never touches Git or creates a worktree.
-export async function commitOnboarding({ portfolio, analysis, addTo, previousReceiptHash = null, clock }) {
+export async function commitOnboarding({
+  portfolio,
+  analysis,
+  addTo,
+  previousReceiptHash = null,
+  clock
+}) {
   const gating = portfolioGatingForClassification(analysis.migrationClassification.classification)
-  const wantsKnown = addTo?.knownProjects !== false
+  // Real gap this closes (V1 stabilization finding): Known Projects was
+  // never actually enforced server-side against its own gating rule — only
+  // the Review screen's checkbox `disabled` attribute stopped a blocked
+  // classification (e.g. genuine repository-identity ambiguity) from being
+  // recorded as Known. Active Fleet/Work Set were already checked this way;
+  // Known Projects must be symmetric.
+  const wantsKnown = addTo?.knownProjects !== false && gating.knownProjects.allowed
   const wantsActiveFleet = !!addTo?.activeFleet && gating.activeFleet.allowed
   const wantsWorkSet = !!addTo?.workSet && gating.workSet.allowed && wantsActiveFleet
 
@@ -352,14 +644,25 @@ export async function commitOnboarding({ portfolio, analysis, addTo, previousRec
   if (wantsKnown && !alreadyKnown) {
     nextPortfolio = registerProject(
       nextPortfolio,
-      { id: analysis.projectId, displayName: analysis.displayName, root: analysis.repoPath, sourceClass: 'REAL', lifecycle: 'ONBOARDED', provenance: 'TSF_ONBOARDING_V1' },
+      {
+        id: analysis.projectId,
+        displayName: analysis.displayName,
+        root: analysis.repoPath,
+        sourceClass: 'REAL',
+        lifecycle: 'ONBOARDED',
+        provenance: 'TSF_ONBOARDING_V1'
+      },
       clock
     )
   }
   if (wantsKnown) {
-    const activeFleetIds = wantsActiveFleet ? [...new Set([...nextPortfolio.activeFleet, analysis.projectId])] : nextPortfolio.activeFleet.filter((id) => id !== analysis.projectId)
+    const activeFleetIds = wantsActiveFleet
+      ? [...new Set([...nextPortfolio.activeFleet, analysis.projectId])]
+      : nextPortfolio.activeFleet.filter((id) => id !== analysis.projectId)
     nextPortfolio = setActiveFleet(nextPortfolio, activeFleetIds, clock)
-    const workSetIds = wantsWorkSet ? [...new Set([...nextPortfolio.workSet, analysis.projectId])] : nextPortfolio.workSet.filter((id) => id !== analysis.projectId)
+    const workSetIds = wantsWorkSet
+      ? [...new Set([...nextPortfolio.workSet, analysis.projectId])]
+      : nextPortfolio.workSet.filter((id) => id !== analysis.projectId)
     nextPortfolio = setWorkSet(nextPortfolio, workSetIds, clock)
   }
 
@@ -367,7 +670,12 @@ export async function commitOnboarding({ portfolio, analysis, addTo, previousRec
   if (wantsKnown) {
     const registration = await registerOrcaRepo(analysis.repoPath)
     orcaRegistration = registration.ok
-      ? { attempted: true, ok: true, alreadyRegistered: !!registration.alreadyRegistered, repo: registration.repo }
+      ? {
+          attempted: true,
+          ok: true,
+          alreadyRegistered: !!registration.alreadyRegistered,
+          repo: registration.repo
+        }
       : { attempted: true, ok: false, reason: registration.reason, detail: registration.detail }
   }
 
@@ -377,9 +685,17 @@ export async function commitOnboarding({ portfolio, analysis, addTo, previousRec
     classification: analysis.migrationClassification.classification,
     addedTo: { knownProjects: wantsKnown, activeFleet: wantsActiveFleet, workSet: wantsWorkSet },
     orcaRegistration,
+    reconciliationResolution: analysis.handoffReconciliation?.resolution ?? null,
     previousReceiptHash,
     clock
   })
 
-  return { portfolio: nextPortfolio, receipt, orcaRegistration }
+  return {
+    portfolio: nextPortfolio,
+    receipt,
+    orcaRegistration,
+    knownProjects: wantsKnown,
+    activeFleet: wantsActiveFleet,
+    workSet: wantsWorkSet
+  }
 }

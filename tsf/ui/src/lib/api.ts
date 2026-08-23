@@ -17,13 +17,6 @@ import type {
   ChatAttachmentMeta,
   ChatMessage,
   ChatResponse,
-  DirectoryBrowseResult,
-  DirectionRetryResult,
-  OnboardingAnalysis,
-  OnboardingAnalysisError,
-  OnboardingCommitResult,
-  OnboardingRefreshResult,
-  OrcaStatusRefreshResult,
   Portfolio,
   ProjectCard,
   ProjectDetail,
@@ -31,6 +24,18 @@ import type {
   RoutingInfo,
   WorkSummary
 } from './types'
+import type {
+  DirectoryBrowseResult,
+  DirectionRetryResult,
+  OnboardingAnalysis,
+  OnboardingAnalysisError,
+  OnboardingCommitResult,
+  OnboardingRefreshResult,
+  OrcaStatusRefreshResult,
+  ReconciliationResolution,
+  ResolveReconciliationError,
+  ResolveReconciliationResult
+} from './onboarding-types'
 
 export class ApiError extends Error {
   status: number
@@ -118,11 +123,27 @@ export const api = {
     request<DirectoryBrowseResult>(
       `/onboarding/browse${dirPath ? `?path=${encodeURIComponent(dirPath)}` : ''}`
     ),
-  analyzeRepo: (repoPath: string, handoffText: string) =>
+  analyzeRepo: (
+    repoPath: string,
+    handoffText: string,
+    resolution: ReconciliationResolution | null = null
+  ) =>
     requestTolerant<OnboardingAnalysis, OnboardingAnalysisError>('/onboarding/analyze', {
       method: 'POST',
-      body: JSON.stringify({ repoPath, handoffText })
+      body: JSON.stringify({ repoPath, handoffText, resolution })
     }),
+  resolveReconciliation: (
+    repoPath: string,
+    handoffText: string,
+    resolution: ReconciliationResolution
+  ) =>
+    requestTolerant<ResolveReconciliationResult, ResolveReconciliationError>(
+      '/onboarding/resolve',
+      {
+        method: 'POST',
+        body: JSON.stringify({ repoPath, handoffText, resolution })
+      }
+    ),
   commitOnboarding: (
     analysis: OnboardingAnalysis,
     addTo: { knownProjects?: boolean; activeFleet?: boolean; workSet?: boolean }

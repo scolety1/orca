@@ -1,35 +1,88 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, CircleSlash, Folder, Loader2, Paperclip, RefreshCw, X } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
-import { CLASSIFICATION_META, classificationBadge, healthBadge, orcaStatusLabel, ProvenanceTag } from '@/lib/onboarding-labels'
-import { extractAttachmentContext, type MigrationContextAttachment } from '@/lib/migration-context-attachments'
-import type { DirectoryBrowseResult, OnboardingAnalysis, OnboardingAnalysisError, OnboardingCommitResult } from '@/lib/types'
+import {
+  extractAttachmentContext,
+  type MigrationContextAttachment
+} from '@/lib/migration-context-attachments'
+import { AddProjectRepositoryStep } from '@/components/onboarding/AddProjectRepositoryStep'
+import { AddProjectContextStep } from '@/components/onboarding/AddProjectContextStep'
+import {
+  AddProjectAnalysisErrorStep,
+  AddProjectReviewStep
+} from '@/components/onboarding/AddProjectReviewStep'
+import type {
+  DirectoryBrowseResult,
+  OnboardingAnalysis,
+  OnboardingAnalysisError,
+  OnboardingCommitResult,
+  ReconciliationResolutionMode
+} from '@/lib/onboarding-types'
 
 type Step = 'repository' | 'context' | 'analyzing' | 'review' | 'onboarded'
 
+// V1 stabilization finding (onboarding reconciliation deadlock): losing an
+// already-made resolution decision to an accidental reload/navigation would
+// reintroduce a milder version of the same problem this fix exists to
+// solve. sessionStorage is per-tab, best-effort only — never load-bearing
+// for anything durable (the real, permanent record is the committed
+// onboarding receipt persisted server-side).
+const WIZARD_STORAGE_KEY = 'tsf.addProject.wizardState.v1'
+
+function loadSavedWizardState(): {
+  step: Step
+  repoPath: string
+  handoffText: string
+  analysis: OnboardingAnalysis
+  addToKnown: boolean
+  addToActiveFleet: boolean
+  addToWorkSet: boolean
+} | null {
+  try {
+    const raw = sessionStorage.getItem(WIZARD_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+    const saved = JSON.parse(raw)
+    if (saved?.step === 'review' && saved.analysis?.ok) {
+      return saved
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function clearSavedWizardState() {
+  try {
+    sessionStorage.removeItem(WIZARD_STORAGE_KEY)
+  } catch {
+    // best-effort convenience only
+  }
+}
+
 export function AddProjectPage() {
   const navigate = useNavigate()
-  const [step, setStep] = useState<Step>('repository')
-  const [repoPath, setRepoPath] = useState('')
-  const [handoffText, setHandoffText] = useState('')
+  const restored = useState(loadSavedWizardState)[0]
+  const [step, setStep] = useState<Step>(restored?.step ?? 'repository')
+  const [repoPath, setRepoPath] = useState(restored?.repoPath ?? '')
+  const [handoffText, setHandoffText] = useState(restored?.handoffText ?? '')
   const [browseOpen, setBrowseOpen] = useState(false)
   const [browseResult, setBrowseResult] = useState<DirectoryBrowseResult | null>(null)
   const [browseError, setBrowseError] = useState<string | null>(null)
   const [browsing, setBrowsing] = useState(false)
 
-  const [analysis, setAnalysis] = useState<OnboardingAnalysis | null>(null)
+  const [analysis, setAnalysis] = useState<OnboardingAnalysis | null>(restored?.analysis ?? null)
   const [analysisError, setAnalysisError] = useState<OnboardingAnalysisError | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const [addToKnown, setAddToKnown] = useState(true)
-  const [addToActiveFleet, setAddToActiveFleet] = useState(false)
-  const [addToWorkSet, setAddToWorkSet] = useState(false)
+  const [addToKnown, setAddToKnown] = useState(restored?.addToKnown ?? true)
+  const [addToActiveFleet, setAddToActiveFleet] = useState(restored?.addToActiveFleet ?? false)
+  const [addToWorkSet, setAddToWorkSet] = useState(restored?.addToWorkSet ?? false)
   const [committing, setCommitting] = useState(false)
   const [commitResult, setCommitResult] = useState<OnboardingCommitResult | null>(null)
 
@@ -37,6 +90,33 @@ export function AddProjectPage() {
   const [attachmentDragActive, setAttachmentDragActive] = useState(false)
   const [refreshingOrcaStatus, setRefreshingOrcaStatus] = useState(false)
   const [retryingDirection, setRetryingDirection] = useState(false)
+  const [resolvingReconciliation, setResolvingReconciliation] = useState(false)
+
+  // Persist the in-review wizard state (including any reconciliation
+  // resolution just made) so an accidental reload/navigation during Review
+  // doesn't silently discard it — the same class of lost decision this fix
+  // exists to prevent, just a step earlier.
+  useEffect(() => {
+    if (step !== 'review' || !analysis) {
+      return
+    }
+    try {
+      sessionStorage.setItem(
+        WIZARD_STORAGE_KEY,
+        JSON.stringify({
+          step,
+          repoPath,
+          handoffText,
+          analysis,
+          addToKnown,
+          addToActiveFleet,
+          addToWorkSet
+        })
+      )
+    } catch {
+      // best-effort convenience only — never load-bearing
+    }
+  }, [step, repoPath, handoffText, analysis, addToKnown, addToActiveFleet, addToWorkSet])
 
   async function openBrowser(dirPath?: string) {
     setBrowsing(true)
@@ -52,6 +132,11 @@ export function AddProjectPage() {
     }
   }
 
+  function selectRepoPath(path: string) {
+    setRepoPath(path)
+    setBrowseOpen(false)
+  }
+
   // Repo truth outranks document claims — attachments/paste are evidence fed
   // into the same handoffText the reconciliation logic already treats as
   // untrusted prose, never injected as a separate authority. Bounded: only
@@ -64,10 +149,13 @@ export function AddProjectPage() {
   }
 
   async function analyze() {
-    if (!repoPath.trim()) return
+    if (!repoPath.trim()) {
+      return
+    }
     setError(null)
     setAnalysisError(null)
     setStep('analyzing')
+    clearSavedWizardState() // starting a fresh analysis — any stale saved Review state no longer applies
     try {
       const result = await api.analyzeRepo(repoPath.trim(), combinedHandoffText())
       if (result.ok) {
@@ -97,7 +185,9 @@ export function AddProjectPage() {
   // Standalone "Refresh Orca status" action (defect 3): re-checks
   // registration alone, without re-running the whole analysis.
   async function refreshOrcaStatus() {
-    if (!analysis) return
+    if (!analysis) {
+      return
+    }
     setRefreshingOrcaStatus(true)
     try {
       const result = await api.refreshOrcaStatus(analysis.repoPath)
@@ -113,7 +203,9 @@ export function AddProjectPage() {
   // the live planner call, never re-persists, never fabricates a mission if
   // the planner is still down.
   async function retryDirection() {
-    if (!analysis) return
+    if (!analysis) {
+      return
+    }
     setRetryingDirection(true)
     try {
       const result = await api.retryDirection(analysis.repoPath, combinedHandoffText())
@@ -129,14 +221,59 @@ export function AddProjectPage() {
     }
   }
 
+  // V1 stabilization finding (onboarding reconciliation deadlock): the
+  // Review screen could detect a handoff/live-repo conflict with no control
+  // anywhere to ever resolve it, which forced TIM_REQUIRED and left every
+  // downstream toggle permanently disabled. Read-only, same facts /analyze
+  // already read — never re-runs the live planner, never touches Orca/TSF
+  // state persistence.
+  async function resolveConflict(mode: ReconciliationResolutionMode) {
+    if (!analysis) {
+      return
+    }
+    setResolvingReconciliation(true)
+    setError(null)
+    try {
+      const result = await api.resolveReconciliation(analysis.repoPath, combinedHandoffText(), {
+        mode
+      })
+      if (result.ok) {
+        const nextAnalysis: OnboardingAnalysis = {
+          ...analysis,
+          migrationClassification: result.migrationClassification,
+          portfolioGating: result.portfolioGating,
+          handoffReconciliation: result.handoffReconciliation,
+          health: result.health
+        }
+        setAnalysis(nextAnalysis)
+        setAddToKnown(result.portfolioGating.knownProjects.default)
+        setAddToActiveFleet(result.portfolioGating.activeFleet.default)
+        setAddToWorkSet(result.portfolioGating.workSet.default)
+      } else {
+        setError(result.detail ?? 'Could not resolve the discrepancy.')
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not resolve the discrepancy.')
+    } finally {
+      setResolvingReconciliation(false)
+    }
+  }
+
   async function onboard() {
-    if (!analysis) return
+    if (!analysis) {
+      return
+    }
     setCommitting(true)
     setError(null)
     try {
-      const result = await api.commitOnboarding(analysis, { knownProjects: addToKnown, activeFleet: addToActiveFleet, workSet: addToWorkSet })
+      const result = await api.commitOnboarding(analysis, {
+        knownProjects: addToKnown,
+        activeFleet: addToActiveFleet,
+        workSet: addToWorkSet
+      })
       setCommitResult(result)
       setStep('onboarded')
+      clearSavedWizardState()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not onboard this project.')
     } finally {
@@ -149,21 +286,37 @@ export function AddProjectPage() {
   return (
     <div className="mx-auto max-w-3xl px-8 py-8">
       <header className="mb-6 flex items-center gap-3">
-        <Button variant="ghost" size="icon-sm" onClick={() => navigate('/projects')} aria-label="Back to Projects">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => navigate('/projects')}
+          aria-label="Back to Projects"
+        >
           <ArrowLeft className="size-4" />
         </Button>
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Add Project</h1>
-          <p className="text-sm text-muted-foreground">Point TSF at an existing repository — it reads state read-only first, then tells you what it found.</p>
+          <p className="text-sm text-muted-foreground">
+            Point TSF at an existing repository — it reads state read-only first, then tells you
+            what it found.
+          </p>
         </div>
       </header>
 
       <ol className="mb-6 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
         {(['Repository', 'Context', 'Analyze', 'Review', 'Onboard'] as const).map((label, i) => {
-          const stepIndex = ['repository', 'context', 'analyzing', 'review', 'onboarded'].indexOf(step)
+          const stepIndex = ['repository', 'context', 'analyzing', 'review', 'onboarded'].indexOf(
+            step
+          )
           const active = i === Math.min(stepIndex, 4)
           return (
-            <li key={label} className={cn('flex items-center gap-1 rounded-full px-2 py-1', active && 'bg-primary/15 text-foreground')}>
+            <li
+              key={label}
+              className={cn(
+                'flex items-center gap-1 rounded-full px-2 py-1',
+                active && 'bg-primary/15 text-foreground'
+              )}
+            >
               {i > 0 && <ChevronRight className="size-3 opacity-50" />}
               {label}
             </li>
@@ -171,150 +324,39 @@ export function AddProjectPage() {
         })}
       </ol>
 
-      {error && <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>}
+      {error && (
+        <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {error}
+        </div>
+      )}
 
       {step === 'repository' && (
-        <Card>
-          <CardContent className="space-y-4 p-5">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Repository path</label>
-              <div className="flex gap-2">
-                <input
-                  value={repoPath}
-                  onChange={(e) => setRepoPath(e.target.value)}
-                  placeholder="C:\Users\you\Documents\my-project"
-                  className="w-full min-w-0 rounded-md border border-input bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-                <Button variant="outline" onClick={() => openBrowser()} disabled={browsing}>
-                  {browsing ? <Loader2 className="size-4 animate-spin" /> : <Folder className="size-4" />}
-                  Browse
-                </Button>
-              </div>
-              {browseError && <div className="mt-1.5 text-xs text-destructive">{browseError}</div>}
-            </div>
-
-            {browseOpen && browseResult && (
-              <div className="rounded-md border border-border">
-                <div className="flex items-center justify-between border-b border-border px-3 py-2 text-xs text-muted-foreground">
-                  <span className="truncate" title={browseResult.path}>{browseResult.path}</span>
-                  {browseResult.parent && (
-                    <Button variant="ghost" size="xs" onClick={() => openBrowser(browseResult.parent!)}>
-                      Up
-                    </Button>
-                  )}
-                </div>
-                <div className="max-h-64 overflow-y-auto tsf-scrollbar">
-                  {browseResult.directories.length === 0 ? (
-                    <div className="px-3 py-4 text-center text-xs text-muted-foreground">No subdirectories here.</div>
-                  ) : (
-                    browseResult.directories.map((name) => (
-                      <div key={name} className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm hover:bg-accent">
-                        <button className="flex min-w-0 flex-1 items-center gap-2 truncate text-left" onClick={() => openBrowser(`${browseResult.path}\\${name}`)}>
-                          <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{name}</span>
-                        </button>
-                        <Button size="xs" variant="secondary" onClick={() => { setRepoPath(`${browseResult.path}\\${name}`); setBrowseOpen(false) }}>
-                          Select
-                        </Button>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="flex justify-between border-t border-border px-3 py-2">
-                  <Button size="xs" variant="ghost" onClick={() => setBrowseOpen(false)}>Close</Button>
-                  <Button size="xs" onClick={() => { setRepoPath(browseResult.path); setBrowseOpen(false) }}>Select this folder</Button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <Button disabled={!repoPath.trim()} onClick={() => setStep('context')}>
-                Next <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <AddProjectRepositoryStep
+          repoPath={repoPath}
+          onRepoPathChange={setRepoPath}
+          browsing={browsing}
+          browseError={browseError}
+          browseOpen={browseOpen}
+          browseResult={browseResult}
+          onOpenBrowser={openBrowser}
+          onSelectPath={selectRepoPath}
+          onCloseBrowse={() => setBrowseOpen(false)}
+          onNext={() => setStep('context')}
+        />
       )}
 
       {step === 'context' && (
-        <Card>
-          <CardContent className="space-y-4 p-5">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Migration handoff / context (optional)</label>
-              <Textarea
-                value={handoffText}
-                onChange={(e) => setHandoffText(e.target.value)}
-                placeholder="Paste a summary from the old project chat, if you have one. TSF treats this as evidence, not authority — it will check it against what the repository actually shows."
-                rows={6}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Attachments (optional)</label>
-              <div
-                onDragOver={(e) => { e.preventDefault(); setAttachmentDragActive(true) }}
-                onDragLeave={() => setAttachmentDragActive(false)}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setAttachmentDragActive(false)
-                  if (e.dataTransfer.files.length) void addFiles(e.dataTransfer.files)
-                }}
-                className={cn(
-                  'flex flex-col items-center gap-2 rounded-md border-2 border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground transition-colors',
-                  attachmentDragActive && 'border-primary bg-primary/5'
-                )}
-              >
-                <Paperclip className="size-4" />
-                <div>Drag files here, or</div>
-                <label className="cursor-pointer text-primary underline underline-offset-2">
-                  choose files
-                  <input
-                    type="file"
-                    multiple
-                    accept=".md,.txt,.json,.pdf,.docx"
-                    className="hidden"
-                    onChange={(e) => { if (e.target.files?.length) void addFiles(e.target.files); e.target.value = '' }}
-                  />
-                </label>
-                <div className="text-[10px]">.md, .txt, .json, .pdf, .docx — read-only evidence, never sent to the repository.</div>
-              </div>
-
-              {attachments.length > 0 && (
-                <ul className="mt-2 space-y-1.5">
-                  {attachments.map((a) => (
-                    <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5 text-xs">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate font-medium">{a.name}</span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground">{(a.size / 1024).toFixed(1)} KB</span>
-                          {a.extractionStatus === 'EXTRACTED' && <Badge variant="healthy">extracted</Badge>}
-                          {a.extractionStatus === 'TRUNCATED' && <Badge variant="degraded">truncated</Badge>}
-                          {(a.extractionStatus === 'UNSUPPORTED_FORMAT' || a.extractionStatus === 'MALFORMED' || a.extractionStatus === 'EMPTY') && (
-                            <Badge variant="unknown">{a.extractionStatus.replace(/_/g, ' ').toLowerCase()}</Badge>
-                          )}
-                        </div>
-                        {a.extractionNote && <div className="mt-0.5 text-[10px] text-muted-foreground">{a.extractionNote}</div>}
-                        {a.sha256 && <div className="mt-0.5 truncate font-mono text-[9px] text-muted-foreground" title={a.sha256}>sha256:{a.sha256.slice(0, 16)}…</div>}
-                      </div>
-                      <Button variant="ghost" size="icon-sm" onClick={() => removeAttachment(a.id)} aria-label={`Remove ${a.name}`}>
-                        <X className="size-3.5" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="flex justify-between">
-              <Button variant="ghost" onClick={() => setStep('repository')}>
-                <ArrowLeft className="size-4" /> Back
-              </Button>
-              <Button onClick={analyze}>
-                Analyze <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <AddProjectContextStep
+          handoffText={handoffText}
+          onHandoffTextChange={setHandoffText}
+          attachments={attachments}
+          attachmentDragActive={attachmentDragActive}
+          onDragActiveChange={setAttachmentDragActive}
+          onAddFiles={(files) => void addFiles(files)}
+          onRemoveAttachment={removeAttachment}
+          onBack={() => setStep('repository')}
+          onAnalyze={analyze}
+        />
       )}
 
       {step === 'analyzing' && (
@@ -323,211 +365,55 @@ export function AddProjectPage() {
             <Loader2 className="size-6 animate-spin text-primary" />
             <div className="text-sm font-medium">Analyzing repository — read-only</div>
             <div className="max-w-sm text-xs text-muted-foreground">
-              Checking Git identity and state, discovering README/instructions/commands, reconciling your handoff against repository truth, and asking the planner for direction. Nothing on disk is being changed.
+              Checking Git identity and state, discovering README/instructions/commands, reconciling
+              your handoff against repository truth, and asking the planner for direction. Nothing
+              on disk is being changed.
             </div>
           </CardContent>
         </Card>
       )}
 
       {step === 'review' && analysisError && (
-        <Card>
-          <CardContent className="space-y-3 p-5">
-            <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-              <CircleSlash className="size-4" /> Could not analyze this repository
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Reason: <code className="text-foreground">{analysisError.reason}</code>
-              {analysisError.detail ? ` — ${analysisError.detail}` : ''}
-            </div>
-            <div className="flex justify-end">
-              <Button variant="outline" onClick={() => setStep('repository')}>
-                <ArrowLeft className="size-4" /> Try a different path
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <AddProjectAnalysisErrorStep
+          analysisError={analysisError}
+          onTryAnotherPath={() => setStep('repository')}
+        />
       )}
 
       {step === 'review' && analysis && gating && (
-        <div className="space-y-4">
-          <Card>
-            <CardContent className="space-y-3 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="text-sm font-semibold">{analysis.displayName}</div>
-                  <div className="truncate text-xs text-muted-foreground" title={analysis.repoPath}>{analysis.repoPath}</div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {classificationBadge(analysis.migrationClassification.classification)}
-                  {healthBadge(analysis.health.status)}
-                </div>
-              </div>
-              {analysis.existingProjectId && (
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-                  This exact repository path is already onboarded as <strong>{analysis.existingProjectId}</strong>. Onboarding again will update its record rather than create a duplicate.
-                </div>
-              )}
-              <div className="flex items-center gap-1.5">
-                <ProvenanceTag kind="LIVE_REPO" />
-                <span className="text-[10px] text-muted-foreground">Repository facts below are read live from Git just now.</span>
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-3">
-                <div>Branch: <span className="text-foreground">{analysis.identity.branch ?? 'unknown'}{analysis.identity.detached ? ' (detached)' : ''}</span></div>
-                <div>HEAD: <span className="font-mono text-foreground">{analysis.identity.head?.slice(0, 10) ?? 'none'}</span></div>
-                <div>Commits: <span className="text-foreground">{analysis.identity.commitCount ?? 'unknown'}</span></div>
-                <div>Maturity: <span className="text-foreground">{analysis.maturity.replace(/_/g, ' ')}</span></div>
-                <div>Working tree: <span className="text-foreground">{analysis.currentState.dirty ? 'dirty' : 'clean'}</span></div>
-                <div className="flex items-center gap-1.5">
-                  Orca:{' '}
-                  <span className="text-foreground">{orcaStatusLabel(analysis.orcaRegistration.status).label}</span>
-                  {!analysis.orcaRegistration.checked && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-4"
-                      disabled={refreshingOrcaStatus}
-                      onClick={refreshOrcaStatus}
-                      aria-label="Refresh Orca status"
-                      title="Refresh Orca status"
-                    >
-                      <RefreshCw className={cn('size-3', refreshingOrcaStatus && 'animate-spin')} />
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <ProvenanceTag kind="RECONCILED" />
-                {CLASSIFICATION_META[analysis.migrationClassification.classification].description}
-              </div>
-              <ul className="list-inside list-disc space-y-0.5 text-xs text-muted-foreground">
-                {analysis.migrationClassification.reasons.map((reason, i) => <li key={i}>{reason}</li>)}
-              </ul>
-            </CardContent>
-          </Card>
-
-          {analysis.handoffReconciliation.hasHandoff && (
-            <Card>
-              <CardContent className="space-y-2 p-5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Handoff reconciliation <ProvenanceTag kind="RECONCILED" />
-                </div>
-                {analysis.handoffReconciliation.discrepancies.length > 0 ? (
-                  analysis.handoffReconciliation.discrepancies.map((d, i) => (
-                    <div key={i} className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                      <span>{d}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <CheckCircle2 className="size-3.5 text-status-healthy" /> Handoff agrees with observed repository state.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardContent className="space-y-3 p-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Direction <ProvenanceTag kind={analysis.direction.live ? 'PLANNER' : 'FALLBACK'} />
-                </div>
-                <div className="text-[10px] text-muted-foreground">{analysis.direction.providerLabel}</div>
-              </div>
-              {analysis.direction.live ? (
-                <>
-                  <p className="text-sm">{analysis.direction.purpose}</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <div className="text-[11px] font-medium text-muted-foreground">Complete</div>
-                      <p className="text-xs">{analysis.direction.completedSummary}</p>
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-medium text-muted-foreground">Unfinished</div>
-                      <p className="text-xs">{analysis.direction.unfinishedSummary}</p>
-                    </div>
-                  </div>
-                  {analysis.direction.recommendedNextMission && (
-                    <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
-                      <div className="text-[11px] font-medium text-primary">Recommended next mission</div>
-                      <div className="text-sm font-medium">{analysis.direction.recommendedNextMission.title}</div>
-                      <div className="text-xs text-muted-foreground">{analysis.direction.recommendedNextMission.rationale}</div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">Direction analysis unavailable ({analysis.direction.unavailableReason}). Repository facts above are still real and read-only.</div>
-                  <Button variant="outline" size="xs" disabled={retryingDirection} onClick={retryDirection}>
-                    {retryingDirection ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                    Retry direction analysis
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {analysis.direction.upgradeCandidates.length > 0 && (
-            <Card>
-              <CardContent className="space-y-2 p-5">
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Upgrade backlog (recommendations, not automatic missions)</div>
-                {analysis.direction.upgradeCandidates.map((c, i) => (
-                  <div key={i} className="rounded-md border border-border px-3 py-2">
-                    <div className="flex flex-wrap items-center justify-between gap-1">
-                      <div className="text-sm font-medium">{c.title}</div>
-                      <div className="flex gap-1">
-                        <Badge variant="neutral">{c.category.replace(/_/g, ' ')}</Badge>
-                        <Badge variant={c.importance === 'HIGH' ? 'degraded' : 'neutral'}>{c.importance}</Badge>
-                      </div>
-                    </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{c.rationale}</p>
-                    <div className="mt-1 text-[10px] text-muted-foreground">
-                      Confidence: {c.confidence} · {c.blocksCurrentWork ? 'Blocks current work' : 'Does not block current work'} · {c.safeToDefer ? 'Safe to defer' : 'Not safe to defer'}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardContent className="space-y-3 p-5">
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Onboard</div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={addToKnown} disabled={!gating.knownProjects.allowed} onChange={(e) => setAddToKnown(e.target.checked)} />
-                Known Projects — TSF knows this project exists
-              </label>
-              <label className={cn('flex items-center gap-2 text-sm', !gating.activeFleet.allowed && 'opacity-40')}>
-                <input type="checkbox" checked={addToActiveFleet && gating.activeFleet.allowed} disabled={!gating.activeFleet.allowed || !addToKnown} onChange={(e) => setAddToActiveFleet(e.target.checked)} />
-                Active Fleet — actively managed
-              </label>
-              <label className={cn('flex items-center gap-2 text-sm', (!gating.workSet.allowed || !addToActiveFleet) && 'opacity-40')}>
-                <input type="checkbox" checked={addToWorkSet && gating.workSet.allowed && addToActiveFleet} disabled={!gating.workSet.allowed || !addToActiveFleet} onChange={(e) => setAddToWorkSet(e.target.checked)} />
-                Work Set — eligible for new work/dispatch
-              </label>
-              {!gating.workSet.allowed && <div className="text-[11px] text-muted-foreground">Work Set is unavailable for this classification — a Known/Active Fleet project is not automatically eligible for autonomous work.</div>}
-              <div className="flex justify-between pt-2">
-                <Button variant="ghost" onClick={() => setStep('context')}>
-                  <ArrowLeft className="size-4" /> Back
-                </Button>
-                <Button disabled={committing || !addToKnown} onClick={onboard}>
-                  {committing ? <Loader2 className="size-4 animate-spin" /> : null}
-                  Onboard
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <AddProjectReviewStep
+          analysis={analysis}
+          gating={gating}
+          addToKnown={addToKnown}
+          addToActiveFleet={addToActiveFleet}
+          addToWorkSet={addToWorkSet}
+          onAddToKnownChange={setAddToKnown}
+          onAddToActiveFleetChange={setAddToActiveFleet}
+          onAddToWorkSetChange={setAddToWorkSet}
+          committing={committing}
+          refreshingOrcaStatus={refreshingOrcaStatus}
+          retryingDirection={retryingDirection}
+          resolvingReconciliation={resolvingReconciliation}
+          onRefreshOrcaStatus={() => void refreshOrcaStatus()}
+          onRetryDirection={() => void retryDirection()}
+          onResolveConflict={(mode) => void resolveConflict(mode)}
+          onBack={() => setStep('context')}
+          onOnboard={() => void onboard()}
+        />
       )}
 
       {step === 'onboarded' && analysis && commitResult && (
         <Card>
           <CardContent className="space-y-3 p-6 text-center">
-            <CheckCircle2 className="mx-auto size-8 text-status-healthy" />
+            <div className="mx-auto flex size-8 items-center justify-center rounded-full bg-status-healthy/15 text-status-healthy">
+              ✓
+            </div>
             <div className="text-base font-semibold">{analysis.displayName} is onboarded</div>
             <div className="text-xs text-muted-foreground">
-              {commitResult.activeFleet ? 'Added to Known Projects and Active Fleet' : 'Added to Known Projects'}{commitResult.workSet ? ' and Work Set' : ''}.
+              {commitResult.activeFleet
+                ? 'Added to Known Projects and Active Fleet'
+                : 'Added to Known Projects'}
+              {commitResult.workSet ? ' and Work Set' : ''}.
             </div>
             <div className="text-xs text-muted-foreground">
               {commitResult.orcaRegistration?.ok
@@ -537,8 +423,12 @@ export function AddProjectPage() {
                 : `Orca registration ${commitResult.orcaRegistration ? `unavailable (${commitResult.orcaRegistration.reason})` : 'not attempted'} — you can add it in Orca directly later.`}
             </div>
             <div className="flex justify-center gap-2 pt-2">
-              <Button variant="outline" onClick={() => navigate('/projects')}>Back to Projects</Button>
-              <Button onClick={() => navigate(`/projects/${analysis.projectId}`)}>Open project</Button>
+              <Button variant="outline" onClick={() => navigate('/projects')}>
+                Back to Projects
+              </Button>
+              <Button onClick={() => navigate(`/projects/${analysis.projectId}`)}>
+                Open project
+              </Button>
             </div>
           </CardContent>
         </Card>
