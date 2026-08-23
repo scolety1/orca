@@ -40,6 +40,9 @@ import { handleEstimateRoute } from './estimate-http-routes.mjs'
 import { handleEvalRoute } from './eval-http-routes.mjs'
 import { handleFlightRecorderRoute } from './flight-recorder-http-routes.mjs'
 import { handleFleetOptimizerRoute } from './fleet-optimizer-http-routes.mjs'
+import { handleCapacityRoute } from './capacity-http-routes.mjs'
+import { handlePortfolioMembershipRoute } from './portfolio-membership-http-routes.mjs'
+import { handlePrepareForWorkRoute } from './prepare-for-work-http-routes.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
@@ -644,6 +647,39 @@ export function createRequestHandler() {
           url,
           { opState },
           { json, notFound, readBody }
+        )
+      ) {
+        return
+      }
+
+      // GET /api/capacity -- see capacity-http-routes.mjs
+      if (await handleCapacityRoute(parts, req, res, { json, notFound })) {
+        return
+      }
+
+      // POST /api/portfolio/active-fleet, /api/portfolio/work-set -- see
+      // portfolio-membership-http-routes.mjs
+      if (
+        await handlePortfolioMembershipRoute(
+          parts,
+          req,
+          res,
+          { map, opState },
+          { json, notFound, readBody, saveState }
+        )
+      ) {
+        return
+      }
+
+      // POST /api/projects/prepare-for-work -- see
+      // prepare-for-work-http-routes.mjs
+      if (
+        await handlePrepareForWorkRoute(
+          parts,
+          req,
+          res,
+          { opState },
+          { json, notFound, readBody, saveState }
         )
       ) {
         return

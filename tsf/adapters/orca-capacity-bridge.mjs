@@ -138,6 +138,13 @@ async function runOrca(args) {
 // A missing block (provider not configured, or the CLI's own shape ever
 // changes) reports `null`, never a guessed 0% -- the policy layer must
 // treat that as UNKNOWN, not as healthy capacity.
+//
+// Real V1 stabilization finding (Operator UX pass, capacity view): the CLI
+// response already carries real reset timing (session.resetsAt/
+// resetDescription, weekly.resetsAt/resetDescription) that this function
+// used to drop on the floor. Added additively -- sessionUsedPercent/
+// weeklyUsedPercent/status are unchanged, so decideCapacityAction and every
+// existing caller keep working exactly as before.
 function extractSnapshot(rateLimits) {
   const claude = rateLimits?.claude
   const codex = rateLimits?.codex
@@ -145,13 +152,19 @@ function extractSnapshot(rateLimits) {
     claude: claude
       ? {
           sessionUsedPercent: claude.session?.usedPercent ?? null,
+          sessionResetsAt: claude.session?.resetsAt ?? null,
+          sessionResetDescription: claude.session?.resetDescription ?? null,
           weeklyUsedPercent: claude.weekly?.usedPercent ?? null,
+          weeklyResetsAt: claude.weekly?.resetsAt ?? null,
+          weeklyResetDescription: claude.weekly?.resetDescription ?? null,
           status: claude.status ?? null
         }
       : null,
     codex: codex
       ? {
           weeklyUsedPercent: codex.weekly?.usedPercent ?? null,
+          weeklyResetsAt: codex.weekly?.resetsAt ?? null,
+          weeklyResetDescription: codex.weekly?.resetDescription ?? null,
           status: codex.status ?? null
         }
       : null
