@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/cn'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
+import { CapacityIndicator } from '@/components/CapacityIndicator'
 
 const NAV = [
   { to: '/', label: 'Home', icon: LayoutGrid, end: true },
@@ -69,13 +70,16 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
-          <div className="mt-4 flex shrink-0 flex-col gap-1 px-5 text-[10px] text-muted-foreground">
-            {meta && (
-              <>
-                <span>Orca {meta.upstreamVersion}</span>
-                <span>{meta.upstreamCoreFilesModified} core files modified</span>
-              </>
-            )}
+          <div className="mt-4 flex shrink-0 flex-col gap-2 px-3">
+            <CapacityIndicator />
+            <div className="flex flex-col gap-1 px-2 text-[10px] text-muted-foreground">
+              {meta && (
+                <>
+                  <span>Orca {meta.upstreamVersion}</span>
+                  <span>{meta.upstreamCoreFilesModified} core files modified</span>
+                </>
+              )}
+            </div>
           </div>
         </aside>
         <main className="tsf-scrollbar min-w-0 flex-1 overflow-y-auto">

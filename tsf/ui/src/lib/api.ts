@@ -20,6 +20,8 @@ import type {
   RepairActionResult,
   RepairSelectedResult
 } from './health-repair-types'
+import type { CapacitySnapshot } from './capacity-types'
+import type { MembershipChangeResponse, PrepareForWorkResponse } from './prepare-for-work-types'
 import type {
   AgentEvidence,
   ChatAttachmentMeta,
@@ -267,6 +269,22 @@ export const api = {
     ),
   healthRepairSelected: (projectIds: string[]) =>
     request<RepairSelectedResult>('/health-repair/repair-selected', {
+      method: 'POST',
+      body: JSON.stringify({ projectIds })
+    }),
+  capacity: () => request<CapacitySnapshot>('/capacity'),
+  setActiveFleetMembership: (projectIds: string[], add: boolean) =>
+    request<MembershipChangeResponse>('/portfolio/active-fleet', {
+      method: 'POST',
+      body: JSON.stringify({ projectIds, add })
+    }),
+  setWorkSetMembership: (projectIds: string[], add: boolean) =>
+    request<MembershipChangeResponse>('/portfolio/work-set', {
+      method: 'POST',
+      body: JSON.stringify({ projectIds, add })
+    }),
+  prepareForWork: (projectIds: string[]) =>
+    request<PrepareForWorkResponse>('/projects/prepare-for-work', {
       method: 'POST',
       body: JSON.stringify({ projectIds })
     })

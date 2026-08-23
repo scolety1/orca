@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { CalendarClock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/use-api'
 import { LoadingState, ErrorState, EmptyState } from '@/components/States'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightFleetDialog'
 import type { FleetSchedule } from '@/lib/fleet-types'
 
 function ProjectScheduleCard({ project }: { project: FleetSchedule['projects'][number] }) {
@@ -47,6 +49,7 @@ export function FleetPage() {
   const [schedule, setSchedule] = useState<FleetSchedule | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [overnightOpen, setOvernightOpen] = useState(false)
 
   if (loading) {
     return <LoadingState label="Loading Work Set…" />
@@ -87,13 +90,21 @@ export function FleetPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">Fleet Planning</h1>
-        <p className="text-sm text-muted-foreground">
-          A proposed, explained execution schedule across your Work Set -- reuses each
-          project&apos;s own real estimate (Estimate tab) and real provider capacity. Never
-          authorizes or dispatches anything on its own.
-        </p>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Fleet Planning</h1>
+          <p className="text-sm text-muted-foreground">
+            A proposed, explained execution schedule across your Work Set -- reuses each
+            project&apos;s own real estimate (Estimate tab) and real provider capacity. Building a
+            schedule here never authorizes or dispatches anything on its own; Start Overnight Fleet
+            does, using each project&apos;s own real Keep Going run.
+          </p>
+        </div>
+        {portfolio.workSet.length > 0 && (
+          <Button size="sm" onClick={() => setOvernightOpen(true)}>
+            <CalendarClock className="size-4" /> Start Overnight Fleet
+          </Button>
+        )}
       </header>
 
       {portfolio.workSet.length === 0 ? (
@@ -166,6 +177,17 @@ export function FleetPage() {
           )}
         </div>
       )}
+
+      <StartOvernightFleetDialog
+        open={overnightOpen}
+        onOpenChange={setOvernightOpen}
+        projectIds={
+          Object.keys(selected).some((id) => selected[id])
+            ? Object.keys(selected).filter((id) => selected[id])
+            : portfolio.workSet
+        }
+        onStarted={() => setOvernightOpen(false)}
+      />
     </div>
   )
 }

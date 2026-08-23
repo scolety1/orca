@@ -110,7 +110,11 @@ export type ProjectCard = {
   activeFleet: boolean
   workSet: boolean
   missionState: string
+  blockedReason: string | null
   healthStatus: HealthStatus
+  topFinding: { code: string; summary: string; remediation: string } | null
+  migrationClassification: string | null
+  restrictions: string[]
   release: Release
   candidateState: CandidateState | null
 }

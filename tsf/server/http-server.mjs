@@ -692,7 +692,16 @@ export function createRequestHandler() {
   }
 }
 
+// Real V1 stabilization finding (Operator UX pass, self-explaining project
+// cards): the card view previously carried only a bare health status enum
+// (e.g. "DEGRADED"), forcing an operator to open the full project detail
+// page to learn WHY, whether it's intentional, or what to do next. Adds
+// the same real facts the detail page already renders (mission.
+// blockedReason, the real onboarding classification, restrictions, and the
+// single most relevant health finding) so a card can answer that on its
+// own -- no separate data source, no new health computation.
 function summarizeCard(project) {
+  const topFinding = project.health.findings?.[0] ?? null
   return {
     id: project.id,
     displayName: project.displayName,
@@ -701,7 +710,14 @@ function summarizeCard(project) {
     activeFleet: project.activeFleet,
     workSet: project.workSet,
     missionState: project.mission.state,
+    blockedReason: project.mission.blockedReason,
     healthStatus: project.health.status,
+    topFinding: topFinding
+      ? { code: topFinding.code, summary: topFinding.summary, remediation: topFinding.remediation }
+      : null,
+    migrationClassification:
+      project.evidence?.onboarding?.migrationClassification?.classification ?? null,
+    restrictions: project.restrictions ?? [],
     release: project.release,
     candidateState: project.candidate?.state ?? null
   }

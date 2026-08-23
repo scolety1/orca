@@ -13,6 +13,7 @@ import { FlightRecorderPanel } from '@/components/flight-recorder/FlightRecorder
 import { KeepGoingPanel } from '@/components/keep-going/KeepGoingPanel'
 import { PlannerChatPanel } from '@/components/chat/PlannerChatPanel'
 import { RefreshProjectButton } from '@/components/onboarding/RefreshProjectButton'
+import { MembershipPanel } from '@/components/projects/MembershipPanel'
 
 function copy(text: string) {
   navigator.clipboard?.writeText(text).catch(() => undefined)
@@ -88,6 +89,14 @@ export function ProjectDetailPage() {
             </TabsList>
 
             <TabsContent value="overview" className="mt-4 flex flex-col gap-4">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Fleet membership
+                  </div>
+                  <MembershipPanel project={project} onChanged={reload} />
+                </CardContent>
+              </Card>
               <Card>
                 <CardContent className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
                   <div>

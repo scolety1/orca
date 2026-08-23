@@ -1,5 +1,14 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, CheckCircle2, Compass, Gauge, PackageCheck, UserCheck } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Compass,
+  PackageCheck,
+  UserCheck,
+  Wrench
+} from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,8 +16,15 @@ import { Badge } from '@/components/ui/badge'
 import { StatusChip } from '@/components/StatusChip'
 import { LoadingState, ErrorState, EmptyState } from '@/components/States'
 import { Button } from '@/components/ui/button'
+import { CapacityIndicator } from '@/components/CapacityIndicator'
 
-function SectionTitle({ icon: Icon, children }: { icon: typeof Gauge; children: React.ReactNode }) {
+function SectionTitle({
+  icon: Icon,
+  children
+}: {
+  icon: typeof Compass
+  children: React.ReactNode
+}) {
   return (
     <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
       <Icon className="size-3.5" />
@@ -17,56 +33,128 @@ function SectionTitle({ icon: Icon, children }: { icon: typeof Gauge; children: 
   )
 }
 
+// Operator UX pass (spec section 11): Home answers "what needs my
+// attention?" first -- Needs You, Working, Ready for Adoption, Provider
+// Capacity, and a single Recommended action, all from real, already-
+// computed data (portfolio + work), never a raw log dump. "Overnight" as a
+// section distinct from "Working" is deliberately not fabricated here: a
+// Keep Going run doesn't currently record whether it was started via
+// Start Mission or Start Overnight Fleet, so there is no real signal to
+// split on yet -- both surface together under Working, honestly.
 export function HomePage() {
-  const { data: portfolio, loading: pLoading, error: pError, reload: reloadPortfolio } = useApi(() => api.portfolio(), [])
-  const { data: work, loading: wLoading, error: wError, reload: reloadWork } = useApi(() => api.work(), [])
+  const {
+    data: portfolio,
+    loading: pLoading,
+    error: pError,
+    reload: reloadPortfolio
+  } = useApi(() => api.portfolio(), [])
+  const {
+    data: work,
+    loading: wLoading,
+    error: wError,
+    reload: reloadWork
+  } = useApi(() => api.work(), [])
+  const [preparing, setPreparing] = useState(false)
+  const [prepareResult, setPrepareResult] = useState<string | null>(null)
 
-  if (pLoading || wLoading) return <LoadingState label="Loading HQ…" />
-  if (pError) return <ErrorState message={pError} onRetry={reloadPortfolio} />
-  if (wError) return <ErrorState message={wError} onRetry={reloadWork} />
-  if (!portfolio || !work) return null
+  if (pLoading || wLoading) {
+    return <LoadingState label="Loading HQ…" />
+  }
+  if (pError) {
+    return <ErrorState message={pError} onRetry={reloadPortfolio} />
+  }
+  if (wError) {
+    return <ErrorState message={wError} onRetry={reloadWork} />
+  }
+  if (!portfolio || !work) {
+    return null
+  }
 
   const needsYou = [...work.blocked, ...work.readyForAdoption]
-  const degradedProjects = portfolio.knownProjects.filter((p) => p.healthStatus === 'DEGRADED' || p.healthStatus === 'BLOCKED')
+  const degradedProjects = portfolio.knownProjects.filter(
+    (p) => p.healthStatus === 'DEGRADED' || p.healthStatus === 'BLOCKED'
+  )
+
+  async function prepareDegraded() {
+    setPreparing(true)
+    setPrepareResult(null)
+    try {
+      const result = await api.prepareForWork(degradedProjects.map((p) => p.id))
+      const ready = result.results.filter((r) => r.readyForWork).length
+      setPrepareResult(`${ready}/${result.results.length} now ready for work.`)
+      reloadPortfolio()
+    } catch (err) {
+      setPrepareResult(err instanceof Error ? err.message : 'Prepare for Work failed.')
+    } finally {
+      setPreparing(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
       <header className="mb-8">
         <h1 className="text-xl font-semibold tracking-tight">HQ</h1>
-        <p className="text-sm text-muted-foreground">Operator overview across the current Work Set.</p>
+        <p className="text-sm text-muted-foreground">What needs your attention, right now.</p>
       </header>
 
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="p-4">
-            <div className="text-[11px] text-muted-foreground">Active Fleet</div>
-            <div className="text-2xl font-semibold">{portfolio.activeFleet.length}</div>
+            <div className="text-[11px] text-muted-foreground">Needs you</div>
+            <div className="text-2xl font-semibold">{needsYou.length}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-[11px] text-muted-foreground">Work Set</div>
-            <div className="text-2xl font-semibold">{portfolio.workSet.length}</div>
+            <div className="text-[11px] text-muted-foreground">Working</div>
+            <div className="text-2xl font-semibold">{work.active.length}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-[11px] text-muted-foreground">Usage Mode</div>
-            <div className="text-2xl font-semibold">{portfolio.usageMode}</div>
+            <div className="text-[11px] text-muted-foreground">Ready for adoption</div>
+            <div className="text-2xl font-semibold">{work.readyForAdoption.length}</div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
-            <div className="text-[11px] text-muted-foreground">Provider capacity</div>
-            <div className="text-2xl font-semibold text-muted-foreground">Unknown</div>
+          <CardContent className="flex items-center justify-between p-4">
+            <div>
+              <div className="text-[11px] text-muted-foreground">Provider capacity</div>
+              <div className="text-2xl font-semibold">See panel</div>
+            </div>
+            <CapacityIndicator />
           </CardContent>
         </Card>
       </div>
 
+      {degradedProjects.length > 0 && (
+        <Card className="mb-8 border-primary/40 bg-primary/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="flex items-center gap-2 text-sm">
+              <Wrench className="size-4 text-primary" />
+              {degradedProjects.length} project{degradedProjects.length === 1 ? '' : 's'} need
+              {degradedProjects.length === 1 ? 's' : ''} Health preparation.
+            </div>
+            <div className="flex items-center gap-3">
+              {prepareResult && (
+                <span className="text-[11px] text-muted-foreground">{prepareResult}</span>
+              )}
+              <Button size="sm" disabled={preparing} onClick={prepareDegraded}>
+                {preparing ? 'Preparing…' : 'Prepare Projects for Work'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <section className="mb-8">
         <SectionTitle icon={UserCheck}>Needs you</SectionTitle>
         {needsYou.length === 0 ? (
-          <EmptyState icon={<CheckCircle2 className="size-6" />} title="Nothing needs you right now" description="No blocked work and no candidates waiting on an adoption decision." />
+          <EmptyState
+            icon={<CheckCircle2 className="size-6" />}
+            title="Nothing needs you right now"
+            description="No blocked work and no candidates waiting on an adoption decision."
+          />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {needsYou.map((p) => (
@@ -76,7 +164,12 @@ export function HomePage() {
                     <CardTitle>{p.displayName}</CardTitle>
                     <StatusChip status={p.health.status} />
                   </CardHeader>
-                  <CardContent className="text-xs text-muted-foreground">{p.mission.blockedReason ?? (p.candidate?.state === 'READY_FOR_ADOPTION' ? 'Candidate is ready for your adoption decision.' : p.mission.state)}</CardContent>
+                  <CardContent className="text-xs text-muted-foreground">
+                    {p.mission.blockedReason ??
+                      (p.candidate?.state === 'READY_FOR_ADOPTION'
+                        ? 'Candidate is ready for your adoption decision.'
+                        : p.mission.state)}
+                  </CardContent>
                 </Card>
               </Link>
             ))}
@@ -88,11 +181,18 @@ export function HomePage() {
         <section>
           <SectionTitle icon={Compass}>Working</SectionTitle>
           {work.active.length === 0 ? (
-            <EmptyState title="No active work" description="Nothing is currently in planning or execution in this Work Set." />
+            <EmptyState
+              title="No active work"
+              description="Nothing is currently in planning or execution in this Work Set."
+            />
           ) : (
             <div className="flex flex-col gap-2">
               {work.active.map((p) => (
-                <Link key={p.id} to={`/projects/${p.id}`} className="rounded-md border border-border p-3 text-sm hover:border-primary/50">
+                <Link
+                  key={p.id}
+                  to={`/projects/${p.id}`}
+                  className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
+                >
                   {p.displayName} — {p.mission.state}
                 </Link>
               ))}
@@ -106,7 +206,11 @@ export function HomePage() {
           ) : (
             <div className="flex flex-col gap-2">
               {work.recentlyCompleted.map((p) => (
-                <Link key={p.id} to={`/projects/${p.id}`} className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50">
+                <Link
+                  key={p.id}
+                  to={`/projects/${p.id}`}
+                  className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50"
+                >
                   <span>{p.displayName}</span>
                   <Badge variant="healthy">Adopted</Badge>
                 </Link>
@@ -119,11 +223,18 @@ export function HomePage() {
       <section>
         <SectionTitle icon={AlertTriangle}>Project Health</SectionTitle>
         {degradedProjects.length === 0 ? (
-          <EmptyState icon={<CheckCircle2 className="size-6" />} title="All known projects are healthy" />
+          <EmptyState
+            icon={<CheckCircle2 className="size-6" />}
+            title="All known projects are healthy"
+          />
         ) : (
           <div className="flex flex-col gap-2">
             {degradedProjects.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`} className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50">
+              <Link
+                key={p.id}
+                to={`/projects/${p.id}`}
+                className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50"
+              >
                 <span>{p.displayName}</span>
                 <div className="flex items-center gap-2">
                   <StatusChip status={p.healthStatus} />
