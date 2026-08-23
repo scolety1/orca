@@ -42,7 +42,7 @@ function ProjectScheduleCard({ project }: { project: FleetSchedule['projects'][n
 }
 
 export function FleetPage() {
-  const { data: portfolio, loading, error } = useApi(() => api.portfolio(), [])
+  const { data: portfolio, loading, error, reload } = useApi(() => api.portfolio(), [])
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [priorities, setPriorities] = useState<Record<string, number>>({})
   const [maxConcurrentWorkers, setMaxConcurrentWorkers] = useState(2)
@@ -51,7 +51,11 @@ export function FleetPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [overnightOpen, setOvernightOpen] = useState(false)
 
-  if (loading) {
+  // Real V1 stabilization finding (see ProjectsPage.tsx for the full real-
+  // browser reproduction): gating on bare `loading` would unmount
+  // StartOvernightFleetDialog -- and its own local progress state -- the
+  // instant a reload fires, before the operator can see what happened.
+  if (loading && !portfolio) {
     return <LoadingState label="Loading Work Set…" />
   }
   if (error) {
@@ -186,7 +190,7 @@ export function FleetPage() {
             ? Object.keys(selected).filter((id) => selected[id])
             : portfolio.workSet
         }
-        onStarted={() => setOvernightOpen(false)}
+        onStarted={reload}
       />
     </div>
   )

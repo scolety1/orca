@@ -80,6 +80,12 @@ test('REQUIRED PROOF: GET /api/capacity reshapes a real rateLimits response end 
       assert.equal(res.body.codex.available, true)
       assert.equal(res.body.codex.primaryRole, 'Implementation worker')
       assert.equal(res.body.codex.remainingPercent, 13)
+      // REQUIRED PROOF (real bug found via real browser testing): Codex
+      // never reports a session window at all -- session must be honestly
+      // null here, never a bogus {usedPercent: undefined, ...} object that
+      // would render a bare "%" with no number.
+      assert.equal(res.body.codex.session, null)
+      assert.equal(res.body.codex.weekly.remainingPercent, 13)
       assert.ok(res.body.observedAt)
     })
   } finally {

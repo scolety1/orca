@@ -46,6 +46,15 @@ export function classifyProjectLifecycle(project: ProjectCard): LifecycleBucket 
   if (project.blockedReason) {
     return 'NEEDS_YOU'
   }
+  // Real V1 stabilization finding (Operator UX pass, real browser testing
+  // against the spec's own worked example): a DIRTY_PRESERVE project
+  // (real uncommitted work sitting in the working tree) is healthy, but
+  // it is not "ready for work" -- it needs a human to look at what's
+  // there before anything touches it. The spec's own quoteloop example
+  // names this exact case "NEEDS ATTENTION," not "ready for work."
+  if (project.migrationClassification === 'DIRTY_PRESERVE') {
+    return 'NEEDS_YOU'
+  }
   if (WORKING_MISSION_STATES.has(project.missionState)) {
     return 'WORKING'
   }

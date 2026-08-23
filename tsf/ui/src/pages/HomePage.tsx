@@ -57,7 +57,13 @@ export function HomePage() {
   const [preparing, setPreparing] = useState(false)
   const [prepareResult, setPrepareResult] = useState<string | null>(null)
 
-  if (pLoading || wLoading) {
+  // Real V1 stabilization finding (see ProjectsPage.tsx for the full real-
+  // browser reproduction of the same pattern's worst case): gating on bare
+  // loading flashes this whole page to a spinner on every background
+  // reload (e.g. after Prepare Projects for Work), not just the first
+  // load. `&& !portfolio`/`&& !work` keeps the page mounted through a
+  // background reload.
+  if ((pLoading && !portfolio) || (wLoading && !work)) {
     return <LoadingState label="Loading HQ…" />
   }
   if (pError) {

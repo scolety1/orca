@@ -20,32 +20,38 @@ function shapeProvider(id, snapshot) {
   if (!snapshot) {
     return { id, available: false, primaryRole: PRIMARY_ROLE_LABEL[id] }
   }
+  // Real V1 stabilization finding (Operator UX pass, real browser testing):
+  // Codex never reports a session window at all -- extractSnapshot's codex
+  // shape has no sessionUsedPercent key, so it's `undefined`, not `null`.
+  // A strict `=== null` check let it fall through as "present" and built a
+  // bogus session object (NaN/undefined fields), rendering a bare "%" with
+  // no number in the Capacity panel. Loose `== null` catches both.
+  const hasSession = snapshot.sessionUsedPercent != null
+  const hasWeekly = snapshot.weeklyUsedPercent != null
   const usedPercent = Math.max(snapshot.sessionUsedPercent ?? 0, snapshot.weeklyUsedPercent ?? 0)
-  const hasSignal = snapshot.sessionUsedPercent !== null || snapshot.weeklyUsedPercent !== null
+  const hasSignal = hasSession || hasWeekly
   return {
     id,
     available: true,
     primaryRole: PRIMARY_ROLE_LABEL[id],
     status: snapshot.status,
     remainingPercent: hasSignal ? Math.max(0, 100 - usedPercent) : null,
-    session:
-      snapshot.sessionUsedPercent === null
-        ? null
-        : {
-            usedPercent: snapshot.sessionUsedPercent,
-            remainingPercent: Math.max(0, 100 - snapshot.sessionUsedPercent),
-            resetsAt: snapshot.sessionResetsAt,
-            resetDescription: snapshot.sessionResetDescription
-          },
-    weekly:
-      snapshot.weeklyUsedPercent === null
-        ? null
-        : {
-            usedPercent: snapshot.weeklyUsedPercent,
-            remainingPercent: Math.max(0, 100 - snapshot.weeklyUsedPercent),
-            resetsAt: snapshot.weeklyResetsAt,
-            resetDescription: snapshot.weeklyResetDescription
-          },
+    session: hasSession
+      ? {
+          usedPercent: snapshot.sessionUsedPercent,
+          remainingPercent: Math.max(0, 100 - snapshot.sessionUsedPercent),
+          resetsAt: snapshot.sessionResetsAt,
+          resetDescription: snapshot.sessionResetDescription
+        }
+      : null,
+    weekly: hasWeekly
+      ? {
+          usedPercent: snapshot.weeklyUsedPercent,
+          remainingPercent: Math.max(0, 100 - snapshot.weeklyUsedPercent),
+          resetsAt: snapshot.weeklyResetsAt,
+          resetDescription: snapshot.weeklyResetDescription
+        }
+      : null,
     capacityAction: hasSignal ? decideCapacityAction({ [id]: snapshot }, id) : null
   }
 }

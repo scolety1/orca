@@ -43,7 +43,13 @@ export function WorkPage() {
   const [missionOpen, setMissionOpen] = useState(false)
   const [overnightOpen, setOvernightOpen] = useState(false)
 
-  if (loading) {
+  // Real V1 stabilization finding (see ProjectsPage.tsx for the full real-
+  // browser reproduction): gating on bare `loading` unmounts
+  // StartMissionDialog/StartOvernightFleetDialog -- and their own local
+  // result-summary state -- the instant onStarted's reload() fires, before
+  // the operator can see what happened. `loading && !work` keeps the page
+  // mounted through a background reload.
+  if (loading && !work) {
     return <LoadingState label="Loading Work…" />
   }
   if (error) {

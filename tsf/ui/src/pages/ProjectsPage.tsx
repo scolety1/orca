@@ -33,7 +33,18 @@ export function ProjectsPage() {
     setSelected((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
-  if (loading) {
+  // Real V1 stabilization finding (Operator UX pass, real browser testing):
+  // gating on bare `loading` replaced this whole page -- including
+  // BulkActionBar/the mission dialogs and their own local result-summary
+  // state -- with a bare spinner on every reload() a bulk action or
+  // mission launch triggers, not just the first load. That silently
+  // unmounted BulkActionBar an instant after it set a real success/skip
+  // summary, so the operator never saw it -- reproduced directly in a real
+  // browser (network request succeeded, but the DOM never showed the
+  // result). Gating on `loading && !portfolio` instead means only the
+  // genuine first load shows the spinner; a background reload keeps the
+  // current UI (and any child's local state) mounted while it refreshes.
+  if (loading && !portfolio) {
     return <LoadingState label="Loading Projects…" />
   }
   if (error) {

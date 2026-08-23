@@ -41,7 +41,12 @@ export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: project, loading, error, reload } = useApi(() => api.project(id!), [id])
 
-  if (loading) {
+  // Real V1 stabilization finding (see ProjectsPage.tsx for the full real-
+  // browser reproduction): gating on bare loading flashes this whole page
+  // to a spinner -- and unmounts MembershipPanel/PlannerChatPanel/etc. and
+  // their own local state -- on every background reload (Refresh,
+  // MembershipPanel's Add/Remove), not just the first load.
+  if (loading && !project) {
     return <LoadingState label="Loading project…" />
   }
   if (error) {
