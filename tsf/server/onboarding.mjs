@@ -291,7 +291,8 @@ async function gatherRepositoryFacts({ repoPath, handoffText, resolution }) {
     hasPackageManifest,
     reconciliation,
     migration,
-    health
+    health,
+    handoffText
   }
 }
 
@@ -383,6 +384,16 @@ export async function analyzeRepository({ repoPath, handoffText = '', resolution
     migrationClassification: migration,
     portfolioGating: portfolioGatingForClassification(migration.classification),
     handoffReconciliation: reconciliation,
+    // Real V1 stabilization finding (Health Repair Center, found while
+    // building the HANDOFF_RECONCILIATION_REQUIRED auto-repair action): the
+    // raw handoff text was used to classify but never round-tripped back
+    // out, so nothing durable could ever re-supply it to redo/re-verify a
+    // reconciliation later (a repair, a "recheck", an audit) -- only the
+    // already-derived claims/discrepancies survived. Bounded (matches
+    // EXCERPT_BYTES elsewhere) so this never balloons a stored record with
+    // an unbounded paste. null (not '') when no handoff was given, so a
+    // caller can tell "no handoff" apart from "empty string handoff".
+    handoffTextExcerpt: facts.handoffText?.trim() ? facts.handoffText.slice(0, 4000) : null,
     orcaRegistration: shapeOrcaRegistration(orcaCheck),
     discovery: {
       priorityFiles: discovery.priorityFiles.map((f) => ({

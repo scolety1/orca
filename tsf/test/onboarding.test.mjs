@@ -404,6 +404,18 @@ test('discoverProjectFiles + discoverCommandGuidance: finds README/package.json 
   assert.deepEqual(guidance.testCommands, ['UNKNOWN run test'])
 })
 
+// Health Repair Center V1: baseline verification needs a real typecheck
+// command to run, distinct from test/build/lint -- previously undiscovered
+// entirely (no field for it), so a project's own `typecheck` script was
+// silently invisible to any caller.
+test('discoverCommandGuidance: discovers a typecheck script, separate from test/build/lint', () => {
+  const guidance = discoverCommandGuidance(
+    '/fake/repo',
+    '{"scripts":{"typecheck":"tsc --noEmit","test":"vitest"}}'
+  )
+  assert.deepEqual(guidance.typecheckCommands, ['UNKNOWN run typecheck'])
+})
+
 test('boundedUntrackedDirectorySizes: large untracked directory is a bounded, capped scan, not a full recursive walk', async () => {
   const dir = tracked(createTempRepo())
   const bigDir = path.join(dir, 'generated-output')

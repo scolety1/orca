@@ -14,7 +14,23 @@ import path from 'node:path'
 const exec = promisify(execFile)
 const GIT_TIMEOUT_MS = 10000
 const EXCERPT_BYTES = 4000
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt', 'vendor', '.venv', 'venv', '__pycache__', 'coverage', '.turbo', '.cache', 'target'])
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'out',
+  '.next',
+  '.nuxt',
+  'vendor',
+  '.venv',
+  'venv',
+  '__pycache__',
+  'coverage',
+  '.turbo',
+  '.cache',
+  'target'
+])
 const BOUNDED_SCAN_LIMIT = 3000
 
 function slash(value) {
@@ -43,37 +59,68 @@ async function git(root, args, { allowFailure = false } = {}) {
     )
     return stdout.trim()
   } catch (error) {
-    if (allowFailure) return null
-    const detail = String(error?.stderr || error?.message || 'git command failed').trim().split(/\r?\n/)[0]
+    if (allowFailure) {
+      return null
+    }
+    const detail = String(error?.stderr || error?.message || 'git command failed')
+      .trim()
+      .split(/\r?\n/)[0]
     throw Object.assign(new Error(detail), { code: 'GIT_COMMAND_FAILED', args })
   }
 }
 
 function parsePorcelainV2(text) {
-  const output = { branch: null, upstream: null, ahead: 0, behind: 0, detached: false, staged: [], unstaged: [], untracked: [], conflicted: [] }
-  for (const line of String(text || '').split(/\r?\n/).filter(Boolean)) {
+  const output = {
+    branch: null,
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    detached: false,
+    staged: [],
+    unstaged: [],
+    untracked: [],
+    conflicted: []
+  }
+  for (const line of String(text || '')
+    .split(/\r?\n/)
+    .filter(Boolean)) {
     if (line.startsWith('# branch.head ')) {
       output.branch = line.slice(14).trim()
       output.detached = output.branch === '(detached)'
-    } else if (line.startsWith('# branch.upstream ')) output.upstream = line.slice(18).trim()
-    else if (line.startsWith('# branch.ab ')) {
+    } else if (line.startsWith('# branch.upstream ')) {
+      output.upstream = line.slice(18).trim()
+    } else if (line.startsWith('# branch.ab ')) {
       const match = line.match(/\+(\d+)\s+-(\d+)/)
       if (match) {
         output.ahead = Number(match[1])
         output.behind = Number(match[2])
       }
-    } else if (line.startsWith('? ')) output.untracked.push(line.slice(2))
-    else if (/^[12u] /.test(line)) {
+    } else if (line.startsWith('? ')) {
+      output.untracked.push(line.slice(2))
+    } else if (/^[12u] /.test(line)) {
       const kind = line[0]
       const fields = line.split(' ')
       const xy = fields[1] || '..'
-      const file = kind === '1' ? fields.slice(8).join(' ') : kind === '2' ? fields.slice(9).join(' ').split('\t')[0] : fields.slice(10).join(' ')
-      if (kind === 'u' || xy.includes('U')) output.conflicted.push(file)
-      if (xy[0] && xy[0] !== '.') output.staged.push(file)
-      if (xy[1] && xy[1] !== '.') output.unstaged.push(file)
+      const file =
+        kind === '1'
+          ? fields.slice(8).join(' ')
+          : kind === '2'
+            ? fields.slice(9).join(' ').split('\t')[0]
+            : fields.slice(10).join(' ')
+      if (kind === 'u' || xy.includes('U')) {
+        output.conflicted.push(file)
+      }
+      if (xy[0] && xy[0] !== '.') {
+        output.staged.push(file)
+      }
+      if (xy[1] && xy[1] !== '.') {
+        output.unstaged.push(file)
+      }
     }
   }
-  for (const key of ['staged', 'unstaged', 'untracked', 'conflicted']) output[key] = [...new Set(output[key])].sort()
+  for (const key of ['staged', 'unstaged', 'untracked', 'conflicted']) {
+    output[key] = [...new Set(output[key])].sort()
+  }
   return output
 }
 
@@ -96,12 +143,20 @@ function parseWorktrees(text) {
 
 function parseRemotes(text) {
   const rows = []
-  for (const line of String(text || '').split(/\r?\n/).filter(Boolean)) {
+  for (const line of String(text || '')
+    .split(/\r?\n/)
+    .filter(Boolean)) {
     const match = line.match(/^(\S+)\s+(\S+)\s+\((fetch|push)\)$/)
-    if (match) rows.push({ name: match[1], url: sanitizeRemoteUrl(match[2]), direction: match[3] })
+    if (match) {
+      rows.push({ name: match[1], url: sanitizeRemoteUrl(match[2]), direction: match[3] })
+    }
   }
   const byName = new Map()
-  for (const row of rows) if (!byName.has(row.name)) byName.set(row.name, row)
+  for (const row of rows) {
+    if (!byName.has(row.name)) {
+      byName.set(row.name, row)
+    }
+  }
   return [...byName.values()]
 }
 
@@ -115,7 +170,11 @@ async function gitOperationSentinels(gitDir) {
     ['REVERT_HEAD', 'revert'],
     ['BISECT_LOG', 'bisect']
   ]
-  for (const [name, kind] of checks) if (existsSync(path.join(gitDir, name))) sentinels.push(kind)
+  for (const [name, kind] of checks) {
+    if (existsSync(path.join(gitDir, name))) {
+      sentinels.push(kind)
+    }
+  }
   return [...new Set(sentinels)]
 }
 
@@ -124,7 +183,9 @@ async function gitOperationSentinels(gitDir) {
 // worktrees, recent commits, important local branches.
 export async function snapshotRepository(repoPath) {
   const root = path.resolve(repoPath)
-  if (!existsSync(root)) return { ok: false, reason: 'REPOSITORY_UNAVAILABLE', detail: `path does not exist: ${root}` }
+  if (!existsSync(root)) {
+    return { ok: false, reason: 'REPOSITORY_UNAVAILABLE', detail: `path does not exist: ${root}` }
+  }
   let topLevel
   try {
     topLevel = await git(root, ['rev-parse', '--show-toplevel'])
@@ -132,15 +193,45 @@ export async function snapshotRepository(repoPath) {
     return { ok: false, reason: 'NOT_A_GIT_REPOSITORY', detail: error.message }
   }
   const canonicalTop = path.resolve(topLevel)
-  const [head, tree, statusText, gitDir, remoteText, worktreeText, recentLogText, branchText, commitCountText, trackedFilesText] = await Promise.all([
+  const [
+    head,
+    tree,
+    statusText,
+    gitDir,
+    remoteText,
+    worktreeText,
+    recentLogText,
+    branchText,
+    commitCountText,
+    trackedFilesText
+  ] = await Promise.all([
     git(canonicalTop, ['rev-parse', 'HEAD'], { allowFailure: true }),
     git(canonicalTop, ['rev-parse', 'HEAD^{tree}'], { allowFailure: true }),
-    git(canonicalTop, ['-c', 'core.quotepath=false', 'status', '--porcelain=v2', '--branch', '--untracked-files=all']),
+    git(canonicalTop, [
+      '-c',
+      'core.quotepath=false',
+      'status',
+      '--porcelain=v2',
+      '--branch',
+      '--untracked-files=all'
+    ]),
     git(canonicalTop, ['rev-parse', '--absolute-git-dir']),
     git(canonicalTop, ['remote', '-v'], { allowFailure: true }),
     git(canonicalTop, ['worktree', 'list', '--porcelain'], { allowFailure: true }),
-    git(canonicalTop, ['log', '-10', '--pretty=format:%H|%h|%ad|%an|%s', '--date=iso-strict'], { allowFailure: true }),
-    git(canonicalTop, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)|%(committerdate:iso-strict)', 'refs/heads', '--count=15'], { allowFailure: true }),
+    git(canonicalTop, ['log', '-10', '--pretty=format:%H|%h|%ad|%an|%s', '--date=iso-strict'], {
+      allowFailure: true
+    }),
+    git(
+      canonicalTop,
+      [
+        'for-each-ref',
+        '--sort=-committerdate',
+        '--format=%(refname:short)|%(committerdate:iso-strict)',
+        'refs/heads',
+        '--count=15'
+      ],
+      { allowFailure: true }
+    ),
     git(canonicalTop, ['rev-list', '--count', 'HEAD'], { allowFailure: true }),
     // Full tracked-file path list (names only, git ls-files is cheap even for
     // large repos) — needed so sensitive-path detection sees files already
@@ -175,7 +266,12 @@ export async function snapshotRepository(repoPath) {
     upstream: parsed.upstream,
     ahead: parsed.ahead,
     behind: parsed.behind,
-    dirty: !!(parsed.staged.length || parsed.unstaged.length || parsed.untracked.length || parsed.conflicted.length),
+    dirty: !!(
+      parsed.staged.length ||
+      parsed.unstaged.length ||
+      parsed.untracked.length ||
+      parsed.conflicted.length
+    ),
     staged: parsed.staged,
     unstaged: parsed.unstaged,
     untracked: parsed.untracked,
@@ -220,7 +316,11 @@ const PRIORITY_FILES = [
 async function readExcerpt(file) {
   try {
     const buffer = await readFile(file)
-    return { text: buffer.subarray(0, EXCERPT_BYTES).toString('utf8'), truncated: buffer.length > EXCERPT_BYTES, bytes: buffer.length }
+    return {
+      text: buffer.subarray(0, EXCERPT_BYTES).toString('utf8'),
+      truncated: buffer.length > EXCERPT_BYTES,
+      bytes: buffer.length
+    }
   } catch {
     return null
   }
@@ -233,9 +333,13 @@ export async function discoverProjectFiles(root) {
   const found = []
   for (const candidate of PRIORITY_FILES) {
     const full = path.join(root, candidate.name)
-    if (!existsSync(full)) continue
+    if (!existsSync(full)) {
+      continue
+    }
     const excerpt = await readExcerpt(full)
-    if (excerpt) found.push({ relativePath: candidate.name, kind: candidate.kind, ...excerpt })
+    if (excerpt) {
+      found.push({ relativePath: candidate.name, kind: candidate.kind, ...excerpt })
+    }
   }
 
   // Shallow bounded scan (depth <= 2) for docs/, .github/workflows, and any
@@ -254,10 +358,16 @@ export async function discoverProjectFiles(root) {
     }
     for (const entry of entries) {
       scanned += 1
-      if (scanned >= BOUNDED_SCAN_LIMIT) break
-      if (entry.name.startsWith('.') && !['.github', '.env.example'].includes(entry.name)) continue
+      if (scanned >= BOUNDED_SCAN_LIMIT) {
+        break
+      }
+      if (entry.name.startsWith('.') && !['.github', '.env.example'].includes(entry.name)) {
+        continue
+      }
       if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name)) continue
+        if (SKIP_DIRS.has(entry.name)) {
+          continue
+        }
         if (depth === 0 && /^(docs?|\.github|review|handoff|packets?)$/i.test(entry.name)) {
           const full = path.join(dir, entry.name)
           let fileCount = 0
@@ -267,14 +377,20 @@ export async function discoverProjectFiles(root) {
             fileCount = 0
           }
           extraDirs.push({ relativePath: slash(path.relative(root, full)), fileCount })
-          if (depth < 1) queue.push({ dir: full, depth: depth + 1 })
+          if (depth < 1) {
+            queue.push({ dir: full, depth: depth + 1 })
+          }
         }
         continue
       }
     }
   }
 
-  return { priorityFiles: found, discoveredDirectories: extraDirs, scanTruncated: scanned >= BOUNDED_SCAN_LIMIT }
+  return {
+    priorityFiles: found,
+    discoveredDirectories: extraDirs,
+    scanTruncated: scanned >= BOUNDED_SCAN_LIMIT
+  }
 }
 
 function parsePackageJson(text) {
@@ -295,7 +411,14 @@ export function discoverCommandGuidance(root, packageJsonExcerptText) {
       : existsSync(path.join(root, 'package-lock.json'))
         ? 'npm'
         : 'UNKNOWN'
-  const runner = manager === 'yarn' ? 'yarn' : manager === 'pnpm' ? 'pnpm run' : manager === 'npm' ? 'npm run' : null
+  const runner =
+    manager === 'yarn'
+      ? 'yarn'
+      : manager === 'pnpm'
+        ? 'pnpm run'
+        : manager === 'npm'
+          ? 'npm run'
+          : null
   const pkg = packageJsonExcerptText ? parsePackageJson(packageJsonExcerptText) : null
   const scripts = pkg?.scripts ?? {}
   const commandsFor = (pattern) =>
@@ -308,6 +431,7 @@ export function discoverCommandGuidance(root, packageJsonExcerptText) {
     testCommands: commandsFor(/^(test|check)(:|$)/),
     buildCommands: commandsFor(/^build(:|$)/),
     lintCommands: commandsFor(/^lint(:|$)/),
+    typecheckCommands: commandsFor(/^typecheck(:|$)/),
     devCommands: commandsFor(/^(dev|start|preview)(:|$)/),
     declaredScripts: scripts,
     hasKnownTestCommand: Object.keys(scripts).some((name) => /^(test|check)(:|$)/.test(name))
@@ -326,19 +450,25 @@ export function boundedUntrackedDirectorySizes(root, untrackedPaths, limit = 40)
     grouped.set(top, (grouped.get(top) ?? 0) + 1)
   }
   for (const [top, count] of grouped) {
-    if (count < 200) continue
+    if (count < 200) {
+      continue
+    }
     flagged.push({ path: top, entryCount: count, source: 'UNTRACKED_PATH_COUNT' })
   }
   let checked = 0
   for (const candidate of untrackedPaths) {
-    if (checked >= limit) break
+    if (checked >= limit) {
+      break
+    }
     const target = path.join(root, candidate)
     try {
       const stat = statSync(target)
       if (stat.isDirectory() && !flagged.some((item) => item.path === candidate)) {
         checked += 1
         const size = boundedDirectorySize(target)
-        if (size.files >= 500 || size.bytes >= 50 * 1024 * 1024 || size.truncated) flagged.push({ path: candidate, ...size, source: 'BOUNDED_DIRECTORY_SCAN' })
+        if (size.files >= 500 || size.bytes >= 50 * 1024 * 1024 || size.truncated) {
+          flagged.push({ path: candidate, ...size, source: 'BOUNDED_DIRECTORY_SCAN' })
+        }
       }
     } catch {
       /* inaccessible — skip, not a finding */
@@ -361,10 +491,13 @@ function boundedDirectorySize(root, limit = 2500) {
       continue
     }
     for (const entry of entries) {
-      if (entry.name === '.git') continue
+      if (entry.name === '.git') {
+        continue
+      }
       const full = path.join(current, entry.name)
-      if (entry.isDirectory()) queue.push(full)
-      else {
+      if (entry.isDirectory()) {
+        queue.push(full)
+      } else {
         files += 1
         try {
           bytes += statSync(full).size

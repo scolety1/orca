@@ -26,6 +26,7 @@ import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { projectOnboardedProject } from './onboarded-project-projection.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
+import { handleHealthRepairRoute } from './health-repair-http-routes.mjs'
 import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
 import { handleEstimateRoute } from './estimate-http-routes.mjs'
 import { handleEvalRoute } from './eval-http-routes.mjs'
@@ -567,6 +568,19 @@ export function createRequestHandler() {
           req,
           res,
           url,
+          { opState },
+          { json, notFound, readBody, saveState }
+        )
+      ) {
+        return
+      }
+
+      // GET/POST /api/health-repair/* -- see health-repair-http-routes.mjs
+      if (
+        await handleHealthRepairRoute(
+          parts,
+          req,
+          res,
           { opState },
           { json, notFound, readBody, saveState }
         )
