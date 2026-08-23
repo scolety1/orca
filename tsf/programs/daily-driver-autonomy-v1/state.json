@@ -705,7 +705,9 @@
           "testsPassing": "204/204 full tsf suite GREEN",
           "verifier": "SELF; an independent review of waves 26+27 combined is in flight",
           "commit": "0a4f0930f4985b0afa71055e31566d9509d048af",
-          "deferredToNextWave": ["independent review of this wiring (in flight)"]
+          "deferredToNextWave": [
+            "independent review of this wiring (in flight)"
+          ]
         },
         {
           "wave": 27,
@@ -1193,7 +1195,11 @@
       ],
       "liveWorkFeedRule": "No fabricated status -- every state shown must be sourced from real Orca/TSF facts (task/dispatch status, run state, checkpoint phase), the same discipline M2 established (projectKeepGoingRun never invents workers/verifierResults it cannot back with real data). Drill-down/Open in Orca available for raw technical detail; Tim should not normally need Orca terminals.",
       "chatAuthority": {
-        "preserve": ["AUTO_DECIDE", "RECOMMEND_AND_PROCEED", "TIM_REQUIRED"],
+        "preserve": [
+          "AUTO_DECIDE",
+          "RECOMMEND_AND_PROCEED",
+          "TIM_REQUIRED"
+        ],
         "chatMustNeverSilentlyAuthorize": [
           "adoption",
           "push/merge",
@@ -1817,6 +1823,34 @@
           "commit": null,
           "status": "ADOPTED",
           "note": "Real Route Reader onboarding replay proves the fix end to end against the actual reported defect. Route Reader itself was never mutated (confirmed HEAD/tree/status byte-identical before and after, twice). Adopted directly into tsf/main; see programCompletionRecord.postAcceptanceStabilization for the program-level pointer."
+        },
+        {
+          "wave": 10,
+          "summary": "Post-adoption real-migration stabilization (V1 stabilization, not M15): a genuine onboarding/reconciliation deadlock found during real use of two more real projects (silent-visual-speech-spike, WorldForge/Nytheria-Bellharbor). A handoff/live-repo conflict forced TIM_REQUIRED classification with zero UI control to ever resolve it, and TIM_REQUIRED's gating blocked even Known Projects registration -- a decision the product never let the operator make. Fixed: new UNRESOLVED_HANDOFF_DISCREPANCY classification for an ordinary current-state (branch/HEAD/dirty) disagreement, distinct from TIM_REQUIRED (now reserved for genuine repository-identity ambiguity -- neither the claimed branch nor the claimed commit, nor a claimed different repository path, can be located in the repo at all). reconcileHandoff now returns structured discrepancyDetails (LIVE_REPO vs HANDOFF per field) and accepts an explicit operator resolution (USE_LIVE_REPO_FOR_CURRENT_STATE / KEEP_UNRESOLVED / USE_HANDOFF) that clears the block for classification while always preserving the raw discrepancy as history -- current-state facts are never overridden by a handoff regardless of resolution chosen. New ReconciliationResolutionPanel UI (competing-evidence table + the three resolution actions) wired into Review; in-review wizard state (including any resolution just made) is best-effort persisted to sessionStorage so an accidental reload does not discard it. Real fix (silent-visual-speech-spike): a handoff describing restricted/licensed DATA/MEDIA left uncommitted on purpose (the real clause \"Restricted NASA evaluation media stayed local and uncommitted\") was misread as live, possibly-lost SOURCE work -- excluded when both a governance marker and a data/artifact noun appear in the same clause. Real fix (WorldForge + Route Reader precedent): structured Key: value handoff lines (Branch/Repository/commit headers, not just prose) are now recognized -- the original prose-only patterns silently missed this common documentation style entirely, including a genuine repository-identity-mismatch signal (a handoff naming a completely different repository path) that is now the strongest identityAmbiguous trigger. New isLinkedWorktreeGitDir() distinguishes a linked Git worktree (a bounded workstream) from a project's canonical checkout, surfaced as a new REPOSITORY_IS_LINKED_WORKTREE health finding -- directly requested after WorldForge/Nytheria turned out to be a linked worktree of a different local repo, not the canonical project root. Real server-side gap closed: commitOnboarding's Known Projects gate was never actually enforced server-side (only the UI checkbox's disabled attribute blocked it) -- now symmetric with the existing Active Fleet/Work Set checks, and the /commit route's onboardedProjects projection (what /api/projects actually reads) kept in lockstep. Receipts now record the operator's reconciliation resolution alongside addedTo. Independent adversarial review (first pass) found a blocking max-lines regression (this wave's own oxfmt --write reformatting during commit silently pushed two files back over their caps, never re-checked after a successful commit) plus two real correctness gaps: the broadened shaClaim regex could capture a bare decimal number in unrelated prose as a false commit-SHA claim (wrongly escalating an ordinary branch typo to full TIM_REQUIRED), and the Active Fleet/Work Set membership-reconciliation block was gated on wantsKnown alone so an already-Known+Active-Fleet project that later became genuinely identity-ambiguous kept its STALE Active Fleet membership on re-commit. All three fixed (including extracting a shared gatherRepositoryFacts() helper to remove real triplicated logic across the three onboarding entry points, not just a line-count workaround, and a further test-file split), regression-tested, and independently re-verified GREEN by the same reviewer against the current tree. Real read-only replays against BOTH actual repos, live, twice each (before/after the fixup): silent-visual-speech-spike -- false positive gone, SAFE_TO_ONBOARD_NOW, fully open gating, zero mutation; WorldForge (Worldforge-NPC-Interior-Movement-Bellharbor-Plan-V1) -- correctly TIM_REQUIRED/identityAmbiguous via both branch AND repository-path mismatch, isLinkedWorktree true (4 worktrees sharing the same admin directory), resolution mechanism verified live end-to-end in-browser via a real isolated scratch TSF server (screenshots confirmed the evidence table, all three resolution buttons, and the Known/Active-Fleet onboard-toggle unlock all render and work correctly), zero mutation both times.",
+          "filesChanged": [
+            "tsf/domain/onboarding.mjs",
+            "tsf/domain/health.mjs",
+            "tsf/server/onboarding.mjs",
+            "tsf/server/onboarding-http-routes.mjs",
+            "tsf/test/onboarding.test.mjs",
+            "tsf/test/onboarding-reconciliation.test.mjs",
+            "tsf/test/onboarding-orca-resilience.test.mjs",
+            "tsf/test/http-onboarding.test.mjs",
+            "tsf/ui/src/lib/types.ts",
+            "tsf/ui/src/lib/onboarding-types.ts",
+            "tsf/ui/src/lib/api.ts",
+            "tsf/ui/src/lib/onboarding-labels.tsx",
+            "tsf/ui/src/pages/AddProjectPage.tsx",
+            "tsf/ui/src/components/onboarding/ReconciliationResolutionPanel.tsx",
+            "tsf/ui/src/components/onboarding/AddProjectRepositoryStep.tsx",
+            "tsf/ui/src/components/onboarding/AddProjectContextStep.tsx",
+            "tsf/ui/src/components/onboarding/AddProjectReviewStep.tsx"
+          ],
+          "testsPassing": "668 tests, 667 pass, 1 skip (pre-existing port-4610 collision self-detects and skips at tsf/main), 0 fail",
+          "verifier": "INDEPENDENT (forked review agent, two passes: first pass RED with 1 blocking + 2 non-blocking findings, all three fixed; second pass GREEN, all fixes independently reproduced and re-verified against the current tree)",
+          "commit": "2d4aa1ac6",
+          "status": "ADOPTED",
+          "note": "Real onboarding/reconciliation deadlock closed on real evidence from two more real projects. Adopted directly into tsf/main via git merge --ff-only (a39cbab09..2d4aa1ac6). Not M15 -- V1 stabilization per established program discipline."
         }
       ]
     },
@@ -2044,7 +2078,9 @@
       "note": "Tim sent a full M9-M13 roadmap extension mid-M8-session (received while M8 wave 5 was in progress) -- recorded verbatim in docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md so it survives context compaction. Explicit instruction: do NOT interrupt/restart/broaden/redo M8 because this message exists -- M8 finishes normally under the existing charter first. Once M8.status becomes ADOPTED, flip this entry's status to CURRENT and begin M9 wave 1 (research-first, per docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md's own bounded Promptfoo license/API verification instruction -- not a broad research phase) per the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M8.",
       "candidateCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
       "adoptedCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
-      "gaps": ["everything -- not started, pending M8 adoption"],
+      "gaps": [
+        "everything -- not started, pending M8 adoption"
+      ],
       "waves": [
         {
           "wave": 1,
@@ -2159,7 +2195,9 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M9 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
       "adoptedCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
-      "gaps": ["everything -- not started, pending M9 adoption"],
+      "gaps": [
+        "everything -- not started, pending M9 adoption"
+      ],
       "waves": [
         {
           "wave": 1,
@@ -2194,7 +2232,9 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
       "adoptedCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
-      "gaps": ["everything -- not started, pending M10 adoption"],
+      "gaps": [
+        "everything -- not started, pending M10 adoption"
+      ],
       "waves": [
         {
           "wave": 1,
@@ -2229,7 +2269,9 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
       "adoptedCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
-      "gaps": ["everything -- not started, pending M11 adoption"],
+      "gaps": [
+        "everything -- not started, pending M11 adoption"
+      ],
       "waves": [
         {
           "wave": 1,
@@ -2284,7 +2326,9 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). NOT a feature-building milestone -- freezes feature scope at M1-M12; fixes genuine defects, closes integration gaps, simplifies UX, improves reliability/docs, only after all 18 acceptance phases in the handoff doc are worked through. Do NOT begin M14 or invent additional feature milestones without Tim's approval -- M13 is intentionally the end of this upgrade program. Begins only after M12 is genuinely ADOPTED.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": ["everything -- not started, pending M12 adoption"],
+      "gaps": [
+        "everything -- not started, pending M12 adoption"
+      ],
       "acceptancePass": {
         "schemaVersion": "TSF_M13_ACCEPTANCE_REPORT_V1",
         "completedAt": "2026-08-21T09:50:35.000Z",
@@ -2410,7 +2454,9 @@
         {
           "wave": 5,
           "summary": "Independent review of wave 4 confirmed the cold-start fix genuinely works (live re-verification on an isolated scratch port/mutex, regression test confirmed to catch the old buggy shape) but found one real, CONFIRMED gap: the top-level try/catch started after the Win32 P/Invoke Add-Type compilation and the Mutex construction, leaving a narrow but genuine window where a cold `Add-Type` compile failure or a restricted Mutex-creation environment could still throw before any window exists, reproducing the exact same silent-death shape this whole fix exists to eliminate. Fixed by moving the try block to wrap everything from the Win32 Add-Type call onward -- single-instance setup, the orca-CLI check, and all window/WebView2 setup are now inside one handler, with the early \"already running\" / \"orca not found\" exit paths unaffected (exit does not trigger catch). Re-verified: regression test still passes, live smoke test against the real backend still shows the window in under 1s and clean shutdown, full suite 593/594 (1 known pre-existing port-4610 collision, unrelated).",
-          "filesChanged": ["tsf/launcher/Launch-TSF.ps1"]
+          "filesChanged": [
+            "tsf/launcher/Launch-TSF.ps1"
+          ]
         },
         {
           "wave": 6,
@@ -2426,7 +2472,9 @@
         {
           "wave": 7,
           "summary": "Independent review of wave 6 found no functional gap in the fix itself (live evidence, process-timestamp gap, and lack of any CLI reconciliation lever were all independently re-confirmed) but flagged one low-severity test-quality issue: the new regression test's negative assertion (!/hasn'?t registered/i) never actually matched the real old buggy copy's wording (\"hasn't been told where to find...\"), so it was a no-op guard -- the test still correctly distinguished old from new via its sibling positive assertion, so this was never a functional gap in the suite's outcome, but the assertion itself was ineffective. Fixed by broadening the pattern to hasn't (?:been told|registered), confirmed to now genuinely match the real old phrasing. Full suite re-run clean: 596/596, 595 pass, 1 fail (same pre-existing port-4610 collision, unrelated).",
-          "filesChanged": ["tsf/test/desktop-launcher-cold-start.test.mjs"]
+          "filesChanged": [
+            "tsf/test/desktop-launcher-cold-start.test.mjs"
+          ]
         },
         {
           "wave": 8,
@@ -2671,7 +2719,11 @@
         "Once usable capacity is effectively exhausted, checkpoint and wait/switch providers normally -- do not force further dispatch.",
         "Immediately after reset, reassess live capacity and restore the normal worker budget/concurrency for that provider."
       ],
-      "appliesToProviders": ["codex", "claude", "any future provider with a known reset window"],
+      "appliesToProviders": [
+        "codex",
+        "claude",
+        "any future provider with a known reset window"
+      ],
       "supersedesForNearResetWindowOnly": "The general 'hold off on new WORKER_* dispatch near a limit' base policy above -- this amendment only relaxes that base policy inside a known-reset window with a genuine bounded task available; it does not authorize dispatch when no such task exists or when the task risks stranding.",
       "mustStillHonor": [
         "Section F execution discipline (conflict-aware waves, independent verification, no worker self-report treated as done)",
@@ -2749,7 +2801,10 @@
       "worktreeRepoId": "443fd5dc-bd87-4019-a2a0-879188f97506",
       "operatorStateFile": "tsf/server/.local-state/operator-state.json (real default store, not a test override -- gitignored, inspect directly on disk)",
       "wave1Goal": "docs/m2-live-dogfood/wave-1-marker.md containing exactly the line 'M2 live dogfood wave 1 marker'",
-      "acceptanceCriteria": ["DOGFOOD_MARKER_WAVE_1_ADDED", "DOGFOOD_MARKER_WAVE_2_ADDED"],
+      "acceptanceCriteria": [
+        "DOGFOOD_MARKER_WAVE_1_ADDED",
+        "DOGFOOD_MARKER_WAVE_2_ADDED"
+      ],
       "dispatchedAt": "2026-08-20T07:12:51.241Z",
       "statusAtEntry": "orca orchestration task-list still reports status:'dispatched' as of 2026-08-20T07:42:35Z (~30 minutes elapsed, at/past the run's own stallThresholdMs of 30 minutes). orca terminal read on the worker terminal shows latestCursor/nextCursor UNCHANGED (14) since immediately after MCP startup -- zero new output in ~28 minutes, a genuine stall (the --inject dispatch mechanism appears to not have delivered visibly, or the terminal is deadlocked before echoing it), not a transient delay. This is being fenced as UNCERTAIN, not claimed as failed or stopped.",
       "scratchpadEvidence": "A non-committed mission driver script and its log live in this session's scratchpad temp dir (m2-live-dogfood.mjs / .log) -- NOT durable, may not survive a session loss; this state.json entry is the durable source of truth, not that log."
@@ -2812,12 +2867,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M3_WAVE_6_LIVE_WORK_FEED_UI_AND_STATUS_GROUNDING_COMPLETE",
-    "at": "2026-08-20T21:28:43.304Z",
-    "commit": "4044c6f6b",
+    "phase": "M7_WAVE_10_ONBOARDING_RECONCILIATION_DEADLOCK_CLOSED",
+    "at": "2026-08-23T09:37:35.373Z",
+    "commit": "2d4aa1ac6",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "M3 waves 5-6: built the Live Work Feed UI component (tsf/ui/src/components/keep-going/LiveWorkFeed.tsx), grounded \"what is it doing?\" in the real live Keep Going run, and proved 2 more \"also prove\" checklist items (follow-up status query, project-switching isolation) via real HTTP-level tests. 297/297 suite green. Remaining also-prove items: Needs You surfacing from a real worker question, a bounded revision request, stalled-worker recovery reuse. Then: independent review, the live fixture dogfood proof, Tim's manual UI acceptance checklist, final packaging/adoption."
+    "note": "M7 wave 10 adopted: onboarding reconciliation deadlock (TIM_REQUIRED with no resolution UI, blocking even Known Projects) fixed on real evidence from silent-visual-speech-spike and WorldForge/Nytheria. New UNRESOLVED_HANDOFF_DISCREPANCY classification, structured discrepancy evidence + 3-way resolution UI, canonical-vs-linked-worktree detection, repository-identity-mismatch detection, server-side Known Projects gating fix. Independent review GREEN (second pass, after fixing 1 blocking + 2 non-blocking findings from the first pass). 668/667/1-skip/0-fail, build clean, zero Orca core delta. Next: Phase 2 of the authorized overnight run (real V1 failures from tonight's use: Planner Chat authority false positive, planner/Orca resilience re-verification, Health/DEGRADED-catch-all presentation, refresh of existing Known Projects), then NWR + Nytheria/WorldForge overnight readiness and dispatch per Tim's explicit authorization. TSF HEALTH REPAIR CENTER V1 is queued strictly behind that overnight work."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
