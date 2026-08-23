@@ -42,8 +42,42 @@ const PROHIBITION_MARKERS =
 // opener rules below.
 const POLITE_REQUEST_MARKER = /\b(?:can|could|would|will)\s+you\b/i
 
-function isGenuineDirective(clause) {
-  if (POLITE_REQUEST_MARKER.test(clause)) {
+// Independent-review finding (dangerous-direction regression, caught before
+// adoption): splitting only on `.!?;\n` let an inquiry/prohibition earlier
+// in a comma- or "but"/em-dash-joined RUN-ON sentence exempt a genuine,
+// unrelated directive later in the SAME loose clause — e.g. "how do I check
+// status, and go ahead and delete the repo" wrongly waved a real destructive
+// delete through as AUTO_DECIDE, because the leading "how" opener covered
+// the whole sentence. Normalizing these coordinating joins into hard clause
+// boundaries first (so each independent thought is judged on its own) closes
+// that gap: "no rush, but please merge this to main" now correctly separates
+// the hedge from the actual directive instead of letting "no" (30+ characters
+// away) suppress it.
+function splitIntoSentences(message) {
+  return message.split(/(?<=[.!?;\n])/)
+}
+
+// Comma/"but"/em-dash normalization happens WITHIN a sentence, one level
+// below the sentence split — kept separate so the polite-request check
+// below can look at the whole sentence a clause came from, not just the
+// clause fragment itself.
+function splitIntoClauses(sentence) {
+  return sentence.replace(/,|--|—|\bbut\b/gi, '.').split(/(?<=[.!?;\n])/)
+}
+
+// Independent-review finding (dangerous-direction regression, caught before
+// adoption, 2nd pass): checking POLITE_REQUEST_MARKER against the clause
+// alone let a mid-sentence interjection ("Can you, if you have a moment,
+// push this to production?") split the "can you" clause away from the
+// verb+keyword clause, so the verb clause was judged on its own trailing
+// "?" and misread as a bare inquiry. The marker is judged against the
+// whole SENTENCE the clause came from instead — "can/could/would/will you"
+// anywhere in the same sentence still means the same request, however many
+// commas interrupt it — while sentence-level (not whole-message) scope
+// keeps an unrelated later sentence's own prohibition ("Also, don't push to
+// production.") from being swept up by an earlier sentence's polite marker.
+function isGenuineDirective(clause, sentence) {
+  if (POLITE_REQUEST_MARKER.test(sentence)) {
     return true
   }
   if (/\?/.test(clause)) {
@@ -59,12 +93,14 @@ function isGenuineDirective(clause) {
 }
 
 function isConsequentialDirective(message) {
-  for (const clause of message.split(/(?<=[.!?;\n])/)) {
-    if (
-      TIM_REQUIRED_PATTERNS.some((pattern) => pattern.test(clause)) &&
-      isGenuineDirective(clause)
-    ) {
-      return true
+  for (const sentence of splitIntoSentences(message)) {
+    for (const clause of splitIntoClauses(sentence)) {
+      if (
+        TIM_REQUIRED_PATTERNS.some((pattern) => pattern.test(clause)) &&
+        isGenuineDirective(clause, sentence)
+      ) {
+        return true
+      }
     }
   }
   return false

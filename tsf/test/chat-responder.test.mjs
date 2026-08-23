@@ -108,6 +108,73 @@ test('a polite "can you ...?" request is still TIM_REQUIRED, unlike a genuine "i
   assert.equal(classifyDecision('Is it safe to push this to production?', 'GENERAL'), 'AUTO_DECIDE')
 })
 
+// Independent-review finding (dangerous-direction regression, caught before
+// adoption): an inquiry/prohibition earlier in a comma- or "but"/em-dash-
+// joined run-on sentence must never exempt a genuine, unrelated directive
+// later in the same loose clause. Real examples the reviewer constructed,
+// including one that silently authorized a destructive repo delete.
+test('a hedge/question/prohibition earlier in a run-on sentence does not launder a real directive later in it', () => {
+  assert.equal(
+    classifyDecision('I do not think we should wait -- push this to production now.', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('This is not optional -- deploy it now.', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('Not sure but go ahead and merge this to main.', 'DISPATCH_REQUEST'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('no rush, but please merge this to main whenever you get a chance', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(classifyDecision("don't wait, push to production", 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(
+    classifyDecision(
+      'I know you said not to touch credentials, but please rotate the api key now',
+      'GENERAL'
+    ),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('what is the plan, and also please push this to production', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('why did the build fail, also please merge this to main', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('how do I check status, and go ahead and delete the repo', 'GENERAL'),
+    'TIM_REQUIRED',
+    'must never silently authorize a destructive delete'
+  )
+})
+
+// Independent-review finding (dangerous-direction regression, 2nd pass): a
+// comma-interrupted "can/could/would/will you ... <verb>" polite request had
+// its "you" clause split away from the verb+keyword clause by the run-on-
+// sentence fix above, so the verb clause was judged on its own trailing "?"
+// alone and misread as a bare inquiry. The polite-request check now looks at
+// the whole sentence a clause came from, not just the clause fragment.
+test('a comma-interrupted polite "can/would you ...?" request is still TIM_REQUIRED', () => {
+  assert.equal(
+    classifyDecision('Can you, if you have a moment, push this to production?', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('Would you, when convenient, deploy this?', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('Would you like coffee? Also, please do not push to production.', 'GENERAL'),
+    'AUTO_DECIDE',
+    "an earlier sentence's polite marker must not sweep up a later, unrelated prohibition"
+  )
+})
+
 // M3: "what is it doing?" must answer from the real, live Keep Going run
 // once one exists -- not the old mission/candidate/release model, which
 // has no relationship to it at all.
