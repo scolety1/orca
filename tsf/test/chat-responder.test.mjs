@@ -63,6 +63,51 @@ test('respond() still refuses TIM_REQUIRED phrasing before ever answering as a d
   assert.match(result.text, /consequential decision/i)
 })
 
+// Real Planner Chat authority false positive (V1 stabilization finding):
+// TSF refused an entire read-only readiness-assessment request as
+// TIM_REQUIRED merely because Tim's own prompt listed the consequential
+// actions he was explicitly ruling OUT (a bare keyword match against the
+// whole message, no negation/inquiry awareness). "Tell me whether X would
+// be safe" must never classify the same as "do X".
+test('a read-only readiness question that explicitly prohibits consequential actions is AUTO_DECIDE, not TIM_REQUIRED', () => {
+  const message =
+    'Is NWR safe to enter Active Fleet and Work Set? Give me an evidence-backed readiness assessment. ' +
+    'Do not modify files, do not implement anything, do not change Work Set, no adoption, ' +
+    'no push/merge/deploy, no credentials/money, no destructive actions.'
+  assert.equal(classifyDecision(message, classifyIntent(message)), 'AUTO_DECIDE')
+})
+
+test('"tell me whether to deploy" (inquiry) and "deploy it" (directive) do not classify identically', () => {
+  assert.equal(classifyDecision('tell me whether to deploy', 'GENERAL'), 'AUTO_DECIDE')
+  assert.equal(classifyDecision('deploy it', 'GENERAL'), 'TIM_REQUIRED')
+})
+
+test('an explicit "should this be deployed?" readiness question is AUTO_DECIDE', () => {
+  assert.equal(classifyDecision('Should this be deployed to production?', 'GENERAL'), 'AUTO_DECIDE')
+})
+
+test('a genuine consequential directive is still refused even alongside an unrelated prohibited clause', () => {
+  // The prohibition ("no credentials") must not accidentally launder a real
+  // directive elsewhere in the same message ("push this now").
+  const message = 'No credentials needed. Push this now.'
+  assert.equal(classifyDecision(message, classifyIntent(message)), 'TIM_REQUIRED')
+})
+
+test('a bare imperative consequential request with no hedging is still TIM_REQUIRED', () => {
+  assert.equal(classifyDecision('Merge this to main.', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('Adopt the candidate.', 'GENERAL'), 'TIM_REQUIRED')
+})
+
+// Regression (found while fixing the false-positive above): "can/could/
+// would/will YOU ...?" is a standard polite-request form in English, not a
+// genuine safety/advisability inquiry, even though it is phrased as a
+// question and opens with a modal verb — an early version of the fix
+// wrongly let the bare "?" rule reclassify this as AUTO_DECIDE.
+test('a polite "can you ...?" request is still TIM_REQUIRED, unlike a genuine "is it safe?" inquiry', () => {
+  assert.equal(classifyDecision('can you push this to production?', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('Is it safe to push this to production?', 'GENERAL'), 'AUTO_DECIDE')
+})
+
 // M3: "what is it doing?" must answer from the real, live Keep Going run
 // once one exists -- not the old mission/candidate/release model, which
 // has no relationship to it at all.

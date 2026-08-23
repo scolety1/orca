@@ -10,9 +10,20 @@ import { verifyReceipt } from '../domain/receipts.mjs'
 // (HEALTHY/UNKNOWN/DEGRADED/BLOCKED) used by ProjectCard/health.mjs
 // elsewhere — a distinct, richer vocabulary at the onboarding layer, folded
 // down for the shared card/badge rendering.
+//
+// Real V1 stabilization finding (Project Health / DEGRADED catch-all): this
+// previously folded HEALTHY_WITH_CAVEATS — a project with no more than a
+// non-blocking caveat (no README, dirty-but-preserved, a linked worktree, a
+// now-resolved handoff discrepancy...) — into the same 'DEGRADED' bucket as
+// a genuine NEEDS_ATTENTION finding, so many merely-paused/read-only/
+// dirty-preserve projects rendered as if something were actually broken. A
+// caveat is not degradation; only a real NEEDS_ATTENTION finding is. The
+// underlying findings (still HEALTHY_WITH_CAVEATS-coded) remain fully
+// visible on the project detail page either way — this only changes the
+// one-word fleet-card badge, never the evidence.
 const HEALTH_STATUS_MAP = {
   HEALTHY: 'HEALTHY',
-  HEALTHY_WITH_CAVEATS: 'DEGRADED',
+  HEALTHY_WITH_CAVEATS: 'HEALTHY',
   NEEDS_ATTENTION: 'DEGRADED',
   BLOCKED: 'BLOCKED',
   UNKNOWN: 'UNKNOWN'
@@ -40,7 +51,13 @@ export function projectOnboardedProject(record, membership) {
   const health = {
     schemaVersion: 'TSF_HEALTH_REPORT_V1',
     status: HEALTH_STATUS_MAP[analysis.health.status] ?? 'UNKNOWN',
-    findings: analysis.health.findings.map((f) => ({ code: f.code, status: f.status, summary: f.summary, remediation: f.remediation, evidence: f.evidence })),
+    findings: analysis.health.findings.map((f) => ({
+      code: f.code,
+      status: f.status,
+      summary: f.summary,
+      remediation: f.remediation,
+      evidence: f.evidence
+    })),
     observedAt: analysis.health.observedAt,
     authority: 'ADVISORY_ONLY'
   }
@@ -54,16 +71,27 @@ export function projectOnboardedProject(record, membership) {
     branch: analysis.identity.branch,
     registeredAt: record.acceptedAt ?? analysis.analyzedAt,
     purpose: analysis.direction.purpose,
-    restrictions: analysis.migrationClassification.classification === 'SENSITIVE' ? ['Sensitive project — no autonomous work without Tim.'] : [],
+    restrictions:
+      analysis.migrationClassification.classification === 'SENSITIVE'
+        ? ['Sensitive project — no autonomous work without Tim.']
+        : [],
     activeFleet: !!membership?.activeFleet,
     workSet: !!membership?.workSet,
     mission: {
       id: null,
       state: missionStateFor(analysis.migrationClassification.classification),
-      blockedReason: ['TIM_REQUIRED', 'NOT_READY'].includes(analysis.migrationClassification.classification) ? analysis.migrationClassification.reasons.join(' ') : null
+      blockedReason: ['TIM_REQUIRED', 'NOT_READY'].includes(
+        analysis.migrationClassification.classification
+      )
+        ? analysis.migrationClassification.reasons.join(' ')
+        : null
     },
     release: {
-      stable: { head: analysis.identity.head, tree: analysis.identity.tree, branch: analysis.identity.branch },
+      stable: {
+        head: analysis.identity.head,
+        tree: analysis.identity.tree,
+        branch: analysis.identity.branch
+      },
       previousStable: null,
       upgrade: null,
       testing: 'UNKNOWN',
@@ -72,14 +100,21 @@ export function projectOnboardedProject(record, membership) {
     },
     health,
     baseline: {
-      tests: analysis.discovery.commandGuidance.hasKnownTestCommand ? analysis.discovery.commandGuidance.testCommands.join(', ') : 'UNKNOWN',
+      tests: analysis.discovery.commandGuidance.hasKnownTestCommand
+        ? analysis.discovery.commandGuidance.testCommands.join(', ')
+        : 'UNKNOWN',
       lint: analysis.discovery.commandGuidance.lintCommands.join(', ') || 'UNKNOWN',
       typecheck: 'UNKNOWN',
       build: analysis.discovery.commandGuidance.buildCommands.join(', ') || 'UNKNOWN'
     },
     evidence: {
       planner: null,
-      selectedMission: analysis.direction.recommendedNextMission ? { title: analysis.direction.recommendedNextMission.title, rationale: analysis.direction.recommendedNextMission.rationale } : null,
+      selectedMission: analysis.direction.recommendedNextMission
+        ? {
+            title: analysis.direction.recommendedNextMission.title,
+            rationale: analysis.direction.recommendedNextMission.rationale
+          }
+        : null,
       verifier: null,
       browser: null,
       resultCapsules: [],
@@ -99,7 +134,11 @@ export function projectOnboardedProject(record, membership) {
     },
     receipts: (() => {
       const chain = (record.receipts ?? []).map((r) => ({ ...r, chainValid: verifyReceipt(r) }))
-      return { chain, chainValid: chain.every((r) => r.chainValid), tip: chain.at(-1)?.receiptHash ?? null }
+      return {
+        chain,
+        chainValid: chain.every((r) => r.chainValid),
+        tip: chain.at(-1)?.receiptHash ?? null
+      }
     })(),
     candidate: null
   }

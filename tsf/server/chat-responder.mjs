@@ -15,6 +15,61 @@ const TIM_REQUIRED_PATTERNS = [
   /\b(adopt|approve).*(candidate|this)\b/i
 ]
 
+// Real Planner Chat authority false positive (V1 stabilization finding): a
+// bare keyword match against the WHOLE message forced TIM_REQUIRED even
+// when Tim was asking ABOUT a consequential action (a read-only readiness
+// question) or explicitly PROHIBITING it — not requesting it. Real
+// reproduction: "...asked for an evidence-backed readiness assessment...
+// even after the prompt explicitly prohibited: ... push/merge/deploy;
+// credentials/money; destructive actions" was refused entirely, even
+// though every consequential keyword in it was there to rule the action
+// OUT, never to request it. Each match is now judged against its own
+// clause: a clause that's a genuine inquiry (a question, or opens with an
+// interrogative/hedging phrase) or an explicit prohibition (negated) does
+// not, by itself, force TIM_REQUIRED — an unhedged, non-negated directive
+// ("deploy it", "push this now") still does. "tell me whether to deploy"
+// (inquiry) and "deploy it" (directive) must not classify identically.
+const INQUIRY_OPENERS =
+  /^\s*(?:is|are|was|would|will|should|could|can|what|why|when|whether|how)\b|\b(?:tell me|let me know|explain|assess|evaluate|prepare)\b[\s\S]*\bwhether\b/i
+const PROHIBITION_MARKERS =
+  /\b(?:no|not|never|don['’]t|do not|won['’]t|without|isn['’]t|aren['’]t|shouldn['’]t|wouldn['’]t|couldn['’]t|can['’]t|cannot|none of)\b/i
+// "Can/could/would/will YOU ...?" is English's own standard polite-request
+// form ("can you push this to production?" means "please push this"), not
+// a genuine inquiry about the action's safety/advisability — independent-
+// review-equivalent regression found: it must stay a directive even though
+// it's phrased as a question and opens with a modal verb otherwise treated
+// as an inquiry opener. Checked first so it always wins over the "?"/
+// opener rules below.
+const POLITE_REQUEST_MARKER = /\b(?:can|could|would|will)\s+you\b/i
+
+function isGenuineDirective(clause) {
+  if (POLITE_REQUEST_MARKER.test(clause)) {
+    return true
+  }
+  if (/\?/.test(clause)) {
+    return false
+  }
+  if (INQUIRY_OPENERS.test(clause.trimStart())) {
+    return false
+  }
+  if (PROHIBITION_MARKERS.test(clause)) {
+    return false
+  }
+  return true
+}
+
+function isConsequentialDirective(message) {
+  for (const clause of message.split(/(?<=[.!?;\n])/)) {
+    if (
+      TIM_REQUIRED_PATTERNS.some((pattern) => pattern.test(clause)) &&
+      isGenuineDirective(clause)
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
 const INTENTS = [
   {
     id: 'STATUS',
@@ -61,7 +116,7 @@ export function classifyIntent(message) {
 }
 
 export function classifyDecision(message, intent) {
-  if (TIM_REQUIRED_PATTERNS.some((p) => p.test(message))) {
+  if (isConsequentialDirective(message)) {
     return 'TIM_REQUIRED'
   }
   if (['FIX_REQUEST', 'DISPATCH_REQUEST', 'RESEARCH', 'CRITIQUE'].includes(intent)) {
