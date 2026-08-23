@@ -1945,6 +1945,62 @@
           "commit": "93db8c0bb",
           "status": "ADOPTED",
           "note": "Closes the last of the 3 real, live-exploited findings from independent review. Adopted directly into tsf/main via git merge --ff-only alongside waves 13-15. Not M15 -- filed as an M7 wave per explicit instruction. Health Repair Center V1 is now complete and independently verified secure across all 3 real findings."
+        },
+        {
+          "wave": 17,
+          "summary": "Prerequisite V1 stabilization pass, point 1 of 5: real desktop TSF environment/APPDATA loss fixed. Root-caused from real source/runtime evidence: Orca launches the TSF plugin worker via main.mjs activate(orca), whose realSpawnFn spreads process.env into the spawned tsf/server child; in a real Orca-hosted context that env can already be missing APPDATA. Confirmed directly against the real installed orca.exe with a genuinely minimal env via a native Windows process spawn (Git Bash's own env -u confirmed unreliable for reproducing this). Fixed with a new TSF-side environment-resolution adapter (adapters/windows-user-env.mjs) that derives APPDATA/LOCALAPPDATA from USERPROFILE, or os.homedir() as a further fallback -- mutates only the calling process's own process.env, zero Orca core delta, no global Windows environment mutation. Wired into all three real TSF process entry points (main.mjs realSpawnFn, server/http-server.mjs, providers/safe-provider-launch.mjs). Proven against a real, genuinely broken-then-self-healed desktop process including a cold restart: Orca status, project registration, and live planner invocation all succeeded.",
+          "filesChanged": [
+            "tsf/adapters/windows-user-env.mjs",
+            "tsf/main.mjs",
+            "tsf/server/http-server.mjs",
+            "tsf/providers/safe-provider-launch.mjs",
+            "tsf/test/windows-user-env.test.mjs"
+          ],
+          "testsPassing": "6/6 windows-user-env unit tests; full backend suite green apart from the one pre-existing unrelated port-4610 flake",
+          "verifier": "INDEPENDENT (forked review agent, round 1 GREEN)",
+          "commit": "bb6c0dca9",
+          "status": "ADOPTED",
+          "note": "Health Repair Center V1 (waves 13-16) not reopened or redesigned, per explicit instruction."
+        },
+        {
+          "wave": 18,
+          "summary": "Prerequisite V1 stabilization pass, point 3 of 5: SENSITIVE path false positive on security-tooling and vendored-dependency paths -- first cut. `.*\\bcredentials?\\b.*` / `.*\\bsecrets?\\b.*` matched the word anywhere in a path, firing on a real project's own security-tooling filenames (password-remediation) and on real vendored third-party dependency internals (NWR). Narrowed by three exclusions: compiled bytecode, vendored/dependency directory markers, and a security-tooling/test filename marker. Superseded by two further rounds of narrowing after independent review found real bypasses -- see waves 19-20.",
+          "filesChanged": [
+            "tsf/domain/onboarding.mjs",
+            "tsf/test/onboarding.test.mjs",
+            "tsf/test/onboarding-sensitivity-paths.test.mjs"
+          ],
+          "testsPassing": "53/53 on the touched test files",
+          "verifier": "INDEPENDENT (forked review agent, round 1 RED -- 5 real bypasses found, closed in wave 19)",
+          "commit": "1ee7e7aa3",
+          "status": "SUPERSEDED_BY_WAVE_20",
+          "note": "First cut; independent review found real, evidence-backed bypasses (bare \"safe\" word, bare \"vendor\" directory, any-file-in-node_modules/.venv, standalone .pyc/.pyo, standalone .test./.spec.) closed in wave 19."
+        },
+        {
+          "wave": 19,
+          "summary": "Prerequisite V1 stabilization pass, point 3 of 5 (round 2): SENSITIVE path exclusions narrowed, closing all 5 findings from independent review of wave 18. Removed the bare \"safe\" marker word and the bare \"vendor\" directory name outright; required the vendored-module exclusion to also match the file's own module-name token exactly (secret(s)/credential(s)); folded the standalone .pyc/.pyo carve-out into that same check; removed the standalone .test./.spec. carve-out. One real evidence path (password-remediation's live/secret-safe-logger.mjs) is deliberately no longer exempted and reverts to SENSITIVE -- an accepted conservative residual.",
+          "filesChanged": [
+            "tsf/domain/onboarding.mjs",
+            "tsf/test/onboarding-sensitivity-paths.test.mjs"
+          ],
+          "testsPassing": "54/54 on the touched test files",
+          "verifier": "INDEPENDENT (forked review agent, round 2 RED -- 2 further real bypasses found, closed in wave 20)",
+          "commit": "d98b18f27",
+          "status": "SUPERSEDED_BY_WAVE_20",
+          "note": "audit/gate/lint/verify carried the same bare-word flaw just fixed for \"safe\"; the module-token check stripped only the first dot-segment. Both closed in wave 20."
+        },
+        {
+          "wave": 20,
+          "summary": "Prerequisite V1 stabilization pass, point 3 of 5 (round 3, complete): SENSITIVE path exclusions narrowed, closing the 2 remaining findings from independent review of wave 19. The tooling-marker exclusion now requires the marker word to sit directly hyphen/underscore-adjacent to the secret/credential word AND the file's extension to be source/script, never data/export. The vendored-module exclusion now also requires the file's real extension to be source/bytecode, closing a multi-dot module-token fake. Independent review round 3 returned GREEN with one documented, accepted LOW-severity residual boundary (a deliberately adversarial filename satisfying both structural signals at once) -- the reviewer explicitly recommended accepting this boundary rather than iterating further, since closing it needs file content, out of scope for a path-only classifier. Genuine detection (secrets.json, .aws/credentials, *.pem, id_rsa/id_ed25519) preserved and adversarially tested across all three rounds.",
+          "filesChanged": [
+            "tsf/domain/onboarding.mjs",
+            "tsf/test/onboarding-sensitivity-paths.test.mjs"
+          ],
+          "testsPassing": "54/54 on the touched test files; full backend suite 740/741 (only the pre-existing unrelated port-4610 flake)",
+          "verifier": "INDEPENDENT (forked review agent, round 3 GREEN)",
+          "commit": "e3d7d6a35 / b4cff8032",
+          "status": "ADOPTED",
+          "note": "Prerequisite V1 stabilization pass complete (points 1-5). Point 2 (real planner availability) re-verified this pass via fresh live checks against 3 real Known Projects (quoteloop, password-remediation, shopify-catalog-qa) plus 30/30 on test/live-planner.test.mjs + test/onboarding-orca-resilience.test.mjs. Point 4 (fleet recheck) confirmed 15 Known Projects unchanged, no repo mutated, Health Repair receipts/state (waves 13-16) intact. Adopted via git merge --ff-only (ccc97d486..b4cff8032). Not M15 -- filed as M7 waves per established program discipline."
         }
       ]
     },
