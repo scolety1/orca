@@ -213,13 +213,36 @@ function buildSystemPrompt({ project, capsule, opState, recentHistory, attachmen
   ].join('\n')
 }
 
-function spawnAgent({ entry, args, cwd, timeoutMs }) {
+// Exported for a direct regression test of the shell:true refusal guard
+// below (spawnAgent's normal callers never construct an entry themselves).
+export function spawnAgent({ entry, args, cwd, timeoutMs }) {
   return new Promise((resolve) => {
+    // Real V1 stabilization finding (Planner Chat live-use defect, honest-
+    // failure safety net): every call this module ever makes carries a real
+    // user message and a real multi-line system prompt -- shell:true is
+    // never safe for either (see resolve-agent-entry.mjs's fallbackCommand
+    // branch for the real, reproduced root cause: shell:true does zero
+    // argument escaping, so a large/multi-word argument is silently
+    // shredded by cmd.exe's own re-tokenization while the CLI still exits 0
+    // with a well-formed response -- a healthy-looking PLANNER_DEEP
+    // indicator answering a corrupted question). resolveAgentEntry no
+    // longer produces this combination, but this is a hard structural
+    // assertion, not a trust in that alone: if it ever does again (a future
+    // regression), refuse honestly here rather than silently corrupt the
+    // call -- the caller already renders this exactly like any other
+    // PROVIDER_UNAVAILABLE failure.
+    if (entry.viaShell) {
+      return resolve({
+        ok: false,
+        reason: 'PROVIDER_UNAVAILABLE',
+        detail: 'refusing an unsafe shell invocation for a complex-argument provider call'
+      })
+    }
     let child
     try {
       child = spawn(entry.command, args, {
         cwd,
-        shell: !!entry.viaShell,
+        shell: false,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
       })
