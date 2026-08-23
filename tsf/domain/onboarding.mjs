@@ -141,6 +141,15 @@ function isVendoredSensitiveModuleFile(p) {
 // (a verb-object compound, not merely present anywhere in the segment),
 // and the file's own extension must be a source/script one, never a data/
 // export format such as .json/.csv/.pem/.txt.
+//
+// Documented residual boundary (round 3 review, accepted, not chased
+// further): a deliberately adversarial name that satisfies BOTH signals at
+// once -- e.g. exports/credentials-audit-export.mjs -- can still slip
+// through. Closing that would require reading file *content*, out of
+// scope for this path-only classifier. This is a narrow, contrived shape
+// (not one an ordinary project layout produces by accident, unlike the
+// three real bypasses rounds 1-3 actually fixed) and is accepted as a
+// known limit rather than iterated on indefinitely.
 const SECURITY_TOOLING_SOURCE_EXTENSION =
   /\.(mjs|cjs|js|jsx|ts|tsx|py|rb|go|java|kt|swift|c|cc|cpp|h|hpp|rs|sh|ps1)$/i
 const SECURITY_TOOLING_ADJACENT_MARKER =
