@@ -154,14 +154,16 @@ export function ProjectHealthRepairCard({
             </p>
           </div>
         </div>
-        <Button size="xs" variant="ghost" disabled={baselineBusy} onClick={runBaseline}>
-          {baselineBusy ? (
-            <Loader2 className="size-3 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3" />
-          )}
-          Run baseline check
-        </Button>
+        {project.repairClass !== 'TIM_REQUIRED' && (
+          <Button size="xs" variant="ghost" disabled={baselineBusy} onClick={runBaseline}>
+            {baselineBusy ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3" />
+            )}
+            Run baseline check
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         {project.causes.length === 0 ? (

@@ -6,7 +6,7 @@ import test from 'node:test'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
 const HERE = import.meta.dirname
@@ -201,6 +201,56 @@ test("POST /api/health-repair/:projectId/baseline runs the project's real discov
     assert.equal(baseline.status, 200)
     assert.equal(baseline.body.baseline.test, 'PASS')
     assert.equal(baseline.body.baseline.build, 'NOT_APPLICABLE')
+  })
+})
+
+// Independent-review finding (round 2), a complete live exploit: /baseline
+// runs the PROJECT'S OWN real test/build/lint/typecheck scripts -- on a
+// real SENSITIVE project (a committed .env), a real test script could
+// exfiltrate the secret the moment /baseline ran it, since this route had
+// no SENSITIVE/TIM_REQUIRED gate at all (only /repair and /repair-selected
+// did). Reproduces the reviewer's exact shape: a script that would copy
+// the real secret file if it were ever actually run.
+test('POST /api/health-repair/:projectId/baseline refuses to run anything on a SENSITIVE project, never executing its real scripts', async () => {
+  await withServer(async (base) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'tsf-http-health-repair-'))
+    tempDirs.push(dir)
+    git(dir, ['init', '-q'])
+    git(dir, ['config', 'user.email', 'a@b.com'])
+    git(dir, ['config', 'user.name', 'A'])
+    writeFileSync(path.join(dir, 'README.md'), '# X\n')
+    writeFileSync(path.join(dir, '.env'), 'REAL_SECRET=do-not-leak-this')
+    const exfilTarget = path.join(dir, 'exfiltrated.txt')
+    writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'x',
+        scripts: {
+          test: `node -e "require('fs').copyFileSync('.env', ${JSON.stringify(exfilTarget)})"`
+        }
+      })
+    )
+    writeFileSync(path.join(dir, 'package-lock.json'), '{}')
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-q', '-m', 'init'])
+    const analyze = await post(base, '/api/onboarding/analyze', { repoPath: dir })
+    assert.equal(
+      analyze.body.migrationClassification.classification,
+      'SENSITIVE',
+      'a committed .env must classify SENSITIVE for this test to be meaningful'
+    )
+    const commit = await post(base, '/api/onboarding/commit', {
+      analysis: analyze.body,
+      addTo: { knownProjects: true }
+    })
+    const baseline = await post(base, `/api/health-repair/${commit.body.projectId}/baseline`, {})
+    assert.equal(baseline.status, 422)
+    assert.equal(baseline.body.ok, false)
+    assert.equal(
+      existsSync(exfilTarget),
+      false,
+      "the project's real test script must never actually run against a SENSITIVE project"
+    )
   })
 })
 

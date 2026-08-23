@@ -103,11 +103,25 @@ export async function handleHealthRepairRoute(
       notFound(res, `no onboarded project: ${projectId}`)
       return true
     }
+    const diagnosis = diagnoseRecord(opState, projectId, record)
+    // Independent-review finding (round 2), a complete live exploit: this
+    // route runs the PROJECT'S OWN real test/build/lint/typecheck scripts
+    // -- arbitrary project-defined code, not one of the small fixed
+    // AUTO_REPAIR_SAFE actions -- so it needs the exact same SENSITIVE/
+    // TIM_REQUIRED gate as /repair and /repair-selected, checked BEFORE
+    // anything is ever spawned, not just before persisting a result.
+    if (diagnosis.repairClass === 'TIM_REQUIRED') {
+      json(res, 422, {
+        ok: false,
+        error:
+          'This project has a TIM_REQUIRED cause on record -- no commands are run against it without Tim.'
+      })
+      return true
+    }
     const baseline = await runBaselineVerification(
       record.repoPath,
       record.lastAnalysis.discovery?.commandGuidance
     )
-    const diagnosis = diagnoseRecord(opState, projectId, record)
     const withBaseline = diagnoseProjectHealth({
       analysis: record.lastAnalysis,
       membership: {
