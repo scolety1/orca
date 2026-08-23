@@ -13,6 +13,14 @@ import type { EvalComparison, EvalPackSummary, EvalRunResult } from './eval-type
 import type { FlightRecorderView } from './flight-recorder-types'
 import type { FleetScheduleError, FleetScheduleResponse } from './fleet-types'
 import type {
+  BaselineCheckResult,
+  FleetHealthScanResult,
+  HealthRepairApiError,
+  PrepareMissionResult,
+  RepairActionResult,
+  RepairSelectedResult
+} from './health-repair-types'
+import type {
   AgentEvidence,
   ChatAttachmentMeta,
   ChatMessage,
@@ -241,5 +249,25 @@ export const api = {
     requestTolerant<FleetScheduleResponse, FleetScheduleError>('/fleet/schedule', {
       method: 'POST',
       body: JSON.stringify(body)
+    }),
+  healthRepairScan: () => request<FleetHealthScanResult>('/health-repair/scan'),
+  healthRepairBaseline: (projectId: string) =>
+    request<BaselineCheckResult>(`/health-repair/${encodeURIComponent(projectId)}/baseline`, {
+      method: 'POST'
+    }),
+  healthRepairRepair: (projectId: string, cause: string) =>
+    requestTolerant<RepairActionResult, HealthRepairApiError>(
+      `/health-repair/${encodeURIComponent(projectId)}/repair`,
+      { method: 'POST', body: JSON.stringify({ cause }) }
+    ),
+  healthRepairPrepareMission: (projectId: string, cause: string) =>
+    requestTolerant<PrepareMissionResult, HealthRepairApiError>(
+      `/health-repair/${encodeURIComponent(projectId)}/prepare-mission`,
+      { method: 'POST', body: JSON.stringify({ cause }) }
+    ),
+  healthRepairSelected: (projectIds: string[]) =>
+    request<RepairSelectedResult>('/health-repair/repair-selected', {
+      method: 'POST',
+      body: JSON.stringify({ projectIds })
     })
 }

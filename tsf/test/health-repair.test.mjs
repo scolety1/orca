@@ -179,6 +179,7 @@ test('a package manifest with dependencies not installed diagnoses DEPENDENCY_HE
   const causes = diagnoseProjectHealth({
     analysis: baseAnalysis({
       discovery: {
+        priorityFiles: [{ relativePath: 'package.json', kind: 'PACKAGE_MANIFEST' }],
         commandGuidance: {
           hasKnownTestCommand: true,
           packageManager: 'npm',
@@ -190,6 +191,30 @@ test('a package manifest with dependencies not installed diagnoses DEPENDENCY_HE
   assert.deepEqual(
     causes.map((c) => c.cause),
     [HEALTH_CAUSES.DEPENDENCY_HEALTH]
+  )
+})
+
+// Real bug found via live UI validation (not a synthetic case): packageManager
+// is the literal string 'UNKNOWN' -- truthy! -- when no lockfile exists at
+// all, so a plain repo with no package manager in use whatsoever (just a
+// README) wrongly diagnosed DEPENDENCY_HEALTH. hasPackageManifest is the
+// real fact this cause is about, not packageManager's mere truthiness.
+test('a repo with no package manifest at all never diagnoses DEPENDENCY_HEALTH, even though packageManager reads "UNKNOWN" (a truthy string)', () => {
+  const causes = diagnoseProjectHealth({
+    analysis: baseAnalysis({
+      discovery: {
+        priorityFiles: [{ relativePath: 'README.md', kind: 'README' }],
+        commandGuidance: {
+          hasKnownTestCommand: false,
+          packageManager: 'UNKNOWN',
+          dependenciesInstalled: false
+        }
+      }
+    })
+  })
+  assert.ok(
+    !causes.some((c) => c.cause === HEALTH_CAUSES.DEPENDENCY_HEALTH),
+    'a repo with no package.json at all must never diagnose DEPENDENCY_HEALTH'
   )
 })
 

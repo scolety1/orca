@@ -219,10 +219,16 @@ export function diagnoseProjectHealth({ analysis, membership, baseline } = {}) {
     )
   }
 
-  if (
-    analysis.discovery?.commandGuidance?.packageManager &&
-    analysis.discovery.commandGuidance.dependenciesInstalled === false
-  ) {
+  // Real bug found via live UI validation: `commandGuidance.packageManager`
+  // is the literal string 'UNKNOWN' (truthy!) when no lockfile is found at
+  // all, so checking it for truthiness alone fired DEPENDENCY_HEALTH for
+  // every repo with no package manager in use whatsoever (a plain repo
+  // with just a README). hasPackageManifest -- whether a real package.json
+  // was actually discovered -- is the fact this cause is actually about.
+  const hasPackageManifest = analysis.discovery?.priorityFiles?.some(
+    (f) => f.kind === 'PACKAGE_MANIFEST'
+  )
+  if (hasPackageManifest && analysis.discovery?.commandGuidance?.dependenciesInstalled === false) {
     causes.push(
       cause(
         HEALTH_CAUSES.DEPENDENCY_HEALTH,

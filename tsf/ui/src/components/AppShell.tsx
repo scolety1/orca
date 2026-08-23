@@ -5,6 +5,7 @@ import {
   FlaskConical,
   FolderKanban,
   LayoutGrid,
+  Stethoscope,
   TerminalSquare
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -17,7 +18,8 @@ const NAV = [
   { to: '/projects', label: 'Projects', icon: FolderKanban },
   { to: '/agents', label: 'Agents', icon: TerminalSquare },
   { to: '/evaluation', label: 'Evaluation', icon: FlaskConical },
-  { to: '/fleet', label: 'Fleet', icon: CalendarClock }
+  { to: '/fleet', label: 'Fleet', icon: CalendarClock },
+  { to: '/health-repair', label: 'Health Repair', icon: Stethoscope }
 ]
 
 export function AppShell() {

@@ -9,6 +9,7 @@ import { AgentsPage } from '@/pages/AgentsPage'
 import { AddProjectPage } from '@/pages/AddProjectPage'
 import { EvaluationPage } from '@/pages/EvaluationPage'
 import { FleetPage } from '@/pages/FleetPage'
+import { HealthRepairCenterPage } from '@/pages/HealthRepairCenterPage'
 
 export function App() {
   return (
@@ -24,6 +25,7 @@ export function App() {
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/evaluation" element={<EvaluationPage />} />
             <Route path="/fleet" element={<FleetPage />} />
+            <Route path="/health-repair" element={<HealthRepairCenterPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
