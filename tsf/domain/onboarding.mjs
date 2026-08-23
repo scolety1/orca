@@ -50,6 +50,13 @@ export const RECONCILIATION_RESOLUTION_MODES = Object.freeze([
   'USE_HANDOFF'
 ])
 
+// Real V1 stabilization finding (fleet-wide false positive, found refreshing
+// real Known Projects): `\.env(\..*)?` matched `.env.example`/`.env.sample`
+// identically to a real `.env` — but a committed template file with
+// placeholder values is the RECOMMENDED safe convention, the opposite of a
+// secret. Excluded by name, not by content (still zero filesystem reads
+// beyond the existing path list).
+const SENSITIVE_ENV_TEMPLATE_SUFFIX = /\.env\.(example|sample|template|dist)$/i
 const SENSITIVE_PATH_PATTERN =
   /(^|[\\/])(\.env(\..*)?|.*\bcredentials?\b.*|.*\bsecrets?\b.*|.*\bprivate[-_]?key.*|id_rsa|id_ed25519)$/i
 
@@ -159,8 +166,8 @@ export function classifyMigration(facts) {
     return { classification: 'NOT_READY', reasons, evidence: { repositoryUnavailable: true } }
   }
 
-  const sensitivePaths = (facts.trackedAndUntrackedPaths ?? []).filter((p) =>
-    SENSITIVE_PATH_PATTERN.test(p)
+  const sensitivePaths = (facts.trackedAndUntrackedPaths ?? []).filter(
+    (p) => SENSITIVE_PATH_PATTERN.test(p) && !SENSITIVE_ENV_TEMPLATE_SUFFIX.test(p)
   )
   const proseSignals = [
     ...detectSensitiveProseSignals(facts.readmeExcerpt, 'README'),
