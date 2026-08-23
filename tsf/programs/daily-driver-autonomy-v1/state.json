@@ -1873,6 +1873,78 @@
           "commit": "eb9bf71f8",
           "status": "ADOPTED",
           "note": "Real SENSITIVE classifier false positive on .env template files, found and closed via a live read-only refresh of the real Known Projects fleet. Adopted directly into tsf/main via git merge --ff-only. Not M15 -- V1 stabilization per established program discipline. A second, broader false-positive source (path-substring match on \"secret\"/\"credential\") is flagged, not fixed -- needs careful scoping."
+        },
+        {
+          "wave": 13,
+          "summary": "TSF Health Repair Center V1 -- backend (queued Task C, begun once the overnight NWR/Nytheria run reached its settled handoff, per explicit pre-authorization to continue automatically without asking again). No M15 -- filed as an M7 wave, same as the rest of this session's stabilization work.\n\nHealth Cause Model (domain/health-repair.mjs): the full documented taxonomy (INCOMPLETE_ANALYSIS, HANDOFF_RECONCILIATION_REQUIRED, REPOSITORY_IDENTITY_AMBIGUOUS, ORCA_NOT_REGISTERED, ORCA_TEMPORARILY_UNAVAILABLE, PLANNER_UNAVAILABLE, BASELINE_UNKNOWN, BASELINE_FAILING, BUILD_FAILING, TESTS_FAILING, TYPECHECK_FAILING, LINT_FAILING, DEPENDENCY_HEALTH, SECURITY_FINDINGS, DIRTY_PRESERVE, UNADOPTED_CANDIDATE, STALE_PROJECT_STATE, BLOCKED_PRODUCT_DECISION, BLOCKED_ARCHITECTURAL_CONFLICT, SENSITIVE_RESTRICTION, PAUSED_BY_DESIGN, UNKNOWN), each mapped to one of AUTO_REPAIR_SAFE / GOVERNED_REPAIR_MISSION / TIM_REQUIRED / NOT_A_DEFECT. diagnoseProjectHealth reasons over a project's real stored analysis (never fabricates evidence); overallRepairClass/isReadyForWork enforce the no-cosmetic-green rule -- a project is never ready for work while any real cause remains, even an AUTO_REPAIR_SAFE one not yet acted on. Sensitive projects always retain TIM_REQUIRED regardless of anything else found; dirty-preserve/paused/read-only are NOT_A_DEFECT, never a false blocker.\n\nI/O layer (server/health-repair.mjs): scanFleetHealth (pure read, never touches a repo); runBaselineVerification (real typecheck/test/build/lint execution with a bounded timeout -- real exit codes); repairProject (real AUTO_REPAIR_SAFE actions: refresh Orca registration, resolve an ordinary handoff discrepancy via USE_LIVE_REPO_FOR_CURRENT_STATE only, install missing dependencies, refresh a stale/fallen-back analysis); prepareRepairMission (a real, verification-first Keep Going mission spec for a GOVERNED_REPAIR_MISSION cause -- spec only, never dispatches).\n\nReal defects found and fixed while building this, all regression-tested: (1) shell:true + a plain child.kill('SIGTERM') does not actually terminate a hung process tree on Windows -- a bounded-timeout baseline check was not actually bounded in wall-clock time; fixed with taskkill /t /f on win32. (2) commitOnboarding's post-commit orcaRegistration shape has no status field at all, unlike analyzeRepository's own pre-commit shape -- a project that failed Orca registration exactly the way the real fleet did tonight (APPDATA missing) was invisible to diagnosis; fixed by keying primarily on registered === false. (3) Raw handoff text was used to classify but never persisted anywhere -- fixed by threading a bounded handoffTextExcerpt through analyzeRepository's own return. Also: repo-inspector.mjs now discovers a project's own typecheck script (previously invisible).\n\nHTTP routes (server/health-repair-http-routes.mjs): GET /scan, POST /:id/baseline, POST /:id/repair, POST /:id/prepare-mission, POST /repair-selected (one project's failure never stops another's). \"Recheck\" reuses the existing POST /api/onboarding/refresh route.",
+          "filesChanged": [
+            "tsf/domain/health-repair.mjs",
+            "tsf/server/health-repair.mjs",
+            "tsf/server/health-repair-http-routes.mjs",
+            "tsf/server/http-server.mjs",
+            "tsf/server/onboarding.mjs",
+            "tsf/server/repo-inspector.mjs",
+            "tsf/test/health-repair.test.mjs",
+            "tsf/test/health-repair-io.test.mjs",
+            "tsf/test/http-health-repair.test.mjs",
+            "tsf/test/onboarding.test.mjs"
+          ],
+          "testsPassing": "719/718/1-fail (pre-existing unrelated port-4610 flake)/0-skip",
+          "verifier": "INDEPENDENT (forked review agent ac0bdb34124e4427b, adversarial, reviewed both waves 13 and 14 together)",
+          "commit": "4d49d5158",
+          "status": "ADOPTED",
+          "note": "TSF Health Repair Center V1 backend. Queued Task C, begun after the overnight NWR/Nytheria run reached its settled handoff, per explicit pre-authorization. Adopted directly into tsf/main via git merge --ff-only. Not M15 -- filed as an M7 wave per explicit instruction."
+        },
+        {
+          "wave": 14,
+          "summary": "TSF Health Repair Center V1 -- UI. Completes wave 13's backend with a real operator UI: a Health Repair page (fleet summary, project list, Scan/Repair Selected actions), per-project cause cards with real per-cause actions (Repair for AUTO_REPAIR_SAFE, Prepare mission dialog for GOVERNED_REPAIR_MISSION, no action button for TIM_REQUIRED/NOT_A_DEFECT), and repair-class badges reusing the existing decision-*/status-* tokens -- no new colors introduced.\n\nReal defect found and fixed via genuine end-to-end UI validation (not a synthetic unit test): DEPENDENCY_HEALTH fired for a repo with no package.json at all, because commandGuidance.packageManager is the literal string 'UNKNOWN' (truthy!) when no lockfile is found -- fixed by checking discovery.priorityFiles for a real PACKAGE_MANIFEST entry instead. Caught by running the actual server + built UI in an isolated preview instance (own state file, own onboarded test repo, own port -- never the live desktop app) and clicking through the real flow via Chrome browser automation, per AGENTS.md's Electron UI Validation rule (the $electron skill itself was not available in this environment; an isolated standalone server + Chrome browser tooling was used instead of computer-use, which stayed off-limits). Real click-through verified: checkbox select, Repair button -> real REFRESH_ANALYSIS action -> real live planner call -> UI reflects the fresh, honest result, zero console errors.\n\nA real, read-only fleet Health scan was then run against the actual 13 real Known Projects (never a write -- the live desktop server holds the same state file with no write lock/CAS, so a second concurrent writer was deliberately avoided while Tim is asleep). Notable real finding: all 13 currently show PLANNER_UNAVAILABLE -- likely connected to the already-flagged APPDATA-missing defect on the live server's own process (not fully confirmed, flagged for the morning report).",
+          "filesChanged": [
+            "tsf/ui/src/pages/HealthRepairCenterPage.tsx",
+            "tsf/ui/src/components/health-repair/ProjectHealthRepairCard.tsx",
+            "tsf/ui/src/components/RepairClassBadge.tsx",
+            "tsf/ui/src/lib/health-repair-types.ts",
+            "tsf/ui/src/lib/api.ts",
+            "tsf/ui/src/App.tsx",
+            "tsf/ui/src/components/AppShell.tsx",
+            "tsf/domain/health-repair.mjs",
+            "tsf/test/health-repair.test.mjs"
+          ],
+          "testsPassing": "720/719/1-fail (pre-existing unrelated port-4610 flake)/0-skip; tsc -b --noEmit clean; vite build clean",
+          "verifier": "INDEPENDENT (forked review agent ac0bdb34124e4427b, adversarial, reviewed both waves 13 and 14 together); real end-to-end click-through in an isolated preview instance via Chrome browser automation",
+          "commit": "ec6ea036b",
+          "status": "ADOPTED",
+          "note": "TSF Health Repair Center V1 UI. Completes the feature begun in wave 13. Adopted directly into tsf/main via git merge --ff-only. Not M15 -- filed as an M7 wave per explicit instruction. TSF HEALTH REPAIR CENTER V1 is now complete -- do not invent another feature milestone."
+        },
+        {
+          "wave": 15,
+          "summary": "TSF Health Repair Center V1 -- security fixes from independent review round 1 (RED, agent ac0bdb34124e4427b), all confirmed with live exploits by the reviewer and fixed here, all regression-tested.\n\n1. Real shell-injection RCE (server/health-repair.mjs, repo-inspector.mjs discoverCommandGuidance). Only the PREFIX of a package.json script NAME was validated (/^test(:|$)/ matches \"test:$(evil)\" as happily as \"test:unit\"), and every consumer of *Commands builds a shell command line by string-concatenating that name -- an attacker-controlled script name became real command execution via the ordinary \"Run baseline check\" button. Reviewer built a real repo with a malicious script name and got real code execution outside npm's own scope. Fixed at the source: a script name must match a safe identifier shape to be discovered as a runnable command at all. Defense in depth: runBaselineVerification also independently validates the full command line against the exact safe shape discovery is documented to produce before ever spawning it.\n\n2. SENSITIVE authority bypass (server/health-repair-http-routes.mjs /repair and /repair-selected). Both checked only the REQUESTED cause's own repair class, never the project's overall rollup -- an otherwise-safe cause could be auto-repaired on a project that ALSO carries a TIM_REQUIRED cause, directly violating \"sensitive projects retain stronger authority... regardless of anything else found.\" Reviewer onboarded a real project with a committed .env (correctly classified SENSITIVE) and got a real npm install executed via /repair anyway. Fixed: both routes now refuse ANY repair action on a project whose overall diagnosis rollup is TIM_REQUIRED, for any reason, before ever looking at which specific cause was requested.\n\n3. Silent data loss in bulk repair (server/health-repair-http-routes.mjs /repair-selected). No try/catch around the per-project loop, single saveState after the whole batch -- a real exception on project 2 of 3 discarded project 1's already-completed real repair and never attempted project 3. Fixed: each project's repair runs inside its own try/catch and is persisted immediately after it completes.\n\nThis is a strong real-world argument for the independent-adversarial-review-before-adoption discipline: these were real, serious, exploitable defects that clean tests/lint/build/typecheck alone did not and could not have caught -- the reviewer had to actually build and run real exploits to find them.",
+          "filesChanged": [
+            "tsf/server/health-repair-http-routes.mjs",
+            "tsf/server/health-repair.mjs",
+            "tsf/server/repo-inspector.mjs",
+            "tsf/test/health-repair-io.test.mjs",
+            "tsf/test/http-health-repair.test.mjs",
+            "tsf/test/onboarding.test.mjs"
+          ],
+          "testsPassing": "725 tests, 723 pass (the reported 2-fail double-counts the same one pre-existing unrelated port-4610 flake, its parent suite also marked failed), 0 skip",
+          "verifier": "INDEPENDENT (forked review agent ac0bdb34124e4427b, round 1 RED with 3 confirmed live-exploited findings, round 2 re-verified the fixes against the same exploits)",
+          "commit": "a9cc0159a",
+          "status": "ADOPTED",
+          "note": "Health Repair Center V1 security fixes closing all 3 round-1 RED findings (shell-injection RCE, SENSITIVE authority bypass, silent bulk-repair data loss). Adopted directly into tsf/main via git merge --ff-only alongside waves 13-14. Not M15 -- filed as an M7 wave per explicit instruction."
+        },
+        {
+          "wave": 16,
+          "summary": "TSF Health Repair Center V1 -- closes the one remaining finding from independent review round 2 (agent ac0bdb34124e4427b): the SENSITIVE-authority fix in wave 15 covered /repair and /repair-selected but missed POST /:projectId/baseline entirely.\n\n/baseline runs the PROJECT'S OWN real test/build/lint/typecheck scripts -- arbitrary project-defined code, not one of the small fixed AUTO_REPAIR_SAFE actions -- so it needed the exact same project-level TIM_REQUIRED gate. The reviewer proved a complete, live exploit: a real SENSITIVE-classified project (a committed .env) whose test script copies .env into a new file -- calling /baseline actually ran it and the secret was copied to disk, since this route had no gate at all.\n\nFixed: /baseline now computes the project's diagnosis first and refuses (422, no commands ever spawned) if the overall rollup is TIM_REQUIRED, before running anything. UI: the \"Run baseline check\" button is no longer offered at all for a TIM_REQUIRED project. Regression test reproduces the reviewer's exact exploit shape and asserts the target file is never created.",
+          "filesChanged": [
+            "tsf/server/health-repair-http-routes.mjs",
+            "tsf/test/http-health-repair.test.mjs",
+            "tsf/ui/src/components/health-repair/ProjectHealthRepairCard.tsx"
+          ],
+          "testsPassing": "84/84 on the full health-repair + onboarding suite; full backend suite green apart from the one pre-existing unrelated port-4610 flake",
+          "verifier": "INDEPENDENT (forked review agent ac0bdb34124e4427b, round 2 found this one remaining gap after rounds 1-2 closed the other two findings, round 3 re-verified this fix)",
+          "commit": "93db8c0bb",
+          "status": "ADOPTED",
+          "note": "Closes the last of the 3 real, live-exploited findings from independent review. Adopted directly into tsf/main via git merge --ff-only alongside waves 13-15. Not M15 -- filed as an M7 wave per explicit instruction. Health Repair Center V1 is now complete and independently verified secure across all 3 real findings."
         }
       ]
     },
@@ -2868,12 +2940,12 @@
     "policy": "Base rule: Codex weekly usage near exhausted with 0 reset credits -- no new Codex WORKER_* dispatch until capacity recovers or resets, per Section G. Amended 2026-08-19 with the EXPIRING_CAPACITY rule (capacityPolicy.expiringCapacityRule), then further overridden by Tim's explicit tonightCodexWindowOverride for this specific reset window (target 7-8% usage, 1-2% reserve). Applied via one real live dispatch (wave 11: run_dacf11e05bac/task_c041daaba741/ctx_b6e0769fc52b, the program's first proof that orca-orchestration-bridge.mjs's real functions work against the live orca CLI) that doubled as a genuine cross-provider independent review, returning 9 findings, 3 of which were fixed in waves 12-14. Codex reached its in-session rate-limit signal again after that one dispatch, matching the target/reserve split -- no further dispatch queued. Claude remained healthy the rest of the night and did all of waves 12-14's fixes directly."
   },
   "lastDurableCheckpoint": {
-    "phase": "M7_WAVE_12_SENSITIVE_ENV_TEMPLATE_FALSE_POSITIVE_CLOSED",
-    "at": "2026-08-23T10:40:27.987Z",
-    "commit": "eb9bf71f8",
+    "phase": "M7_WAVE_16_HEALTH_REPAIR_CENTER_V1_COMPLETE_AND_SECURED",
+    "at": "2026-08-23T19:21:34.645Z",
+    "commit": "93db8c0bb",
     "commitTree": null,
     "workingTreeClean": true,
-    "note": "M7 wave 12 adopted: SENSITIVE classifier false positive on committed .env.example/.env.sample template files fixed, found via a live read-only Phase 2E refresh of the real 12-project Known Projects fleet (not synthetic). 105/105 onboarding suite, 681/680/1-fail(pre-existing flake)/0-skip full suite, lint clean, zero Orca core delta. A broader \"secret\"/\"credential\" path-substring false positive is flagged for the morning report, deliberately not fixed this pass. Next: finish the Phase 2E before/after fleet table; NWR found genuinely blocked on a real, evidenced two-local-clones ambiguity (documented, not guessed, no dispatch); WorldForge/Nytheria canonical root resolved and onboarded (Known+ActiveFleet+WorkSet), a real overnight verification-only Keep Going run and worker dispatched via a direct orca CLI workaround after discovering the live desktop TSF server itself cannot drive Orca registration/dispatch tonight (APPDATA missing from its own process environment, reproduced twice) -- Health Repair Center V1 remains queued strictly behind this overnight work reaching a real stopping point."
+    "note": "M7 waves 13-16 adopted: TSF Health Repair Center V1 complete (backend + UI) and secured after a real RED independent-review round found 3 confirmed, live-exploited defects (shell-injection RCE, SENSITIVE authority bypass across /repair+/repair-selected+/baseline, silent bulk-repair data loss). All three fixed across waves 15-16 (the SENSITIVE-authority fix needed two passes -- round 2 found /baseline had been missed) and re-verified GREEN on a third review round. Full Health Cause Model taxonomy, AUTO_REPAIR_SAFE/GOVERNED_REPAIR_MISSION/TIM_REQUIRED/NOT_A_DEFECT classification, real bounded baseline verification (now with real spawn-safety validation and a project-level SENSITIVE/TIM_REQUIRED gate before any command runs), real repair actions (same gate), real mission-spec preparation, full operator UI. Real read-only scan against the actual 13 Known Projects run (no writes -- live desktop server holds the same state file with no write lock). Lint clean, UI typecheck/build clean, zero Orca core delta. This was the queued Health Repair Center work -- complete. Next: produce the final morning report covering the full overnight run (TSF stabilization, NWR blocked/human-decision-needed, WorldForge/Nytheria dispatched-and-verified, Health Repair Center complete and secured)."
   },
   "priorDurableCheckpoint8": {
     "phase": "M2_WAVE_16B_CONCURRENCY_HARDENING_REVIEW_ADDRESSED",
