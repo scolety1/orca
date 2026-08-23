@@ -64,7 +64,6 @@ test("classifyMigration: a project's own security-tooling/test filenames are not
     repositoryUnavailable: false,
     trackedAndUntrackedPaths: [
       'scripts/secret-scan.mjs',
-      'live/secret-safe-logger.mjs',
       'tests/secret-scan-private-exclusion.test.mjs',
       'tests/verify-rotate-credential-gate.test.mjs',
       'src/index.js'
@@ -75,6 +74,26 @@ test("classifyMigration: a project's own security-tooling/test filenames are not
     handoffConflict: false
   })
   assert.notEqual(result.classification, 'SENSITIVE')
+})
+
+// Round 2 (independent adversarial review, RED): "safe" as a bare marker
+// word exempted real credential-shaped filenames with no actual tooling
+// behavior. A file that pairs "secret" with "safe" but carries none of the
+// real tooling verbs (scan/gate/audit/lint/verify) must stay SENSITIVE —
+// a conservative residual false positive is acceptable; a real bypass is
+// not. This is the one real-evidence path from round 1 that is no longer
+// exempted.
+test('classifyMigration: a bare "safe"-named file with no real tooling verb stays SENSITIVE', () => {
+  const result = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: ['live/secret-safe-logger.mjs', 'src/index.js'],
+    dirty: false,
+    discoveryConfidence: 'HIGH',
+    activeGitOperation: false,
+    handoffConflict: false
+  })
+  assert.equal(result.classification, 'SENSITIVE')
 })
 
 test('classifyMigration: vendored third-party dependency internals are not themselves SENSITIVE', () => {
@@ -95,6 +114,89 @@ test('classifyMigration: vendored third-party dependency internals are not thems
     handoffConflict: false
   })
   assert.notEqual(result.classification, 'SENSITIVE')
+})
+
+// Round 2 (independent adversarial review, RED): the vendored-path
+// exclusion originally fired on any file inside node_modules/.venv/vendor
+// regardless of its own name, and "vendor" itself is ambiguous (a
+// project's own third-party-*service* credentials, e.g.
+// vendor/stripe/credentials.json, are not a vendored *dependency*). It now
+// requires the file's own module-name token to be EXACTLY
+// secret(s)/credential(s) -- the real vendored-package shape -- so a
+// compound-named file living in the same directories, including the exact
+// accidental-commit scenario this system exists to catch, still SENSITIVE.
+test('classifyMigration: a compound-named secret file inside node_modules/.venv is still SENSITIVE', () => {
+  const result = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: [
+      '.venv/local-project-secrets.txt',
+      'node_modules/.cache/build-credentials.json',
+      'src/index.js'
+    ],
+    dirty: false,
+    discoveryConfidence: 'HIGH',
+    activeGitOperation: false,
+    handoffConflict: false
+  })
+  assert.equal(result.classification, 'SENSITIVE')
+  assert.ok(result.evidence.sensitivePaths.includes('.venv/local-project-secrets.txt'))
+  assert.ok(result.evidence.sensitivePaths.includes('node_modules/.cache/build-credentials.json'))
+})
+
+// "vendor" was removed from the vendored-directory marker outright (round
+// 2) -- it is not a package-manager-owned directory name the way
+// node_modules/.venv/site-packages are, so a project's own vendor
+// integration credentials must never be exempted by it.
+test('classifyMigration: a real credential file under a "vendor" directory is still SENSITIVE', () => {
+  const result = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: [
+      'vendor/stripe/credentials.json',
+      'vendor/my-real-secrets.json',
+      'src/index.js'
+    ],
+    dirty: false,
+    discoveryConfidence: 'HIGH',
+    activeGitOperation: false,
+    handoffConflict: false
+  })
+  assert.equal(result.classification, 'SENSITIVE')
+  assert.ok(result.evidence.sensitivePaths.includes('vendor/stripe/credentials.json'))
+  assert.ok(result.evidence.sensitivePaths.includes('vendor/my-real-secrets.json'))
+})
+
+// The standalone .pyc/.pyo carve-out was removed outright (round 2) -- it
+// exempted a compiled-artifact-NAMED file anywhere in the repo, not just
+// inside a real vendored dependency directory.
+test('classifyMigration: a .pyc file outside a vendored directory is still SENSITIVE', () => {
+  const result = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: ['leaked-credentials.pyc', 'src/index.js'],
+    dirty: false,
+    discoveryConfidence: 'HIGH',
+    activeGitOperation: false,
+    handoffConflict: false
+  })
+  assert.equal(result.classification, 'SENSITIVE')
+})
+
+// The standalone .test./.spec. carve-out was removed outright (round 2) --
+// it exempted a real hardcoded-credentials test fixture on filename shape
+// alone, with no actual tooling-verb marker present.
+test('classifyMigration: a *.test.js file with no real tooling verb stays SENSITIVE', () => {
+  const result = classifyMigration({
+    gitRepositoryFound: true,
+    repositoryUnavailable: false,
+    trackedAndUntrackedPaths: ['credentials.test.js', 'src/index.js'],
+    dirty: false,
+    discoveryConfidence: 'HIGH',
+    activeGitOperation: false,
+    handoffConflict: false
+  })
+  assert.equal(result.classification, 'SENSITIVE')
 })
 
 test('classifyMigration: real secret-like files are still SENSITIVE -- the narrowing never weakens genuine detection', () => {

@@ -64,26 +64,61 @@ const SENSITIVE_PATH_PATTERN =
 // build, fixed here): `.*\bcredentials?\b.*` / `.*\bsecrets?\b.*` match the
 // word ANYWHERE in a path, so they fired identically on a project's own
 // SECURITY-TOOLING filenames (real evidence: password-remediation's
-// scripts/secret-scan.mjs, live/secret-safe-logger.mjs, tests/verify-
-// rotate-credential-gate.test.mjs) and on VENDORED third-party dependency
-// internals (real evidence: NWR's own .codex-cfbd-test-deps/pydantic_
-// settings/sources/providers/secrets.py, .pycache-.../Lib/secrets.cpython-
-// 312.pyc — that .pyc is the compiled bytecode of Python's own standard-
-// library `secrets` module, nothing to do with a secret at all). Narrowed
-// by exclusion, not by weakening the base pattern — a real secrets.json,
-// .aws/credentials, or my-secret.pem is untouched by any of these three
-// exclusions and still matches exactly as before.
-const COMPILED_BYTECODE_ARTIFACT = /\.(pyc|pyo)$/i
-const VENDORED_OR_DEPENDENCY_PATH =
-  /(^|[\\/])(node_modules|\.venv|venv|site-packages|dist-packages|vendor|__pycache__|\.pycache-[^\\/]*|\.[a-z0-9]+-[a-z0-9-]*-deps)([\\/]|$)/i
+// scripts/secret-scan.mjs, tests/secret-scan-private-exclusion.test.mjs,
+// tests/verify-rotate-credential-gate.test.mjs) and on VENDORED third-party
+// dependency internals (real evidence: NWR's own .codex-cfbd-test-deps/
+// pydantic_settings/sources/providers/secrets.py, .pycache-.../Lib/secrets.
+// cpython-312.pyc — that .pyc is the compiled bytecode of Python's own
+// standard-library `secrets` module, nothing to do with a secret at all).
+// Narrowed by exclusion, not by weakening the base pattern — a real
+// secrets.json, .aws/credentials, or my-secret.pem is untouched by either
+// exclusion below and still matches exactly as before.
+//
+// Round 2 (independent adversarial review, RED on the first cut): the first
+// version exempted any file merely named "*.pyc"/"*.pyo" anywhere in the
+// repo (not just inside a vendored path), any directory literally named
+// "vendor" (ambiguous — a project's own third-party-*service* credentials,
+// e.g. vendor/stripe/credentials.json, are not a vendored *dependency*),
+// and any filename containing the bare word "safe" (a real file plausibly
+// named safe-credentials-backup.json is not tooling). All three closed:
+// the vendored-dependency exclusion now additionally requires the file's
+// own module-name token — its final path segment up to the first dot — to
+// be EXACTLY "secret(s)"/"credential(s)", the shape of a real vendored
+// package's own internal module (matches every real NWR evidence path
+// above; does not match a compound name like build-credentials.json or
+// local-project-secrets.txt, which stay SENSITIVE even inside node_modules/
+// .venv — the exact accidental-commit case this system exists to catch).
+// "vendor" and the standalone .pyc/.pyo carve-out are removed outright.
+const VENDORED_MODULE_DIRECTORY =
+  /(^|[\\/])(node_modules|\.venv|venv|site-packages|dist-packages|__pycache__|\.pycache-[^\\/]*|\.[a-z0-9]+-[a-z0-9-]*-deps)([\\/]|$)/i
+function isVendoredSensitiveModuleFile(p) {
+  if (!VENDORED_MODULE_DIRECTORY.test(p)) {
+    return false
+  }
+  const finalSegment = p.split(/[\\/]/).pop() ?? ''
+  const moduleToken = finalSegment.split('.')[0].toLowerCase()
+  return (
+    moduleToken === 'secret' ||
+    moduleToken === 'secrets' ||
+    moduleToken === 'credential' ||
+    moduleToken === 'credentials'
+  )
+}
 // A filename carrying its own security-tooling/test marker (scans FOR
-// secrets, gates/verifies credential handling, or is itself a test of
-// that behavior) is evidence the project is testing/guarding against
-// exposure, not exposing something — matched only against the final path
-// segment so a directory named e.g. "safe" elsewhere in the path can't
-// exempt an unrelated real secret file living inside it.
-const SECURITY_TOOLING_OR_TEST_FILENAME =
-  /(^|[\\/])[^\\/]*\b(scan|gate|audit|lint|verify|safe)\b[^\\/]*\.[a-z0-9]+$|\.(test|spec)\.[cm]?[jt]sx?$/i
+// secrets, gates/verifies credential handling) is evidence the project is
+// testing/guarding against exposure, not exposing something — matched only
+// against the final path segment so a directory named e.g. "verify"
+// elsewhere in the path can't exempt an unrelated real secret file living
+// inside it. "safe" was removed (round 2) — too common an English word in a
+// real credentials filename to be a reliable tooling signal. The standalone
+// .test./.spec. carve-out was removed too (round 2) — it exempted a real
+// hardcoded-credentials test fixture like credentials.test.js on filename
+// shape alone; every real tooling-test file in evidence already carries one
+// of the marker words below on its own (secret-scan-*.test.mjs, verify-
+// rotate-credential-gate.test.mjs), so the separate carve-out was never
+// actually needed for genuine tooling and only widened the hole.
+const SECURITY_TOOLING_FILENAME_MARKER =
+  /(^|[\\/])[^\\/]*\b(scan|gate|audit|lint|verify)\b[^\\/]*\.[a-z0-9]+$/i
 
 // Prose signals: each pattern captures a phrase that, read at face value with
 // no surrounding negation/future framing, asserts a CURRENT sensitive-
@@ -195,9 +230,8 @@ export function classifyMigration(facts) {
     (p) =>
       SENSITIVE_PATH_PATTERN.test(p) &&
       !SENSITIVE_ENV_TEMPLATE_SUFFIX.test(p) &&
-      !COMPILED_BYTECODE_ARTIFACT.test(p) &&
-      !VENDORED_OR_DEPENDENCY_PATH.test(p) &&
-      !SECURITY_TOOLING_OR_TEST_FILENAME.test(p)
+      !isVendoredSensitiveModuleFile(p) &&
+      !SECURITY_TOOLING_FILENAME_MARKER.test(p)
   )
   const proseSignals = [
     ...detectSensitiveProseSignals(facts.readmeExcerpt, 'README'),
