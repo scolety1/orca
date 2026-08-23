@@ -453,9 +453,16 @@ export function reconcileHandoff({ handoffText, repoFacts, resolution = null }) 
   // keyword immediately followed by whitespace then the hex) never matched
   // — a colon and/or backtick between the keyword and the value broke the
   // adjacency. Now allows an optional `:` and backticks in between.
-  const shaClaim = text
+  //
+  // Independent-review finding (post-adoption hardening): [0-9a-f]{7,40}
+  // also matches a bare decimal number ("Latency measured at 1234567890
+  // nanoseconds") since every digit is valid hex — requiring at least one
+  // a-f letter rules those out, since a real short SHA is never all-decimal
+  // in practice, without narrowing genuine hex-only commit hashes.
+  const shaMatch = text
     .match(/\b(?:at|head|commit)\b\s*:?\s*`?([0-9a-f]{7,40})`?\b/i)?.[1]
     ?.toLowerCase()
+  const shaClaim = shaMatch && /[a-f]/.test(shaMatch) ? shaMatch : undefined
   let shaFoundAnywhere = true
   if (shaClaim) {
     claims.push({ field: 'head', claimed: shaClaim })

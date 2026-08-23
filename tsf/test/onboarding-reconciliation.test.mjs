@@ -246,6 +246,95 @@ test('reconcileHandoff: KEEP_UNRESOLVED explicitly preserves the block, same as 
   assert.equal(result.effectiveConflict, true)
 })
 
+// --- Defect 2 (M7 real-migration finding): committed-unadopted vs actual ---
+// uncommitted-WIP reconciliation. The original detector treated any mention
+// of "committed"/"uncommitted"/"WIP" identically, so "committed YELLOW
+// research" against a clean repo was flagged as if real work might be lost.
+
+test('reconcileHandoff: clean repo + handoff says committed candidate is an agreement, not a discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText:
+      'The research was committed as a YELLOW candidate but has not been adopted into main.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, false)
+  assert.ok(result.agreements.some((a) => /committed-but-unadopted/i.test(a)))
+})
+
+test('reconcileHandoff: clean repo + handoff says uncommitted files is still a real discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText: 'There are several uncommitted files with in-progress edits.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, true)
+  assert.match(result.discrepancies.join(' '), /uncommitted/i)
+})
+
+test('reconcileHandoff: dirty repo + handoff says clean is still a real discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText: 'The repository is clean.',
+    repoFacts: { dirty: true, untrackedCount: 2, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, true)
+  assert.match(result.discrepancies.join(' '), /dirty/i)
+})
+
+test('reconcileHandoff: branch containing unadopted commits is recognized when it exists locally, even if not checked out', () => {
+  const result = reconcileHandoff({
+    handoffText: 'Branch feature/unadopted-research is clean.',
+    repoFacts: {
+      dirty: false,
+      head: 'abc123',
+      branch: 'main',
+      localBranches: [{ name: 'main' }, { name: 'feature/unadopted-research' }]
+    }
+  })
+  assert.equal(result.hasConflict, false)
+  assert.ok(result.agreements.some((a) => /feature\/unadopted-research/.test(a)))
+})
+
+test('reconcileHandoff: a claimed branch that genuinely does not exist anywhere is still a real discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText: 'Branch feature/ghost is clean.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main', localBranches: [{ name: 'main' }] }
+  })
+  assert.equal(result.hasConflict, true)
+  assert.match(result.discrepancies.join(' '), /feature\/ghost/)
+})
+
+test('reconcileHandoff: planned work only is neither a discrepancy nor forced agreement against a clean repo', () => {
+  const result = reconcileHandoff({
+    handoffText: 'A GPS integration is planned as future work; nothing has been implemented yet.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, false)
+})
+
+test('reconcileHandoff: historical WIP terminology that does not describe current Git state is not a false discrepancy', () => {
+  const result = reconcileHandoff({
+    handoffText:
+      'The WIP research phase concluded and was committed as YELLOW research for later review.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, false)
+})
+
+// Independent-review finding (post-adoption hardening): a handoff mentioning
+// a committed-unadopted claim in one sentence must not silently swallow a
+// genuine uncommitted-work claim made in a different sentence -- each claim
+// is judged per-clause, not from a single whole-text classification that
+// only keeps the first match it happens to find.
+test('reconcileHandoff: a genuine uncommitted-work claim is still flagged even when an unrelated committed-candidate claim also appears in the handoff', () => {
+  const result = reconcileHandoff({
+    handoffText:
+      'The research was committed as a candidate but has not been adopted. Separately, there are uncommitted debugging changes on disk that have not been committed yet.',
+    repoFacts: { dirty: false, head: 'abc123', branch: 'main' }
+  })
+  assert.equal(result.hasConflict, true)
+  assert.match(result.discrepancies.join(' '), /uncommitted/i)
+  assert.ok(result.agreements.some((a) => /committed-but-unadopted/i.test(a)))
+})
+
 // Real V1 stabilization finding (silent-visual-speech-spike real migration
 // replay): "Restricted NASA evaluation media stayed local and uncommitted"
 // matched the bare word "uncommitted" and was misread as live, possibly-lost
@@ -311,6 +400,32 @@ test('reconcileHandoff: a colon/backtick-delimited commit claim ("Last experimen
     result.hasConflict,
     false,
     'the claimed commit is genuinely in recent history, so this is not a discrepancy'
+  )
+})
+
+// Independent-review finding (post-adoption hardening): [0-9a-f]{7,40} also
+// matches a bare decimal number (every digit is valid hex), so an unrelated
+// number elsewhere in the handoff ("latency measured at 1234567890
+// nanoseconds") must never be captured as a claimed commit SHA — that would
+// wrongly make an ordinary branch typo look identity-ambiguous.
+test('reconcileHandoff: a bare decimal number in prose is never captured as a claimed commit SHA', () => {
+  const result = reconcileHandoff({
+    handoffText: 'Branch: feature-xyz\n\nLatency measured at 1234567890 nanoseconds.',
+    repoFacts: {
+      dirty: false,
+      head: 'abcdefabcdefabcdefabcdefabcdefabcdefabcd',
+      branch: 'main',
+      localBranches: [{ name: 'main' }]
+    }
+  })
+  assert.ok(
+    !result.claims.some((c) => c.field === 'head'),
+    'a decimal-only number must not be read as a SHA claim'
+  )
+  assert.equal(
+    result.identityAmbiguous,
+    false,
+    'an ordinary branch mismatch alone is not identity ambiguity'
   )
 })
 
@@ -487,5 +602,46 @@ test('commitOnboarding: UNRESOLVED_HANDOFF_DISCREPANCY can still join Known Proj
     })
     assert.ok(portfolio.projects[analysis.projectId])
     assert.equal(JSON.parse(receipt.decision).reconciliationResolution.mode, 'KEEP_UNRESOLVED')
+  })
+})
+
+// Independent-review finding (post-adoption hardening): gating the Active
+// Fleet/Work Set membership-reconciliation block on `wantsKnown` alone meant
+// an already-Known+Active-Fleet project whose classification LATER turns
+// TIM_REQUIRED on a re-commit kept its STALE Active Fleet membership
+// untouched, even though the same commit response honestly reported
+// activeFleet: false. The milder UNRESOLVED_HANDOFF_DISCREPANCY case already
+// revoked stale membership correctly — the more severe case must too.
+test('commitOnboarding: a project that later becomes identity-ambiguous has its stale Active Fleet membership revoked, not left stale', async () => {
+  await withEnv(BASE_ENV, async () => {
+    const dir = tracked(createTempRepo())
+    const firstAnalysis = await analyzeRepository({ repoPath: dir, handoffText: '' })
+    const first = await commitOnboarding({
+      portfolio: createPortfolio(),
+      analysis: firstAnalysis,
+      addTo: { knownProjects: true, activeFleet: true }
+    })
+    assert.ok(
+      first.portfolio.activeFleet.includes(firstAnalysis.projectId),
+      'sanity: really is in Active Fleet before'
+    )
+
+    const secondAnalysis = await analyzeRepository({
+      repoPath: dir,
+      handoffText:
+        'Branch feature/ghost-ambiguous is clean. Handoff was captured at commit deadbeefcafe0123456789abcdef01234567.'
+    })
+    assert.equal(secondAnalysis.migrationClassification.classification, 'TIM_REQUIRED')
+    const second = await commitOnboarding({
+      portfolio: first.portfolio,
+      analysis: secondAnalysis,
+      addTo: { knownProjects: true, activeFleet: true },
+      previousReceiptHash: first.receipt.receiptHash
+    })
+    assert.equal(
+      second.portfolio.activeFleet.includes(secondAnalysis.projectId),
+      false,
+      'a project that is now identity-ambiguous must not keep its stale Active Fleet membership'
+    )
   })
 })

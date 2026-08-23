@@ -192,12 +192,14 @@ function buildDirectionPrompt({
   ].join('\n')
 }
 
-// Read-only. Never writes to the target repository, TSF state, or Orca.
-// `resolution` (optional): an explicit operator choice among
-// RECONCILIATION_RESOLUTION_MODES, re-applied to a fresh reconciliation —
-// see reconcileHandoff/classifyMigration in domain/onboarding.mjs for what
-// this actually changes (never what `snapshot` itself reports).
-export async function analyzeRepository({ repoPath, handoffText = '', resolution = null }) {
+// Shared by analyzeRepository/resolveReconciliation/retryDirectionAnalysis:
+// read-only Git/filesystem facts through reconciliation/classification/
+// Health, never the live planner (each caller decides separately whether it
+// needs a fresh direction call). Consolidating this here means the three
+// call sites can never silently drift out of sync with each other, the way
+// three independently-maintained copies of the same ~80 lines eventually
+// would.
+async function gatherRepositoryFacts({ repoPath, handoffText, resolution }) {
   const snapshot = await snapshotRepository(repoPath)
   if (!snapshot.ok) {
     return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
@@ -276,6 +278,44 @@ export async function analyzeRepository({ repoPath, handoffText = '', resolution
     isLinkedWorktree: isLinkedWorktreeGitDir(snapshot.gitDir),
     worktreeSiblingCount: snapshot.worktrees?.length ?? null
   })
+
+  return {
+    ok: true,
+    snapshot,
+    discovery,
+    commandGuidance,
+    readmeFile,
+    agentsFile,
+    claudeFile,
+    deploymentFiles,
+    hasPackageManifest,
+    reconciliation,
+    migration,
+    health
+  }
+}
+
+// Read-only. Never writes to the target repository, TSF state, or Orca.
+// `resolution` (optional): an explicit operator choice among
+// RECONCILIATION_RESOLUTION_MODES, re-applied to a fresh reconciliation —
+// see reconcileHandoff/classifyMigration in domain/onboarding.mjs for what
+// this actually changes (never what `snapshot` itself reports).
+export async function analyzeRepository({ repoPath, handoffText = '', resolution = null }) {
+  const facts = await gatherRepositoryFacts({ repoPath, handoffText, resolution })
+  if (!facts.ok) {
+    return { ok: false, reason: facts.reason, detail: facts.detail }
+  }
+  const {
+    snapshot,
+    discovery,
+    commandGuidance,
+    readmeFile,
+    agentsFile,
+    claudeFile,
+    reconciliation,
+    migration,
+    health
+  } = facts
 
   const maturity = assessMaturity({
     snapshot,
@@ -435,86 +475,16 @@ export async function resolveReconciliation({ repoPath, handoffText = '', resolu
       detail: `resolution.mode must be one of ${RECONCILIATION_RESOLUTION_MODES.join(', ')}`
     }
   }
-  const snapshot = await snapshotRepository(repoPath)
-  if (!snapshot.ok) {
-    return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
+  const facts = await gatherRepositoryFacts({ repoPath, handoffText, resolution })
+  if (!facts.ok) {
+    return { ok: false, reason: facts.reason, detail: facts.detail }
   }
-
-  const discovery = await discoverProjectFiles(snapshot.root)
-  const readmeFile = discovery.priorityFiles.find((f) => f.kind === 'README')
-  const agentsFile = discovery.priorityFiles.find((f) => f.kind === 'AGENTS')
-  const claudeFile = discovery.priorityFiles.find((f) => f.kind === 'CLAUDE')
-  const deploymentFiles = discovery.priorityFiles.filter((f) => f.kind === 'DEPLOYMENT_CONFIG')
-  const hasPackageManifest = discovery.priorityFiles.some((f) => f.kind === 'PACKAGE_MANIFEST')
-  const packageJson = discovery.priorityFiles.find((f) => f.relativePath === 'package.json')
-  const commandGuidance = discoverCommandGuidance(snapshot.root, packageJson?.text)
-  const largeUntracked = boundedUntrackedDirectorySizes(snapshot.root, snapshot.untracked)
-
-  const reconciliation = reconcileHandoff({ handoffText, repoFacts: snapshot, resolution })
-  const migration = classifyMigration({
-    gitRepositoryFound: true,
-    repositoryUnavailable: false,
-    trackedAndUntrackedPaths: [
-      ...new Set([
-        ...snapshot.trackedFiles,
-        ...snapshot.staged,
-        ...snapshot.unstaged,
-        ...snapshot.untracked
-      ])
-    ],
-    readmeExcerpt: readmeFile?.text,
-    instructionsExcerpt: [agentsFile?.text, claudeFile?.text].filter(Boolean).join('\n'),
-    handoffText,
-    declaredSensitive: false,
-    activeGitOperation: snapshot.activeGitOperation,
-    activeGitOperationKind: snapshot.activeGitOperationKind,
-    handoffConflict: reconciliation.effectiveConflict,
-    handoffIdentityAmbiguous: reconciliation.identityAmbiguous,
-    handoffConflictSummary: reconciliation.discrepancies.join(' '),
-    dirty: snapshot.dirty,
-    stagedCount: snapshot.stagedCount,
-    unstagedCount: snapshot.unstagedCount,
-    untrackedCount: snapshot.untrackedCount,
-    discoveryConfidence:
-      readmeFile || agentsFile || commandGuidance.hasKnownTestCommand
-        ? 'HIGH'
-        : discovery.priorityFiles.length
-          ? 'MEDIUM'
-          : 'LOW'
-  })
-  const health = assessRepositoryOnboardingHealth({
-    activeGitOperation: snapshot.activeGitOperation,
-    activeGitOperationKind: snapshot.activeGitOperationKind,
-    conflicted: snapshot.conflicted,
-    detached: snapshot.detached,
-    dirty: snapshot.dirty,
-    stagedCount: snapshot.stagedCount,
-    unstagedCount: snapshot.unstagedCount,
-    untrackedCount: snapshot.untrackedCount,
-    missingWorktrees: [],
-    largeUntrackedDirectories: largeUntracked,
-    hasKnownTestCommand: commandGuidance.hasKnownTestCommand,
-    hasReadme: !!readmeFile,
-    hasInstructions: !!(agentsFile || claudeFile),
-    hasPackageManifest,
-    dependenciesInstalled: commandGuidance.dependenciesInstalled,
-    handoffConflict: reconciliation.effectiveConflict,
-    handoffWasResolved: reconciliation.hasConflict && !reconciliation.effectiveConflict,
-    handoffConflictSummary: reconciliation.discrepancies.join(' '),
-    deploymentConfigPresent: deploymentFiles.length > 0,
-    deploymentConfigFiles: deploymentFiles.map((f) => f.relativePath),
-    branch: snapshot.branch,
-    gitDir: snapshot.gitDir,
-    isLinkedWorktree: isLinkedWorktreeGitDir(snapshot.gitDir),
-    worktreeSiblingCount: snapshot.worktrees?.length ?? null
-  })
-
   return {
     ok: true,
-    migrationClassification: migration,
-    portfolioGating: portfolioGatingForClassification(migration.classification),
-    handoffReconciliation: reconciliation,
-    health
+    migrationClassification: facts.migration,
+    portfolioGating: portfolioGatingForClassification(facts.migration.classification),
+    handoffReconciliation: facts.reconciliation,
+    health: facts.health
   }
 }
 
@@ -525,79 +495,11 @@ export async function resolveReconciliation({ repoPath, handoffText = '', resolu
 // analysis again, and without ever fabricating a next mission if the
 // planner is still down.
 export async function retryDirectionAnalysis({ repoPath, handoffText = '', resolution = null }) {
-  const snapshot = await snapshotRepository(repoPath)
-  if (!snapshot.ok) {
-    return { ok: false, reason: snapshot.reason, detail: snapshot.detail }
+  const facts = await gatherRepositoryFacts({ repoPath, handoffText, resolution })
+  if (!facts.ok) {
+    return { ok: false, reason: facts.reason, detail: facts.detail }
   }
-
-  const discovery = await discoverProjectFiles(snapshot.root)
-  const packageJson = discovery.priorityFiles.find((f) => f.relativePath === 'package.json')
-  const commandGuidance = discoverCommandGuidance(snapshot.root, packageJson?.text)
-  const readmeFile = discovery.priorityFiles.find((f) => f.kind === 'README')
-  const agentsFile = discovery.priorityFiles.find((f) => f.kind === 'AGENTS')
-  const claudeFile = discovery.priorityFiles.find((f) => f.kind === 'CLAUDE')
-  const deploymentFiles = discovery.priorityFiles.filter((f) => f.kind === 'DEPLOYMENT_CONFIG')
-  const hasPackageManifest = discovery.priorityFiles.some((f) => f.kind === 'PACKAGE_MANIFEST')
-  const largeUntracked = boundedUntrackedDirectorySizes(snapshot.root, snapshot.untracked)
-
-  const reconciliation = reconcileHandoff({ handoffText, repoFacts: snapshot, resolution })
-  const migration = classifyMigration({
-    gitRepositoryFound: true,
-    repositoryUnavailable: false,
-    trackedAndUntrackedPaths: [
-      ...new Set([
-        ...snapshot.trackedFiles,
-        ...snapshot.staged,
-        ...snapshot.unstaged,
-        ...snapshot.untracked
-      ])
-    ],
-    readmeExcerpt: readmeFile?.text,
-    instructionsExcerpt: [agentsFile?.text, claudeFile?.text].filter(Boolean).join('\n'),
-    handoffText,
-    declaredSensitive: false,
-    activeGitOperation: snapshot.activeGitOperation,
-    activeGitOperationKind: snapshot.activeGitOperationKind,
-    handoffConflict: reconciliation.effectiveConflict,
-    handoffIdentityAmbiguous: reconciliation.identityAmbiguous,
-    handoffConflictSummary: reconciliation.discrepancies.join(' '),
-    dirty: snapshot.dirty,
-    stagedCount: snapshot.stagedCount,
-    unstagedCount: snapshot.unstagedCount,
-    untrackedCount: snapshot.untrackedCount,
-    discoveryConfidence:
-      readmeFile || agentsFile || commandGuidance.hasKnownTestCommand
-        ? 'HIGH'
-        : discovery.priorityFiles.length
-          ? 'MEDIUM'
-          : 'LOW'
-  })
-  const health = assessRepositoryOnboardingHealth({
-    activeGitOperation: snapshot.activeGitOperation,
-    activeGitOperationKind: snapshot.activeGitOperationKind,
-    conflicted: snapshot.conflicted,
-    detached: snapshot.detached,
-    dirty: snapshot.dirty,
-    stagedCount: snapshot.stagedCount,
-    unstagedCount: snapshot.unstagedCount,
-    untrackedCount: snapshot.untrackedCount,
-    missingWorktrees: [],
-    largeUntrackedDirectories: largeUntracked,
-    hasKnownTestCommand: commandGuidance.hasKnownTestCommand,
-    hasReadme: !!readmeFile,
-    hasInstructions: !!(agentsFile || claudeFile),
-    hasPackageManifest,
-    dependenciesInstalled: commandGuidance.dependenciesInstalled,
-    handoffConflict: reconciliation.effectiveConflict,
-    handoffWasResolved: reconciliation.hasConflict && !reconciliation.effectiveConflict,
-    handoffConflictSummary: reconciliation.discrepancies.join(' '),
-    deploymentConfigPresent: deploymentFiles.length > 0,
-    deploymentConfigFiles: deploymentFiles.map((f) => f.relativePath),
-    branch: snapshot.branch,
-    gitDir: snapshot.gitDir,
-    isLinkedWorktree: isLinkedWorktreeGitDir(snapshot.gitDir),
-    worktreeSiblingCount: snapshot.worktrees?.length ?? null
-  })
+  const { snapshot, discovery, commandGuidance, reconciliation, migration, health } = facts
 
   const direction = await invokeLiveStructuredAnalysis({
     systemPrompt: DIRECTION_SYSTEM_PROMPT,
@@ -655,7 +557,16 @@ export async function commitOnboarding({
       clock
     )
   }
-  if (wantsKnown) {
+  // Independent-review finding (post-adoption hardening): gating this on
+  // `wantsKnown` alone meant an already-Known+Active-Fleet project whose
+  // classification later turns TIM_REQUIRED (identity ambiguous) on a
+  // re-commit kept its STALE Active Fleet/Work Set membership untouched —
+  // the opposite of what the commit's own honest `activeFleet: false`
+  // response claimed. `alreadyKnown` ensures a project already recorded
+  // always gets its membership reconciled to the current, real gating —
+  // revoking stale membership when it's no longer safe, same as a fresh
+  // grant adds it when it now is.
+  if (wantsKnown || alreadyKnown) {
     const activeFleetIds = wantsActiveFleet
       ? [...new Set([...nextPortfolio.activeFleet, analysis.projectId])]
       : nextPortfolio.activeFleet.filter((id) => id !== analysis.projectId)
