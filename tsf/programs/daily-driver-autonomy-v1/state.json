@@ -705,9 +705,7 @@
           "testsPassing": "204/204 full tsf suite GREEN",
           "verifier": "SELF; an independent review of waves 26+27 combined is in flight",
           "commit": "0a4f0930f4985b0afa71055e31566d9509d048af",
-          "deferredToNextWave": [
-            "independent review of this wiring (in flight)"
-          ]
+          "deferredToNextWave": ["independent review of this wiring (in flight)"]
         },
         {
           "wave": 27,
@@ -1195,11 +1193,7 @@
       ],
       "liveWorkFeedRule": "No fabricated status -- every state shown must be sourced from real Orca/TSF facts (task/dispatch status, run state, checkpoint phase), the same discipline M2 established (projectKeepGoingRun never invents workers/verifierResults it cannot back with real data). Drill-down/Open in Orca available for raw technical detail; Tim should not normally need Orca terminals.",
       "chatAuthority": {
-        "preserve": [
-          "AUTO_DECIDE",
-          "RECOMMEND_AND_PROCEED",
-          "TIM_REQUIRED"
-        ],
+        "preserve": ["AUTO_DECIDE", "RECOMMEND_AND_PROCEED", "TIM_REQUIRED"],
         "chatMustNeverSilentlyAuthorize": [
           "adoption",
           "push/merge",
@@ -1873,10 +1867,7 @@
         {
           "wave": 12,
           "summary": "Phase 2E of the authorized overnight run (V1 stabilization, not M15): read-only refresh of the real Known Projects fleet (12 real onboarded projects) against tonight's fixed code turned up a real, fleet-wide false positive, not a synthetic case.\n\nSENSITIVE_PATH_PATTERN's .env(\\..*)? pattern matched a committed .env.example/.env.sample template (placeholder values -- the RECOMMENDED safe convention for documenting required environment variables) identically to a real .env file, wrongly forcing SENSITIVE and blocking Active Fleet/Work Set. Real evidence: 2 of the fleet's 12 real Known Projects (niners-war-room, easylifehq-github-io) were classified SENSITIVE with their only sensitivePaths evidence being a committed .env.example -- no real secret present.\n\nFixed narrowly: excluded .env.example/.env.sample/.env.template/.env.dist by name (still zero filesystem reads beyond the existing tracked/untracked path list already gathered). A real .env variant -- bare .env, .env.local, .env.production -- still forces SENSITIVE (regression-tested, three variants).\n\nA second, broader false-positive source was found in the same refresh but deliberately NOT fixed this pass: SENSITIVE_PATH_PATTERN's .*secrets?.* / .*credentials?.* alternatives match ANY path substring, so a project's own security-tooling filenames (password-remediation: scripts/secret-scan.mjs, live/secret-safe-logger.mjs, tests/verify-rotate-credential-gate.test.mjs) and vendored third-party dependency internals (seen separately against pydantic_settings/streamlit package internals) false-positive the same way. Flagged for the morning report rather than rushed -- a correct fix needs to narrow detection without weakening real positives (HouseOS/NWR-style genuinely-sensitive prose signals, exercised by this same refresh, still fire correctly and were not touched).",
-          "filesChanged": [
-            "tsf/domain/onboarding.mjs",
-            "tsf/test/onboarding.test.mjs"
-          ],
+          "filesChanged": ["tsf/domain/onboarding.mjs", "tsf/test/onboarding.test.mjs"],
           "testsPassing": "105/105 onboarding-suite tests; full suite 681/680/1-fail (pre-existing unrelated port-4610 flake)/0-skip",
           "verifier": "Direct reproduction against real evidence (2 of 12 real Known Projects), before/after re-analysis, plus the existing onboarding-suite regression tests -- not yet routed through a forked adversarial reviewer (a narrow, low-risk, well-tested exclusion-by-name change)",
           "commit": "eb9bf71f8",
@@ -2044,9 +2035,7 @@
         {
           "wave": 23,
           "summary": "TSF V1 Operator UX + Multi-Project Control pass (Tim's 20-section spec), begun once the two prerequisite workstreams -- prereq V1 stabilization (waves 17-20) and the Planner Chat shell-corruption fix (waves 21-22) -- were settled and tsf/main was clean. Real-use V1 stabilization, not a new architecture program. Fixed left sidebar (spec section 1): AppShell.tsx's outer shell was min-h-screen with no height cap, so once main content grew taller than the viewport the whole flex row grew with it and the sidebar scrolled away with the page. Fixed: shell capped at h-screen overflow-hidden, sidebar h-full (now genuinely the viewport), <main> owns all vertical scroll; the sidebar's own nav list gets its own overflow-y-auto so a short window scrolls the nav internally rather than clipping the header/footer.",
-          "filesChanged": [
-            "tsf/ui/src/components/AppShell.tsx"
-          ],
+          "filesChanged": ["tsf/ui/src/components/AppShell.tsx"],
           "testsPassing": "typecheck/build/lint clean",
           "verifier": "INDEPENDENT (forked review agent, GREEN across the whole pass -- see wave 26)",
           "commit": "5ca1b4240",
@@ -2176,6 +2165,21 @@
           "commit": "819c9583c2",
           "status": "ADOPTED",
           "note": "Adopted via git merge --ff-only (5e79f06870..819c9583c2). Production TSF server restarted after adoption to load this backend fix. Zero Orca core delta. Not M15 -- filed as M7 wave per established program discipline. A real subagent safety-instruction violation occurred and was disclosed and corrected during this wave -- see wave summary and session transcript for the full incident account."
+        },
+        {
+          "wave": 30,
+          "summary": "Real bug found while running the actual production recheck for WorldForge/NWR after wave 29 (per Tim's own explicit acceptance run): runOneProject's Stage 4 final diagnoseProjectHealth call never passed the Stage 2 baseline result, so real test/build/lint/typecheck FAIL/UNKNOWN evidence was silently excluded from the final causesAfter/readyForWork for every project, always -- producing false READY_FOR_WORK signals. Reproduced live: WorldForge showed causesAfter:[] and readyForWork:true despite a real test:UNKNOWN (timeout) baseline result; NWR showed only STALE_PROJECT_STATE despite a real lint:FAIL result. Fix: hoisted baseline to function scope in runOneProject, reassigned at the Stage 2 call site, passed into the Stage 4 diagnose call. Compounding bug also fixed in domain/health-repair.mjs: a baseline command that came back UNKNOWN (genuine timeout or spawn error) was previously treated identically to PASS by the failing() helper -- now UNKNOWN raises the same *_FAILING cause as FAIL, with a message distinguishing timeout from other failure-to-run reasons.",
+          "filesChanged": [
+            "tsf/domain/health-repair.mjs",
+            "tsf/server/prepare-for-work-http-routes.mjs",
+            "tsf/test/health-repair.test.mjs",
+            "tsf/test/http-prepare-for-work.test.mjs"
+          ],
+          "testsPassing": "822/823 full backend suite (one pre-existing, environment-only failure in plugin-real-load-proof.test.mjs caused by the real production TSF server already listening on port 4610 during this run -- unrelated to this change)",
+          "verifier": "INDEPENDENT (forked review agent, explicit safety preamble forbidding any real command execution against NWR or WorldForge given the wave-29 incident) -- GREEN. Confirmed the hoisting has no shadowing/stale-closure bugs, confirmed baseline stays null-safe when Stage 2 is skipped, confirmed the UNKNOWN branch cannot misfire on NOT_APPLICABLE, and via a temporary revert-and-rerun sanity check confirmed the new regression test actually catches the original bug. Flagged (not fixed, filed for a later wave) two further call sites with the same drop-baseline pattern in server/health-repair-http-routes.mjs (POST /api/health-repair/:projectId/repair and .../repair-selected).",
+          "commit": "a7b6f9dfc8",
+          "status": "ADOPTED",
+          "note": "Adopted via git merge --ff-only into tsf/main. Production TSF server restarted after adoption to load this backend fix, followed by a real recheck of WorldForge/NWR/Maintenance Loop against the corrected pipeline. Zero Orca core delta. Not M15 -- filed as M7 wave per established program discipline."
         }
       ]
     },
@@ -2403,9 +2407,7 @@
       "note": "Tim sent a full M9-M13 roadmap extension mid-M8-session (received while M8 wave 5 was in progress) -- recorded verbatim in docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md so it survives context compaction. Explicit instruction: do NOT interrupt/restart/broaden/redo M8 because this message exists -- M8 finishes normally under the existing charter first. Once M8.status becomes ADOPTED, flip this entry's status to CURRENT and begin M9 wave 1 (research-first, per docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md's own bounded Promptfoo license/API verification instruction -- not a broad research phase) per the same bounded-wave/test/independent-review/checkpoint discipline used throughout M2-M8.",
       "candidateCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
       "adoptedCommit": "ea17aa2f661de0bec62c902bd908c055622dbd3f",
-      "gaps": [
-        "everything -- not started, pending M8 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M8 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2520,9 +2522,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M9 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
       "adoptedCommit": "ddc3d8ec23608e5ea8fc68a82397919f98f80357",
-      "gaps": [
-        "everything -- not started, pending M9 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M9 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2557,9 +2557,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M10 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
       "adoptedCommit": "476adf44d33332eea7d84cc1813f3571d053c1ad",
-      "gaps": [
-        "everything -- not started, pending M10 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M10 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2594,9 +2592,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). Begins only after M11 is genuinely ADOPTED, per Tim's own explicit sequential ordering.",
       "candidateCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
       "adoptedCommit": "f3552b478e9776bcb8e50924959d45ada7ebcebc",
-      "gaps": [
-        "everything -- not started, pending M11 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M11 adoption"],
       "waves": [
         {
           "wave": 1,
@@ -2651,9 +2647,7 @@
       "note": "Part of Tim's same M9-M13 roadmap extension (docs/tsf/M9_M13_PROGRAM_EXTENSION_HANDOFF_V1.md). NOT a feature-building milestone -- freezes feature scope at M1-M12; fixes genuine defects, closes integration gaps, simplifies UX, improves reliability/docs, only after all 18 acceptance phases in the handoff doc are worked through. Do NOT begin M14 or invent additional feature milestones without Tim's approval -- M13 is intentionally the end of this upgrade program. Begins only after M12 is genuinely ADOPTED.",
       "candidateCommit": null,
       "adoptedCommit": null,
-      "gaps": [
-        "everything -- not started, pending M12 adoption"
-      ],
+      "gaps": ["everything -- not started, pending M12 adoption"],
       "acceptancePass": {
         "schemaVersion": "TSF_M13_ACCEPTANCE_REPORT_V1",
         "completedAt": "2026-08-21T09:50:35.000Z",
@@ -2779,9 +2773,7 @@
         {
           "wave": 5,
           "summary": "Independent review of wave 4 confirmed the cold-start fix genuinely works (live re-verification on an isolated scratch port/mutex, regression test confirmed to catch the old buggy shape) but found one real, CONFIRMED gap: the top-level try/catch started after the Win32 P/Invoke Add-Type compilation and the Mutex construction, leaving a narrow but genuine window where a cold `Add-Type` compile failure or a restricted Mutex-creation environment could still throw before any window exists, reproducing the exact same silent-death shape this whole fix exists to eliminate. Fixed by moving the try block to wrap everything from the Win32 Add-Type call onward -- single-instance setup, the orca-CLI check, and all window/WebView2 setup are now inside one handler, with the early \"already running\" / \"orca not found\" exit paths unaffected (exit does not trigger catch). Re-verified: regression test still passes, live smoke test against the real backend still shows the window in under 1s and clean shutdown, full suite 593/594 (1 known pre-existing port-4610 collision, unrelated).",
-          "filesChanged": [
-            "tsf/launcher/Launch-TSF.ps1"
-          ]
+          "filesChanged": ["tsf/launcher/Launch-TSF.ps1"]
         },
         {
           "wave": 6,
@@ -2797,9 +2789,7 @@
         {
           "wave": 7,
           "summary": "Independent review of wave 6 found no functional gap in the fix itself (live evidence, process-timestamp gap, and lack of any CLI reconciliation lever were all independently re-confirmed) but flagged one low-severity test-quality issue: the new regression test's negative assertion (!/hasn'?t registered/i) never actually matched the real old buggy copy's wording (\"hasn't been told where to find...\"), so it was a no-op guard -- the test still correctly distinguished old from new via its sibling positive assertion, so this was never a functional gap in the suite's outcome, but the assertion itself was ineffective. Fixed by broadening the pattern to hasn't (?:been told|registered), confirmed to now genuinely match the real old phrasing. Full suite re-run clean: 596/596, 595 pass, 1 fail (same pre-existing port-4610 collision, unrelated).",
-          "filesChanged": [
-            "tsf/test/desktop-launcher-cold-start.test.mjs"
-          ]
+          "filesChanged": ["tsf/test/desktop-launcher-cold-start.test.mjs"]
         },
         {
           "wave": 8,
@@ -3044,11 +3034,7 @@
         "Once usable capacity is effectively exhausted, checkpoint and wait/switch providers normally -- do not force further dispatch.",
         "Immediately after reset, reassess live capacity and restore the normal worker budget/concurrency for that provider."
       ],
-      "appliesToProviders": [
-        "codex",
-        "claude",
-        "any future provider with a known reset window"
-      ],
+      "appliesToProviders": ["codex", "claude", "any future provider with a known reset window"],
       "supersedesForNearResetWindowOnly": "The general 'hold off on new WORKER_* dispatch near a limit' base policy above -- this amendment only relaxes that base policy inside a known-reset window with a genuine bounded task available; it does not authorize dispatch when no such task exists or when the task risks stranding.",
       "mustStillHonor": [
         "Section F execution discipline (conflict-aware waves, independent verification, no worker self-report treated as done)",
@@ -3126,10 +3112,7 @@
       "worktreeRepoId": "443fd5dc-bd87-4019-a2a0-879188f97506",
       "operatorStateFile": "tsf/server/.local-state/operator-state.json (real default store, not a test override -- gitignored, inspect directly on disk)",
       "wave1Goal": "docs/m2-live-dogfood/wave-1-marker.md containing exactly the line 'M2 live dogfood wave 1 marker'",
-      "acceptanceCriteria": [
-        "DOGFOOD_MARKER_WAVE_1_ADDED",
-        "DOGFOOD_MARKER_WAVE_2_ADDED"
-      ],
+      "acceptanceCriteria": ["DOGFOOD_MARKER_WAVE_1_ADDED", "DOGFOOD_MARKER_WAVE_2_ADDED"],
       "dispatchedAt": "2026-08-20T07:12:51.241Z",
       "statusAtEntry": "orca orchestration task-list still reports status:'dispatched' as of 2026-08-20T07:42:35Z (~30 minutes elapsed, at/past the run's own stallThresholdMs of 30 minutes). orca terminal read on the worker terminal shows latestCursor/nextCursor UNCHANGED (14) since immediately after MCP startup -- zero new output in ~28 minutes, a genuine stall (the --inject dispatch mechanism appears to not have delivered visibly, or the terminal is deadlocked before echoing it), not a transient delay. This is being fenced as UNCERTAIN, not claimed as failed or stopped.",
       "scratchpadEvidence": "A non-committed mission driver script and its log live in this session's scratchpad temp dir (m2-live-dogfood.mjs / .log) -- NOT durable, may not survive a session loss; this state.json entry is the durable source of truth, not that log."
