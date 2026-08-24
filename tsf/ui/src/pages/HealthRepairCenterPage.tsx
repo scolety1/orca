@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Loader2, Stethoscope, Wrench } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/use-api'
-import { LoadingState, ErrorState, EmptyState } from '@/components/States'
+import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ProjectHealthRepairCard } from '@/components/health-repair/ProjectHealthRepairCard'
@@ -78,11 +78,15 @@ export function HealthRepairCenterPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !list) {
     return <LoadingState label="Scanning fleet Health…" />
   }
-  if (error) {
-    return <ErrorState message={error} />
+  // Rescan (below) reloads this same scan. A transient failure there must
+  // not blow away already-diagnosed projects (or repairs already applied
+  // locally via Repair Selected) -- only a genuine first scan with nothing
+  // yet should show the full error state.
+  if (error && !list) {
+    return <ErrorState message={error} onRetry={reload} />
   }
   if (!list) {
     return null
@@ -92,6 +96,7 @@ export function HealthRepairCenterPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/use-api'
-import { LoadingState, ErrorState } from '@/components/States'
+import { LoadingState, ErrorState, RefreshFailedBanner } from '@/components/States'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -207,10 +207,14 @@ export function EstimatePanel({ projectId }: { projectId: string }) {
   const { data, loading, error, reload } = useApi(() => api.estimate(projectId), [projectId])
   const [regenerating, setRegenerating] = useState(false)
 
-  if (loading) {
+  if (loading && !data) {
     return <LoadingState label="Loading estimate…" />
   }
-  if (error) {
+  // Regenerating an estimate reload()s this same project's estimate. A
+  // transient failure there must not blow away an existing estimate --
+  // only a genuine first load with nothing yet should show the full error
+  // state.
+  if (error && !data) {
     return <ErrorState message={error} onRetry={reload} />
   }
   if (!data) {
@@ -218,15 +222,20 @@ export function EstimatePanel({ projectId }: { projectId: string }) {
   }
 
   const existing = data.estimate
-  return !existing || regenerating ? (
-    <GenerateForm
-      projectId={projectId}
-      onGenerated={() => {
-        setRegenerating(false)
-        reload()
-      }}
-    />
-  ) : (
-    <EstimateResultView result={existing} onRegenerate={() => setRegenerating(true)} />
+  return (
+    <>
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
+      {!existing || regenerating ? (
+        <GenerateForm
+          projectId={projectId}
+          onGenerated={() => {
+            setRegenerating(false)
+            reload()
+          }}
+        />
+      ) : (
+        <EstimateResultView result={existing} onRegenerate={() => setRegenerating(true)} />
+      )}
+    </>
   )
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/use-api'
-import { LoadingState, ErrorState, EmptyState } from '@/components/States'
+import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -57,10 +57,14 @@ function PackDetail({ packId }: { packId: string }) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [comparison, setComparison] = useState<EvalComparison | null>(null)
 
-  if (loading) {
+  if (loading && !data) {
     return <LoadingState label="Loading run history…" />
   }
-  if (error) {
+  // Run now / Check for regression both reload() this same pack's history.
+  // A transient failure there must not blow away the run history and
+  // actions already on screen -- only a genuine first load with nothing
+  // yet should show the full error state.
+  if (error && !data) {
     return <ErrorState message={error} onRetry={reload} />
   }
   if (!data) {
@@ -107,6 +111,7 @@ function PackDetail({ packId }: { packId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
       <div className="flex gap-2">
         <Button size="sm" onClick={runNow} disabled={busy}>
           {busy ? 'Working…' : 'Run now'}

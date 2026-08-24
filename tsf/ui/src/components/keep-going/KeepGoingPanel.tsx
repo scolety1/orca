@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/use-api'
-import { LoadingState, ErrorState } from '@/components/States'
+import { LoadingState, ErrorState, RefreshFailedBanner } from '@/components/States'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -264,10 +264,13 @@ export function KeepGoingPanel({ projectId }: { projectId: string }) {
   const { data: run, loading, error, reload } = useApi(() => api.keepGoing(projectId), [projectId])
   const [startingNew, setStartingNew] = useState(false)
 
-  if (loading) {
+  if (loading && !run) {
     return <LoadingState label="Loading Keep Going state…" />
   }
-  if (error) {
+  // Pause/Resume/Tick/Start all reload() this same run. A transient
+  // failure there must not blow away the run already on screen -- only a
+  // genuine first load with nothing yet should show the full error state.
+  if (error && !run) {
     return <ErrorState message={error} onRetry={reload} />
   }
   if (!run) {
@@ -275,21 +278,26 @@ export function KeepGoingPanel({ projectId }: { projectId: string }) {
   }
 
   const showStartForm = !run.started || startingNew
-  return showStartForm ? (
-    <KeepGoingStartForm
-      projectId={projectId}
-      onStarted={() => {
-        setStartingNew(false)
-        reload()
-      }}
-      expectedRevision={run.started ? run.revision : undefined}
-    />
-  ) : (
-    <LiveRun
-      projectId={projectId}
-      run={run}
-      onChanged={reload}
-      onStartNew={() => setStartingNew(true)}
-    />
+  return (
+    <>
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
+      {showStartForm ? (
+        <KeepGoingStartForm
+          projectId={projectId}
+          onStarted={() => {
+            setStartingNew(false)
+            reload()
+          }}
+          expectedRevision={run.started ? run.revision : undefined}
+        />
+      ) : (
+        <LiveRun
+          projectId={projectId}
+          run={run}
+          onChanged={reload}
+          onStartNew={() => setStartingNew(true)}
+        />
+      )}
+    </>
   )
 }
