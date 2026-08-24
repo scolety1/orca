@@ -14,6 +14,7 @@ import type {
   PrepareForWorkOperation,
   PrepareForWorkOperationResponse,
   PrepareForWorkResponse,
+  PrepareForWorkResult,
   PrepareForWorkStartResponse
 } from './prepare-for-work-types'
 
@@ -28,8 +29,47 @@ const PREPARE_FOR_WORK_POLL_MS = 2000
 // instead of a silent infinite spinner, not to cap normal operation.
 const PREPARE_FOR_WORK_POLL_TIMEOUT_MS = 30 * 60 * 1000
 
+// Real V1 stabilization finding: a real "Cannot read properties of
+// undefined (reading 'filter')" crash traced back to a mixed-version
+// deployment -- the TSF backend was restarted onto this durable-operation
+// code without also redeploying the UI bundle, so the still-running old
+// frontend received this new {operationId, operation} response shape
+// where it expected the old {results: [...]} shape directly, and
+// result.results.filter(...) threw. The redeploy fixes THAT specific
+// mismatch, but any future skew (a partial deploy, a stale cached bundle,
+// a proxy serving an old asset) hits the same class of bug -- so every
+// response this module receives from the server is validated before use,
+// throwing one clear, catchable error instead of feeding a malformed
+// shape into code that assumes it's well-formed. Callers (BulkActionBar,
+// HomePage) already catch and display thrown errors -- this turns a page
+// crash into an honest, visible message.
+function isWellFormedOperation(value: unknown): value is PrepareForWorkOperation {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    Array.isArray((value as PrepareForWorkOperation).projectIds) &&
+    typeof (value as PrepareForWorkOperation).results === 'object' &&
+    (value as PrepareForWorkOperation).results !== null
+  )
+}
+
+const VERSION_MISMATCH_HINT =
+  'This usually means the TSF desktop app and its background server are running mismatched versions -- try restarting TSF.'
+
 function isOperationSettled(operation: PrepareForWorkOperation): boolean {
   return operation.projectIds.every((id) => operation.results[id]?.settled)
+}
+
+// Independent review finding (real, narrow): a well-formed operation
+// envelope (isWellFormedOperation already checked that) could still carry
+// an individual entry marked settled but missing its own .stages array --
+// BulkActionBar's analyzeSelected() calls r.stages.some(...), the same bug
+// class one layer deeper. Checked explicitly rather than trusted on
+// `settled` alone.
+function isWellFormedSettledEntry(entry: unknown): entry is PrepareForWorkResult {
+  return (
+    !!entry && typeof entry === 'object' && Array.isArray((entry as PrepareForWorkResult).stages)
+  )
 }
 
 function toPrepareForWorkResponse(operation: PrepareForWorkOperation): PrepareForWorkResponse {
@@ -37,7 +77,9 @@ function toPrepareForWorkResponse(operation: PrepareForWorkOperation): PrepareFo
     ok: true,
     results: operation.projectIds.map((projectId) => {
       const entry = operation.results[projectId]
-      return entry?.settled ? entry : { projectId, ok: false, error: 'did not settle', stages: [] }
+      return entry?.settled && isWellFormedSettledEntry(entry)
+        ? entry
+        : { projectId, ok: false, error: 'did not settle', stages: [] }
     })
   }
 }
@@ -50,8 +92,13 @@ export async function prepareForWork(
   start: (projectIds: string[]) => Promise<PrepareForWorkStartResponse>,
   get: (operationId: string) => Promise<PrepareForWorkOperationResponse>
 ): Promise<PrepareForWorkResponse> {
-  const { operationId } = await start(projectIds)
-  const operation = await pollPrepareForWorkOperation(operationId, get)
+  const startResponse = await start(projectIds)
+  if (typeof startResponse?.operationId !== 'string' || !startResponse.operationId) {
+    throw new Error(
+      `Prepare for Work did not return a usable operation id. ${VERSION_MISMATCH_HINT}`
+    )
+  }
+  const operation = await pollPrepareForWorkOperation(startResponse.operationId, get)
   return toPrepareForWorkResponse(operation)
 }
 
@@ -62,7 +109,13 @@ export async function pollPrepareForWorkOperation(
 ): Promise<PrepareForWorkOperation> {
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    const { operation } = await get(operationId)
+    const response = await get(operationId)
+    if (!isWellFormedOperation(response?.operation)) {
+      throw new Error(
+        `Prepare for Work operation ${operationId} came back in an unrecognized shape. ${VERSION_MISMATCH_HINT}`
+      )
+    }
+    const operation = response.operation
     if (isOperationSettled(operation) || operation.status === 'COMPLETED') {
       return operation
     }

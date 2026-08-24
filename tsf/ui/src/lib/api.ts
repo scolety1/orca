@@ -28,6 +28,11 @@ import type {
   PrepareForWorkStartResponse
 } from './prepare-for-work-types'
 import { prepareForWork as prepareForWorkDurable } from './prepare-for-work-polling'
+import {
+  normalizeMembershipChange,
+  normalizePortfolio,
+  normalizeWorkSummary
+} from './api-response-normalization'
 import type {
   AgentEvidence,
   ChatAttachmentMeta,
@@ -100,10 +105,10 @@ export const api = {
       upstreamCoreFilesModified: number
       usageMode: string
     }>('/meta'),
-  portfolio: () => request<Portfolio>('/portfolio'),
+  portfolio: () => request<Portfolio>('/portfolio').then(normalizePortfolio),
   projects: () => request<ProjectCard[]>('/projects'),
   project: (id: string) => request<ProjectDetail>(`/projects/${encodeURIComponent(id)}`),
-  work: () => request<WorkSummary>('/work'),
+  work: () => request<WorkSummary>('/work').then(normalizeWorkSummary),
   routing: () => request<RoutingInfo>('/routing'),
   setUsageMode: (mode: string) =>
     request<{ ok: true; mode: string }>('/usage-mode', {
@@ -283,12 +288,12 @@ export const api = {
     request<MembershipChangeResponse>('/portfolio/active-fleet', {
       method: 'POST',
       body: JSON.stringify({ projectIds, add })
-    }),
+    }).then(normalizeMembershipChange),
   setWorkSetMembership: (projectIds: string[], add: boolean) =>
     request<MembershipChangeResponse>('/portfolio/work-set', {
       method: 'POST',
       body: JSON.stringify({ projectIds, add })
-    }),
+    }).then(normalizeMembershipChange),
   prepareForWork: (projectIds: string[]) =>
     prepareForWorkDurable(projectIds, api.startPrepareForWork, api.getPrepareForWorkOperation),
   startPrepareForWork: (projectIds: string[]) =>
