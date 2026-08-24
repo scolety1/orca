@@ -19,5 +19,15 @@
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] }
   },
-  "include": ["src"]
+  "include": ["src"],
+  // .test.ts files run directly via Node's native TS stripping (see
+  // package.json's "test" script) -- syntax stripping only, no real type
+  // checking. Excluded from tsc -b/build because they import node:test/
+  // node:assert, which need @types/node; adding that as a real dependency
+  // here would touch this pnpm workspace's root lockfile, out of bounds
+  // for a tsf/-only change. `npm test` (node --experimental-strip-types)
+  // still catches a real syntax error or a thrown assertion; it does not
+  // catch a type error in these files the way `npm run typecheck` does
+  // for everything else -- an accepted, disclosed gap, not a silent one.
+  "exclude": ["src/**/*.test.ts"]
 }
