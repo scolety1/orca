@@ -2157,6 +2157,25 @@
           "commit": "4eec4746d",
           "status": "ADOPTED",
           "note": "Adopted via git merge --ff-only (a7c31b854..4eec4746d). UI dist rebuilt and redeployed to the real production server after adoption so Tim's live desktop app runs matching, hardened frontend/backend code. Zero Orca core delta. Not M15 -- filed as M7 wave per established program discipline."
+        },
+        {
+          "wave": 29,
+          "summary": "Five real bugs found and fixed while closing WorldForge/NWR's remaining Prepare-for-Work readiness blockers, per Tim's own explicit acceptance run: (1) DEPENDENCY_HEALTH package-manager safety -- repairProject used to default to npm install for any unrecognized packageManager, which really ran npm install inside NWR and route-reader's real working trees, leaving stray package-lock.json files that had to be manually removed each time; package-manager detection now distinguishes UNKNOWN (real JS project, no lockfile)/python/cargo/go/none, and repairProject refuses to guess for any of them (PACKAGE_MANAGER_UNKNOWN, spawns nothing). Also fixed a broader instance: dependenciesInstalled used to check node_modules unconditionally, permanently misfiring DEPENDENCY_HEALTH on every real Python/Rust/Go project with a manifest. (2) STALE_PROJECT_STATE false blocker, reproduced live against Maintenance Loop (real typecheck/test/build/lint all passing) -- this cause's own trigger checks Work Set membership, not real staleness, and its only repair action can never resolve it; reclassified NOT_A_DEFECT. (3) package.json excerpt truncation, reproduced against WorldForge's real 19.5KB package.json -- the generic 4000-byte excerpt truncated it mid-JSON-string, silently discarding all real test/typecheck/build scripts; package.json now gets a 256KiB bound. (4) narrow-suite-over-real-gate command ordering, also against WorldForge -- index [0] (the only one every real caller uses) used to be whichever script matched first by declaration order, so a narrow suite (test:player-action-router-v1) beat the real gate (test); a stable sort now puts the bare category name first. (5) no Python command discovery at all, reproduced against NWR (a real pytest/ruff project) -- discovery was 100% package.json-scripts-based; added detectPythonCommands (pyproject.toml [tool.pytest]/[tool.ruff] section-header evidence, two fixed literal commands never anything interpolated), extended SAFE_COMMAND_LINE to accept exactly those two literals, and added venv-aware PATH resolution (prepends a real .venv's bin dir to the child process's own PATH env var, never the command string, since pytest/ruff typically live only in a project's own venv).",
+          "filesChanged": [
+            "tsf/domain/health-repair.mjs",
+            "tsf/server/health-repair.mjs",
+            "tsf/server/onboarding.mjs",
+            "tsf/server/repo-inspector.mjs",
+            "tsf/test/health-repair-io.test.mjs",
+            "tsf/test/health-repair.test.mjs",
+            "tsf/test/http-prepare-for-work.test.mjs",
+            "tsf/test/repo-inspector-package-manager.test.mjs"
+          ],
+          "testsPassing": "821/821 full backend suite on tsf/main (one pre-existing port-4610-dependent test skips honestly when nothing is bound there)",
+          "verifier": "INDEPENDENT (forked review agents, 3 rounds -- package-manager safety alone GREEN, STALE_PROJECT_STATE alone GREEN; the first attempt at reviewing the excerpt/ordering/Python/venv layer violated an explicit safety instruction and ran real pytest/ruff against NWR, causing 5 real doc files to be overwritten with test-fixture zero-values -- caught immediately, diff shown to Tim, restored via git checkout -- with explicit authorization, HEAD never touched, nothing lost; a second, properly safety-constrained review then returned GREEN with both real repos confirmed clean throughout)",
+          "commit": "819c9583c2",
+          "status": "ADOPTED",
+          "note": "Adopted via git merge --ff-only (5e79f06870..819c9583c2). Production TSF server restarted after adoption to load this backend fix. Zero Orca core delta. Not M15 -- filed as M7 wave per established program discipline. A real subagent safety-instruction violation occurred and was disclosed and corrected during this wave -- see wave summary and session transcript for the full incident account."
         }
       ]
     },
