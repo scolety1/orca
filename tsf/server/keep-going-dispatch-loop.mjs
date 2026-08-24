@@ -46,9 +46,11 @@
 // that can never detect the lock was recovered by another tick since the
 // claim (a real, confirmed review finding on an earlier version of this
 // module's settle-side commits).
+import path from 'node:path'
 import {
   abandonOrchestrationWorker,
   bindOrchestrationRun,
+  createDispatcherTerminal,
   createOrchestrationRun,
   createOrchestrationTask,
   listOrchestrationTasks,
@@ -76,11 +78,44 @@ import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
 const DEFAULT_ORCHESTRATION = Object.freeze({
   abandonOrchestrationWorker,
   bindOrchestrationRun,
+  createDispatcherTerminal,
   createOrchestrationRun,
   createOrchestrationTask,
   listOrchestrationTasks,
   startOrchestrationWorker
 })
+
+// This module's own home repo, wherever it is actually checked out and
+// running from -- never a hardcoded path (this process may be a dev
+// worktree, an SSH host, or the production install). Two levels up from
+// server/keep-going-dispatch-loop.mjs is the real repo root Orca already
+// knows as a worktree.
+const DISPATCHER_TERMINAL_WORKTREE = `path:${path.resolve(import.meta.dirname, '..', '..')}`
+
+// Real V1 stabilization finding: every real Orca orchestration call needs a
+// sender-terminal identity (`from`), and this module never supplied one --
+// the production TSF server is a headless process with no terminal of its
+// own, so every real dispatch attempt failed with no_active_sender_terminal
+// (confirmed live against both WorldForge and NWR). `ORCA_TERMINAL_HANDLE`
+// covers the case where this code IS running inside a live terminal
+// (interactive/dev use); otherwise this creates one, fresh, per tick --
+// deliberately NOT cached across ticks in this bounded fix (that would need
+// persisted-run-state changes to this adversarially-hardened module, left
+// as a disclosed follow-up rather than risked here). Never fabricates a
+// handle on failure -- the caller aborts honestly instead.
+async function resolveSenderTerminal(orchestration) {
+  if (process.env.ORCA_TERMINAL_HANDLE) {
+    return { ok: true, handle: process.env.ORCA_TERMINAL_HANDLE }
+  }
+  const result = await orchestration.createDispatcherTerminal({
+    worktree: DISPATCHER_TERMINAL_WORKTREE,
+    title: 'TSF Keep Going Dispatcher'
+  })
+  if (!result.ok) {
+    return result
+  }
+  return { ok: true, handle: result.result.terminal.handle }
+}
 
 // M5: real capacity signal, checked once per dispatch attempt -- AFTER the
 // tick lock is claimed (see the call site below), not before: the capacity
@@ -360,6 +395,15 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     })
   }
 
+  const senderTerminal = await resolveSenderTerminal(orchestration)
+  if (!senderTerminal.ok) {
+    return commitAbortedDispatch(projectId, store, claimed, clock, {
+      reason: senderTerminal.reason ?? 'SENDER_TERMINAL_UNAVAILABLE',
+      detail: senderTerminal.detail ?? 'could not resolve a sender-terminal identity for dispatch'
+    })
+  }
+  const from = senderTerminal.handle
+
   // Tracked separately from claimed.orchestrationRunId: a freshly-created
   // real Orca orchestration Run must be persisted even if every task-
   // create in this wave then fails, or it leaks -- forgotten by TSF but
@@ -368,7 +412,8 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
   const orchestrationRunFreshlyCreated = !orchestrationRunId
   if (!orchestrationRunId) {
     const runResult = await orchestration.createOrchestrationRun({
-      objective: claimed.originalGoal.statement
+      objective: claimed.originalGoal.statement,
+      from
     })
     if (!runResult.ok) {
       return commitAbortedDispatch(projectId, store, claimed, clock, {
@@ -384,7 +429,7 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     // none), which fails task-create/worker-start with consumer_fenced
     // rather than silently misdirecting the call. Rebinding first is a
     // no-op when already correctly bound.
-    const bindResult = await orchestration.bindOrchestrationRun({ id: orchestrationRunId })
+    const bindResult = await orchestration.bindOrchestrationRun({ id: orchestrationRunId, from })
     if (!bindResult.ok) {
       return commitAbortedDispatch(projectId, store, claimed, clock, {
         reason: bindResult.reason,
@@ -442,7 +487,8 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       const taskResult = await orchestration.createOrchestrationTask({
         spec: item.spec ?? item.id,
         run: orchestrationRunId,
-        taskTitle: item.id
+        taskTitle: item.id,
+        from
       })
       if (!taskResult.ok) {
         return commitPartialOrAbortedDispatch(
@@ -463,6 +509,7 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       const startResult = await orchestration.startOrchestrationWorker({
         task: taskId,
         run: orchestrationRunId,
+        from,
         ...placement
       })
       if (!startResult.ok) {

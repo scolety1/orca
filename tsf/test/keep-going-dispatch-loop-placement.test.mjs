@@ -16,6 +16,8 @@ import { tickKeepGoingRun } from '../server/keep-going-dispatch-loop.mjs'
 // CLI keeps every test here fast and hermetic.
 process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
 process.env.STUB_ORCA_MODE = 'success'
+// See keep-going-dispatch-loop.test.mjs's own identical comment.
+delete process.env.ORCA_TERMINAL_HANDLE
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 const PROJECT_ID = 'fixture:proj'
@@ -47,6 +49,10 @@ function baseRun(overrides = {}) {
 
 function okOrchestration(overrides = {}) {
   return {
+    createDispatcherTerminal: async () => ({
+      ok: true,
+      result: { terminal: { handle: 'fake-dispatcher-terminal' } }
+    }),
     bindOrchestrationRun: async ({ id }) => ({ ok: true, result: { run: { id } } }),
     createOrchestrationRun: async () => ({ ok: true, result: { run: { id: 'orch-run-1' } } }),
     createOrchestrationTask: async ({ taskTitle }) => ({

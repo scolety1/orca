@@ -30,6 +30,8 @@ process.env.TSF_UI_STATE_FILE = STATE_FILE
 // tests).
 process.env.TSF_ORCA_CLI_COMMAND = path.join(HERE, 'fixtures', 'stub-orca-cli.mjs')
 process.env.STUB_ORCA_MODE = 'success'
+// See keep-going-dispatch-loop.test.mjs's own identical comment.
+delete process.env.ORCA_TERMINAL_HANDLE
 
 const { createOvernightRun, claimTick, releaseTick, dispatchWave, pauseRun, planWave } =
   await import('../domain/keep-going.mjs')
@@ -57,6 +59,10 @@ async function seedRun(overrides = {}) {
 
 function okOrchestration(overrides = {}) {
   return {
+    createDispatcherTerminal: async () => ({
+      ok: true,
+      result: { terminal: { handle: 'fake-dispatcher-terminal' } }
+    }),
     bindOrchestrationRun: async ({ id }) => ({ ok: true, result: { run: { id } } }),
     createOrchestrationRun: async () => ({ ok: true, result: { run: { id: 'orch-run-1' } } }),
     createOrchestrationTask: async ({ taskTitle }) => ({

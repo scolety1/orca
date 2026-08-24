@@ -341,6 +341,27 @@ export async function listOrchestrationTasks({ run } = {}) {
   return runOrca(args)
 }
 
+// Real V1 stabilization finding: every orchestration call above accepts
+// `from` (a sender-terminal identity) but nothing in this codebase ever
+// supplied one -- Orca's CLI requires a live coordinator terminal and
+// refuses headless callers with no_active_sender_terminal, confirmed live
+// against both WorldForge and NWR (production TSF server has no terminal
+// of its own). `orca terminal create` returns a real handle without
+// requiring UI focus ("falls back to a background handle if the UI cannot
+// adopt it") -- this is what keep-going-dispatch-loop.mjs uses to give
+// itself a legitimate sender identity. Uses `orca terminal create`, not
+// `worktree create`, per that command's own usage notes.
+export async function createDispatcherTerminal({ worktree, title } = {}) {
+  if (!worktree) {
+    return { ok: false, reason: 'INVALID_ARGS', detail: 'worktree is required' }
+  }
+  const args = ['terminal', 'create', '--worktree', worktree]
+  if (title) {
+    args.push('--title', title)
+  }
+  return runOrca(args)
+}
+
 // Needs You / human decision gate -- blocks a task until gate-resolve.
 export async function createOrchestrationGate({ task, question, options, from } = {}) {
   if (!task || !question?.trim()) {

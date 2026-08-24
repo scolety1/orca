@@ -14,6 +14,10 @@ import { tickKeepGoingRun } from '../server/keep-going-dispatch-loop.mjs'
 // binary and depending on a live account.
 process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
 process.env.STUB_ORCA_MODE = 'success'
+// resolveSenderTerminal short-circuits on this env var -- clearing it makes
+// every test here deterministically exercise the createDispatcherTerminal
+// fallback (a real dev/interactive shell may have it set; CI never does).
+delete process.env.ORCA_TERMINAL_HANDLE
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 const PROJECT_ID = 'fixture:proj'
@@ -49,6 +53,10 @@ function baseRun(overrides = {}) {
 
 function okOrchestration(overrides = {}) {
   return {
+    createDispatcherTerminal: async () => ({
+      ok: true,
+      result: { terminal: { handle: 'fake-dispatcher-terminal' } }
+    }),
     bindOrchestrationRun: async ({ id }) => ({ ok: true, result: { run: { id } } }),
     createOrchestrationRun: async () => ({ ok: true, result: { run: { id: 'orch-run-1' } } }),
     createOrchestrationTask: async ({ taskTitle }) => ({

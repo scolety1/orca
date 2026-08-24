@@ -4,6 +4,7 @@ import path from 'node:path'
 import {
   abandonOrchestrationWorker,
   bindOrchestrationRun,
+  createDispatcherTerminal,
   createOrchestrationGate,
   createOrchestrationRun,
   createOrchestrationTask,
@@ -258,6 +259,34 @@ test('bindOrchestrationRun passes --id through', async () => {
 test('bindOrchestrationRun surfaces a consumer_fenced-style CLI error honestly', async () => {
   await withEnv({ ...STUBBED, STUB_ORCA_MODE: 'error' }, async () => {
     const result = await bindOrchestrationRun({ id: 'run-42' })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'CLI_ERROR')
+  })
+})
+
+// --- createDispatcherTerminal ---
+
+test('createDispatcherTerminal rejects a missing worktree before touching the CLI', async () => {
+  const result = await createDispatcherTerminal({})
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'INVALID_ARGS')
+})
+
+test('createDispatcherTerminal passes --worktree and --title through and returns the stubbed handle', async () => {
+  await withEnv(STUBBED, async () => {
+    const result = await createDispatcherTerminal({
+      worktree: 'path:C:/repo',
+      title: 'TSF Keep Going Dispatcher'
+    })
+    assert.equal(result.ok, true)
+    assert.equal(result.result.terminal.handle, 'stub-dispatcher-terminal')
+    assert.equal(result.result.terminal.worktreeId, 'path:C:/repo')
+  })
+})
+
+test('createDispatcherTerminal surfaces a deliberate CLI error without fabricating a handle', async () => {
+  await withEnv({ ...STUBBED, STUB_ORCA_MODE: 'error' }, async () => {
+    const result = await createDispatcherTerminal({ worktree: 'path:C:/repo' })
     assert.equal(result.ok, false)
     assert.equal(result.reason, 'CLI_ERROR')
   })

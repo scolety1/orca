@@ -14,6 +14,11 @@ const STATE_FILE = path.join(
 )
 
 process.env.TSF_UI_STATE_FILE = STATE_FILE
+// resolveSenderTerminal (keep-going-dispatch-loop.mjs) short-circuits on
+// this env var -- clearing it makes real-tick tests below deterministically
+// exercise the stub CLI's `terminal create` handler (a real dev/interactive
+// shell may have it set; CI never does).
+delete process.env.ORCA_TERMINAL_HANDLE
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 const { claimTick } = await import('../domain/keep-going.mjs')

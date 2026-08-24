@@ -145,6 +145,20 @@ if (args[0] === 'account' && args[1] === 'list') {
   ok({ workers: seededWorkers })
 } else if (args[0] === 'orchestration' && args[1] === 'task-list') {
   ok({ tasks: seededTasks })
+} else if (args[0] === 'terminal' && args[1] === 'create') {
+  // Shape confirmed against a real live `orca terminal create --json` call
+  // (2026-08-24) -- used by keep-going-dispatch-loop.mjs's sender-terminal
+  // resolution (see orca-orchestration-bridge.mjs's createDispatcherTerminal).
+  const worktreeIndex = args.indexOf('--worktree')
+  ok({
+    terminal: {
+      handle: 'stub-dispatcher-terminal',
+      tabId: 'stub-tab-id',
+      worktreeId: worktreeIndex === -1 ? null : args[worktreeIndex + 1],
+      title: 'TSF Keep Going Dispatcher',
+      surface: 'background'
+    }
+  })
 } else if (args[0] === 'orchestration' && args[1] === 'gate-create') {
   const taskIndex = args.indexOf('--task')
   const questionIndex = args.indexOf('--question')
