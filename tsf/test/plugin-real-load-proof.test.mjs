@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { connect } from 'node:net'
 
 // M6 required real proof: this whole milestone is about TSF's real Orca
 // PLUGIN actually loading and running -- every other M6 test (main-plugin
@@ -28,6 +29,46 @@ import { pathToFileURL } from 'node:url'
 // esbuild isn't resolvable, and runs the real proof whenever it is.
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
 const TSF_ROOT = join(import.meta.dirname, '..')
+
+// Real Windows flake, reproduced live (not simulated): `netstat -ano` on
+// this machine showed 127.0.0.1:4610 LISTENING plus several TIME_WAIT
+// entries from a prior run/process -- proof the fixed default port this
+// test deliberately targets (see the comment below) can genuinely already
+// be occupied by something else: another TSF instance, a straggler from a
+// previous run, or (worst case) a live production TSF this test must never
+// touch. Node's http.Server.listen() on Windows can also EADDRINUSE for a
+// beat right after the previous owner's socket closes, before the OS fully
+// releases it. Neither is this test's own bug; both turn "some other real
+// TCP thing has 4610 right now" into an honest, visible skip instead of a
+// flaky, confusing pass/fail.
+function isPortOpen(host, port, timeoutMs = 300) {
+  return new Promise((resolve) => {
+    const socket = connect({ host, port, timeout: timeoutMs })
+    socket.once('connect', () => {
+      socket.destroy()
+      resolve(true)
+    })
+    socket.once('timeout', () => {
+      socket.destroy()
+      resolve(false)
+    })
+    socket.once('error', () => resolve(false))
+  })
+}
+
+// Polls instead of a single fixed sleep: a bare `setTimeout` before the
+// "must not still be listening" assertion below raced Windows' own socket
+// teardown on this machine (TIME_WAIT observed above) -- long enough most
+// of the time is still a flake, not a fix.
+async function waitForPortClosed(host, port, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!(await isPortOpen(host, port))) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+}
 
 async function waitForRealServer(base, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs
@@ -67,6 +108,19 @@ test(
         `esbuild is not resolvable in this environment (${error.code ?? error.message}) -- ` +
           'this real-proof test needs it to bundle the real plugin-host-entry.ts/plugin-host-process.ts; ' +
           'run `pnpm install` at the repo root to get it (a transitive dependency of vite/electron-vite).'
+      )
+      return
+    }
+
+    // This test deliberately targets the real, un-overridden default port
+    // (see below) rather than an ephemeral one -- so honor whatever is
+    // already there instead of colliding with it. Reproduced live on this
+    // machine (see isPortOpen's comment).
+    if (await isPortOpen('127.0.0.1', 4610)) {
+      t.skip(
+        '127.0.0.1:4610 is already in use by something else (another TSF instance, a ' +
+          'straggler from a previous run, or a real host this test must never touch) -- ' +
+          'skipping rather than colliding with it. Free the port and re-run to get the real proof.'
       )
       return
     }
@@ -129,9 +183,9 @@ test(
       // Unlike main-plugin.test.mjs's ephemeral-port tests, this one is
       // pinned to the real default port 4610: proving the REAL activate()
       // with no testOverrides is the whole point, and that code path has
-      // no env-var override for the port. If something else already owns
-      // 4610, this fails honestly here (a real mismatch against whatever
-      // that server actually returns) rather than silently passing.
+      // no env-var override for the port. The pre-flight isPortOpen check
+      // above already ruled out something else owning 4610, so a mismatch
+      // here means our own spawn didn't come up as expected.
       const res = await waitForRealServer('http://127.0.0.1:4610')
       const body = await res.json()
       assert.equal(body.product, 'Thousand Sunny Fleet — Orca Foundation')
@@ -145,8 +199,9 @@ test(
 
     // The real child process must genuinely be gone -- proves deactivate()
     // actually ran inside the real worker on real shutdown, not just that
-    // the parent's handle was discarded.
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    // the parent's handle was discarded. Polls for the port to actually
+    // close rather than a single fixed sleep (see waitForPortClosed).
+    await waitForPortClosed('127.0.0.1', 4610)
     await assert.rejects(
       () => fetch('http://127.0.0.1:4610/api/meta', { signal: AbortSignal.timeout(500) }),
       'tsf/server must not still be listening after a real plugin shutdown'

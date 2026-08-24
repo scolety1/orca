@@ -136,4 +136,43 @@ former is realistic, but that's a real question to verify against the
 actual component tree at build time, not an assumption to carry in from
 this doc.
 
+## Desktop responsive-readiness findings (bounded review, parallel improvement lane)
+
+A narrow, non-implementing pass over the existing desktop `tsf/ui` at
+narrow viewport widths, answering part of the research question above
+with real evidence rather than assumption. No mobile navigation/runtime
+was built -- this only fixed obvious shared-layout problems that also
+help desktop, and recorded the rest here.
+
+- **Fixed sidebar is the actual blocker, not the content components.**
+  `AppShell`'s sidebar is a hard `w-56` (224px) with no narrow-viewport
+  collapse; below roughly 500-600px viewport width the main content
+  column is left with too little room to be usable. This is the one
+  finding that confirms "responsively adapt the same components in
+  place" (this doc's own research recommendation, above) is *not* enough
+  by itself -- the shell/nav needs its own narrow-viewport treatment
+  (collapse to a drawer/bottom-nav, or a genuinely separate mobile entry
+  point) before any per-page component matters. Deliberately not
+  implemented in this pass: real navigation redesign is exactly the
+  "mobile navigation/runtime" this doc's status line says stays
+  unauthorized until Tim approves starting this project.
+- **Everything else already responsively adapts, once the shell does.**
+  Verified, not assumed: `ProjectsPage`'s project-card grid, the
+  Home/Work/Fleet page layouts, and `ProjectDetailPage`'s
+  content/Planner-Chat split (`grid-cols-1 ... xl:grid-cols-[1fr_360px]`)
+  all already collapse to a single column via existing Tailwind
+  breakpoints. `BulkActionBar` already wraps (`flex flex-wrap`) instead
+  of overflowing. These needed no change -- real evidence for "the
+  former is realistic" in the research recommendation above, once the
+  shell itself is addressed.
+- **Fixed (small, cross-cutting, applied in this pass):** the shared
+  `DialogContent` primitive (`components/ui/dialog.tsx`, used by Capacity,
+  mission launchers, onboarding steps, and more) was `w-full max-w-lg`
+  under `position: fixed`, which resolves against the viewport itself --
+  below ~512px wide it touched both screen edges with zero margin, and
+  had no max-height/scroll for tall content on a short viewport. Changed
+  to a fixed side inset (`w-[calc(100%-2rem)]`) and `max-h-[85vh]
+  overflow-y-auto`. Benefits desktop (a resized/narrow window) today, not
+  only a future mobile client.
+
 ## Do not start implementation without Tim's future approval.

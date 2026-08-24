@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { CircleSlash, PackageCheck, PlayCircle, CalendarClock, ShieldCheck } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
-import { LoadingState, ErrorState, EmptyState } from '@/components/States'
+import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/StatusChip'
@@ -52,7 +52,9 @@ export function WorkPage() {
   if (loading && !work) {
     return <LoadingState label="Loading Work…" />
   }
-  if (error) {
+  // A background reload failure must not replace already-loaded work data
+  // with a full-page error.
+  if (error && !work) {
     return <ErrorState message={error} onRetry={reload} />
   }
   if (!work) {
@@ -64,6 +66,7 @@ export function WorkPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Work</h1>

@@ -12,7 +12,11 @@ export function DialogContent({ className, children, ...props }: React.Component
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          'fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-5 shadow-[0_10px_24px_rgba(0,0,0,0.45)]',
+          // w-[calc(100%-2rem)] (not w-full): this is `position:fixed`, so
+          // width:100% resolves against the viewport itself -- below the
+          // max-w-lg breakpoint the dialog was touching both screen edges
+          // with zero margin on a narrow viewport.
+          'fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-[0_10px_24px_rgba(0,0,0,0.45)]',
           className
         )}
         {...props}

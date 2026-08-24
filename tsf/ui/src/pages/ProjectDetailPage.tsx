@@ -2,7 +2,7 @@ import { useParams } from 'react-router-dom'
 import { Copy } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
-import { LoadingState, ErrorState, EmptyState } from '@/components/States'
+import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { StatusChip } from '@/components/StatusChip'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -49,7 +49,11 @@ export function ProjectDetailPage() {
   if (loading && !project) {
     return <LoadingState label="Loading project…" />
   }
-  if (error) {
+  // A background refresh failure (Refresh, MembershipPanel Add/Remove, a
+  // reload() elsewhere on this page) must not blow away an already-loaded
+  // project -- only a genuine first load with nothing yet should show the
+  // full error state. See RefreshFailedBanner for the same-page recovery.
+  if (error && !project) {
     return <ErrorState message={error} onRetry={reload} />
   }
   if (!project) {
@@ -58,6 +62,7 @@ export function ProjectDetailPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">

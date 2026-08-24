@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
-import { LoadingState, ErrorState, EmptyState } from '@/components/States'
+import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { ProjectCard } from '@/components/ProjectCard'
 import { BulkActionBar } from '@/components/projects/BulkActionBar'
 import { LifecycleFilterBar, matchesSearch } from '@/components/projects/LifecycleFilterBar'
@@ -47,7 +47,9 @@ export function ProjectsPage() {
   if (loading && !portfolio) {
     return <LoadingState label="Loading Projects…" />
   }
-  if (error) {
+  // A background reload failure (bulk action, mission launch) must not
+  // replace already-loaded project data with a full-page error.
+  if (error && !portfolio) {
     return <ErrorState message={error} onRetry={reload} />
   }
   if (!portfolio) {
@@ -79,6 +81,7 @@ export function ProjectsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Projects</h1>

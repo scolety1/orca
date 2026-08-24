@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { CalendarClock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/use-api'
-import { LoadingState, ErrorState, EmptyState } from '@/components/States'
+import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -58,8 +58,10 @@ export function FleetPage() {
   if (loading && !portfolio) {
     return <LoadingState label="Loading Work Set…" />
   }
-  if (error) {
-    return <ErrorState message={error} />
+  // A background reload failure must not replace already-loaded portfolio
+  // data with a full-page error.
+  if (error && !portfolio) {
+    return <ErrorState message={error} onRetry={reload} />
   }
   if (!portfolio) {
     return null
@@ -94,6 +96,7 @@ export function FleetPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Fleet Planning</h1>

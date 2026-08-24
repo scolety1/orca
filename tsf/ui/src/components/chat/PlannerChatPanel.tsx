@@ -7,6 +7,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { DecisionBadge } from '@/components/DecisionBadge'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
+import { scrollTranscriptToBottom } from '@/lib/chat-transcript-scroll'
+import { loadChatDraft, saveChatDraft } from '@/lib/chat-draft-storage'
 import type { ChatMessage } from '@/lib/types'
 
 type Attachment = {
@@ -42,7 +44,7 @@ export function PlannerChatPanel({
   // Tim deliberately fills this in (chat-dispatch-bridge.mjs's own "no
   // silent default" invariant, now honored from the UI too).
   const [dispatchWorktree, setDispatchWorktree] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -56,6 +58,12 @@ export function PlannerChatPanel({
     // state. Must clear on every project switch, same as the other fields
     // above.
     setDispatchWorktree('')
+    // Real V1 gap: TSF backend recovery reloads/re-navigates the page,
+    // which can throw away chat text Tim was halfway through typing.
+    // Restore whatever was persisted for this project (empty if none) --
+    // this also fixes a project switch previously carrying another
+    // project's in-progress draft into the new composer.
+    setDraft(projectId ? loadChatDraft(projectId) : '')
     if (!projectId) {
       return
     }
@@ -65,9 +73,25 @@ export function PlannerChatPanel({
       .catch(() => undefined)
   }, [projectId])
 
+  // Real V1 stabilization finding: scrollIntoView scrolls every scrollable
+  // ancestor, not just this panel -- on a long Project Detail page it
+  // jumped the whole page's scroll position on send/receive. Drive the
+  // transcript viewport's own scrollTop instead so nothing outside this
+  // panel ever moves.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    scrollTranscriptToBottom(viewportRef.current)
   }, [messages, sending])
+
+  // Persists on every keystroke, not via a reactive effect keyed on
+  // `draft`: an effect would also fire right after the project-switch
+  // effect loads a *different* project's draft into state, momentarily
+  // writing the old project's text under the new project's key.
+  function updateDraft(text: string) {
+    setDraft(text)
+    if (projectId) {
+      saveChatDraft(projectId, text)
+    }
+  }
 
   async function send() {
     const text = draft.trim()
@@ -83,7 +107,7 @@ export function PlannerChatPanel({
       ...prev,
       { role: 'user', content: text + attachmentNote, at: new Date().toISOString() }
     ])
-    setDraft('')
+    updateDraft('')
     setAttachments([])
     const attachmentMeta = attachments.map((a) => ({ name: a.name, type: a.type || 'unknown' }))
     const worktree = dispatchWorktree.trim()
@@ -148,7 +172,7 @@ export function PlannerChatPanel({
           <span>{providerLabel ? `Planner: ${providerLabel}` : 'Planner: PLANNER_DEEP'}</span>
         </div>
       </div>
-      <ScrollArea className="tsf-scrollbar flex-1 px-4 py-3">
+      <ScrollArea className="tsf-scrollbar flex-1 px-4 py-3" viewportRef={viewportRef}>
         {!projectId ? (
           <div className="py-10 text-center text-xs text-muted-foreground">
             Select a project to talk with its planner.
@@ -190,7 +214,6 @@ export function PlannerChatPanel({
             )}
           </div>
         )}
-        <div ref={bottomRef} />
       </ScrollArea>
       {error && (
         <div className="border-t border-border px-4 py-2 text-[11px] text-destructive">{error}</div>
@@ -257,7 +280,7 @@ export function PlannerChatPanel({
           </Button>
           <Textarea
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => updateDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()

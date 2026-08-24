@@ -14,7 +14,7 @@ import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatusChip } from '@/components/StatusChip'
-import { LoadingState, ErrorState, EmptyState } from '@/components/States'
+import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { Button } from '@/components/ui/button'
 import { CapacityIndicator } from '@/components/CapacityIndicator'
 
@@ -66,10 +66,13 @@ export function HomePage() {
   if ((pLoading && !portfolio) || (wLoading && !work)) {
     return <LoadingState label="Loading HQ…" />
   }
-  if (pError) {
+  // A background reload failure (e.g. after Prepare Projects for Work) must
+  // not replace already-loaded portfolio/work data with a full-page error --
+  // only a genuine first load with nothing yet should do that.
+  if (pError && !portfolio) {
     return <ErrorState message={pError} onRetry={reloadPortfolio} />
   }
-  if (wError) {
+  if (wError && !work) {
     return <ErrorState message={wError} onRetry={reloadWork} />
   }
   if (!portfolio || !work) {
@@ -98,6 +101,8 @@ export function HomePage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
+      {pError && <RefreshFailedBanner message={pError} onRetry={reloadPortfolio} />}
+      {wError && <RefreshFailedBanner message={wError} onRetry={reloadWork} />}
       <header className="mb-8">
         <h1 className="text-xl font-semibold tracking-tight">HQ</h1>
         <p className="text-sm text-muted-foreground">What needs your attention, right now.</p>
