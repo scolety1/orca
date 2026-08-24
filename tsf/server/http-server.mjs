@@ -41,7 +41,10 @@ import { handleFlightRecorderRoute } from './flight-recorder-http-routes.mjs'
 import { handleFleetOptimizerRoute } from './fleet-optimizer-http-routes.mjs'
 import { handleCapacityRoute } from './capacity-http-routes.mjs'
 import { handlePortfolioMembershipRoute } from './portfolio-membership-http-routes.mjs'
-import { handlePrepareForWorkRoute } from './prepare-for-work-http-routes.mjs'
+import {
+  handlePrepareForWorkRoute,
+  recoverInterruptedPrepareForWorkOperations
+} from './prepare-for-work-http-routes.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
 import usageModes from '../routing/usage-modes.v1.json' with { type: 'json' }
@@ -626,6 +629,14 @@ export function startStandaloneServer(port = 4610, options = {}) {
   )
   server.listen(port, '127.0.0.1', () => {
     console.log(`TSF operator API listening on http://127.0.0.1:${port}`)
+  })
+  // Real V1 live-use defect fix: reacquire any Prepare-for-Work operation
+  // left RUNNING by a previous process instance that died mid-operation
+  // (the exact incident this exists for -- see prepare-for-work-http-
+  // routes.mjs's own header). Fire-and-forget by design: startup must not
+  // block on however long the resumed pipeline(s) take.
+  recoverInterruptedPrepareForWorkOperations().catch((error) => {
+    console.error('prepare-for-work recovery scan failed:', error)
   })
   return server
 }

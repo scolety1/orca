@@ -30,7 +30,8 @@ const DEFAULTS = {
   projectMemory: {}, // projectId -> TSF_PROJECT_MEMORY_V1 (see tsf/domain/project-memory.mjs)
   projectEstimates: {}, // projectId -> TSF_PROJECT_ESTIMATE_RESULT_V1 (see tsf/server/estimate-http-routes.mjs)
   estimateActuals: {}, // projectId -> TSF_ESTIMATE_ACTUAL_V1[] (see tsf/domain/estimate-calibration.mjs)
-  evalRuns: {} // packId -> TSF_EVAL_RUN_RESULT_V1[], append-only (see tsf/server/eval-http-routes.mjs)
+  evalRuns: {}, // packId -> TSF_EVAL_RUN_RESULT_V1[], append-only (see tsf/server/eval-http-routes.mjs)
+  prepareForWorkOperations: {} // operationId -> TSF_PREPARE_FOR_WORK_OPERATION_V1 (see tsf/domain/prepare-for-work-operation.mjs)
 }
 
 // Exposes the real state file path (honoring the same TSF_UI_STATE_FILE

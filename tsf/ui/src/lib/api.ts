@@ -21,7 +21,13 @@ import type {
   RepairSelectedResult
 } from './health-repair-types'
 import type { CapacitySnapshot } from './capacity-types'
-import type { MembershipChangeResponse, PrepareForWorkResponse } from './prepare-for-work-types'
+import type {
+  MembershipChangeResponse,
+  PrepareForWorkOperationListResponse,
+  PrepareForWorkOperationResponse,
+  PrepareForWorkStartResponse
+} from './prepare-for-work-types'
+import { prepareForWork as prepareForWorkDurable } from './prepare-for-work-polling'
 import type {
   AgentEvidence,
   ChatAttachmentMeta,
@@ -284,8 +290,14 @@ export const api = {
       body: JSON.stringify({ projectIds, add })
     }),
   prepareForWork: (projectIds: string[]) =>
-    request<PrepareForWorkResponse>('/projects/prepare-for-work', {
+    prepareForWorkDurable(projectIds, api.startPrepareForWork, api.getPrepareForWorkOperation),
+  startPrepareForWork: (projectIds: string[]) =>
+    request<PrepareForWorkStartResponse>('/projects/prepare-for-work', {
       method: 'POST',
       body: JSON.stringify({ projectIds })
-    })
+    }),
+  getPrepareForWorkOperation: (operationId: string) =>
+    request<PrepareForWorkOperationResponse>(`/projects/prepare-for-work/${operationId}`),
+  listPrepareForWorkOperations: () =>
+    request<PrepareForWorkOperationListResponse>('/prepare-for-work-operations')
 }
