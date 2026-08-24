@@ -2140,6 +2140,23 @@
           "commit": "9def8d8da",
           "status": "ADOPTED",
           "note": "Adopted via git merge --ff-only (ab69bd247..9def8d8da). Zero Orca core delta. Not M15 -- filed as M7 wave per established program discipline. A pre-existing, repo-wide git object-store issue (git fsck reports ~59k broken-link/missing-blob errors spanning old history, and an ambient background geometric-repack task fails on every fetch/commit) was found during adoption verification -- confirmed the specific commit chain and full tree needed for this merge were intact before proceeding, but the underlying corruption is a separate, out-of-scope infrastructure concern flagged to Tim rather than repaired here, given the shared C:/TSF_ORCA/.git object store is actively used by many concurrent worktree sessions and an unsupervised repair carries real risk to their work."
+        },
+        {
+          "wave": 28,
+          "summary": "Fixed a real Tim-reported crash: Cannot read properties of undefined (reading filter) on the Projects bulk-selection/Prepare-for-Work path. Root cause reproduced and confirmed: this program's own wave-27 adoption restarted the real production TSF backend to load the durable Prepare-for-Work operation, but never rebuilt C:/TSF_ORCA/tsf/ui/dist -- the server was serving a pre-wave-27 UI bundle (expects POST /api/projects/prepare-for-work to return {results:[...]} directly) against the new backend (returns {operationId, operation}); BulkActionBar.tsx's result.results.filter(...) throws exactly the reported error when result.results is undefined. Immediate fix: rebuilt and redeployed tsf/main's UI dist. Durable fix: prepare-for-work-polling.ts now validates the POST response has a real operationId and every GET poll response is well-formed (including, per independent review's own follow-up finding, each individual settled entry having its own stages array) before use, throwing one clear actionable error instead of crashing; api-response-normalization.ts normalizes portfolio/work/membership-change responses the same way at the API boundary so a missing/wrong-typed array degrades to [] rather than crashing any of the ~10 real consumer call sites across ProjectsPage/HomePage/FleetPage/WorkPage/BulkActionBar. Every change traces to a specific, reproduced cause, not blind optional-chaining. tsf/ui had no test runner at all -- added one using Node's own native TypeScript support (node --experimental-strip-types --test) rather than a new framework; 12 new tests cover the exact reproduced failure and the normalization defaults. Independent review: 2 rounds, GREEN -- confirmed root cause, confirmed the fix closes the reported bug, found and required a fix for one narrow residual (the per-entry stages gap), confirmed complete real-consumer coverage (including WorkPage.tsx, found independently), confirmed the tests are real not tautological, confirmed zero Orca core delta.",
+          "filesChanged": [
+            "tsf/ui/package.json",
+            "tsf/ui/src/lib/api.ts",
+            "tsf/ui/src/lib/prepare-for-work-polling.ts",
+            "tsf/ui/src/lib/api-response-normalization.ts",
+            "tsf/ui/src/lib/api-response-normalization.test.ts",
+            "tsf/ui/src/lib/prepare-for-work-polling.test.ts"
+          ],
+          "testsPassing": "802/803 full backend suite (only the pre-existing unrelated port-4610 flake); UI typecheck/build clean; new UI test suite 12/12 (node --experimental-strip-types --test)",
+          "verifier": "INDEPENDENT (forked review agent, 2 rounds, GREEN -- confirmed root cause and fix, found and required a fix for one narrow residual gap, confirmed complete real-consumer coverage)",
+          "commit": "4eec4746d",
+          "status": "ADOPTED",
+          "note": "Adopted via git merge --ff-only (a7c31b854..4eec4746d). UI dist rebuilt and redeployed to the real production server after adoption so Tim's live desktop app runs matching, hardened frontend/backend code. Zero Orca core delta. Not M15 -- filed as M7 wave per established program discipline."
         }
       ]
     },
