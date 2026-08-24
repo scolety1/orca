@@ -2180,6 +2180,26 @@
           "commit": "a7b6f9dfc8",
           "status": "ADOPTED",
           "note": "Adopted via git merge --ff-only into tsf/main. Production TSF server restarted after adoption to load this backend fix, followed by a real recheck of WorldForge/NWR/Maintenance Loop against the corrected pipeline. Zero Orca core delta. Not M15 -- filed as M7 wave per established program discipline."
+        },
+        {
+          "wave": 31,
+          "summary": "Real bug found while actually trying to dispatch real governed Keep Going missions against WorldForge and NWR (both Tim-approved, both live attempts): every real dispatch failed identically with no_active_sender_terminal -- Orca's orchestration CLI requires a live coordinator-terminal identity and the production TSF server is a headless process with none. server/keep-going-dispatch-loop.mjs never supplied `from` (sender-terminal identity) to any of the four adapters/orca-orchestration-bridge.mjs calls that accept it, even though the adapter and the real CLI both already supported one -- this call chain had apparently never been successfully exercised end to end from a headless server process before this session. Fix: added createDispatcherTerminal (wraps `orca terminal create --json`); new resolveSenderTerminal uses ORCA_TERMINAL_HANDLE directly when set, otherwise creates one fresh anchored to this module's own real repo root (dynamically resolved, never hardcoded), called before any real orchestration Run/task/worker is touched, aborting honestly with zero orphaned Orca resources on failure. Deliberately not cached across ticks in this bounded fix (disclosed cost: one new idle terminal tab per tick; caching deferred to a follow-up needing persisted-run-state changes).",
+          "filesChanged": [
+            "tsf/adapters/orca-orchestration-bridge.mjs",
+            "tsf/server/keep-going-dispatch-loop.mjs",
+            "tsf/test/fixtures/stub-orca-cli.mjs",
+            "tsf/test/http-keep-going.test.mjs",
+            "tsf/test/keep-going-dispatch-loop-concurrency.test.mjs",
+            "tsf/test/keep-going-dispatch-loop-placement.test.mjs",
+            "tsf/test/keep-going-dispatch-loop-sender-terminal.test.mjs",
+            "tsf/test/keep-going-dispatch-loop.test.mjs",
+            "tsf/test/orca-orchestration-bridge.test.mjs"
+          ],
+          "testsPassing": "830/831 full backend suite (one pre-existing, environment-only port-4610 failure, unrelated, same as wave 30)",
+          "verifier": "INDEPENDENT (forked review agent, explicit safety preamble forbidding real command execution against NWR/WorldForge AND the real orca CLI -- stub-CLI-only) -- GREEN. Confirmed from-threading is complete and correctly ordered (before any real Orca mutation), confirmed the abort path creates nothing, confirmed the dynamic path resolution is correct, confirmed via a live revert/restore that the new tests actually catch the original bug. One narrow, unconfirmed edge case flagged (not fixed): the dispatcher terminal's own worktree is not checked against placementsCollide -- relevant only if Keep Going ever dispatches work against TSF's own repo as the target project.",
+          "commit": "bf548851f3",
+          "status": "ADOPTED",
+          "note": "Adopted via git merge --ff-only into tsf/main. Production TSF server restarted after adoption to load this backend fix. Zero Orca core delta. Not M15 -- filed as M7 wave per established program discipline. Isolated Orca worktrees were created for both WorldForge and NWR missions during discovery of this bug (real, harmless, unused checkouts) -- see session record."
         }
       ]
     },
