@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
   scanFleetHealth,
@@ -214,6 +214,66 @@ test('runBaselineVerification: a command string outside the safe discovered shap
   assert.equal(existsSync(markerFile), false, 'the injected command must never actually run')
 })
 
+// Real V1 stabilization finding: a real Python project's own discovered
+// commands (pytest/ruff check ., see repo-inspector.mjs's
+// detectPythonCommands) are fixed literal strings with nothing repo-
+// controlled interpolated into them -- must be accepted by the same real
+// safety gate a JS command goes through, not silently dropped to
+// NOT_APPLICABLE the way an unrecognized shape correctly is above.
+test('runBaselineVerification: the two real Python commands (pytest, ruff check .) pass the safe-shape gate and are actually spawned', async () => {
+  const dir = tracked(createTempRepo())
+  const result = await runBaselineVerification(
+    dir,
+    {
+      testCommands: ['pytest'],
+      lintCommands: ['ruff check .'],
+      buildCommands: [],
+      typecheckCommands: []
+    },
+    5000
+  )
+  // Neither pytest nor ruff is actually installed in this fixture -- a
+  // real SPAWN_ERROR (command not found) is exactly the proof they were
+  // genuinely attempted, not silently refused as NOT_APPLICABLE.
+  assert.notEqual(result.test, 'NOT_APPLICABLE')
+  assert.notEqual(result.lint, 'NOT_APPLICABLE')
+})
+
+// Real V1 stabilization finding, reproduced against NWR's real repo:
+// pytest/ruff exist only inside its .venv, not the system PATH -- a bare
+// command spawned with the inherited PATH would SPAWN_ERROR even though
+// both tools are really installed. Proven here with a real, disposable
+// stub "python"/"pytest" pair in a fixture .venv, never touching a real
+// venv or a real tool.
+function makeVenvStub(dir, name, body) {
+  const bin = path.join(dir, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin')
+  mkdirSync(bin, { recursive: true })
+  const isWin = process.platform === 'win32'
+  writeFileSync(path.join(bin, isWin ? 'python.exe' : 'python'), '', { mode: 0o755 })
+  const scriptPath = path.join(bin, isWin ? `${name}.cmd` : name)
+  writeFileSync(scriptPath, body, { mode: 0o755 })
+}
+
+test("runBaselineVerification: a repo's own .venv is used to resolve pytest -- the child process's PATH is prepended, not the command string", async () => {
+  const dir = tracked(createTempRepo())
+  const marker = path.join(dir, 'venv-stub-ran.txt')
+  const isWin = process.platform === 'win32'
+  makeVenvStub(
+    dir,
+    'pytest',
+    isWin
+      ? `@echo off\r\necho ran > "${marker}"\r\nexit /b 0\r\n`
+      : `#!/bin/sh\necho ran > "${marker}"\nexit 0\n`
+  )
+  const result = await runBaselineVerification(
+    dir,
+    { testCommands: ['pytest'], lintCommands: [], buildCommands: [], typecheckCommands: [] },
+    5000
+  )
+  assert.equal(result.test, 'PASS')
+  assert.equal(existsSync(marker), true, 'the real .venv stub must have actually run')
+})
+
 test('repairProject: ORCA_NOT_REGISTERED calls the real refresh action and returns the fresh registration status', async () => {
   const dir = tracked(createTempRepo())
   await withEnv(
@@ -286,6 +346,31 @@ test("repairProject: DEPENDENCY_HEALTH uses the real discovered package manager'
   assert.equal(result.action, 'INSTALL_DEPENDENCIES')
   assert.ok('ok' in result, 'reports a real observed outcome, not a fabricated one')
 })
+
+// Real safety bug reproduced live tonight: this used to default to
+// `npm install` for any unrecognized packageManager, which really ran
+// inside NWR and route-reader's real working trees (neither is an npm
+// project) and left a stray package-lock.json behind each time. Covers
+// exactly the real shapes discovery can now produce for a non-actionable
+// manager: 'UNKNOWN' (ambiguous JS project), a real non-JS ecosystem, and
+// undefined/missing entirely.
+for (const packageManager of ['UNKNOWN', 'python', 'cargo', 'go', 'none', undefined]) {
+  test(`repairProject: DEPENDENCY_HEALTH never defaults to npm install for packageManager=${packageManager} -- refuses, spawns nothing`, async () => {
+    const dir = tracked(mkdtempSync(path.join(tmpdir(), 'tsf-dep-health-unknown-')))
+    const before = readdirSync(dir)
+    const result = await repairProject({
+      repoPath: dir,
+      cause: HEALTH_CAUSES.DEPENDENCY_HEALTH,
+      packageManager
+    })
+    assert.equal(result.action, 'PACKAGE_MANAGER_UNKNOWN')
+    assert.equal(result.ok, false)
+    assert.match(result.reason, /never|refus/i)
+    // The real, concrete regression: no command ran, so no stray file
+    // (package-lock.json or otherwise) was written into the repo.
+    assert.deepEqual(readdirSync(dir), before)
+  })
+}
 
 test('repairProject: an unrecognized cause is honestly refused, never silently no-oped as success', async () => {
   const result = await repairProject({ repoPath: '/fake', cause: HEALTH_CAUSES.TESTS_FAILING })

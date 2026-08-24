@@ -5,6 +5,8 @@
 // spec (prepareRepairMission) for an isolated worker to act on, exactly
 // like any other Keep Going mission; this module never edits repo files.
 import { spawn, execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import {
   diagnoseProjectHealth,
   overallRepairClass,
@@ -67,6 +69,29 @@ function killProcessTree(pid) {
   }
 }
 
+// Real V1 stabilization finding, reproduced against NWR's real repo:
+// pytest/ruff exist only inside its .venv, not on the system PATH -- a
+// bare `pytest`/`ruff check .` command spawned with shell:true resolves
+// against the shell's own inherited PATH, not an unactivated venv, so it
+// would SPAWN_ERROR ("not recognized") even though both tools are really
+// installed. This is repoPath's OWN filesystem layout (a trusted,
+// TSF-computed path, not repo-CONTENT), so it is safe to use directly --
+// unlike a package.json script name, nothing here is repo-controlled text
+// reaching a shell string. Prepending the venv's own bin directory to the
+// child's PATH (never touching the command string itself) resolves this
+// without needing any path interpolation into SAFE_COMMAND_LINE's shape
+// at all. Absent for any repo without a real .venv/venv -- a no-op.
+function venvBinDir(repoPath) {
+  for (const venvName of ['.venv', 'venv']) {
+    const bin = path.join(repoPath, venvName, process.platform === 'win32' ? 'Scripts' : 'bin')
+    const python = path.join(bin, process.platform === 'win32' ? 'python.exe' : 'python')
+    if (existsSync(python)) {
+      return bin
+    }
+  }
+  return null
+}
+
 // Runs one real shell command with a bounded timeout, in repoPath, never
 // touching source files itself — the command being run may (build/test
 // output, a lockfile) but this function's own job is only to observe the
@@ -75,11 +100,16 @@ function runCommand(command, cwd, timeoutOverrideMs) {
   return new Promise((resolve) => {
     let child
     try {
+      const venvBin = venvBinDir(cwd)
+      const env = venvBin
+        ? { ...process.env, PATH: `${venvBin}${path.delimiter}${process.env.PATH}` }
+        : process.env
       child = spawn(command, {
         cwd,
         shell: true,
         windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env
       })
     } catch (error) {
       resolve({ status: 'UNKNOWN', reason: 'SPAWN_ERROR', detail: error.message })
@@ -127,7 +157,13 @@ function runCommand(command, cwd, timeoutOverrideMs) {
 // -- a command string is only ever spawned here if it matches exactly the
 // shape discovery is documented to produce (`<runner> <safe-name>` or
 // `UNKNOWN run <safe-name>`), never a raw string accepted on faith.
-const SAFE_COMMAND_LINE = /^(?:npm run|yarn|pnpm run|UNKNOWN run) [A-Za-z0-9][A-Za-z0-9_.:-]*$/
+// The two Python alternatives are fixed literal strings discovery ever
+// produces (see detectPythonCommands in repo-inspector.mjs) -- unlike a JS
+// script name, nothing repo-controlled is interpolated into either one, so
+// listing them by exact value carries the same safety guarantee as the
+// npm/yarn/pnpm shape above.
+const SAFE_COMMAND_LINE =
+  /^(?:npm run|yarn|pnpm run|UNKNOWN run) [A-Za-z0-9][A-Za-z0-9_.:-]*$|^(?:pytest|ruff check \.)$/
 
 // Real baseline verification: actually runs the repo's own discovered
 // typecheck/test/build/lint commands (never invented ones) and reports the
@@ -166,7 +202,8 @@ export async function runBaselineVerification(repoPath, commandGuidance, timeout
 const INSTALL_COMMAND_BY_MANAGER = Object.freeze({
   npm: 'npm install',
   yarn: 'yarn install',
-  pnpm: 'pnpm install'
+  pnpm: 'pnpm install',
+  bun: 'bun install'
 })
 
 export async function repairProject({
@@ -211,8 +248,25 @@ export async function repairProject({
       return { ok: result.ok, action: 'RESOLVE_HANDOFF_USE_LIVE_REPO', result }
     }
     case HEALTH_CAUSES.DEPENDENCY_HEALTH: {
-      const installCommand =
-        INSTALL_COMMAND_BY_MANAGER[packageManager] ?? INSTALL_COMMAND_BY_MANAGER.npm
+      // Real safety bug found and fixed here: this used to default to
+      // `npm install` whenever packageManager wasn't recognized -- which
+      // really ran `npm install` inside real non-npm repos (NWR, route-
+      // reader had no lockfile/were non-JS) and left a stray
+      // package-lock.json in their real working trees. Never guesses now:
+      // an install command only runs for a manager repo-inspector.mjs
+      // actually has real command-line evidence for (npm/yarn/pnpm/bun,
+      // via a lockfile or a declared `packageManager` field). Everything
+      // else -- 'UNKNOWN' (ambiguous JS project), 'python'/'cargo'/'go'
+      // (a real, different ecosystem), 'none' -- stays read-only/
+      // diagnostic: no command is spawned, no file is written.
+      const installCommand = INSTALL_COMMAND_BY_MANAGER[packageManager]
+      if (!installCommand) {
+        return {
+          ok: false,
+          action: 'PACKAGE_MANAGER_UNKNOWN',
+          reason: `Cannot determine a safe install command -- packageManager is "${packageManager ?? 'unknown'}", not one of npm/yarn/pnpm/bun. Refusing to guess rather than defaulting to npm install.`
+        }
+      }
       const outcome = await runCommand(installCommand, repoPath)
       return { ok: outcome.status === 'PASS', action: 'INSTALL_DEPENDENCIES', outcome }
     }

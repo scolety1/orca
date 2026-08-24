@@ -60,6 +60,42 @@ test('a fully healthy project with no real findings diagnoses with zero causes',
   assert.equal(isReadyForWork(causes), true)
 })
 
+// Real V1 stabilization finding, reproduced live (Maintenance Loop, a
+// genuinely clean project with all real typecheck/test/build/lint
+// passing): STALE_PROJECT_STATE's own trigger checks Work Set membership,
+// not any actual repository-state staleness -- Work Set membership is an
+// operator scheduling choice, not a defect. It used to default
+// AUTO_REPAIR_SAFE with only one possible repair action (REFRESH_ANALYSIS,
+// a fresh analyzeRepository call) that can never resolve it since
+// re-analysis doesn't touch Work Set membership -- permanently BLOCKED a
+// clean project. Now NOT_A_DEFECT, matching DIRTY_PRESERVE/
+// PAUSED_BY_DESIGN's own posture: real, honestly surfaced, not something
+// TSF tries and fails to fix forever.
+test('STALE_PROJECT_STATE (a recommended mission not yet in the Work Set) is NOT_A_DEFECT -- Work Set membership is a scheduling choice, not a blocker', () => {
+  const causes = diagnoseProjectHealth({
+    analysis: baseAnalysis({ direction: { live: true, recommendedNextMission: 'do the thing' } }),
+    membership: { activeFleet: true, workSet: false }
+  })
+  assert.deepEqual(
+    causes.map((c) => c.cause),
+    [HEALTH_CAUSES.STALE_PROJECT_STATE]
+  )
+  assert.equal(causes[0].repairClass, REPAIR_CLASSES.NOT_A_DEFECT)
+  assert.equal(overallRepairClass(causes), REPAIR_CLASSES.NOT_A_DEFECT)
+  // The real, concrete regression this fix closes: a genuinely clean
+  // project with a recommended-but-unscheduled mission must not read as
+  // permanently blocked.
+  assert.equal(isReadyForWork(causes), true)
+})
+
+test('a recommended mission already in the Work Set never raises STALE_PROJECT_STATE at all', () => {
+  const causes = diagnoseProjectHealth({
+    analysis: baseAnalysis({ direction: { live: true, recommendedNextMission: 'do the thing' } }),
+    membership: { activeFleet: true, workSet: true }
+  })
+  assert.deepEqual(causes, [])
+})
+
 test('SENSITIVE always diagnoses SENSITIVE_RESTRICTION/TIM_REQUIRED, even alongside other causes', () => {
   const causes = diagnoseProjectHealth({
     analysis: baseAnalysis({

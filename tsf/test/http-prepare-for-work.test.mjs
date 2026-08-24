@@ -62,6 +62,18 @@ function createTempRepo({ dirty = false, withTestScript = true } = {}) {
       scripts: withTestScript ? { test: 'node -e "process.exit(0)"' } : {}
     })
   )
+  // Real V1 stabilization finding: package-manager detection now refuses
+  // to guess an install command for an ambiguous JS project (no lockfile)
+  // rather than defaulting to npm install -- so without a real lockfile
+  // here, this fixture's own DEPENDENCY_HEALTH cause would never resolve,
+  // which is correct but not what this fixture is for (a project that
+  // genuinely CAN reach a clean auto-repair). A minimal real
+  // package-lock.json makes the manager unambiguously npm, matching a
+  // real npm project's own convention.
+  writeFileSync(
+    path.join(dir, 'package-lock.json'),
+    JSON.stringify({ name: 'prepare-for-work-test', lockfileVersion: 3 })
+  )
   git(dir, ['add', '-A'])
   git(dir, ['commit', '-q', '-m', 'initial'])
   if (dirty) {

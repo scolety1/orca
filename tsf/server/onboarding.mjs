@@ -207,7 +207,8 @@ async function gatherRepositoryFacts({ repoPath, handoffText, resolution }) {
 
   const discovery = await discoverProjectFiles(snapshot.root)
   const packageJson = discovery.priorityFiles.find((f) => f.relativePath === 'package.json')
-  const commandGuidance = discoverCommandGuidance(snapshot.root, packageJson?.text)
+  const pyproject = discovery.priorityFiles.find((f) => f.relativePath === 'pyproject.toml')
+  const commandGuidance = discoverCommandGuidance(snapshot.root, packageJson?.text, pyproject?.text)
   const largeUntracked = boundedUntrackedDirectorySizes(snapshot.root, snapshot.untracked)
 
   const readmeFile = discovery.priorityFiles.find((f) => f.kind === 'README')

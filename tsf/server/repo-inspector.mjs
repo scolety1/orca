@@ -313,12 +313,24 @@ const PRIORITY_FILES = [
   { name: 'netlify.toml', kind: 'DEPLOYMENT_CONFIG' }
 ]
 
-async function readExcerpt(file) {
+// Real V1 stabilization finding, reproduced directly: WorldForge's own
+// real package.json is 19.5KB -- the generic 4000-byte excerpt (sized for
+// prose docs like README/ARCHITECTURE) truncated it mid-string, so
+// JSON.parse threw and discoverCommandGuidance silently fell back to "no
+// scripts found" even though a real, well-formed `test`/`typecheck`/
+// `build` script existed the whole time. package.json's own `scripts`
+// block is load-bearing content this discovery actually parses, not
+// prose to preview -- a real manifest is reliably small enough that
+// reading the whole file, bounded generously against a pathological
+// outlier rather than a prose-sized window, is safe and correct.
+const PACKAGE_JSON_MAX_BYTES = 262144 // 256 KiB
+
+async function readExcerpt(file, maxBytes = EXCERPT_BYTES) {
   try {
     const buffer = await readFile(file)
     return {
-      text: buffer.subarray(0, EXCERPT_BYTES).toString('utf8'),
-      truncated: buffer.length > EXCERPT_BYTES,
+      text: buffer.subarray(0, maxBytes).toString('utf8'),
+      truncated: buffer.length > maxBytes,
       bytes: buffer.length
     }
   } catch {
@@ -336,7 +348,10 @@ export async function discoverProjectFiles(root) {
     if (!existsSync(full)) {
       continue
     }
-    const excerpt = await readExcerpt(full)
+    const excerpt = await readExcerpt(
+      full,
+      candidate.name === 'package.json' ? PACKAGE_JSON_MAX_BYTES : EXCERPT_BYTES
+    )
     if (excerpt) {
       found.push({ relativePath: candidate.name, kind: candidate.kind, ...excerpt })
     }
@@ -401,16 +416,87 @@ function parsePackageJson(text) {
   }
 }
 
+// Real V1 stabilization finding: package-manager detection used to check
+// only JS lockfiles, defaulting anything else to the single string
+// 'UNKNOWN' -- and DEPENDENCY_HEALTH's own repair action then defaulted
+// THAT to `npm install` (see health-repair.mjs), which really ran `npm
+// install` inside real non-npm repos (NWR, route-reader) and left a stray
+// package-lock.json behind. Detection now distinguishes a genuinely
+// ambiguous JS project (has package.json, no lockfile signal -- 'UNKNOWN',
+// still real risk of a wrong guess) from a real non-JS ecosystem ('python'/
+// 'cargo'/'go', where `npm install` was never applicable in the first
+// place) from no package manager at all ('none') -- each name is a real,
+// distinguishable fact, not a synonym for "don't know."
+function detectPackageManager(root, pkg) {
+  // Corepack's own `packageManager` field (e.g. "pnpm@8.15.0") is the most
+  // authoritative signal when a project declares it -- trust it over
+  // inferring from whichever lockfile happens to be present.
+  const declared =
+    typeof pkg?.packageManager === 'string' ? pkg.packageManager.split('@')[0].trim() : null
+  if (declared && ['npm', 'yarn', 'pnpm', 'bun'].includes(declared)) {
+    return declared
+  }
+  if (existsSync(path.join(root, 'pnpm-lock.yaml'))) {
+    return 'pnpm'
+  }
+  if (existsSync(path.join(root, 'yarn.lock'))) {
+    return 'yarn'
+  }
+  if (existsSync(path.join(root, 'bun.lockb')) || existsSync(path.join(root, 'bun.lock'))) {
+    return 'bun'
+  }
+  if (existsSync(path.join(root, 'package-lock.json'))) {
+    return 'npm'
+  }
+  if (existsSync(path.join(root, 'package.json'))) {
+    // A real JS project with no lockfile evidence -- genuinely ambiguous,
+    // never safe to guess an install command for.
+    return 'UNKNOWN'
+  }
+  if (
+    existsSync(path.join(root, 'pyproject.toml')) ||
+    existsSync(path.join(root, 'requirements.txt')) ||
+    existsSync(path.join(root, 'Pipfile'))
+  ) {
+    return 'python'
+  }
+  if (existsSync(path.join(root, 'Cargo.toml'))) {
+    return 'cargo'
+  }
+  if (existsSync(path.join(root, 'go.mod'))) {
+    return 'go'
+  }
+  return 'none'
+}
+
+// 'UNKNOWN' deliberately stays out of this set: it means a real package.json
+// exists with no lockfile signal, so node_modules is still a real,
+// meaningful fact to check even though the manager itself is ambiguous.
+const NON_JS_MANAGERS = new Set(['python', 'cargo', 'go', 'none'])
+
+// Real V1 stabilization finding: discovery had NO Python support at all --
+// a real Python project (NWR) always read hasKnownTestCommand: false
+// (BASELINE_UNKNOWN) regardless of how confidently its manager was
+// detected, since only package.json `scripts` were ever inspected. These
+// two commands are fixed literal strings, never built from repo-controlled
+// content (unlike a JS script NAME, nothing here is interpolated) --
+// existence-only evidence from real, standard Python tooling config
+// sections decides whether each is even offered, never invented.
+function detectPythonCommands(pyprojectText) {
+  const text = pyprojectText ?? ''
+  const hasPytest = /\[tool\.pytest\b/.test(text)
+  const hasRuff = /\[tool\.ruff\b/.test(text)
+  return {
+    testCommands: hasPytest ? ['pytest'] : [],
+    lintCommands: hasRuff ? ['ruff check .'] : []
+  }
+}
+
 // Command guidance: package manager + test/build/dev scripts, discovered
 // only — never executed here.
-export function discoverCommandGuidance(root, packageJsonExcerptText) {
-  const manager = existsSync(path.join(root, 'pnpm-lock.yaml'))
-    ? 'pnpm'
-    : existsSync(path.join(root, 'yarn.lock'))
-      ? 'yarn'
-      : existsSync(path.join(root, 'package-lock.json'))
-        ? 'npm'
-        : 'UNKNOWN'
+export function discoverCommandGuidance(root, packageJsonExcerptText, pyprojectExcerptText) {
+  const pkg = packageJsonExcerptText ? parsePackageJson(packageJsonExcerptText) : null
+  const manager = detectPackageManager(root, pkg)
   const runner =
     manager === 'yarn'
       ? 'yarn'
@@ -418,8 +504,9 @@ export function discoverCommandGuidance(root, packageJsonExcerptText) {
         ? 'pnpm run'
         : manager === 'npm'
           ? 'npm run'
-          : null
-  const pkg = packageJsonExcerptText ? parsePackageJson(packageJsonExcerptText) : null
+          : manager === 'bun'
+            ? 'bun run'
+            : null
   const scripts = pkg?.scripts ?? {}
   // Real vulnerability found via independent review, confirmed with a live
   // exploit: a package.json script NAME (not its body) is repo-controlled
@@ -435,20 +522,51 @@ export function discoverCommandGuidance(root, packageJsonExcerptText) {
   // "fixed up" -- it was very likely never a real, human-authored script
   // name to begin with.
   const isSafeScriptName = (name) => /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(name)
-  const commandsFor = (pattern) =>
+  // Real V1 stabilization finding, reproduced against WorldForge's own
+  // real package.json: every caller of *Commands only ever uses index [0]
+  // as THE baseline gate (runBaselineVerification) -- but Object.keys()
+  // preserves package.json's own declaration order, not any notion of
+  // "which script is the actual comprehensive check." WorldForge declares
+  // `test:player-action-router-v1` (one narrow suite) before its own bare
+  // `test` script (the real, comprehensive `npm test` entry point, the
+  // universal JS-ecosystem convention for "the tests"), so index [0] was
+  // a narrow suite, not the real gate. The bare category name --
+  // `test`/`build`/`typecheck`/`lint`, with no `:suffix` -- is sorted
+  // first when present; everything else keeps its original relative
+  // order after it.
+  const isBareCategoryName = (name, category) => name === category
+  const commandsFor = (pattern, category) =>
     Object.keys(scripts)
       .filter((name) => pattern.test(name) && isSafeScriptName(name))
+      .sort(
+        (a, b) => Number(isBareCategoryName(b, category)) - Number(isBareCategoryName(a, category))
+      )
       .map((name) => (runner ? `${runner} ${name}` : `UNKNOWN run ${name}`))
+  const python = manager === 'python' ? detectPythonCommands(pyprojectExcerptText) : null
+  const testCommands = python?.testCommands.length
+    ? python.testCommands
+    : commandsFor(/^(test|check)(:|$)/, 'test')
+  const lintCommands = python?.lintCommands.length
+    ? python.lintCommands
+    : commandsFor(/^lint(:|$)/, 'lint')
   return {
     packageManager: manager,
-    dependenciesInstalled: existsSync(path.join(root, 'node_modules')),
-    testCommands: commandsFor(/^(test|check)(:|$)/),
-    buildCommands: commandsFor(/^build(:|$)/),
-    lintCommands: commandsFor(/^lint(:|$)/),
-    typecheckCommands: commandsFor(/^typecheck(:|$)/),
-    devCommands: commandsFor(/^(dev|start|preview)(:|$)/),
+    // node_modules is a real, meaningful "dependencies installed?" signal
+    // only for a JS project -- for a real non-JS ecosystem ('python'/
+    // 'cargo'/'go') or no manager at all ('none'), node_modules will
+    // never exist and previously always read as `false`, which fired a
+    // DEPENDENCY_HEALTH cause on every such project regardless of its
+    // actual state -- honestly `true` (not applicable) for those instead.
+    dependenciesInstalled: NON_JS_MANAGERS.has(manager)
+      ? true
+      : existsSync(path.join(root, 'node_modules')),
+    testCommands,
+    buildCommands: commandsFor(/^build(:|$)/, 'build'),
+    lintCommands,
+    typecheckCommands: commandsFor(/^typecheck(:|$)/, 'typecheck'),
+    devCommands: commandsFor(/^(dev|start|preview)(:|$)/, 'dev'),
     declaredScripts: scripts,
-    hasKnownTestCommand: Object.keys(scripts).some((name) => /^(test|check)(:|$)/.test(name))
+    hasKnownTestCommand: testCommands.length > 0
   }
 }
 

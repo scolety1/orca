@@ -77,7 +77,18 @@ export const DEFAULT_REPAIR_CLASS = Object.freeze({
   [HEALTH_CAUSES.SECURITY_FINDINGS]: REPAIR_CLASSES.TIM_REQUIRED,
   [HEALTH_CAUSES.DIRTY_PRESERVE]: REPAIR_CLASSES.NOT_A_DEFECT,
   [HEALTH_CAUSES.UNADOPTED_CANDIDATE]: REPAIR_CLASSES.TIM_REQUIRED,
-  [HEALTH_CAUSES.STALE_PROJECT_STATE]: REPAIR_CLASSES.AUTO_REPAIR_SAFE,
+  // Real V1 stabilization finding: this cause's own trigger (below) checks
+  // Work Set membership, not any actual repository-state staleness (no
+  // HEAD/tree/dirty/timestamp comparison happens here) -- Work Set
+  // membership is an operator scheduling choice, not evidence something is
+  // wrong. Classified AUTO_REPAIR_SAFE, its only repair action (a fresh
+  // analyzeRepository call, health-repair.mjs's REFRESH_ANALYSIS) can
+  // never actually resolve it -- re-analysis doesn't touch Work Set
+  // membership -- so it silently blocked a genuinely clean, ready project
+  // (Maintenance Loop, reproduced live tonight) forever. NOT_A_DEFECT
+  // matches DIRTY_PRESERVE/PAUSED_BY_DESIGN's own posture: a real,
+  // honestly-surfaced fact that is not something TSF should try to fix.
+  [HEALTH_CAUSES.STALE_PROJECT_STATE]: REPAIR_CLASSES.NOT_A_DEFECT,
   [HEALTH_CAUSES.BLOCKED_PRODUCT_DECISION]: REPAIR_CLASSES.TIM_REQUIRED,
   [HEALTH_CAUSES.BLOCKED_ARCHITECTURAL_CONFLICT]: REPAIR_CLASSES.TIM_REQUIRED,
   [HEALTH_CAUSES.SENSITIVE_RESTRICTION]: REPAIR_CLASSES.TIM_REQUIRED,
@@ -262,15 +273,17 @@ export function diagnoseProjectHealth({ analysis, membership, baseline } = {}) {
   }
 
   if (membership && analysis.direction?.recommendedNextMission && !membership.workSet) {
-    // A real, live-recommended next mission sitting unactioned is a mild,
-    // non-blocking staleness signal, not something to force -- surfaced
-    // only when nothing more specific has already been found for this
-    // project, so it never crowds out a real defect.
+    // A real, live-recommended next mission sitting unactioned while the
+    // project isn't in the Work Set -- an honest, informational fact
+    // (NOT_A_DEFECT, see DEFAULT_REPAIR_CLASS above), not evidence the
+    // repository analysis itself is stale. Surfaced only when nothing
+    // more specific has already been found for this project, so it never
+    // crowds out a real defect.
     if (causes.length === 0) {
       causes.push(
         cause(
           HEALTH_CAUSES.STALE_PROJECT_STATE,
-          'A recommended next mission is on record but the project has not been refreshed recently.',
+          'A recommended next mission is on record but the project is not in the Work Set yet -- an operator scheduling choice, not a defect.',
           {}
         )
       )
