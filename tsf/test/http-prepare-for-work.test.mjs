@@ -49,7 +49,7 @@ function git(cwd, args) {
   execFileSync('git', args, { cwd, stdio: 'ignore' })
 }
 
-function createTempRepo({ dirty = false, withTestScript = true } = {}) {
+function createTempRepo({ dirty = false, withTestScript = true, failingTest = false } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'tsf-http-prepare-for-work-'))
   git(dir, ['init', '-q'])
   git(dir, ['config', 'user.email', 'test@example.com'])
@@ -59,7 +59,7 @@ function createTempRepo({ dirty = false, withTestScript = true } = {}) {
     path.join(dir, 'package.json'),
     JSON.stringify({
       name: 'prepare-for-work-test',
-      scripts: withTestScript ? { test: 'node -e "process.exit(0)"' } : {}
+      scripts: withTestScript ? { test: `node -e "process.exit(${failingTest ? 1 : 0})"` } : {}
     })
   )
   // Real V1 stabilization finding: package-manager detection now refuses
@@ -217,6 +217,25 @@ test('REQUIRED PROOF: a real clean project goes through refresh -> baseline -> a
     assert.deepEqual(
       remaining.map((c) => c.cause),
       ['ORCA_NOT_REGISTERED']
+    )
+  })
+})
+
+test('REQUIRED PROOF: a real failing baseline test is never dropped from the final readiness result', async () => {
+  // Real V1 stabilization finding: Stage 4's final diagnose used to omit
+  // the Stage 2 baseline entirely, so a real failing `npm run test` (or
+  // any command that timed out to UNKNOWN) never showed up in the final
+  // causesAfter/readyForWork -- projects could come back falsely
+  // READY_FOR_WORK. This is the end-to-end proof the fix closes that.
+  await withServer(async (base) => {
+    const projectId = await onboard(base, { failingTest: true })
+    const { operation } = await prepareForWork(base, [projectId])
+    const result = operation.results[projectId]
+    assert.equal(result.readyForWork, false)
+    const remaining = result.causesAfter.filter((c) => c.repairClass !== 'NOT_A_DEFECT')
+    assert.ok(
+      remaining.some((c) => c.cause === 'TESTS_FAILING'),
+      `expected TESTS_FAILING in final causesAfter, got: ${JSON.stringify(remaining.map((c) => c.cause))}`
     )
   })
 })

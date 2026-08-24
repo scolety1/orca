@@ -289,6 +289,43 @@ test('baseline verification failures diagnose the correct *_FAILING cause per co
   )
 })
 
+test('a baseline command that timed out (UNKNOWN) raises its *_FAILING cause too -- never silently treated as a pass', () => {
+  const causes = diagnoseProjectHealth({
+    analysis: baseAnalysis(),
+    baseline: {
+      typecheck: 'PASS',
+      test: 'UNKNOWN',
+      testDetail: { reason: 'TIMEOUT' },
+      build: 'PASS',
+      lint: 'PASS'
+    }
+  })
+  assert.deepEqual(
+    causes.map((c) => [c.cause, c.repairClass]),
+    [[HEALTH_CAUSES.TESTS_FAILING, REPAIR_CLASSES.GOVERNED_REPAIR_MISSION]]
+  )
+  assert.match(causes[0].summary, /timed out/)
+  assert.equal(causes[0].evidence.reason, 'TIMEOUT')
+})
+
+test('a baseline command that failed to spawn (UNKNOWN, non-timeout reason) still raises its *_FAILING cause honestly', () => {
+  const causes = diagnoseProjectHealth({
+    analysis: baseAnalysis(),
+    baseline: {
+      typecheck: 'PASS',
+      test: 'PASS',
+      build: 'UNKNOWN',
+      buildDetail: { reason: 'SPAWN_ERROR' },
+      lint: 'PASS'
+    }
+  })
+  assert.deepEqual(
+    causes.map((c) => [c.cause, c.repairClass]),
+    [[HEALTH_CAUSES.BUILD_FAILING, REPAIR_CLASSES.GOVERNED_REPAIR_MISSION]]
+  )
+  assert.match(causes[0].summary, /failed to run/)
+})
+
 test('a baseline that fully passes contributes no failing causes', () => {
   const causes = diagnoseProjectHealth({
     analysis: baseAnalysis(),

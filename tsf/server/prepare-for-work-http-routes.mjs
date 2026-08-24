@@ -142,6 +142,16 @@ async function setPhase(operationId, projectId, phase) {
 // updates instead of living only in this function's local variables.
 async function runOneProject(operationId, projectId) {
   const stages = []
+  // Real V1 stabilization finding, reproduced against WorldForge and NWR's
+  // real repos: the final diagnose below used to omit `baseline` entirely,
+  // so a real, currently-observed TESTS_FAILING/LINT_FAILING/etc. cause
+  // never reached the operation's own causesAfter/readyForWork -- a
+  // project with real, known-failing tests could still read
+  // READY_FOR_WORK. Hoisted so Stage 4's final diagnose can honestly
+  // reflect the same real evidence Stage 2 gathered (baseline verification
+  // itself is not re-run after AUTO_REPAIR -- there is no baseline-re-run
+  // action in this pipeline -- so this is the last real evidence there is).
+  let baseline = null
   try {
     const record = loadState().onboardedProjects?.[projectId]
     if (!record) {
@@ -179,10 +189,7 @@ async function runOneProject(operationId, projectId) {
     // Stage 2: baseline discovery.
     if (analysis.discovery?.commandGuidance) {
       await setPhase(operationId, projectId, 'RUNNING_BASELINE')
-      const baseline = await runBaselineVerification(
-        record.repoPath,
-        analysis.discovery.commandGuidance
-      )
+      baseline = await runBaselineVerification(record.repoPath, analysis.discovery.commandGuidance)
       stages.push({ stage: 'BASELINE', ok: true, baseline })
       await setPhase(operationId, projectId, 'DIAGNOSING_HEALTH')
       diagnosis = diagnoseProjectHealth({
@@ -226,11 +233,15 @@ async function runOneProject(operationId, projectId) {
     stages.push({ stage: 'AUTO_REPAIR', ok: true, actionsTaken })
     await saveAnalysis(projectId, analysis)
 
-    // Stage 4: recompute work eligibility, honestly.
+    // Stage 4: recompute work eligibility, honestly -- baseline included,
+    // so a real, still-unresolved test/build/lint/typecheck failure is
+    // never silently dropped from the final result (see the comment at
+    // this function's top for the real incident this closes).
     await setPhase(operationId, projectId, 'VERIFYING')
     const after = diagnoseProjectHealth({
       analysis,
-      membership: membershipFor(loadState(), projectId)
+      membership: membershipFor(loadState(), projectId),
+      baseline
     })
     return {
       projectId,

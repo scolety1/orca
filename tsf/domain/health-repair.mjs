@@ -263,9 +263,28 @@ export function diagnoseProjectHealth({ analysis, membership, baseline } = {}) {
   }
 
   if (baseline) {
-    const failing = (command, causeCode) =>
-      baseline[command] === 'FAIL' &&
-      causes.push(cause(causeCode, `\`npm run ${command}\` fails.`, { command }))
+    // Real V1 stabilization finding, reproduced against WorldForge's own
+    // real ~10-13 minute test suite: a baseline category that genuinely
+    // TIMED OUT (or hit a real spawn error) reports 'UNKNOWN', not 'FAIL'
+    // -- and this only ever checked for 'FAIL', so a command that never
+    // even finished running silently produced ZERO cause, reading exactly
+    // like a real pass. That is the cosmetic-GREEN failure mode this
+    // whole module exists to prevent: "could not verify within the
+    // configured timeout" is not evidence of health, it is the absence of
+    // evidence, and must never be reported the same way as a real PASS.
+    const failing = (command, causeCode) => {
+      if (baseline[command] === 'FAIL') {
+        causes.push(cause(causeCode, `\`npm run ${command}\` fails.`, { command }))
+      } else if (baseline[command] === 'UNKNOWN') {
+        causes.push(
+          cause(
+            causeCode,
+            `\`npm run ${command}\` could not be verified -- it ${baseline[`${command}Detail`]?.reason === 'TIMEOUT' ? 'timed out' : 'failed to run'} rather than genuinely passing or failing.`,
+            { command, reason: baseline[`${command}Detail`]?.reason ?? 'UNKNOWN' }
+          )
+        )
+      }
+    }
     failing('typecheck', HEALTH_CAUSES.TYPECHECK_FAILING)
     failing('test', HEALTH_CAUSES.TESTS_FAILING)
     failing('build', HEALTH_CAUSES.BUILD_FAILING)
