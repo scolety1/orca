@@ -227,7 +227,11 @@ export function EvaluationPage() {
             />
           ))}
         </div>
-        <div className="min-w-0">{activeId && <PackDetail packId={activeId} />}</div>
+        {/* key={activeId}: forces a clean remount on pack switch so useApi's
+            state doesn't carry the previous pack's data/error into the newly
+            selected one -- a real review finding (this component was never
+            unmounted by a bare packId change). */}
+        <div className="min-w-0">{activeId && <PackDetail key={activeId} packId={activeId} />}</div>
       </div>
     </div>
   )

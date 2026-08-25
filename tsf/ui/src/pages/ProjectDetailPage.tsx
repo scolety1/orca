@@ -39,6 +39,18 @@ function Ref({ label, head, tree }: { label: string; head?: string | null; tree?
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
+  // key={id}: App.tsx's <Route path="/projects/:id"> reuses this element
+  // across param changes -- without a remount here, navigating directly
+  // between two project URLs (browser back/forward, address bar) kept the
+  // previous project's useApi state and could render it under the new
+  // project's id, including a wrong-entity RefreshFailedBanner on a failed
+  // fetch. A real review finding. Same-entity background reloads (Refresh,
+  // MembershipPanel Add/Remove) don't change `id`, so this doesn't
+  // reintroduce the flash-to-spinner stabilization fix below.
+  return <ProjectDetailPageForId key={id} id={id} />
+}
+
+function ProjectDetailPageForId({ id }: { id?: string }) {
   const { data: project, loading, error, reload } = useApi(() => api.project(id!), [id])
 
   // Real V1 stabilization finding (see ProjectsPage.tsx for the full real-
