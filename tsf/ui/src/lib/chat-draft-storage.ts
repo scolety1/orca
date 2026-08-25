@@ -5,7 +5,7 @@
 //
 // `storage` is injectable so this stays testable without a DOM/jsdom (no
 // test framework exists for tsf/ui -- see prepare-for-work-polling.test.ts).
-export interface DraftStorage {
+export type DraftStorage = {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
   removeItem(key: string): void
@@ -24,7 +24,10 @@ function draftKey(projectId: string): string {
   return `tsf.chat-draft.v1.${projectId}`
 }
 
-export function loadChatDraft(projectId: string, storage: DraftStorage | null = defaultStorage()): string {
+export function loadChatDraft(
+  projectId: string,
+  storage: DraftStorage | null = defaultStorage()
+): string {
   if (!storage) {
     return ''
   }

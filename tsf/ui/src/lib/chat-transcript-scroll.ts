@@ -1,4 +1,4 @@
-export interface ScrollableViewport {
+export type ScrollableViewport = {
   scrollTop: number
   scrollHeight: number
 }
