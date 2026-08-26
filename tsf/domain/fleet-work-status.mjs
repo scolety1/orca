@@ -5,7 +5,7 @@
 // and Command's status answers read this same function, so a status answer
 // in prose and a Work-page card can never disagree.
 import { compareStateToGoal } from './keep-going.mjs'
-import { projectLiveWorkFeedState } from './live-work-feed.mjs'
+import { projectLiveWorkFeedState, isRunExecuting } from './live-work-feed.mjs'
 
 // keepGoingRuns is the opState.keepGoingRuns map (projectId -> real run),
 // never a legacy mission-state field -- a project absent here genuinely has
@@ -19,7 +19,8 @@ export function fleetWorkStatus(projects, keepGoingRuns = {}, clock = () => new 
         displayName: project.displayName,
         hasRun: false,
         feed: null,
-        runId: null
+        runId: null,
+        executing: false
       }
     }
     // Mirrors keep-going-controller.mjs's projectKeepGoingRun: no autonomous
@@ -33,7 +34,10 @@ export function fleetWorkStatus(projects, keepGoingRuns = {}, clock = () => new 
       displayName: project.displayName,
       hasRun: true,
       feed: projectLiveWorkFeedState(run, gap),
-      runId: run.id
+      runId: run.id,
+      // The one real fact update-safety.mjs's adoption gate actually needs
+      // -- see isRunExecuting's own comment in live-work-feed.mjs.
+      executing: isRunExecuting(run)
     }
   })
 }

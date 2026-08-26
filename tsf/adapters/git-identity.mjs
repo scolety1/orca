@@ -107,6 +107,34 @@ export async function ffOnlyMerge(cwd, ref) {
   return { ok: true, detail: result.stdout }
 }
 
+// Real commits in `cwd` at or after `sinceIso` (committer date) -- Stage F
+// settled-run reconciliation's evidence for "did real progress happen in
+// this worktree that the persisted Keep Going run never captured" (live
+// finding: WorldForge and Landing Page both had real commits after their
+// run's last recorded checkpoint). Ordered oldest-first, matching
+// keep-going.mjs's own checkpoint-trail convention.
+export async function listCommitsSince(cwd, sinceIso) {
+  const result = await runGit(
+    ['log', `--since=${sinceIso}`, '--format=%H%x1f%cI%x1f%s', '--reverse'],
+    cwd
+  )
+  if (!result.ok) {
+    return {
+      ok: false,
+      reason: result.reason ?? 'GIT_ERROR',
+      detail: result.stderr ?? result.detail
+    }
+  }
+  if (!result.stdout) {
+    return { ok: true, commits: [] }
+  }
+  const commits = result.stdout.split('\n').map((line) => {
+    const [sha, at, subject] = line.split('\x1f')
+    return { sha, at, subject }
+  })
+  return { ok: true, commits }
+}
+
 // Restores `cwd`'s HEAD to `commit` exactly -- used only for a governed
 // rollback to a previously-recorded, known-good accepted commit, never an
 // arbitrary reset. `--hard` is intentional here (the one legitimate use:

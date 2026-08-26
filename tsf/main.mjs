@@ -32,7 +32,15 @@ function realSpawnFn(serverEntryPath, port) {
   const env = { ...process.env }
   ensureWindowsUserEnv(env)
   return spawn(process.execPath, [serverEntryPath], {
-    env: { ...env, TSF_API_PORT: String(port) },
+    // TSF_KEEP_GOING_FLEET_DRIVER: '1' only here -- the real, live-plugin
+    // spawn path. Governed-adoption-review Stage H's autonomous heartbeat
+    // (server/keep-going-fleet-driver.mjs) is opt-in via this env var,
+    // deliberately NOT set for any test-spawned server (main-plugin.test.mjs's
+    // testOverrides.spawnFn, or any test calling startStandaloneServer
+    // directly) -- a periodic background driver that can dispatch real
+    // Orca work is exactly the kind of thing an isolated test's ephemeral
+    // state file must never accidentally trigger.
+    env: { ...env, TSF_API_PORT: String(port), TSF_KEEP_GOING_FLEET_DRIVER: '1' },
     stdio: ['ignore', 'pipe', 'pipe']
   })
 }

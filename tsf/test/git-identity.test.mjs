@@ -14,7 +14,8 @@ import {
   isCleanWorkingTree,
   isAncestor,
   ffOnlyMerge,
-  resetHardTo
+  resetHardTo,
+  listCommitsSince
 } from '../adapters/git-identity.mjs'
 
 function git(cwd, args) {
@@ -149,4 +150,33 @@ test('resetHardTo genuinely restores HEAD to a previously-recorded commit -- the
   assert.equal(rollback.ok, true)
   const restored = await getCurrentCommit(origin)
   assert.equal(restored.commit, goodCommit.commit)
+})
+
+test("listCommitsSince finds real commits at/after a given time and excludes earlier ones -- Stage F reconciliation's evidence source", async () => {
+  const { origin } = setupRepoPair()
+  tempDirs.push(origin)
+  // The repo's `initial` commit from setupRepoPair already exists before
+  // this point. `--since` compares at second granularity, so a real gap
+  // (not just a later Date.now()) is needed to reliably exclude it in a
+  // fast-running test -- then two more real commits are added, and only
+  // those two must be found.
+  await new Promise((resolve) => setTimeout(resolve, 1100))
+  const cutoff = new Date().toISOString()
+  commit(origin, 'a.md', 'a\n', 'first late commit')
+  commit(origin, 'b.md', 'b\n', 'second late commit')
+  const result = await listCommitsSince(origin, cutoff)
+  assert.equal(result.ok, true)
+  assert.equal(result.commits.length, 2)
+  assert.equal(result.commits[0].subject, 'first late commit')
+  assert.equal(result.commits[1].subject, 'second late commit')
+  assert.match(result.commits[0].sha, /^[0-9a-f]{40}$/)
+})
+
+test('listCommitsSince returns an empty list, never an error, when nothing happened since the cutoff', async () => {
+  const { origin } = setupRepoPair()
+  tempDirs.push(origin)
+  const future = new Date(Date.now() + 60_000).toISOString()
+  const result = await listCommitsSince(origin, future)
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.commits, [])
 })

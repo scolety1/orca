@@ -78,13 +78,21 @@ async function waitForServer(base, timeoutMs = 5000) {
   throw lastError ?? new Error('server did not become ready in time')
 }
 
-function fleetStatus(projectId, hasRun, state) {
+// executing mirrors real fleet-work-status.mjs semantics: WORKING is only
+// ever returned when a wave is genuinely in flight (isRunExecuting), so a
+// WORKING fixture that didn't set executing:true would be unreal --
+// classifyUpdateSafety now keys off that fact, not the state label alone
+// (governed-adoption-review finding: a settled-but-unowned run must not
+// block an update forever just because its label happens to say
+// VERIFYING/REVISION/WAITING).
+function fleetStatus(projectId, hasRun, state, executing = state === 'WORKING') {
   return {
     projectId,
     displayName: projectId,
     hasRun,
     feed: hasRun ? { state, reason: state } : null,
-    runId: hasRun ? 'run-1' : null
+    runId: hasRun ? 'run-1' : null,
+    executing
   }
 }
 

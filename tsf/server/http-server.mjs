@@ -59,8 +59,9 @@ import { compareStateToGoal } from '../domain/keep-going.mjs'
 import usageModes from '../routing/usage-modes.v1.json' with { type: 'json' }
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
-import { getRuntimeIdentity, writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
-import { classifyUpdateSafety } from '../domain/update-safety.mjs'
+import { writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
+import { bootstrapKeepGoingFleetDriverIfEnabled } from './keep-going-fleet-driver-bootstrap.mjs'
+import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
 
 const FOUNDATION = Object.freeze({
   product: 'Thousand Sunny Fleet — Orca Foundation',
@@ -282,23 +283,9 @@ export function createRequestHandler(options = {}) {
         )
       }
 
-      // GET /api/runtime-identity -- Safe Update Manager (spec Phase 1):
-      // whether the currently-running backend and served UI bundle
-      // genuinely match what's on disk right now, from real git/build
-      // identity, never inferred from "files changed" alone.
-      if (parts[1] === 'runtime-identity' && req.method === 'GET') {
-        return json(res, 200, await getRuntimeIdentity(distDir))
-      }
-
-      // GET /api/update-safety -- Safe Update Manager (spec Phase 2):
-      // whether it's currently safe to update, grounded in the same real
-      // fleet aggregator Work/Command/GET /api/fleet/status all share.
-      if (parts[1] === 'update-safety' && req.method === 'GET') {
-        return json(
-          res,
-          200,
-          classifyUpdateSafety(fleetWorkStatus(projects, opState.keepGoingRuns, () => new Date()))
-        )
+      // GET /api/runtime-identity, GET /api/update-safety -- see safe-update-http-routes.mjs
+      if (await handleSafeUpdateRoute(parts, req, res, { projects, opState, distDir }, { json })) {
+        return
       }
 
       // GET /api/health
@@ -797,6 +784,7 @@ export function startStandaloneServer(port = 4610, options = {}) {
   writeRuntimeMetadata().catch((error) => {
     console.error('runtime metadata write failed:', error)
   })
+  bootstrapKeepGoingFleetDriverIfEnabled(server) // see keep-going-fleet-driver-bootstrap.mjs
   return server
 }
 

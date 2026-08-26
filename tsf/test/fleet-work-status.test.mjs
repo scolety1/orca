@@ -12,7 +12,7 @@ function project(id, overrides = {}) {
 test('fleetWorkStatus reports hasRun:false and feed:null for a project with no Keep Going run', () => {
   const statuses = fleetWorkStatus([project('a')], {}, clock)
   assert.deepEqual(statuses, [
-    { projectId: 'a', displayName: 'a', hasRun: false, feed: null, runId: null }
+    { projectId: 'a', displayName: 'a', hasRun: false, feed: null, runId: null, executing: false }
   ])
 })
 
@@ -41,6 +41,7 @@ test('fleetWorkStatus reports WORKING once a wave is in flight', () => {
   run = dispatchWave(run, wavePlan, [{ workItemId: 't1', taskId: 'task-1' }], clock, run.revision)
   const statuses = fleetWorkStatus([project('a')], { a: run }, clock)
   assert.equal(statuses[0].feed.state, 'WORKING')
+  assert.equal(statuses[0].executing, true)
 })
 
 test('fleetWorkStatus is unaffected by an unrelated project with no run in the same fleet', () => {

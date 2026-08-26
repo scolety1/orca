@@ -10,6 +10,20 @@
 // vs WORKING) -- without it, that case honestly falls back to WORKING
 // rather than guessing at verification/revision status it cannot back
 // with real evidence.
+//
+// Governed-adoption-review finding: VERIFYING/REVISION and the PAUSED
+// flavor of WAITING are only ever reachable below when neither
+// inFlightWave nor tickLock is set (the inFlightWave/tickLock branches
+// return WORKING/WAITING(DISPATCH) first) -- so by construction they never
+// describe a live, currently-executing worker, only a settled run with no
+// current owner. `isRunExecuting` is the one real, unambiguous fact
+// ("would restarting the backend interrupt something") and must be used
+// for that decision instead of pattern-matching this label -- see
+// update-safety.mjs, which keys off it directly rather than off state.
+export function isRunExecuting(run) {
+  return !!(run?.inFlightWave || run?.tickLock)
+}
+
 export function projectLiveWorkFeedState(run, gap = null) {
   if (!run) {
     return { state: 'PLANNING', reason: 'no Keep Going run exists yet for this project' }

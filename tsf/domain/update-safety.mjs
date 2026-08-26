@@ -9,19 +9,23 @@ export const UPDATE_SAFETY_STATES = Object.freeze([
   'TIM_REQUIRED'
 ])
 
-// A run in any of these live-work-feed states means an Orca worker or
-// verifier is genuinely doing something right now -- restarting the
-// backend underneath it would interrupt real work, not just an idle run
-// sitting at PLANNING with nothing dispatched yet. Adversarial-review
-// finding: REVISION (a prior wave partially satisfied criteria, a further
-// wave pending -- live-work-feed.mjs's own mid-cycle state, alongside
-// VERIFYING) was missing here and would have wrongly classified that as
-// safe to restart through.
-const ACTIVE_STATES = new Set(['WORKING', 'VERIFYING', 'REVISION', 'WAITING'])
-
-// fleetStatuses: real domain/fleet-work-status.mjs output (never
-// re-derived here) -- this function only classifies, it does not inspect
-// runs itself.
+// Governed-adoption-review finding (real production evidence, not a
+// hypothetical): the original version of this function gated on
+// live-work-feed.mjs's state LABEL (VERIFYING/REVISION/WAITING all treated
+// as "active"). But those three labels are only ever reachable when
+// *neither* inFlightWave nor tickLock is set -- projectLiveWorkFeedState's
+// inFlightWave/tickLock(DISPATCH) branches return WORKING/WAITING first,
+// before the label-based branches are ever reached. So a run sitting at
+// VERIFYING/REVISION for days with nothing executing it (confirmed live:
+// three real fleet projects, no live process, clean worktrees, ~2 days
+// idle) was wrongly treated as "real work in progress" forever, and would
+// have blocked every future update indefinitely. WAITING has the mirror
+// problem the other way: it's returned both for a genuinely held dispatch
+// lock (should block) AND for a deliberately human-PAUSED run (should
+// not). `feed.executing` (fleet-work-status.mjs, backed by
+// live-work-feed.mjs's isRunExecuting) is the one real, unambiguous fact
+// that answers "would restarting the backend interrupt this run right
+// now" -- gate on that instead of the label.
 export function classifyUpdateSafety(fleetStatuses) {
   if (!Array.isArray(fleetStatuses)) {
     // Can't determine fleet state at all -- escalate rather than guess
@@ -40,7 +44,7 @@ export function classifyUpdateSafety(fleetStatuses) {
       blockingProjectIds: needsDecision.map((s) => s.projectId)
     }
   }
-  const active = fleetStatuses.filter((s) => s.hasRun && ACTIVE_STATES.has(s.feed?.state))
+  const active = fleetStatuses.filter((s) => s.hasRun && s.executing)
   if (active.length > 0) {
     return {
       state: 'WAIT_FOR_ACTIVE_WORK',
