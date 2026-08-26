@@ -129,7 +129,10 @@ test('projectKeepGoingRun exposes goal, usage mode, budget, constraints, stop co
     {
       originalGoal: 'Ship the fixture upgrade.',
       acceptanceCriteria: ['A_DONE', 'B_DONE'],
-      usageMode: 'DEEP',
+      // A real config entry (tsf/routing/usage-modes.v1.json), and
+      // deliberately not the 'BALANCED' default -- proves this field is
+      // exposed verbatim from what was actually requested, not defaulted.
+      usageMode: 'MAXIMUM',
       constraints: ['Fixture only.'],
       stopConditions: ['Real repo touched.'],
       budget: { maxWaves: 5 }
@@ -141,7 +144,7 @@ test('projectKeepGoingRun exposes goal, usage mode, budget, constraints, stop co
   assert.equal(view.state, 'ACTIVE')
   assert.equal(view.goal, 'Ship the fixture upgrade.')
   assert.deepEqual(view.acceptanceCriteria, ['A_DONE', 'B_DONE'])
-  assert.equal(view.usageMode, 'DEEP')
+  assert.equal(view.usageMode, 'MAXIMUM')
   assert.equal(view.budget.maxWaves, 5)
   assert.deepEqual(view.constraints, ['Fixture only.'])
   assert.deepEqual(view.stopConditions, ['Real repo touched.'])

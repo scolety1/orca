@@ -137,15 +137,24 @@ test('project switching cannot leak one project\'s Keep Going dispatch state int
   })
 })
 
-test('the exact same message WITHOUT a placement keeps the prior conversational behavior unchanged', async () => {
+// Deliberate behavior change (M-Command, spec Phase 6): a dispatch-worthy
+// message with no explicit placement no longer falls through to the
+// conversational planner -- dispatchFromChat now auto-provisions a
+// worktree itself first. The fixture project has no real repository root
+// (fixture-project.mjs's root: null, "no repository exists on disk"), so
+// auto-provisioning fails honestly here -- exactly the correct outcome for
+// a project with nothing to provision a worktree from, never a fabricated
+// dispatch and never a silent fall-back into unrelated conversational text.
+test('WITHOUT a placement, dispatch is now attempted first -- auto-provisioning fails honestly for a project with no real repository root, rather than silently falling back to conversational text', async () => {
   await withServer(async (base) => {
     const { body } = await chat(base, {
       projectId: PROJECT_ID,
       message: 'go ahead and add a bounded doc note'
     })
-    assert.equal(body.dispatched, undefined)
-    assert.equal(body.live, true)
-    assert.match(body.text, /^stub-answer-for::/)
+    assert.equal(body.dispatched, false)
+    assert.equal(body.live, false)
+    assert.match(body.text, /couldn't|automatically/i)
+    assert.match(body.text, /repository root|Advanced/i)
   })
 })
 

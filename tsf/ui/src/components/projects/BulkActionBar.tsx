@@ -10,16 +10,16 @@ import { useState } from 'react'
 import {
   AlertTriangle,
   CalendarClock,
+  ChevronDown,
   Loader2,
   ListChecks,
   PlayCircle,
-  Plus,
   ShieldCheck,
   Stethoscope,
-  Wrench,
-  X
+  Wrench
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { api } from '@/lib/api'
 
 type ActionKey =
@@ -151,38 +151,66 @@ export function BulkActionBar({
           )}
           Prepare for Work
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy !== null}
-          onClick={() => run('addFleet', () => membership('activeFleet', true))}
+        <DropdownMenu
+          trigger={() => (
+            <span className="flex items-center gap-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs font-medium text-foreground hover:border-primary/40">
+              Active Fleet <ChevronDown className="size-3.5" />
+            </span>
+          )}
         >
-          <Plus className="size-3.5" /> Active Fleet
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy !== null}
-          onClick={() => run('removeFleet', () => membership('activeFleet', false))}
+          {(close) => (
+            <>
+              <DropdownMenuItem
+                disabled={busy !== null}
+                onClick={() => {
+                  close()
+                  run('addFleet', () => membership('activeFleet', true))
+                }}
+              >
+                Add to Active Fleet
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={busy !== null}
+                onClick={() => {
+                  close()
+                  run('removeFleet', () => membership('activeFleet', false))
+                }}
+              >
+                Remove from Active Fleet
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenu>
+        <DropdownMenu
+          trigger={() => (
+            <span className="flex items-center gap-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs font-medium text-foreground hover:border-primary/40">
+              Work Set <ChevronDown className="size-3.5" />
+            </span>
+          )}
         >
-          <X className="size-3.5" /> Active Fleet
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy !== null}
-          onClick={() => run('addWorkSet', () => membership('workSet', true))}
-        >
-          <Plus className="size-3.5" /> Work Set
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy !== null}
-          onClick={() => run('removeWorkSet', () => membership('workSet', false))}
-        >
-          <X className="size-3.5" /> Work Set
-        </Button>
+          {(close) => (
+            <>
+              <DropdownMenuItem
+                disabled={busy !== null}
+                onClick={() => {
+                  close()
+                  run('addWorkSet', () => membership('workSet', true))
+                }}
+              >
+                Add to Work Set
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={busy !== null}
+                onClick={() => {
+                  close()
+                  run('removeWorkSet', () => membership('workSet', false))
+                }}
+              >
+                Remove from Work Set
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenu>
         <Button size="sm" variant="secondary" onClick={onStartMission}>
           <PlayCircle className="size-3.5" /> Start Mission
         </Button>

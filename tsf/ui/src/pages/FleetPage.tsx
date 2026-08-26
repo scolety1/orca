@@ -49,7 +49,15 @@ export function FleetPage() {
   const [schedule, setSchedule] = useState<FleetSchedule | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [overnightOpen, setOvernightOpen] = useState(false)
+  // Real V1 stabilization finding (spec section 9): this page's single
+  // "Start Overnight Fleet" button used to silently fall back to the whole
+  // Work Set whenever nothing was checked -- an operator who had never
+  // touched a checkbox on this page could launch it against every Work Set
+  // project without meaning to. Two separately labeled triggers instead:
+  // one only for an explicit checkbox selection, one only for the Work Set
+  // by name -- never an invisible default between them.
+  const [overnightOpenSelected, setOvernightOpenSelected] = useState(false)
+  const [overnightOpenWorkSet, setOvernightOpenWorkSet] = useState(false)
 
   // Real V1 stabilization finding (see ProjectsPage.tsx for the full real-
   // browser reproduction): gating on bare `loading` would unmount
@@ -67,9 +75,11 @@ export function FleetPage() {
     return null
   }
 
+  const selectedIds = Object.keys(selected).filter((id) => selected[id])
+  const hasSelection = selectedIds.length > 0
+
   async function build() {
-    const projectIds = Object.keys(selected).filter((id) => selected[id])
-    if (projectIds.length === 0) {
+    if (selectedIds.length === 0) {
       setActionError('Select at least one project.')
       return
     }
@@ -77,7 +87,11 @@ export function FleetPage() {
     setActionError(null)
     setSchedule(null)
     try {
-      const result = await api.fleetSchedule({ projectIds, priorities, maxConcurrentWorkers })
+      const result = await api.fleetSchedule({
+        projectIds: selectedIds,
+        priorities,
+        maxConcurrentWorkers
+      })
       if (!result.ok) {
         setActionError(
           result.error === 'NO_ESTIMATE_ON_FILE_FOR_PROJECT'
@@ -97,8 +111,8 @@ export function FleetPage() {
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
       {error && <RefreshFailedBanner message={error} onRetry={reload} />}
-      <header className="mb-6 flex items-start justify-between gap-4">
-        <div>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 max-w-md">
           <h1 className="text-xl font-semibold tracking-tight">Fleet Planning</h1>
           <p className="text-sm text-muted-foreground">
             A proposed, explained execution schedule across your Work Set -- reuses each
@@ -107,11 +121,23 @@ export function FleetPage() {
             does, using each project&apos;s own real Keep Going run.
           </p>
         </div>
-        {portfolio.workSet.length > 0 && (
-          <Button size="sm" onClick={() => setOvernightOpen(true)}>
-            <CalendarClock className="size-4" /> Start Overnight Fleet
+        <div className="flex flex-col items-end gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!hasSelection}
+            onClick={() => setOvernightOpenSelected(true)}
+          >
+            <CalendarClock className="size-4" />
+            {`Start Overnight Fleet for selected (${selectedIds.length})`}
           </Button>
-        )}
+          {portfolio.workSet.length > 0 && (
+            <Button size="sm" onClick={() => setOvernightOpenWorkSet(true)}>
+              <CalendarClock className="size-4" />
+              {`Start Overnight Fleet for Work Set (${portfolio.workSet.length})`}
+            </Button>
+          )}
+        </div>
       </header>
 
       {portfolio.workSet.length === 0 ? (
@@ -186,13 +212,15 @@ export function FleetPage() {
       )}
 
       <StartOvernightFleetDialog
-        open={overnightOpen}
-        onOpenChange={setOvernightOpen}
-        projectIds={
-          Object.keys(selected).some((id) => selected[id])
-            ? Object.keys(selected).filter((id) => selected[id])
-            : portfolio.workSet
-        }
+        open={overnightOpenSelected}
+        onOpenChange={setOvernightOpenSelected}
+        projectIds={selectedIds}
+        onStarted={reload}
+      />
+      <StartOvernightFleetDialog
+        open={overnightOpenWorkSet}
+        onOpenChange={setOvernightOpenWorkSet}
+        projectIds={portfolio.workSet}
         onStarted={reload}
       />
     </div>

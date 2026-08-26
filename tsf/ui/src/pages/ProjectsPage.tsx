@@ -6,10 +6,11 @@ import { api } from '@/lib/api'
 import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { ProjectCard } from '@/components/ProjectCard'
 import { BulkActionBar } from '@/components/projects/BulkActionBar'
-import { LifecycleFilterBar, matchesSearch } from '@/components/projects/LifecycleFilterBar'
+import { LifecycleFilterBar } from '@/components/projects/LifecycleFilterBar'
 import { StartMissionDialog } from '@/components/missions/StartMissionDialog'
 import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightFleetDialog'
 import { classifyProjectLifecycle, type LifecycleBucket } from '@/lib/project-lifecycle'
+import { matchesSearch, sortProjects, type ProjectSort } from '@/lib/project-filtering'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -24,6 +25,7 @@ export function ProjectsPage() {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [filter, setFilter] = useState<LifecycleBucket | 'ALL'>('ALL')
   const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<ProjectSort>('NEEDS_ATTENTION_FIRST')
   const [missionDialogOpen, setMissionDialogOpen] = useState(false)
   const [overnightDialogOpen, setOvernightDialogOpen] = useState(false)
 
@@ -72,17 +74,18 @@ export function ProjectsPage() {
     counts[b] += 1
   }
 
-  const visible = portfolio.knownProjects.filter((p, i) => {
+  const filtered = portfolio.knownProjects.filter((p, i) => {
     if (filter !== 'ALL' && buckets[i] !== filter) {
       return false
     }
     return matchesSearch(p, search)
   })
+  const visible = sortProjects(filtered, sort)
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
       {error && <RefreshFailedBanner message={error} onRetry={reload} />}
-      <header className="mb-6 flex items-start justify-between gap-4">
+      <header className="mb-2 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground">
@@ -95,42 +98,55 @@ export function ProjectsPage() {
         </Button>
       </header>
 
-      <LifecycleFilterBar
-        active={filter}
-        onChange={setFilter}
-        counts={counts}
-        search={search}
-        onSearchChange={setSearch}
-      />
-
-      {selectedIds.length > 0 && (
-        <BulkActionBar
-          selectedIds={selectedIds}
-          onClearSelection={() => setSelected({})}
-          onChanged={reload}
-          onStartMission={() => setMissionDialogOpen(true)}
-          onStartOvernightFleet={() => setOvernightDialogOpen(true)}
-        />
-      )}
-
-      {visible.length === 0 ? (
-        <EmptyState
-          title="No projects match this filter"
-          description="Try a different lifecycle filter or clear the search."
-        />
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {visible.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              selectable
-              selected={selected[project.id] ?? false}
-              onToggleSelect={toggleSelect}
+      {/* Sticky compact toolbar (spec section 8): pinned within <main>'s own
+          scroll region (AppShell.tsx's existing "main owns the only scroll"
+          discipline) so it stays reachable while scrolling a long project
+          grid -- normal state shows the filter/sort/search bar, selected
+          state swaps in the bulk action bar so it too never scrolls away. */}
+      <div className="sticky top-0 z-10 -mx-8 bg-background px-8">
+        {selectedIds.length > 0 ? (
+          <div className="py-3">
+            <BulkActionBar
+              selectedIds={selectedIds}
+              onClearSelection={() => setSelected({})}
+              onChanged={reload}
+              onStartMission={() => setMissionDialogOpen(true)}
+              onStartOvernightFleet={() => setOvernightDialogOpen(true)}
             />
-          ))}
-        </div>
-      )}
+          </div>
+        ) : (
+          <LifecycleFilterBar
+            active={filter}
+            onChange={setFilter}
+            counts={counts}
+            search={search}
+            onSearchChange={setSearch}
+            sort={sort}
+            onSortChange={setSort}
+          />
+        )}
+      </div>
+
+      <div className="pt-4">
+        {visible.length === 0 ? (
+          <EmptyState
+            title="No projects match this filter"
+            description="Try a different lifecycle filter or clear the search."
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {visible.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                selectable
+                selected={selected[project.id] ?? false}
+                onToggleSelect={toggleSelect}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       <Card className="mt-8">
         <CardContent className="flex items-center justify-between p-4 text-xs text-muted-foreground">

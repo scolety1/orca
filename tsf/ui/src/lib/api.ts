@@ -1,9 +1,7 @@
-import type {
-  KeepGoingCandidateWorkItem,
-  KeepGoingRunView,
-  KeepGoingTickResult
-} from './keep-going-types'
+import { createKeepGoingApi } from './keep-going-api'
 import type { ChatPlacement } from './chat-dispatch-types'
+import type { FleetWorkStatusItem } from './fleet-status-types'
+import type { RuntimeIdentity, UpdateSafety } from './system-status-types'
 import type {
   GenerateEstimateError,
   GenerateEstimateRequest,
@@ -132,14 +130,24 @@ export const api = {
     projectId: string | null,
     message: string,
     attachments: ChatAttachmentMeta[] = [],
-    placement?: ChatPlacement
+    placement?: ChatPlacement,
+    selfRepair?: boolean
   ) =>
     request<ChatResponse>('/chat', {
       method: 'POST',
-      body: JSON.stringify({ projectId, message, attachments, ...(placement ? { placement } : {}) })
+      body: JSON.stringify({
+        projectId,
+        message,
+        attachments,
+        ...(placement ? { placement } : {}),
+        ...(selfRepair ? { selfRepair: true } : {})
+      })
     }),
   chatHistory: (projectId: string) =>
     request<ChatMessage[]>(`/chat/${encodeURIComponent(projectId)}`),
+  fleetStatus: () => request<FleetWorkStatusItem[]>('/fleet/status'),
+  runtimeIdentity: () => request<RuntimeIdentity>('/runtime-identity'),
+  updateSafety: () => request<UpdateSafety>('/update-safety'),
   browseDirectory: (dirPath?: string) =>
     request<DirectoryBrowseResult>(
       `/onboarding/browse${dirPath ? `?path=${encodeURIComponent(dirPath)}` : ''}`
@@ -188,48 +196,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ repoPath, handoffText })
     }),
-  keepGoing: (projectId: string) =>
-    request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}`),
-  startKeepGoing: (
-    projectId: string,
-    body: {
-      originalGoal: string
-      acceptanceCriteria: string[]
-      usageMode?: string
-      budget?: Record<string, number>
-      constraints?: string[]
-      stopConditions?: string[]
-      expectedRevision?: number
-    }
-  ) =>
-    request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/start`, {
-      method: 'POST',
-      body: JSON.stringify(body)
-    }),
-  pauseKeepGoing: (projectId: string, reason: string | undefined, expectedRevision: number) =>
-    request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/pause`, {
-      method: 'POST',
-      body: JSON.stringify({ reason, expectedRevision })
-    }),
-  resumeKeepGoing: (projectId: string, expectedRevision: number) =>
-    request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/resume`, {
-      method: 'POST',
-      body: JSON.stringify({ expectedRevision })
-    }),
-  tickKeepGoing: (projectId: string, candidateWorkItems: KeepGoingCandidateWorkItem[]) =>
-    request<KeepGoingTickResult>(`/keep-going/${encodeURIComponent(projectId)}/tick`, {
-      method: 'POST',
-      body: JSON.stringify({ candidateWorkItems })
-    }),
-  abandonStalledKeepGoingWave: (
-    projectId: string,
-    reason: string | undefined,
-    expectedRevision: number
-  ) =>
-    request<KeepGoingRunView>(`/keep-going/${encodeURIComponent(projectId)}/abandon-stalled-wave`, {
-      method: 'POST',
-      body: JSON.stringify({ reason, expectedRevision })
-    }),
+  ...createKeepGoingApi(request),
   estimate: (projectId: string) =>
     request<ProjectEstimateView>(`/projects/${encodeURIComponent(projectId)}/estimate`),
   generateEstimate: (projectId: string, body: GenerateEstimateRequest) =>

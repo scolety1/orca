@@ -145,6 +145,28 @@ if (args[0] === 'account' && args[1] === 'list') {
   ok({ workers: seededWorkers })
 } else if (args[0] === 'orchestration' && args[1] === 'task-list') {
   ok({ tasks: seededTasks })
+} else if (args[0] === 'worktree' && args[1] === 'create') {
+  // Shape is inferred from skill-guides/orca-cli.md's documented
+  // `<repoId>::<worktreePath>` id format -- not live-confirmed against a
+  // real `orca worktree create --json` call (see orca-cli-bridge.mjs's
+  // createOrcaWorktree header). STUB_ORCA_WORKTREE_PATH lets a test choose
+  // a real, existing directory so downstream resolveRepositoryIdentity
+  // calls can succeed against it.
+  const repoIndex = args.indexOf('--repo')
+  const nameIndex = args.indexOf('--name')
+  const repoArg = repoIndex === -1 ? null : args[repoIndex + 1]
+  const repoId = repoArg?.startsWith('id:') ? repoArg.slice(3) : repoArg
+  const worktreePath =
+    process.env.STUB_ORCA_WORKTREE_PATH ??
+    `/stub/worktrees/${nameIndex === -1 ? 'unnamed' : args[nameIndex + 1]}`
+  ok({
+    worktree: {
+      id: `${repoId}::${worktreePath}`,
+      repoId,
+      path: worktreePath,
+      name: nameIndex === -1 ? null : args[nameIndex + 1]
+    }
+  })
 } else if (args[0] === 'terminal' && args[1] === 'create') {
   // Shape confirmed against a real live `orca terminal create --json` call
   // (2026-08-24) -- used by keep-going-dispatch-loop.mjs's sender-terminal

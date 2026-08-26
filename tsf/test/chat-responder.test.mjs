@@ -29,6 +29,15 @@ test('classifyIntent does not confuse ordinary questions with a dispatch request
   assert.equal(classifyIntent('is this actually finished?'), 'FINISHED')
 })
 
+// Command's own exact phrasing (spec Phase 7) -- a real gap found live via
+// a manual UI pass: this did not match any pattern and fell through to
+// GENERAL, so a fleet-wide "what's running?" question wrongly got Command's
+// "couldn't tell which project" reply instead of a real status answer.
+test('classifyIntent recognizes Command\'s "what\'s running (right now)?" as STATUS', () => {
+  assert.equal(classifyIntent("what's running right now?"), 'STATUS')
+  assert.equal(classifyIntent('whats running'), 'STATUS')
+})
+
 test('DISPATCH_REQUEST classifies as RECOMMEND_AND_PROCEED, same tier as FIX_REQUEST', () => {
   assert.equal(classifyDecision('go ahead', 'DISPATCH_REQUEST'), 'RECOMMEND_AND_PROCEED')
   assert.equal(classifyDecision('build that', 'DISPATCH_REQUEST'), 'RECOMMEND_AND_PROCEED')
@@ -151,6 +160,24 @@ test('a hedge/question/prohibition earlier in a run-on sentence does not launder
     'TIM_REQUIRED',
     'must never silently authorize a destructive delete'
   )
+})
+
+// Broadened destructive-action coverage (spec Phase 12) -- the original
+// pattern only caught "delete the repo/repository/branch/production"; a
+// Command-driven fleet action could plausibly phrase destruction other
+// ways too.
+test('classifyDecision recognizes a wider real vocabulary of destructive actions, not just "delete the repo"', () => {
+  assert.equal(classifyDecision('go ahead and drop the database', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('wipe the data and start over', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('destroy the branch, go ahead', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('go ahead and force push over main', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('do a hard reset and go ahead', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('run rm -rf on the build dir', 'GENERAL'), 'TIM_REQUIRED')
+})
+
+test('the broadened destructive patterns still respect the same inquiry/prohibition gate as every other TIM_REQUIRED pattern', () => {
+  assert.equal(classifyDecision('should I drop the database or keep it?', 'GENERAL'), 'AUTO_DECIDE')
+  assert.equal(classifyDecision("don't force push, ever", 'GENERAL'), 'AUTO_DECIDE')
 })
 
 // Independent-review finding (dangerous-direction regression, 2nd pass): a

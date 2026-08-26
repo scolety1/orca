@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppShell } from '@/components/AppShell'
 import { HomePage } from '@/pages/HomePage'
+import { CommandPage } from '@/pages/CommandPage'
 import { WorkPage } from '@/pages/WorkPage'
 import { ProjectsPage } from '@/pages/ProjectsPage'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
@@ -18,6 +19,7 @@ export function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />
+            <Route path="/command" element={<CommandPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/add" element={<AddProjectPage />} />

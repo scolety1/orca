@@ -138,6 +138,27 @@ test('POST start / GET / POST pause / POST resume drive a real Keep Going run en
   })
 })
 
+test('POST start rejects usageMode: HIGH_ASSURANCE over the real HTTP layer -- the reserved mode can no longer be silently accepted into a real run', async () => {
+  await withServer(async (base) => {
+    const startRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        originalGoal: 'Should never actually start.',
+        acceptanceCriteria: ['X'],
+        usageMode: 'HIGH_ASSURANCE'
+      })
+    })
+    assert.equal(startRes.status, 422)
+    const body = await startRes.json()
+    assert.equal(body.code, 'TSF_USAGE_MODE_RESERVED')
+
+    // No run was created by the rejected request.
+    const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
+    assert.equal((await getRes.json()).started, false)
+  })
+})
+
 test('POST pause with a stale expectedRevision is rejected with 409, not silently applied', async () => {
   await withServer(async (base) => {
     const startRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {

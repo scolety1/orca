@@ -17,6 +17,7 @@ import {
   pauseRun,
   resumeRun
 } from '../domain/keep-going.mjs'
+import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
 
 export function keepGoingRunFor(opState, projectId) {
   return opState.keepGoingRuns?.[projectId] ?? null
@@ -27,6 +28,11 @@ export function keepGoingRunFor(opState, projectId) {
 // run must not both succeed in silently overwriting each other, the same
 // read-modify-write race pauseKeepGoingRun/resumeKeepGoingRun guard against.
 export function startKeepGoingRun(opState, projectId, params, clock, expectedRevision) {
+  // Closes a real silent-accept gap: this route never validated usageMode
+  // at all, so a caller (e.g. Start Overnight Fleet's dialog, which -- until
+  // fixed -- listed HIGH_ASSURANCE as a selectable option) could start a
+  // real run in a mode POST /api/usage-mode itself refuses as reserved.
+  assertUsageModeAllowed(params.usageMode ?? 'BALANCED')
   const existing = keepGoingRunFor(opState, projectId)
   if (existing && !['COMPLETE', 'BLOCKED'].includes(existing.state)) {
     const error = new Error(

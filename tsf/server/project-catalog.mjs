@@ -8,6 +8,7 @@ import { createFixtureState } from './fixture-project.mjs'
 import { loadState } from './data-store.mjs'
 import { projectOnboardedProject } from './onboarded-project-projection.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
+import { summarizeWorkFromRuns } from '../domain/work-feed-summary.mjs'
 
 function fixtureCandidateView(fixture) {
   const c = fixture.candidateObject
@@ -76,19 +77,13 @@ export function projectsById() {
   return { map, opState }
 }
 
-export function summarizeWork(projects) {
-  const active = projects.filter((p) => ['ACTIVE', 'PLANNING', 'REVIEW'].includes(p.mission.state))
-  const blocked = projects.filter((p) => (p.mission.state ?? '').startsWith('BLOCKED'))
-  const readyForAdoption = projects.filter((p) => p.candidate?.state === 'READY_FOR_ADOPTION')
-  const recentlyCompleted = projects
-    .filter((p) => p.mission.state === 'ADOPTED')
-    .map((p) => ({
-      id: p.id,
-      displayName: p.displayName,
-      missionId: p.mission.id,
-      adoptedAt: p.receipts?.chain?.at(-1)?.timestamp ?? null
-    }))
-  return { active, blocked, readyForAdoption, recentlyCompleted }
+// Delegates to work-feed-summary.mjs so Work's "active" section reflects
+// real Keep Going run state (see that module's header for why the original
+// mission.state-only classification was the root cause of a durable,
+// ACTIVE run staying invisible to Work). keepGoingRuns/clock are optional so
+// existing callers that only care about the legacy fields keep working.
+export function summarizeWork(projects, keepGoingRuns = {}, clock = () => new Date()) {
+  return summarizeWorkFromRuns(projects, keepGoingRuns, clock)
 }
 
 // Real V1 stabilization finding (Operator UX pass, self-explaining project

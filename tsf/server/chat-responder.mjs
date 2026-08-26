@@ -7,11 +7,25 @@
 import { projectLiveWorkFeedState } from '../domain/live-work-feed.mjs'
 import { recentCheckpointTrail } from '../domain/keep-going.mjs'
 
+// Command coverage check (spec Phase 12's explicit list: credentials, money,
+// destructive actions, production, push/deploy/publication, consequential
+// adoption): the delete-only pattern below was real-verified to be too
+// narrow for "destructive actions" generally -- broadened to the same
+// verb+target shape plus a couple of standalone destructive command forms,
+// still gated by the exact same clause-level inquiry/prohibition logic
+// below (so "don't force push" and "should I hard reset?" stay
+// non-TIM_REQUIRED, same as "delete the repo" already was). "Source/data
+// admission" and "major product direction" (also named in Phase 12) have no
+// grounded, real vocabulary anywhere in this codebase to pattern-match
+// safely (checked domain/onboarding.mjs directly) -- adding a speculative
+// regex for either risks exactly the false-positive/false-negative problem
+// this file's own header already warns against; left as a disclosed gap
+// rather than a guessed pattern.
 const TIM_REQUIRED_PATTERNS = [
   /\b(push|merge|deploy|publish|release to prod|production)\b/i,
   /\b(pay|payment|paid api|credit card|subscription|billing)\b/i,
   /\b(credential|secret|api key|password|token)\b/i,
-  /\bdelete (the )?(repo|repository|branch|production)\b/i,
+  /\b(delete|drop|wipe|destroy) (the )?(repo|repository|branch|database|data|production)\b|\bforce[- ]push\b|\bhard reset\b|\brm -rf\b/i,
   /\b(adopt|approve).*(candidate|this)\b/i
 ]
 
@@ -111,8 +125,12 @@ const INTENTS = [
     id: 'STATUS',
     // "what is it doing?" is Tim's own exact north-star follow-up phrasing
     // (M3 requirements) -- must be recognized, not fall through to GENERAL.
+    // "what's running (right now)?" is Command's own exact phrasing (spec
+    // Phase 7) -- a real gap found live: it did not match any pattern here
+    // and fell through to a "couldn't tell which project" reply even for a
+    // deliberately project-less, fleet-wide question.
     pattern:
-      /\b(what'?s going on|status|where are we|update me|catch me up|what (is|'s) it doing)\b/i
+      /\b(what'?s going on|status|where are we|update me|catch me up|what (is|'s) it doing|what'?s running)\b/i
   },
   { id: 'FINISHED', pattern: /\b(is (this|it) (actually )?(done|finished|ready)|are we done)\b/i },
   // M3: the affirmative "go do real work" phrasings Tim's own north star

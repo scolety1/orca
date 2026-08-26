@@ -169,10 +169,25 @@ export type Portfolio = {
   knownProjects: ProjectCard[]
 }
 
+// A project with a real Keep Going run carries its live projection
+// (tsf/domain/live-work-feed.mjs's state/reason) alongside the usual
+// ProjectDetail fields -- absent for a project bucketed by legacy
+// mission.state alone (no Keep Going run exists for it).
+export type WorkItem = ProjectDetail & {
+  liveWorkFeed?: { state: string; reason: string }
+  runId?: string | null
+}
+
 export type WorkSummary = {
-  active: ProjectDetail[]
+  active: WorkItem[]
+  // Always empty in this pass -- no domain signal yet distinguishes
+  // "queued" from "planning" (see tsf/domain/work-feed-summary.mjs).
+  queued: WorkItem[]
+  verifying: WorkItem[]
+  needsYou: WorkItem[]
+  stalled: WorkItem[]
   blocked: ProjectDetail[]
-  readyForAdoption: ProjectDetail[]
+  readyForAdoption: WorkItem[]
   recentlyCompleted: {
     id: string
     displayName: string
@@ -220,11 +235,30 @@ export type ChatResponse = {
   providerId?: string
   model?: string
   unavailableReason?: string
+  // Command (M-Command): which real project(s), if any, this turn resolved
+  // to (project-name-resolver.mjs) -- absent/empty for a fleet-wide answer
+  // with no specific project named. Always present on a response to a
+  // projectId: null (Command) request; absent on ordinary project-scoped
+  // Planner Chat responses.
+  resolvedProjectIds?: string[]
+  scope?: 'PROJECT' | 'MULTI_PROJECT' | 'FLEET'
+  dispatched?: boolean
+  dispatchResults?: {
+    projectId: string
+    ok: boolean
+    reason: string | null
+    detail: string | null
+  }[]
 }
 
 export type ChatAttachmentMeta = {
   name: string
   type: string
+  // Real extracted content (migration-context-attachments.ts's
+  // extractAttachmentContext), not just filename/type metadata -- optional
+  // so a caller that only ever sent {name,type} (Planner Chat's prior
+  // behavior) is unaffected.
+  extractedText?: string | null
 }
 
 export type ChatMessage = {

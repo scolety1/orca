@@ -28,9 +28,18 @@ import {
   isLiveRunRelevantFor
 } from './chat-responder.mjs'
 import { invokeLivePlanner, providerLabel, fallbackLabel } from './live-planner.mjs'
-import { planAndDispatchFromChat } from './chat-dispatch-bridge.mjs'
+import { planAndDispatchFromChat, ensureWorktreeForDispatch } from './chat-dispatch-bridge.mjs'
+import { respondCommand, DISPATCH_WORTHY_INTENTS } from './command-responder.mjs'
+import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
+
+// Configures which real, known project id actually IS TSF's own -- self-
+// repair (domain/self-repair-authority.mjs) can never be authorized for any
+// project until this is set; there is no invented default to guess from.
+const SELF_REPAIR_PROJECT_ID = process.env.TSF_SELF_REPAIR_PROJECT_ID || null
 import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { projectsById, summarizeWork, summarizeCard } from './project-catalog.mjs'
+import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
+import { resolveProjectsFromText } from './project-name-resolver.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
 import { handleHealthRepairRoute } from './health-repair-http-routes.mjs'
@@ -49,6 +58,9 @@ import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
 import usageModes from '../routing/usage-modes.v1.json' with { type: 'json' }
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
+import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
+import { getRuntimeIdentity, writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
+import { classifyUpdateSafety } from '../domain/update-safety.mjs'
 
 const FOUNDATION = Object.freeze({
   product: 'Thousand Sunny Fleet — Orca Foundation',
@@ -56,17 +68,40 @@ const FOUNDATION = Object.freeze({
   upstreamCoreFilesModified: 0
 })
 
-// M3: turns a dispatch-worthy chat message with an explicit placement into
-// a real Orca dispatch via chat-dispatch-bridge.mjs, returning the SAME
-// {intent, decisionClass, text, ...} response shape every other chat
-// branch already produces. Requires placement.worktree specifically (not
-// yet workerTerminal-only) -- the plan capsule's repository binding needs
-// a real filesystem path to resolve identity from; reusing an existing
-// terminal's own known worktree is a follow-up wiring wave, not yet built.
-async function dispatchFromChat({ project, message, placement }) {
+// M3/M-Command: turns a dispatch-worthy chat message into a real Orca
+// dispatch via chat-dispatch-bridge.mjs, returning the SAME {intent,
+// decisionClass, text, ...} response shape every other chat branch already
+// produces. If the caller (Planner Chat's Advanced field, or a directly-
+// supplied placement) gave an explicit worktree/workerTerminal, that wins
+// unchanged; otherwise this auto-provisions a fresh worktree
+// (ensureWorktreeForDispatch, M-Command) instead of refusing outright --
+// the manual field is now a debug override, not a requirement (spec Phase
+// 6). `selfRepairFromBranch` is only ever set by an already-authorized
+// self-repair caller (domain/self-repair-authority.mjs); every other
+// caller auto-provisions from the repo's own default base.
+async function dispatchFromChat({ project, message, placement, selfRepairFromBranch }) {
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
-  if (!placement.worktree) {
+  let effectivePlacement = placement
+  if (!effectivePlacement?.worktree && !effectivePlacement?.workerTerminal) {
+    const provisioned = await ensureWorktreeForDispatch(
+      project,
+      {},
+      { fromBranch: selfRepairFromBranch }
+    )
+    if (!provisioned.ok) {
+      return {
+        intent,
+        decisionClass,
+        text: `I need a worktree to dispatch into. I tried to create one automatically and couldn't: ${provisioned.detail ?? provisioned.reason}. Supply a worktree path manually (Advanced) instead.`,
+        providerLabel: 'PLANNER_DEEP · dispatch attempted, auto-provisioning failed',
+        live: false,
+        dispatched: false
+      }
+    }
+    effectivePlacement = { worktree: provisioned.worktree }
+  }
+  if (!effectivePlacement.worktree) {
     return {
       intent,
       decisionClass,
@@ -76,7 +111,7 @@ async function dispatchFromChat({ project, message, placement }) {
       dispatched: false
     }
   }
-  const resolved = await resolveRepositoryIdentity(placement.worktree)
+  const resolved = await resolveRepositoryIdentity(effectivePlacement.worktree)
   if (!resolved.ok) {
     const reasonText =
       resolved.reason === 'REPOSITORY_UNAVAILABLE'
@@ -97,7 +132,7 @@ async function dispatchFromChat({ project, message, placement }) {
   const dispatch = await planAndDispatchFromChat({
     project,
     message,
-    placement,
+    placement: effectivePlacement,
     identity: { repository: resolved.identity },
     clock: () => new Date()
   })
@@ -172,7 +207,13 @@ async function readBody(req) {
   }
 }
 
-export function createRequestHandler() {
+// Adversarial-review finding: GET /api/runtime-identity previously
+// recomputed its own hardcoded default dist dir, ignoring whatever
+// uiDistDir startStandaloneServer was actually configured with (exercised
+// by http-server-standalone.test.mjs) -- it would read build-identity.json
+// from the wrong location whenever a non-default dist dir is in use.
+export function createRequestHandler(options = {}) {
+  const distDir = options.uiDistDir ?? path.join(import.meta.dirname, '..', 'ui', 'dist')
   return async function handler(req, res, next) {
     const url = new URL(req.url, 'http://localhost')
     const parts = url.pathname.split('/').filter(Boolean)
@@ -221,7 +262,43 @@ export function createRequestHandler() {
 
       // GET /api/work
       if (parts[1] === 'work' && req.method === 'GET') {
-        return json(res, 200, summarizeWork(projects))
+        return json(
+          res,
+          200,
+          summarizeWork(projects, opState.keepGoingRuns, () => new Date())
+        )
+      }
+
+      // GET /api/fleet/status -- Command's "what's running right now"
+      // source of truth. Thin, pure-data read (not conversational) so a
+      // status panel never needs to round-trip through the chat pipeline;
+      // shares fleetWorkStatus with GET /api/work and Command's own
+      // STATUS prose answers, so a table and a sentence can never disagree.
+      if (parts[1] === 'fleet' && parts[2] === 'status' && req.method === 'GET') {
+        return json(
+          res,
+          200,
+          fleetWorkStatus(projects, opState.keepGoingRuns, () => new Date())
+        )
+      }
+
+      // GET /api/runtime-identity -- Safe Update Manager (spec Phase 1):
+      // whether the currently-running backend and served UI bundle
+      // genuinely match what's on disk right now, from real git/build
+      // identity, never inferred from "files changed" alone.
+      if (parts[1] === 'runtime-identity' && req.method === 'GET') {
+        return json(res, 200, await getRuntimeIdentity(distDir))
+      }
+
+      // GET /api/update-safety -- Safe Update Manager (spec Phase 2):
+      // whether it's currently safe to update, grounded in the same real
+      // fleet aggregator Work/Command/GET /api/fleet/status all share.
+      if (parts[1] === 'update-safety' && req.method === 'GET') {
+        return json(
+          res,
+          200,
+          classifyUpdateSafety(fleetWorkStatus(projects, opState.keepGoingRuns, () => new Date()))
+        )
       }
 
       // GET /api/health
@@ -246,12 +323,10 @@ export function createRequestHandler() {
       // POST /api/usage-mode { mode }
       if (parts[1] === 'usage-mode' && req.method === 'POST') {
         const body = await readBody(req)
-        const validModes = Object.keys(usageModes.modes)
-        if (!validModes.includes(body.mode)) {
-          return json(res, 400, {
-            ok: false,
-            error: `mode must be one of ${validModes.join(', ')} (HIGH_ASSURANCE is reserved, not yet available)`
-          })
+        try {
+          assertUsageModeAllowed(body.mode)
+        } catch (error) {
+          return json(res, 400, { ok: false, error: error.message })
         }
         const next = { ...opState, usageMode: body.mode }
         saveState(next)
@@ -344,10 +419,23 @@ export function createRequestHandler() {
         return
       }
 
-      // POST /api/chat { projectId, message, attachments? }
+      // POST /api/chat { projectId, message, attachments?, placement?, selfRepair? }
+      // projectId: null is Command's global scope (M-Command) -- generalized
+      // here rather than a parallel route, since this handler was already
+      // null-projectId-tolerant at the plumbing level. A message resolving
+      // to exactly ONE project, by an EXACT id/displayName match only, is
+      // treated identically to the operator having picked that project
+      // directly, reusing every branch below unchanged (including a real
+      // dispatch). Adversarial-review finding, fixed here: a fuzzy-only
+      // single match must NOT get this treatment -- it used to fall
+      // straight into the same dispatch-capable path as an exact pick,
+      // letting a 60%-confidence name guess trigger a real worktree/
+      // dispatch with no confirmation. Zero matches, multiple matches, or
+      // a fuzzy-only match are all answered by command-responder.mjs
+      // instead, which never dispatches on anything less than an exact
+      // match either.
       if (parts[1] === 'chat' && req.method === 'POST') {
         const body = await readBody(req)
-        const project = map.get(body.projectId) ?? null
         const message = String(body.message ?? '').slice(0, 4000)
         if (!message.trim()) {
           return json(res, 400, { ok: false, error: 'message is required' })
@@ -355,23 +443,80 @@ export function createRequestHandler() {
         const attachments = Array.isArray(body.attachments)
           ? body.attachments.slice(0, 10).map((a) => ({
               name: String(a?.name ?? 'attachment').slice(0, 200),
-              type: String(a?.type ?? '').slice(0, 100)
+              type: String(a?.type ?? '').slice(0, 100),
+              // Real extracted text (migration-context-attachments.ts),
+              // capped again server-side defensively -- optional, so a
+              // caller that only ever sent {name,type} (existing Planner
+              // Chat behavior) is unaffected.
+              extractedText:
+                typeof a?.extractedText === 'string' ? a.extractedText.slice(0, 20000) : null
             }))
           : []
+
+        let project = map.get(body.projectId) ?? null
+        let matchedOn = project ? 'id' : null
+        // Adversarial-review finding: a falsy check treated an explicit
+        // empty-string projectId identically to Command's genuine null/
+        // omitted scope. Precise null/undefined check instead, so an
+        // empty-string projectId 404s honestly as an unknown project
+        // (below) rather than silently entering Command's fleet-wide
+        // resolution path.
+        if (!project && body.projectId == null) {
+          const resolution = resolveProjectsFromText(message, projects)
+          if (resolution.matches.length === 1 && resolution.matches[0].matchedOn !== 'fuzzy') {
+            project = resolution.matches[0].project
+            matchedOn = resolution.matches[0].matchedOn
+          } else {
+            const commandResult = await respondCommand({
+              message,
+              projects,
+              opState,
+              clock: () => new Date()
+            })
+            const freshState = loadState()
+            const threads = { ...freshState.chatThreads }
+            threads.__command__ = [
+              ...(threads.__command__ ?? []),
+              { role: 'user', content: message, at: new Date().toISOString() },
+              {
+                role: 'assistant',
+                content: commandResult.text,
+                at: new Date().toISOString(),
+                decisionClass: commandResult.decisionClass,
+                intent: commandResult.intent
+              }
+            ].slice(-200)
+            saveState({ ...freshState, chatThreads: threads })
+            return json(res, 200, commandResult)
+          }
+        }
 
         const intent = classifyIntent(message)
         const decisionClass = classifyDecision(message, intent)
         let result
         let plannerSessions = opState.plannerSessions
 
-        // M3: real dispatch is opt-in per request via an explicit
-        // `placement` field (worktree/workerTerminal + optional agent) --
-        // no silent default, matching every other M2 dispatch path. Until
-        // the UI itself gathers this (a later wave), existing callers that
-        // never send `placement` keep the exact prior conversational
-        // behavior below, unchanged.
-        const dispatchWorthy = intent === 'DISPATCH_REQUEST' || intent === 'FIX_REQUEST'
-        const hasExplicitPlacement = !!(body.placement?.worktree || body.placement?.workerTerminal)
+        // M3/M-Command: a dispatch-worthy, non-TIM_REQUIRED message always
+        // attempts a real dispatch now -- an explicit placement (Planner
+        // Chat's Advanced field) still wins when supplied, otherwise
+        // dispatchFromChat auto-provisions a worktree itself (spec Phase
+        // 6: the manual field is an advanced override, not a requirement).
+        const dispatchWorthy = DISPATCH_WORTHY_INTENTS.has(intent)
+        const selfRepairAuthorized = isAuthorizedSelfRepair({
+          toggleOn: !!body.selfRepair,
+          matchedOn,
+          decisionClass,
+          projectId: project?.id ?? null,
+          selfRepairProjectId: SELF_REPAIR_PROJECT_ID
+        })
+        // Adversarial-review finding: this was 'main' -- the real accepted
+        // TSF branch (confirmed via `git branch -a`) is 'tsf/main', not a
+        // bare 'main'. Configurable so this doesn't silently drift from
+        // whatever the real accepted branch is called in a given
+        // deployment, rather than hardcoding a second guess.
+        const selfRepairFromBranch = selfRepairAuthorized
+          ? process.env.TSF_SELF_REPAIR_BASE_BRANCH || 'tsf/main'
+          : undefined
 
         // M3: "what is it doing?" must answer from the real, live Keep
         // Going run once one exists -- the live conversational planner
@@ -409,8 +554,13 @@ export function createRequestHandler() {
               'PLANNER_DEEP · policy refusal — consequential action, no live call made',
             live: false
           }
-        } else if (dispatchWorthy && hasExplicitPlacement) {
-          result = await dispatchFromChat({ project, message, placement: body.placement })
+        } else if (dispatchWorthy) {
+          result = await dispatchFromChat({
+            project,
+            message,
+            placement: body.placement,
+            selfRepairFromBranch
+          })
         } else if (statusWorthy) {
           result = {
             ...respond(project, message, liveRun, liveGap),
@@ -418,7 +568,7 @@ export function createRequestHandler() {
             live: false
           }
         } else {
-          const key = body.projectId
+          const key = body.projectId ?? project.id
           const history = (opState.chatThreads[key] ?? []).slice(-12)
           const live = await invokeLivePlanner({
             project,
@@ -467,7 +617,8 @@ export function createRequestHandler() {
           ? { ...freshState.plannerSessions, [project.id]: plannerSessions[project.id] }
           : freshState.plannerSessions
         const threads = { ...freshState.chatThreads }
-        const key = body.projectId ?? '__none__'
+        const key = body.projectId ?? project?.id ?? '__none__'
+        result = { ...result, resolvedProjectIds: project ? [project.id] : [] }
         const attachmentSummary = attachments.length
           ? { attachmentCount: attachments.length, attachmentNames: attachments.map((a) => a.name) }
           : {}
@@ -616,8 +767,8 @@ export function createRequestHandler() {
 // createRequestHandler as Vite middleware and lets Vite serve everything
 // else) -- so this serves tsf/ui's built dist directly instead of 404ing.
 export function startStandaloneServer(port = 4610, options = {}) {
-  const handler = createRequestHandler()
   const distDir = options.uiDistDir ?? path.join(import.meta.dirname, '..', 'ui', 'dist')
+  const handler = createRequestHandler({ uiDistDir: distDir })
   const serveStaticUi = createStaticUiHandler(distDir)
   const server = createServer((req, res) =>
     handler(req, res, () => {
@@ -637,6 +788,14 @@ export function startStandaloneServer(port = 4610, options = {}) {
   // block on however long the resumed pipeline(s) take.
   recoverInterruptedPrepareForWorkOperations().catch((error) => {
     console.error('prepare-for-work recovery scan failed:', error)
+  })
+  // Safe Update Manager (spec Phase 5): records this real process's own
+  // PID/commit/startedAt so a later checker can tell a genuinely-alive
+  // current process apart from a stale/orphaned one -- fire-and-forget,
+  // same convention as the recovery scan above; startup must not block on
+  // a git spawn.
+  writeRuntimeMetadata().catch((error) => {
+    console.error('runtime metadata write failed:', error)
   })
   return server
 }

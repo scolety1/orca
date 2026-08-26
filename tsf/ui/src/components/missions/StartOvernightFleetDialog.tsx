@@ -17,8 +17,9 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useApi } from '@/lib/use-api'
 import { api, ApiError } from '@/lib/api'
+import { OVERNIGHT_USAGE_MODES as USAGE_MODES } from '@/lib/usage-modes'
+import { useSensitiveProjectIds } from '@/lib/use-sensitive-project-ids'
 
-const USAGE_MODES = ['ECONOMY', 'BALANCED', 'MAXIMUM', 'HIGH_ASSURANCE']
 const DEFAULT_CRITERIA =
   'Real tests pass\nNo new lint/typecheck failures\nStop and checkpoint at any TIM_REQUIRED, credentials, destructive, or production-impacting decision'
 const DEFAULT_GOAL = 'Continue this project toward its currently recommended next bounded mission.'
@@ -47,8 +48,11 @@ export function StartOvernightFleetDialog({
   const [criteria, setCriteria] = useState(DEFAULT_CRITERIA)
   const [continueAroundBlocked, setContinueAroundBlocked] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [progress, setProgress] = useState<{ projectId: string; ok: boolean; detail: string }[]>([])
+  const [progress, setProgress] = useState<
+    { projectId: string; ok: boolean; runId?: string; state?: string; detail: string }[]
+  >([])
   const { data: capacity } = useApi(() => api.capacity(), [open])
+  const sensitiveIds = useSensitiveProjectIds(open)
 
   useEffect(() => {
     setOrder(projectIds)
@@ -65,12 +69,27 @@ export function StartOvernightFleetDialog({
     setProgress([])
     for (const projectId of order) {
       try {
-        await api.startKeepGoing(projectId, {
+        const runView = await api.startKeepGoing(projectId, {
           originalGoal: DEFAULT_GOAL,
           acceptanceCriteria: criteriaList,
           usageMode: overrides[projectId] ?? globalMode
         })
-        setProgress((prev) => [...prev, { projectId, ok: true, detail: 'Started.' }])
+        setProgress((prev) => [
+          ...prev,
+          runView.started
+            ? {
+                projectId,
+                ok: true,
+                runId: runView.runId,
+                state: runView.state,
+                detail: `Mission created -- run ${runView.runId}, status ${runView.state}.`
+              }
+            : {
+                projectId,
+                ok: false,
+                detail: 'Server accepted the request but did not report a started run.'
+              }
+        ])
       } catch (err) {
         const detail = err instanceof ApiError ? err.message : 'Failed to start.'
         setProgress((prev) => [...prev, { projectId, ok: false, detail }])
@@ -110,6 +129,14 @@ export function StartOvernightFleetDialog({
                 >
                   <GripVertical className="size-3.5 text-muted-foreground" />
                   <span className="min-w-0 flex-1 truncate">{id}</span>
+                  {sensitiveIds.has(id) && (
+                    <span
+                      className="rounded-full border border-status-blocked/40 bg-status-blocked/10 px-1.5 py-0.5 text-[10px] text-status-blocked"
+                      title="Sensitive project -- High Assurance is a reserved usage mode, not yet available. No usage mode substitutes for it."
+                    >
+                      High Assurance required (reserved)
+                    </span>
+                  )}
                   <select
                     value={overrides[id] ?? ''}
                     onChange={(e) =>

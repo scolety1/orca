@@ -5,6 +5,7 @@ import {
   FlaskConical,
   FolderKanban,
   LayoutGrid,
+  MessageSquareText,
   Stethoscope,
   TerminalSquare
 } from 'lucide-react'
@@ -12,9 +13,11 @@ import { cn } from '@/lib/cn'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
 import { CapacityIndicator } from '@/components/CapacityIndicator'
+import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
 
 const NAV = [
   { to: '/', label: 'Home', icon: LayoutGrid, end: true },
+  { to: '/command', label: 'Command', icon: MessageSquareText },
   { to: '/work', label: 'Work', icon: Compass },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
   { to: '/agents', label: 'Agents', icon: TerminalSquare },
@@ -71,6 +74,7 @@ export function AppShell() {
             ))}
           </nav>
           <div className="mt-4 flex shrink-0 flex-col gap-2 px-3">
+            <SystemStatusIndicator />
             <CapacityIndicator />
             <div className="flex flex-col gap-1 px-2 text-[10px] text-muted-foreground">
               {meta && (

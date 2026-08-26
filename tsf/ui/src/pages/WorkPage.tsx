@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CircleSlash, PackageCheck, PlayCircle, CalendarClock, ShieldCheck } from 'lucide-react'
+import {
+  CircleSlash,
+  PackageCheck,
+  PlayCircle,
+  CalendarClock,
+  ShieldCheck,
+  Search,
+  AlertTriangle
+} from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
 import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
@@ -67,25 +75,27 @@ export function WorkPage() {
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
       {error && <RefreshFailedBanner message={error} onRetry={reload} />}
-      <header className="mb-8 flex items-start justify-between gap-4">
-        <div>
+      <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 max-w-md">
           <h1 className="text-xl font-semibold tracking-tight">Work</h1>
           <p className="text-sm text-muted-foreground">
             What&apos;s happening to your projects -- planner, worker, and verifier activity, not
             terminal spam.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="secondary"
             disabled={!hasEligibleProjects}
             onClick={() => setMissionOpen(true)}
           >
-            <PlayCircle className="size-4" /> Start Mission
+            <PlayCircle className="size-4" />
+            {`Start mission for your Work Set (${workSetIds.length})`}
           </Button>
           <Button size="sm" disabled={!hasEligibleProjects} onClick={() => setOvernightOpen(true)}>
-            <CalendarClock className="size-4" /> Start Overnight Fleet
+            <CalendarClock className="size-4" />
+            {`Start Overnight Fleet for your Work Set (${workSetIds.length})`}
           </Button>
         </div>
       </header>
@@ -112,7 +122,8 @@ export function WorkPage() {
             action={
               hasEligibleProjects ? (
                 <Button size="sm" onClick={() => setMissionOpen(true)}>
-                  <PlayCircle className="size-4" /> Start Mission
+                  <PlayCircle className="size-4" />
+                  {`Start mission for your Work Set (${workSetIds.length})`}
                 </Button>
               ) : undefined
             }
@@ -126,7 +137,28 @@ export function WorkPage() {
                     <CardTitle>{p.displayName}</CardTitle>
                   </CardHeader>
                   <CardContent className="text-xs text-muted-foreground">
-                    {p.mission.state}
+                    {p.liveWorkFeed?.reason ?? p.mission.state}
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section icon={Search} title="Verifying">
+        {work.verifying.length === 0 ? (
+          <EmptyState title="Nothing being verified" />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {work.verifying.map((p) => (
+              <Link key={p.id} to={`/projects/${p.id}`}>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{p.displayName}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs text-muted-foreground">
+                    {p.liveWorkFeed?.reason ?? p.mission.state}
                   </CardContent>
                 </Card>
               </Link>
@@ -136,12 +168,35 @@ export function WorkPage() {
       </Section>
 
       <Section icon={CircleSlash} title="Needs you / blocked">
-        {work.blocked.length === 0 ? (
+        {work.needsYou.length === 0 && work.stalled.length === 0 && work.blocked.length === 0 ? (
           <EmptyState title="Nothing blocked" />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {[...work.needsYou, ...work.stalled].map((p) => (
+              // Real-run-driven "needs you"/"stalled" (see the run-
+              // independent "blocked" list below -- work-feed-summary.mjs
+              // deliberately allows the SAME project to appear in both, so
+              // a bare `p.id` key would collide with that list's element
+              // for the same project. Prefixed to keep both distinct,
+              // informative cards instead of one silently overwriting the
+              // other under React's key reconciliation.
+              <Link key={`live-${p.id}`} to={`/projects/${p.id}`}>
+                <Card className="border-status-blocked/40">
+                  <CardHeader className="flex-row items-center justify-between space-y-0">
+                    <CardTitle>{p.displayName}</CardTitle>
+                    <Badge variant={p.liveWorkFeed?.state === 'STALLED' ? 'blocked' : 'degraded'}>
+                      <AlertTriangle className="size-3" />
+                      {p.liveWorkFeed?.state === 'STALLED' ? 'Stalled' : 'Needs you'}
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="text-xs text-muted-foreground">
+                    {p.liveWorkFeed?.reason ?? p.mission.state}
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
             {work.blocked.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`}>
+              <Link key={`legacy-${p.id}`} to={`/projects/${p.id}`}>
                 <Card className="border-status-blocked/40">
                   <CardHeader className="flex-row items-center justify-between space-y-0">
                     <CardTitle>{p.displayName}</CardTitle>

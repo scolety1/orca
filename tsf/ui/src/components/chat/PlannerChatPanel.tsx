@@ -9,13 +9,14 @@ import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { scrollTranscriptToBottom } from '@/lib/chat-transcript-scroll'
 import { loadChatDraft, saveChatDraft } from '@/lib/chat-draft-storage'
+import { extractAttachmentContext } from '@/lib/migration-context-attachments'
 import type { ChatMessage } from '@/lib/types'
 
 type Attachment = {
   name: string
   size: number
   type: string
-  dataUrl: string
+  extractedText: string | null
 }
 
 // Hand-rolled on our own primitives rather than a pulled-in chat library.
@@ -109,7 +110,11 @@ export function PlannerChatPanel({
     ])
     updateDraft('')
     setAttachments([])
-    const attachmentMeta = attachments.map((a) => ({ name: a.name, type: a.type || 'unknown' }))
+    const attachmentMeta = attachments.map((a) => ({
+      name: a.name,
+      type: a.type || 'unknown',
+      extractedText: a.extractedText
+    }))
     const worktree = dispatchWorktree.trim()
     try {
       const result = await api.chat(
@@ -142,13 +147,17 @@ export function PlannerChatPanel({
       return
     }
     Array.from(fileList).forEach((file) => {
-      const reader = new FileReader()
-      reader.onload = () =>
+      extractAttachmentContext(file).then((extracted) =>
         setAttachments((prev) => [
           ...prev,
-          { name: file.name, size: file.size, type: file.type, dataUrl: String(reader.result) }
+          {
+            name: extracted.name,
+            size: extracted.size,
+            type: extracted.type,
+            extractedText: extracted.extractedText
+          }
         ])
-      reader.readAsDataURL(file)
+      )
     })
   }
 
@@ -237,28 +246,39 @@ export function PlannerChatPanel({
             ))}
           </div>
           <div className="mt-1 text-[10px] text-muted-foreground">
-            Filenames are sent as context; contents aren&apos;t processed yet.
+            .md/.txt/.json contents are extracted and sent as context; other formats send filename
+            only.
           </div>
         </div>
       )}
       <div className="flex flex-col gap-1.5 border-t border-border p-3">
+        {/* Real behavior change (spec Phase 6): a real dispatch no longer
+            REQUIRES this field -- the server now auto-provisions a worktree
+            itself (chat-dispatch-bridge.mjs's ensureWorktreeForDispatch).
+            Collapsed behind Advanced, closed by default, as a debug
+            override for a specific existing worktree only. */}
         {projectId && (
-          <div className="flex items-center gap-2">
-            <label
-              htmlFor="dispatch-worktree"
-              className="text-[10px] whitespace-nowrap text-muted-foreground"
-            >
-              Worktree (optional — enables a real dispatch)
-            </label>
-            <input
-              id="dispatch-worktree"
-              type="text"
-              value={dispatchWorktree}
-              onChange={(e) => setDispatchWorktree(e.target.value)}
-              placeholder="e.g. C:/path/to/worktree"
-              className="w-full rounded-md border border-input bg-input px-2 py-1 text-[11px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
+          <details className="group">
+            <summary className="cursor-pointer list-none text-[10px] text-muted-foreground hover:text-foreground">
+              Advanced: override worktree
+            </summary>
+            <div className="mt-1.5 flex items-center gap-2">
+              <label
+                htmlFor="dispatch-worktree"
+                className="text-[10px] whitespace-nowrap text-muted-foreground"
+              >
+                Worktree (optional — a real dispatch auto-provisions one unless set here)
+              </label>
+              <input
+                id="dispatch-worktree"
+                type="text"
+                value={dispatchWorktree}
+                onChange={(e) => setDispatchWorktree(e.target.value)}
+                placeholder="e.g. C:/path/to/worktree"
+                className="w-full rounded-md border border-input bg-input px-2 py-1 text-[11px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+          </details>
         )}
         <div className="flex items-end gap-2">
           <input

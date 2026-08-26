@@ -41,7 +41,16 @@ test('normalizePortfolio passes well-formed data through unchanged', () => {
 
 test('normalizeWorkSummary fills in every missing array', () => {
   const result = normalizeWorkSummary({} as never)
-  assert.deepEqual(result, { active: [], blocked: [], readyForAdoption: [], recentlyCompleted: [] })
+  assert.deepEqual(result, {
+    active: [],
+    queued: [],
+    verifying: [],
+    needsYou: [],
+    stalled: [],
+    blocked: [],
+    readyForAdoption: [],
+    recentlyCompleted: []
+  })
 })
 
 test('normalizeMembershipChange defaults applied/skipped and preserves a real field value', () => {

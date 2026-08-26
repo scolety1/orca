@@ -14,6 +14,8 @@ import { invokeLiveStructuredAnalysis } from './live-planner.mjs'
 import { startKeepGoingRun } from './keep-going-controller.mjs'
 import { tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
 import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
+import { createOrcaWorktree, findRegisteredOrcaRepo } from '../adapters/orca-cli-bridge.mjs'
+import { resolveRepositoryIdentity } from './repository-identity.mjs'
 
 const WORK_PLAN_SYSTEM_PROMPT = [
   'You are the TSF (Thousand Sunny Fleet) Planner producing a BOUNDED, SAFE',
@@ -208,4 +210,129 @@ export async function planAndDispatchFromChat({
   // function itself for tests that don't want to exercise it at all.
   const tickResult = await tick(project.id, [candidateWorkItem], clock, deps.tickDeps ?? {})
   return { ok: true, planCapsule: capsule, candidateWorkItem, tickResult }
+}
+
+// Command/Planner Chat worktree auto-provisioning (M-Command): when a
+// dispatch-worthy message has no caller-supplied placement, this is what
+// stands in for "an operator typed a worktree path" -- looks up the
+// project's already-registered Orca repo (never guesses one) and creates a
+// fresh, independent worktree via the real Orca CLI (orca-cli-bridge.mjs's
+// createOrcaWorktree, which itself wraps `orca worktree create` -- no
+// worktree-creation logic of TSF's own). `fromBranch` is only ever passed
+// by an already-authorized self-repair caller (see
+// domain/self-repair-authority.mjs); every other caller gets the repo's
+// own default base.
+export async function ensureWorktreeForDispatch(project, deps = {}, { fromBranch } = {}) {
+  const findRepo = deps.findRegisteredOrcaRepo ?? findRegisteredOrcaRepo
+  const createWorktree = deps.createOrcaWorktree ?? createOrcaWorktree
+  // Adversarial-review finding: both current callers already guarantee a
+  // real, non-null project before reaching here -- guarded explicitly
+  // anyway so a future caller gets an honest error instead of an
+  // unhandled TypeError if that invariant is ever violated.
+  if (!project?.root) {
+    return {
+      ok: false,
+      reason: 'TSF_REPOSITORY_NOT_REGISTERED',
+      detail: 'this project has no known repository root -- a manual worktree path is required'
+    }
+  }
+  const registered = await findRepo(project.root)
+  if (!registered.ok) {
+    return { ok: false, reason: registered.reason, detail: registered.detail }
+  }
+  if (!registered.registered) {
+    return {
+      ok: false,
+      reason: 'TSF_REPOSITORY_NOT_REGISTERED',
+      detail:
+        "this project's repository is not registered with Orca yet -- register it during onboarding, or supply a manual worktree path"
+    }
+  }
+  const created = await createWorktree({
+    repoId: registered.repo.id,
+    name: `command-${project.id}-${Date.now()}`,
+    fromBranch
+  })
+  if (!created.ok) {
+    return { ok: false, reason: created.reason, detail: created.detail }
+  }
+  return { ok: true, worktree: created.worktreePath }
+}
+
+async function dispatchOneProject(project, message, clock, deps, selfRepairFromBranch) {
+  const resolveIdentity = deps.resolveRepositoryIdentity ?? resolveRepositoryIdentity
+  const worktreeResult = await ensureWorktreeForDispatch(project, deps, {
+    fromBranch: selfRepairFromBranch
+  })
+  if (!worktreeResult.ok) {
+    return { project, ok: false, reason: worktreeResult.reason, detail: worktreeResult.detail }
+  }
+  const resolved = await resolveIdentity(worktreeResult.worktree)
+  if (!resolved.ok) {
+    return { project, ok: false, reason: resolved.reason, detail: resolved.detail }
+  }
+  const dispatch = await planAndDispatchFromChat({
+    project,
+    message,
+    placement: { worktree: worktreeResult.worktree },
+    identity: { repository: resolved.identity },
+    clock,
+    deps
+  })
+  if (!dispatch.ok) {
+    return { project, ok: false, reason: dispatch.reason, detail: dispatch.detail }
+  }
+  const items = dispatch.tickResult.dispatchRecords ?? []
+  return {
+    project,
+    ok: true,
+    // Adversarial-review finding: this was candidateWorkItem.id (a
+    // work-item id, not a run id) -- tickResult.run.id is the real Keep
+    // Going run id, same field http-chat-dispatch.test.mjs's own
+    // "revision.body.tickResult.run.id" assertion already relies on.
+    runId: dispatch.tickResult.run?.id ?? null,
+    detail: items.length > 0 ? `task ${items[0].taskId} dispatched` : dispatch.tickResult.action
+  }
+}
+
+// Runs each resolved project's dispatch chain (auto-provision worktree ->
+// resolve identity -> the EXISTING planAndDispatchFromChat, unchanged --
+// project-scoped chat keeps using it directly) CONCURRENTLY, not one at a
+// time -- adversarial-review finding: each project's chain is already
+// fully independent (its own worktree, its own repository identity, its
+// own Keep Going run), so serializing them only added wall-clock latency
+// with no safety benefit. One project's failure (repo not registered, not
+// dispatchable, plan/dispatch error) is collected and reported, never
+// aborts the others -- mirrors StartOvernightFleetDialog.tsx's own
+// "continue past failures" behavior, just concurrently instead of
+// sequentially. Does not build any new execution/dispatch logic of its
+// own -- every real action here is planAndDispatchFromChat, unchanged.
+export async function planAndDispatchFromCommand({
+  projects,
+  message,
+  clock,
+  deps = {},
+  selfRepairFromBranch
+}) {
+  const settled = await Promise.allSettled(
+    projects.map((project) =>
+      dispatchOneProject(project, message, clock, deps, selfRepairFromBranch)
+    )
+  )
+  // allSettled, not all: dispatchOneProject's own internal calls are all
+  // designed to resolve with an honest {ok:false,...} rather than throw,
+  // but a genuinely unexpected exception (a real bug, a thrown error deep
+  // in the live-planner call) must still never take down every OTHER
+  // project's already-independent result with it.
+  const results = settled.map((outcome, i) =>
+    outcome.status === 'fulfilled'
+      ? outcome.value
+      : {
+          project: projects[i],
+          ok: false,
+          reason: 'UNEXPECTED_ERROR',
+          detail: outcome.reason?.message ?? String(outcome.reason)
+        }
+  )
+  return { results }
 }

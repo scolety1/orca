@@ -5,6 +5,7 @@
 // each selected project -- a common goal or per-project goals, never one
 // shared session/worktree; each project stays independently governed.
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Loader2, PlayCircle } from 'lucide-react'
 import {
   Dialog,
@@ -16,10 +17,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { api, ApiError } from '@/lib/api'
+import { USAGE_MODES } from '@/lib/usage-modes'
+import { useSensitiveProjectIds } from '@/lib/use-sensitive-project-ids'
 
 type GoalMode = 'COMMON' | 'PER_PROJECT'
-
-const USAGE_MODES = ['TEST_MINIMAL', 'ECONOMY', 'BALANCED', 'MAXIMUM']
 
 export function StartMissionDialog({
   open,
@@ -39,8 +40,11 @@ export function StartMissionDialog({
   const [usageMode, setUsageMode] = useState('BALANCED')
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<
-    { projectId: string; ok: boolean; detail: string }[] | null
+    { projectId: string; ok: boolean; runId?: string; state?: string; detail: string }[] | null
   >(null)
+  // Same honest "reserved" indicator as StartOvernightFleetDialog -- never
+  // an offer to select High Assurance, since it has no real usage mode yet.
+  const sensitiveIds = useSensitiveProjectIds(open)
 
   const criteria = acceptanceCriteria
     .split('\n')
@@ -67,16 +71,31 @@ export function StartMissionDialog({
       )
     )
     setResults(
-      outcomes.map((outcome, i) => ({
-        projectId: projectIds[i],
-        ok: outcome.status === 'fulfilled',
-        detail:
-          outcome.status === 'fulfilled'
-            ? 'Started.'
-            : outcome.reason instanceof ApiError
-              ? outcome.reason.message
-              : 'Failed to start.'
-      }))
+      outcomes.map((outcome, i) => {
+        const projectId = projectIds[i]
+        // Only report "created" from the real response body (runId/state),
+        // never from HTTP success alone -- a 200 with a body that doesn't
+        // actually reflect a started run must not read as "Mission created."
+        if (outcome.status === 'fulfilled' && outcome.value.started) {
+          return {
+            projectId,
+            ok: true,
+            runId: outcome.value.runId,
+            state: outcome.value.state,
+            detail: `Mission created -- run ${outcome.value.runId}, status ${outcome.value.state} (${outcome.value.phase}).`
+          }
+        }
+        return {
+          projectId,
+          ok: false,
+          detail:
+            outcome.status === 'fulfilled'
+              ? 'Server accepted the request but did not report a started run.'
+              : outcome.reason instanceof ApiError
+                ? outcome.reason.message
+                : 'Failed to start.'
+        }
+      })
     )
     setBusy(false)
     onStarted()
@@ -99,8 +118,16 @@ export function StartMissionDialog({
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2 text-[11px]">
             {projectIds.map((id) => (
-              <span key={id} className="rounded-full border border-border px-2 py-0.5">
-                {id}
+              <span key={id} className="flex items-center gap-1.5">
+                <span className="rounded-full border border-border px-2 py-0.5">{id}</span>
+                {sensitiveIds.has(id) && (
+                  <span
+                    className="rounded-full border border-status-blocked/40 bg-status-blocked/10 px-1.5 py-0.5 text-[10px] text-status-blocked"
+                    title="Sensitive project -- High Assurance is a reserved usage mode, not yet available. No usage mode substitutes for it."
+                  >
+                    High Assurance required (reserved)
+                  </span>
+                )}
               </span>
             ))}
           </div>
@@ -185,13 +212,28 @@ export function StartMissionDialog({
           </div>
 
           {results && (
-            <div className="flex flex-col gap-1 rounded-md border border-border p-2 text-[11px]">
+            <div className="flex flex-col gap-2 rounded-md border border-border p-2 text-[11px]">
               {results.map((r) => (
-                <div
-                  key={r.projectId}
-                  className={r.ok ? 'text-status-healthy' : 'text-destructive'}
-                >
-                  {r.projectId}: {r.detail}
+                <div key={r.projectId} className="flex items-center justify-between gap-2">
+                  <div className={r.ok ? 'text-status-healthy' : 'text-destructive'}>
+                    {r.ok ? (
+                      <>
+                        <span className="font-medium">{r.projectId}</span>: Mission created -- run{' '}
+                        <span className="font-mono">{r.runId}</span>, status {r.state}.
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium">{r.projectId}</span>: {r.detail}
+                      </>
+                    )}
+                  </div>
+                  {r.ok && (
+                    <Link to="/work" onClick={() => onOpenChange(false)}>
+                      <Button size="sm" variant="outline">
+                        View Work
+                      </Button>
+                    </Link>
+                  )}
                 </div>
               ))}
             </div>

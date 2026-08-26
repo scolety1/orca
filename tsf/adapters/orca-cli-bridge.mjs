@@ -225,3 +225,45 @@ export async function registerOrcaRepo(repoPath) {
   }
   return { ok: true, alreadyRegistered: false, repo: added.result?.repo ?? null }
 }
+
+// Command/Planner Chat worktree auto-provisioning (M-Command): wraps
+// `orca worktree create` (documented in skill-guides/orca-cli.md) rather
+// than inventing any worktree-creation logic of TSF's own. `--no-parent`
+// always -- a Command-triggered dispatch is independent top-level work, not
+// stacked lineage on whatever the operator's own current worktree happens
+// to be. `fromBranch` is only ever passed for an explicitly authorized
+// TSF-self-repair dispatch (accepted tsf/main); omitted otherwise so Orca
+// uses the repo's own default base, exactly as the skill guide recommends
+// for ordinary independent handoffs.
+//
+// The exact JSON result shape below (`result.worktree.id` as
+// `<repoId>::<worktreePath>`, no separate `.path` field) is inferred from
+// the skill guide's own documented id format -- not live-confirmed against
+// a real `orca worktree create --json` call in this environment. A real
+// shape mismatch surfaces as an honest MALFORMED_RESPONSE below, never a
+// fabricated path; verify/update this against a real call before this path
+// carries production traffic.
+export async function createOrcaWorktree({ repoId, name, fromBranch }) {
+  const args = ['worktree', 'create', '--repo', `id:${repoId}`, '--name', name, '--no-parent']
+  if (fromBranch) {
+    args.push('--base-branch', fromBranch)
+  }
+  const created = await runOrca(args)
+  if (!created.ok) {
+    return { ok: false, reason: created.reason, detail: created.detail }
+  }
+  const worktree = created.result?.worktree
+  const worktreePath =
+    worktree?.path ??
+    (typeof worktree?.id === 'string' && worktree.id.includes('::')
+      ? worktree.id.slice(worktree.id.indexOf('::') + 2)
+      : null)
+  if (!worktree?.id || !worktreePath) {
+    return {
+      ok: false,
+      reason: 'MALFORMED_RESPONSE',
+      detail: 'orca worktree create did not return a usable worktree id/path'
+    }
+  }
+  return { ok: true, worktreeId: worktree.id, worktreePath }
+}

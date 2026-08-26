@@ -3,6 +3,7 @@
 // keep-going.mjs run -- nothing here is fabricated in the server layer.
 // Kept in its own file rather than lib/types.ts to avoid growing that file
 // past the repo's max-lines lint limit.
+import type { UsageMode } from './usage-modes'
 export type KeepGoingRunState =
   | 'ACTIVE'
   | 'NEEDS_YOU'
@@ -45,7 +46,7 @@ export type KeepGoingRunView =
       phase: string
       goal: string
       acceptanceCriteria: string[]
-      usageMode: string
+      usageMode: UsageMode
       budget: Record<string, number>
       constraints: string[]
       stopConditions: string[]
