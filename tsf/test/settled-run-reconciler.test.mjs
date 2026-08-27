@@ -10,7 +10,8 @@ import {
   gatherWorktreeEvidence,
   readVerificationVerdict,
   verificationVerdictPath,
-  reconcileSettledRun
+  reconcileSettledRun,
+  buildVerificationWorkItem
 } from '../server/settled-run-reconciler.mjs'
 
 // deps.capacity is never overridden below (only orchestration/store are) --
@@ -109,6 +110,16 @@ test('deriveWorktreePath returns null (honest, not fabricated) when the run has 
 test('deriveWorktreePath returns the real worktree from the most recent wave', () => {
   const run = withSettledWave(baseRun(), '/real/worktree', clock().toISOString())
   assert.equal(deriveWorktreePath(run), '/real/worktree')
+})
+
+// --- buildVerificationWorkItem ---
+
+test("buildVerificationWorkItem carries the run's own real constraints into the dispatched spec -- real-production finding: reconciling NWR live dispatched a verification pass that ran the project's real pytest suite (a reasonable thing to do to independently verify) and hit the EXACT known, structural side effect NWR's own constraints warned about, because this spec never carried those constraints forward. Reverted by hand once found; this pins the fix.", () => {
+  const run = baseRun({
+    constraints: ['NEVER modify docs/model_v4/ -- a known pytest side effect has done this before']
+  })
+  const item = buildVerificationWorkItem(run, '/wt')
+  assert.match(item.spec, /NEVER modify docs\/model_v4\//)
 })
 
 // --- readVerificationVerdict ---

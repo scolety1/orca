@@ -136,7 +136,20 @@ export async function readVerificationVerdict(run, worktreePath) {
   return { criteria }
 }
 
-function buildVerificationWorkItem(run, worktreePath) {
+// Real, live-confirmed finding (not hypothetical): reconciling NWR against
+// the live production instance dispatched a verification pass that ran
+// the project's real pytest suite as part of independently checking its
+// criteria -- and hit the EXACT known, structural side effect NWR's own
+// run.constraints already document (pytest's own fixtures silently
+// overwrite real committed docs/model_v4/*.md files with zero-values).
+// The dispatched verification spec only carried the run's goal and
+// acceptance criteria, never its constraints -- so the worker had no way
+// to know that specific, hard-won guardrail existed. Reverted by hand
+// (git checkout -- docs/model_v4/) once found; buildContinuationWorkItem
+// (keep-going-fleet-driver.mjs) already carried constraints forward
+// correctly -- this was the one dispatch path that didn't, now fixed to
+// match.
+export function buildVerificationWorkItem(run, worktreePath) {
   const criteriaList = run.originalGoal.acceptanceCriteria.map((c) => `- ${c}`).join('\n')
   return {
     id: RECONCILIATION_VERIFICATION_TASK_ID,
@@ -147,6 +160,10 @@ function buildVerificationWorkItem(run, worktreePath) {
       "This is an autonomous, VERIFICATION-ONLY dispatch from TSF's settled-run reconciler.",
       'Do NOT modify any code, config, or data file. Do not commit anything.',
       `Original goal: ${run.originalGoal.statement}`,
+      'This run has the following originally-declared constraints -- they apply to this',
+      'verification pass too, including to any command you run as part of verifying (e.g. a',
+      'real test suite invocation can have real side effects the constraints below warn about):',
+      ...run.constraints.map((c) => `- ${c}`),
       'For EACH of the following acceptance criteria, independently verify (by actually',
       'running the real commands/checks this project already uses -- do not take any prior',
       'claim of success on faith) whether it is genuinely satisfied right now:',
