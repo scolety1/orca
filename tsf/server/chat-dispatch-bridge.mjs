@@ -204,11 +204,39 @@ export async function planAndDispatchFromChat({
     }
   }
 
+  // Adversarial-review finding: tickKeepGoingRun routes purely on whether
+  // inFlightWave is already set -- calling it here with a NEW
+  // candidateWorkItem while a wave is already in flight would silently
+  // discard that work item (it settles the OLD wave instead) while still
+  // returning ok:true, misleading the caller (and the operator-facing
+  // "Started work on X" text) into believing the new item was dispatched.
+  // Checked honestly, before ever calling tick, rather than after.
+  if (activeRun.inFlightWave) {
+    return {
+      ok: false,
+      reason: 'RUN_NOT_DISPATCHABLE',
+      detail:
+        'a wave is already in flight for this project -- wait for it to settle before dispatching new work',
+      run: activeRun
+    }
+  }
+
   // tickDeps ({orchestration, store}) lets a caller stub the underlying
   // Orca bridge/store without replacing tickKeepGoingRun wholesale --
   // separate from `deps.tickKeepGoingRun` above, which replaces the tick
   // function itself for tests that don't want to exercise it at all.
   const tickResult = await tick(project.id, [candidateWorkItem], clock, deps.tickDeps ?? {})
+  if (tickResult.action !== 'WAVE_DISPATCHED' && tickResult.action !== 'WAVE_DISPATCHED_PARTIAL') {
+    // Defense in depth against the same class of silent-discard: even with
+    // the up-front check above, a tick lost a real race (another caller
+    // claimed it first) must still be reported honestly, not as ok:true.
+    return {
+      ok: false,
+      reason: tickResult.action,
+      detail: tickResult.reason ?? 'the candidate work item was not actually dispatched',
+      run: tickResult.run ?? activeRun
+    }
+  }
   return { ok: true, planCapsule: capsule, candidateWorkItem, tickResult }
 }
 

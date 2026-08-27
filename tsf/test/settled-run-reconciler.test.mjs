@@ -140,6 +140,27 @@ test('readVerificationVerdict returns null for a PARTIAL verdict (fewer criteria
   assert.equal(await readVerificationVerdict(run, dir), null)
 })
 
+test('readVerificationVerdict returns null when a verdict duplicates one criterion while omitting another -- adversarial-review finding: array length alone hid this exact gap', async () => {
+  const dir = initRepo()
+  const run = withSettledWave(baseRun(), dir, clock().toISOString())
+  const verdictFile = path.join(dir, verificationVerdictPath(run.id))
+  mkdirSync(path.dirname(verdictFile), { recursive: true })
+  writeFileSync(
+    verdictFile,
+    JSON.stringify({
+      criteria: [
+        { criterion: 'CRITERION_A', verified: true, evidence: 'x' },
+        { criterion: 'CRITERION_A', verified: true, evidence: 'x (duplicate)' }
+      ]
+    })
+  )
+  assert.equal(
+    await readVerificationVerdict(run, dir),
+    null,
+    'CRITERION_B was never actually covered'
+  )
+})
+
 test('readVerificationVerdict returns the real parsed verdict for a complete, well-formed file', async () => {
   const dir = initRepo()
   const run = withSettledWave(baseRun(), dir, clock().toISOString())

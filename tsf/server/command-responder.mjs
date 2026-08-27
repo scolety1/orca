@@ -69,12 +69,15 @@ export async function respondCommand({
   const resolution = resolveProjectsFromText(message, projects)
   const resolvedProjectIds = resolution.matches.map((m) => m.project.id)
   const exactMatches = resolution.matches.filter((m) => m.matchedOn !== 'fuzzy')
-  const scope =
-    resolvedProjectIds.length === 0
-      ? 'FLEET'
-      : resolvedProjectIds.length === 1
-        ? 'PROJECT'
-        : 'MULTI_PROJECT'
+  // A function, not a value computed once: adversarial-review finding --
+  // the dispatch branch below narrows resolvedProjectIds down to only the
+  // projects actually dispatched to (excluding fuzzy co-matches), and a
+  // scope computed once up front against the WIDER (exact+fuzzy) set went
+  // stale, returning e.g. scope: 'MULTI_PROJECT' alongside a single-entry
+  // resolvedProjectIds. Recomputed fresh from whatever ids each response
+  // actually reports.
+  const scopeFor = (ids) =>
+    ids.length === 0 ? 'FLEET' : ids.length === 1 ? 'PROJECT' : 'MULTI_PROJECT'
 
   if (decisionClass === 'TIM_REQUIRED') {
     return {
@@ -85,7 +88,7 @@ export async function respondCommand({
       providerLabel: 'PLANNER_DEEP · policy refusal -- consequential action, no live call made',
       live: false,
       resolvedProjectIds,
-      scope
+      scope: scopeFor(resolvedProjectIds)
     }
   }
 
@@ -109,7 +112,7 @@ export async function respondCommand({
       providerLabel: 'PLANNER_DEEP · grounded in real state, no live call made',
       live: false,
       resolvedProjectIds,
-      scope
+      scope: scopeFor(resolvedProjectIds)
     }
   }
 
@@ -127,7 +130,7 @@ export async function respondCommand({
       providerLabel: 'PLANNER_DEEP · dispatch withheld -- no confidently-identified project',
       live: false,
       resolvedProjectIds,
-      scope
+      scope: scopeFor(resolvedProjectIds)
     }
   }
 
@@ -162,7 +165,7 @@ export async function respondCommand({
     // had been acted on. Only the projects a real dispatch was actually
     // attempted against are reported here.
     resolvedProjectIds: targetProjects.map((p) => p.id),
-    scope,
+    scope: scopeFor(targetProjects.map((p) => p.id)),
     dispatchResults: dispatch.results.map((r) => ({
       projectId: r.project.id,
       ok: r.ok,

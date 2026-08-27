@@ -149,6 +149,27 @@ test("driveOneCycle skips a PLANNING run with no waves -- not this driver's job"
   assert.match(result.reason, /awaiting an initial wave/)
 })
 
+test('driveOneCycle reports an unresolved Needs You question as the real skip reason, not a misleading "run state is ACTIVE" -- adversarial-review finding', async () => {
+  const run = {
+    ...createOvernightRun(
+      {
+        id: 'r',
+        projectId: 'p',
+        originalGoal: 'x',
+        acceptanceCriteria: ['A'],
+        usageMode: 'BALANCED'
+      },
+      clock
+    ),
+    needsYou: [{ id: 'q1', question: 'which way?', resolvedAt: null }]
+  }
+  const store = makeFakeStore({ p: run })
+  const [result] = await driveOneCycle(['p'], clock, { store })
+  assert.equal(result.action, 'SKIPPED')
+  assert.match(result.reason, /Needs You/)
+  assert.doesNotMatch(result.reason, /run state is ACTIVE/)
+})
+
 test('driveOneCycle settles a real in-flight wave', async () => {
   const dir = initRepo()
   const run = newRun('r', 'p', dir)

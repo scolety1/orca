@@ -192,30 +192,26 @@ test('a second dispatch request while the first wave is still in flight is repor
     })
     assert.equal(first.body.dispatched, true)
     assert.equal(first.body.tickResult.action, 'WAVE_DISPATCHED')
-    const firstWorkItemId = first.body.candidateWorkItem.id
-    // The run is now ACTIVE with an in-flight wave -- tickKeepGoingRun
-    // itself routes this second attempt to settleStep (re-checking the
-    // SAME wave), never a fresh dispatch of the second, different work
-    // item this call built a plan capsule for. Whatever settleStep's real
-    // outcome is, the second work item must never appear as a genuinely
-    // dispatched one -- that would be exactly the duplicate/lost-work bug
-    // class this assertion exists to catch.
+    // The run is now ACTIVE with an in-flight wave. Adversarial-review
+    // fix (chat-dispatch-bridge.mjs): this used to silently route the
+    // second request to settleStep (re-checking the SAME wave) and still
+    // report ok:true, discarding the second, different work item this
+    // call built a plan capsule for with no honest indication anything
+    // was dropped -- a real duplicate/lost-work bug class. It is now
+    // rejected honestly, before ever touching tick, rather than silently
+    // absorbed.
     const second = await chat(base, {
       projectId: PROJECT_ID,
       message: 'go ahead and add a different note',
       placement: { worktree: REAL_WORKTREE, agent: 'codex' }
     })
-    assert.notEqual(second.body.tickResult.action, 'WAVE_DISPATCHED')
-    const secondDispatchedIds = (second.body.tickResult.dispatchRecords ?? []).map(
-      (r) => r.workItemId
-    )
-    assert.ok(
-      !secondDispatchedIds.includes(second.body.candidateWorkItem.id),
-      'the second, different work item must never appear as genuinely dispatched while wave 1 is still in flight'
-    )
-    assert.ok(
-      secondDispatchedIds.every((id) => id === firstWorkItemId || secondDispatchedIds.length === 0),
-      'any dispatch record present must belong to the original in-flight wave, not a duplicate'
+    assert.equal(second.body.dispatched, false)
+    assert.equal(second.body.dispatchReason, 'RUN_NOT_DISPATCHABLE')
+    assert.match(second.body.dispatchDetail, /already in flight/)
+    assert.equal(
+      second.body.tickResult,
+      undefined,
+      'no tick was ever attempted -- nothing to silently discard'
     )
   })
 })
@@ -362,14 +358,17 @@ test('user feedback on a completed wave becomes a bounded revision on the SAME s
       // Settle wave 1 as genuinely completed (not failed/stalled) so the
       // run stays ACTIVE with no in-flight wave -- exactly the state a
       // real settled-but-not-yet-fully-satisfying wave leaves behind for
-      // Tim to react to.
+      // Tim to react to. Settled directly via tickKeepGoingRun (the exact
+      // same real mechanism the fleet driver now uses in production),
+      // not by disguising a dispatch-worthy chat message as a settle --
+      // that used to work only because a dispatch attempt while a wave
+      // was in flight silently routed to settleStep as a side effect; the
+      // adversarial-review fix above means a dispatch-worthy message now
+      // honestly refuses instead while a wave is in flight, so it can no
+      // longer double as a "check on it" settle trigger.
       process.env.STUB_ORCA_TASKS = JSON.stringify([{ id: 'stub-task-id', status: 'completed' }])
-      const settle = await chat(base, {
-        projectId: PROJECT_ID,
-        message: 'go ahead and check on it',
-        placement: { worktree: REAL_WORKTREE, agent: 'codex' }
-      })
-      assert.equal(settle.body.tickResult.action, 'WAVE_SETTLED')
+      const settleResult = await tickKeepGoingRun(PROJECT_ID, [], () => new Date())
+      assert.equal(settleResult.action, 'WAVE_SETTLED')
     } finally {
       delete process.env.STUB_ORCA_TASKS
     }

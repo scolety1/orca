@@ -122,11 +122,15 @@ export async function readVerificationVerdict(run, worktreePath) {
       knownCriteria.has(entry.criterion) &&
       typeof entry?.verified === 'boolean'
   )
-  // Every real acceptance criterion must have a real verdict entry -- a
-  // verdict that only covers some criteria is not a complete, trustworthy
-  // read; treat it the same as no verdict rather than deciding COMPLETE on
-  // a partial picture.
-  if (criteria.length !== run.originalGoal.acceptanceCriteria.length) {
+  // Every real acceptance criterion must have a real, DISTINCT verdict
+  // entry -- a verdict that only covers some criteria is not a complete,
+  // trustworthy read; treat it the same as no verdict rather than
+  // deciding COMPLETE on a partial picture. Adversarial-review finding:
+  // comparing array lengths alone let a verdict that duplicated one
+  // criterion while omitting another still pass (same length, real gap
+  // hidden) -- comparing the real SET of covered criteria closes that.
+  const coveredCriteria = new Set(criteria.map((entry) => entry.criterion))
+  if (coveredCriteria.size !== run.originalGoal.acceptanceCriteria.length) {
     return null
   }
   return { criteria }

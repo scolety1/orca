@@ -104,6 +104,12 @@ test('a multi-project message with a mix of exact and fuzzy matches dispatches O
   // was never actually dispatched to -- it previously included the fuzzy
   // co-match (alpha-gadgets) too, misrepresenting it as acted-on.
   assert.deepEqual(result.resolvedProjectIds, ['alpha-widgets'])
+  // A second, related adversarial-review finding: scope must match the
+  // actual resolvedProjectIds it's returned alongside -- previously scope
+  // was computed once up front against the wider exact+fuzzy set, so this
+  // exact response would say scope: 'MULTI_PROJECT' next to a single-entry
+  // resolvedProjectIds, an internally inconsistent shape.
+  assert.equal(result.scope, 'PROJECT')
 })
 
 test('a fleet-wide status question may still use a fuzzy match informationally -- read-only, never gated', async () => {

@@ -48,20 +48,33 @@ function shortSha(sha: string | null): string {
 
 export function SystemStatusIndicator() {
   const [open, setOpen] = useState(false)
+  // Adversarial-review finding: useApi's dep list re-fetches on every
+  // change, including closing the dialog -- GET /api/runtime-identity
+  // spawns a real `git rev-parse HEAD` subprocess server-side
+  // (git-identity.mjs), so that wasted a real git spawn on every close.
+  // openCount only advances on an OPEN transition, so the fetch fires
+  // once per open, never on close.
+  const [openCount, setOpenCount] = useState(0)
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next)
+    if (next) {
+      setOpenCount((count) => count + 1)
+    }
+  }
   const {
     data: identity,
     loading: identityLoading,
     reload: reloadIdentity
-  } = useApi(() => api.runtimeIdentity(), [open])
+  } = useApi(() => api.runtimeIdentity(), [openCount])
   const {
     data: safety,
     loading: safetyLoading,
     reload: reloadSafety
-  } = useApi(() => api.updateSafety(), [open])
+  } = useApi(() => api.updateSafety(), [openCount])
   const runtimeBadge = identity ? RUNTIME_BADGE[identity.state] : null
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <button className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[11px] text-muted-foreground outline-none transition-colors hover:border-primary/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
           <span

@@ -293,6 +293,46 @@ test('reuses an existing ACTIVE run rather than creating a second one', async ()
   assert.ok(store.readRun().inFlightWave, 'the second dispatch is genuinely in flight')
 })
 
+test('a second dispatch while a real wave is already in flight is rejected honestly, never silently discarded -- adversarial-review finding', async () => {
+  const store = makeFakeStore(null)
+  const first = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead',
+    placement,
+    identity,
+    clock,
+    deps: { ...baseDeps(store), invokeLiveStructuredAnalysis: async () => workPlanResponse() }
+  })
+  assert.equal(first.ok, true)
+  assert.ok(store.readRun().inFlightWave, 'sanity: the first wave is genuinely still in flight')
+  const revisionBeforeSecond = store.readRun().revision
+
+  // Before this fix, this call would silently route to settleStep
+  // (tickKeepGoingRun's own routing on inFlightWave), discarding the new
+  // candidate work item entirely, while still returning ok:true -- the
+  // operator-facing "Started work on X" text would have been a real lie.
+  const second = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead and also fix something else',
+    placement,
+    identity,
+    clock,
+    deps: {
+      ...baseDeps(store),
+      invokeLiveStructuredAnalysis: async () =>
+        workPlanResponse({ objective: 'A second, different objective.' })
+    }
+  })
+  assert.equal(second.ok, false)
+  assert.equal(second.reason, 'RUN_NOT_DISPATCHABLE')
+  assert.match(second.detail, /already in flight/)
+  assert.equal(
+    store.readRun().revision,
+    revisionBeforeSecond,
+    'the run was never mutated by the rejected second dispatch'
+  )
+})
+
 test('a STALLED run is reported honestly and reuses M2 recovery, not a new dispatch attempt', async () => {
   const store = makeFakeStore(null)
   await planAndDispatchFromChat({

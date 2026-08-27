@@ -94,7 +94,16 @@ async function advanceOneProject(projectId, clock, deps) {
   const store = deps.store ?? { readRun: readKeepGoingRun }
   const run = store.readRun(projectId)
   if (!isDriverEligible(run)) {
-    return { projectId, action: 'SKIPPED', reason: run ? `run state is ${run.state}` : 'no run' }
+    // Adversarial-review finding: this used to always report "run state is
+    // X" even when X was ACTIVE and the real reason was an open Needs You
+    // question -- misleading anyone inspecting driveOneCycle's results.
+    let reason = 'no run'
+    if (run) {
+      reason = run.needsYou.some((entry) => !entry.resolvedAt)
+        ? 'an open Needs You question is unresolved'
+        : `run state is ${run.state}`
+    }
+    return { projectId, action: 'SKIPPED', reason }
   }
 
   if (isRunExecuting(run)) {
