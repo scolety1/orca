@@ -44,6 +44,13 @@ const FUZZY_CONFIDENCE_FLOOR = 0.6
 // not an oversight -- this codebase's own convention (see
 // domain/self-repair-authority.mjs) is to leave an ambiguous case honestly
 // unhandled rather than guess.
+//
+// Disclosed limit: this is a single-negation cue, not a parser -- a genuine
+// double negative ("don't skip tsf-orca", meaning include it) reads as an
+// exclusion instead. Erring toward excluding when the operator's own words
+// are in tension is the deliberate, safe-default choice for an
+// authorization surface (see the everExcluded handling below), not an
+// attempt to correctly resolve arbitrary double negatives.
 const EXCLUSION_PREFIX =
   "(?:not|never|won['’]t|without|except(?:\\s+for)?|excluding|other than|skip|leave out|don['’]t touch|do not touch|don['’]t include|do not include)"
 
@@ -69,7 +76,20 @@ function isExcludedNear(clause, literalText) {
 // identical drift-between-two-lists failure mode already found once in this
 // repair (chat-responder.mjs's PROHIBITION_MARKERS vs. this file's own
 // exclusion vocabulary); a single source here closes it for these two.
-const FUZZY_EXCLUSION_CUES = new RegExp(`\\b${EXCLUSION_PREFIX}\\b`, 'i')
+//
+// Adversarial-review finding (2nd pass): "without" has no proximity anchor
+// here (unlike isExcludedNear's phrase-based check), so a hyphenated
+// compound like "without-fail" -- \b matches on the hyphen boundary even
+// though it has nothing to do with excluding anything -- wiped an entire
+// clause's fuzzy tokens. Excluded from this whole-clause-only check
+// specifically (it stays in EXCLUSION_PREFIX, where "without touching X" is
+// safely proximity-anchored to X). A disclosed, narrower residual: any bare
+// cue word here could in principle collide with a hyphenated compound the
+// same way; "without" is the one demonstrated in practice.
+const FUZZY_EXCLUSION_CUES = new RegExp(
+  `\\b${EXCLUSION_PREFIX.replace("without|", '')}\\b`,
+  'i'
+)
 
 // Judged per-clause (comma/"but"/em-dash/sentence-boundary separated) rather
 // than whole-message, for the same reason chat-responder.mjs's own directive
@@ -119,10 +139,21 @@ export function resolveProjectsFromText(message, projects, options = {}) {
       .map(([alias]) => ({ alias, pattern: new RegExp(`\\b${escapeRegExp(alias)}\\b`, 'i') }))
     const infraSensitive = INFRA_SENSITIVE_PROJECT_IDS.has(project.id)
 
-    // Exact/alias: judged per-clause so an exclusion cue only ever
-    // suppresses the specific clause that actually names the project (the
-    // proximity anchor above), never a different, unrelated clause.
+    // Exact/alias: judged per-clause so an exclusion cue only ever anchors
+    // to the specific clause that actually names the project (the proximity
+    // anchor above), never a different, unrelated clause naming it too --
+    // but adversarial-review finding (2nd pass): a match found in an
+    // EARLIER, non-excluded clause must not survive a LATER clause
+    // explicitly excluding the same project ("tsf-orca needs it done, but
+    // actually don't touch tsf-orca, fix niners-war-room instead" still
+    // targeted tsf-orca, since the excluded clause was simply skipped
+    // rather than retracting the earlier match). Any real exclusion,
+    // wherever it appears, wins over any match, wherever it appears --
+    // the safe default for an authorization surface: when the operator's
+    // words are genuinely in tension, err toward NOT targeting, never
+    // toward targeting something they said to leave out.
     let best = null
+    let everExcluded = false
     for (const clause of clauses) {
       const lowerClause = clause.toLowerCase()
       let clauseMatch = null
@@ -142,7 +173,11 @@ export function resolveProjectsFromText(message, projects, options = {}) {
         }
       }
 
-      if (!clauseMatch || excluded) {
+      if (!clauseMatch) {
+        continue
+      }
+      if (excluded) {
+        everExcluded = true
         continue
       }
       if (!best || clauseMatch.confidence > best.confidence) {
@@ -150,6 +185,9 @@ export function resolveProjectsFromText(message, projects, options = {}) {
       }
     }
 
+    if (everExcluded) {
+      continue
+    }
     if (best) {
       exact.push({ project, ...best })
       continue

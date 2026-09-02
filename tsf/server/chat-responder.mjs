@@ -154,19 +154,18 @@ const INTENTS = [
     // any following word/id-shaped token, not just the three pronouns.
     pattern:
       /\b(go ahead|go for it|please proceed|proceed with [\w-]+|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i,
-    // Adversarial-review finding: the broadened pattern above matches
-    // "proceed with X" as a plain substring, so "don't proceed with
-    // tsf-orca" was misread as an affirmative dispatch request -- a real
-    // authorization bypass (classifyIntent has no negation awareness of its
-    // own anywhere in this file; that's the job of classifyDecision's
-    // clause-level isConsequentialDirective, which only screens for
-    // TIM_REQUIRED_PATTERNS keywords, none of which "don't proceed" is).
-    // Scoped narrowly to the phrasing this repair itself introduced, not a
-    // general negation rewrite of every intent here.
-    guard: (message) =>
-      !/\b(?:don['’]t|do not|never|won['’]t|shouldn['’]t|wouldn['’]t|couldn['’]t|can['’]t|cannot|not)\s+proceed\b/i.test(
-        message
-      )
+    // Adversarial-review finding (2nd pass): a first fix here only guarded
+    // the "proceed" alternative, only against negation words immediately
+    // adjacent, and against the WHOLE message rather than per-clause --
+    // "don't go ahead with tsf-orca" (a different alternative), "please do
+    // not just proceed" (word inserted), and "don't proceed with X. go
+    // ahead and proceed with Y instead." (an unrelated LATER genuine
+    // request wrongly suppressed by an EARLIER negation) all still slipped
+    // through or wrongly withheld the wrong one. Replaced with
+    // `directiveOnly`, reusing this file's own proven, adversarial-review-
+    // hardened clause/negation judgment (isGenuineDirective) instead of a
+    // second, narrower, ad hoc regex.
+    directiveOnly: true
   },
   { id: 'NEXT_ACTION', pattern: /\b(what should we do next|next step|what'?s next|what now)\b/i },
   { id: 'RATIONALE', pattern: /\b(why (did you|was)|what'?s the reasoning|why choose)\b/i },
@@ -174,15 +173,48 @@ const INTENTS = [
     id: 'CRITIQUE',
     pattern: /\b(looks like (shit|garbage|crap)|don'?t like|ugly|ugh|ew|hate this|sucks)\b/i
   },
-  { id: 'FIX_REQUEST', pattern: /\b(fix (this|it)|change (this|it)|redo|make it)\b/i },
+  {
+    id: 'FIX_REQUEST',
+    pattern: /\b(fix (this|it)|change (this|it)|redo|make it)\b/i,
+    // Adversarial-review finding (2nd pass): FIX_REQUEST is dispatch-worthy
+    // (command-responder.mjs's DISPATCH_WORTHY_INTENTS) exactly like
+    // DISPATCH_REQUEST, but had no negation awareness of its own -- "don't
+    // fix this" reached the same real dispatch path as an affirmative fix
+    // request. Same `directiveOnly` gate as DISPATCH_REQUEST.
+    directiveOnly: true
+  },
   { id: 'RESEARCH', pattern: /\b(research|look into|compare|investigate|explore options)\b/i },
   { id: 'HEALTH', pattern: /\b(health|is it healthy|any (issues|problems|blockers))\b/i },
   { id: 'ADOPTION', pattern: /\b(adopt|ready for adoption|candidate)\b/i }
 ]
 
+// Command Authority repair: a dispatch-worthy intent (DISPATCH_REQUEST,
+// FIX_REQUEST) must only be recognized from a clause that is a genuine,
+// non-negated, non-inquiry directive -- reuses isGenuineDirective/
+// splitIntoSentences/splitIntoClauses directly rather than a second,
+// independently-maintained negation check, so a fix to the shared
+// vocabulary/rules here (already adversarial-review-hardened for
+// TIM_REQUIRED) applies to both without having to be re-applied by hand.
+function matchesAsGenuineDirective(message, pattern) {
+  for (const sentence of splitIntoSentences(message)) {
+    for (const clause of splitIntoClauses(sentence)) {
+      if (pattern.test(clause) && isGenuineDirective(clause, sentence)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 export function classifyIntent(message) {
-  for (const { id, pattern, guard } of INTENTS) {
-    if (pattern.test(message) && (!guard || guard(message))) {
+  for (const { id, pattern, directiveOnly } of INTENTS) {
+    if (directiveOnly) {
+      if (matchesAsGenuineDirective(message, pattern)) {
+        return id
+      }
+      continue
+    }
+    if (pattern.test(message)) {
       return id
     }
   }

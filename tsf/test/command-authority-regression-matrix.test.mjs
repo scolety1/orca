@@ -277,6 +277,37 @@ test('ALIAS: a whitespace-padded custom alias from TSF_PROJECT_ALIASES_JSON stil
   assert.deepEqual(ids(matches), ['tsf-orca'])
 })
 
+test('NEGATION: a LATER exclusion retracts a match already found in an earlier, non-excluded clause naming the same project', () => {
+  const { matches } = resolveProjectsFromText(
+    "tsf-orca needs it done, but actually don't touch tsf-orca, fix niners-war-room instead",
+    REAL_PROJECTS
+  )
+  assert.deepEqual(ids(matches), ['niners-war-room'])
+})
+
+test('TARGETING: a hyphenated compound containing a bare exclusion word ("without-fail") does not wipe an unrelated clause\'s fuzzy tokens', () => {
+  const { matches } = resolveProjectsFromText(
+    'the without-fail worldforge sablewake project and its runtime repair v3 candidate needs review',
+    REAL_PROJECTS,
+    { aliases: {} }
+  )
+  assert.deepEqual(ids(matches), ['worldforge-sablewake-live-runtime-repair-v3'])
+})
+
+test('AUTHORIZATION-LOOP: a negated FIX_REQUEST ("don\'t fix X") is never treated as a dispatch request either -- not just DISPATCH_REQUEST\'s own phrasing', () => {
+  assert.equal(classifyIntent("don't fix this"), 'GENERAL')
+  assert.equal(classifyIntent('never fix it'), 'GENERAL')
+})
+
+test('AUTHORIZATION-LOOP: the negation guard covers every DISPATCH_REQUEST phrasing, not only "proceed", and is clause-scoped so an earlier negation never suppresses a later, unrelated genuine request', () => {
+  assert.equal(classifyIntent("don't go ahead with tsf-orca"), 'GENERAL')
+  assert.equal(classifyIntent("don't build that"), 'GENERAL')
+  assert.equal(
+    classifyIntent("Don't proceed with niners-war-room. Go ahead and proceed with tsf-orca instead."),
+    'DISPATCH_REQUEST'
+  )
+})
+
 test('AUTHORIZATION-LOOP: authorization for Project A never leaks to Project B in the same multi-project dispatch', async () => {
   // TIM_REQUIRED is recomputed fresh per message with no cross-message or
   // cross-project state (command-responder.mjs/chat-responder.mjs) -- pinned

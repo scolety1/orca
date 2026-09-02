@@ -22,12 +22,22 @@
 // project-name-resolver.mjs 'alias' tier once durable aliases (Nytheria,
 // NWR, ...) were added -- an operator who left the toggle on (it persists
 // across messages) could then authorize self-repair via a casual nickname
-// mention rather than deliberately typing the project's own literal id/
-// displayName, contradicting this gate's own "EXACT id/displayName match"
-// requirement above. An alias is a real, trusted match for ordinary
-// targeting/dispatch, but self-repair is TSF's single highest-stakes
-// action (branching a worktree from tsf/main itself) and is held to a
-// strictly narrower bar on purpose.
+// mention rather than the project's own literal id/displayName,
+// contradicting this gate's own "EXACT id/displayName match" requirement
+// above. An alias is a real, trusted match for ordinary targeting/dispatch,
+// but self-repair is TSF's single highest-stakes action (branching a
+// worktree from tsf/main itself) and is held to a strictly narrower bar on
+// purpose.
+//
+// Disclosed, pre-existing gap this narrowing does not (and was never meant
+// to) close: `matchedOn: 'id'` also flows from an operator picking a
+// project explicitly via UI (http-server.mjs's `body.projectId` path), not
+// only from typing its literal id/displayName in chat text -- so the
+// toggle-persists-across-messages design already lets a dropdown selection
+// plus any ordinary dispatch-worthy message authorize self-repair, same as
+// before this repair. Real, but orthogonal to what this repair changes
+// (Command's free-text project RESOLUTION, not the toggle/selection UX
+// upstream of it) -- not fixed here.
 export function isAuthorizedSelfRepair({
   toggleOn,
   matchedOn,

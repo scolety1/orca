@@ -153,12 +153,13 @@ test('a durable alias resolves through the real HTTP route and dispatches a real
 // durable dispatch -- proves exclusion is scoped to exactly the named
 // project, not the whole message. The two onboarded projects deliberately
 // share most of their auto-derived id/displayName tokens (both come from
-// this file's own createTempRepo prefix) -- a real, honest side effect: the
-// excluded project still surfaces as an unrelated FUZZY co-match (never
-// exact, never dispatched to -- command-responder.mjs's own adversarial-
-// review-fixed rule), which is why this goes through the multi-project
-// response shape (dispatchResults/live) rather than the single-project
-// fast path's `dispatched` field.
+// this file's own createTempRepo prefix) -- exercising a real edge case:
+// resolution correctly drops the excluded project ENTIRELY (2nd-pass
+// adversarial-review fix -- an exclusion anywhere now wins over a match
+// anywhere, including the fuzzy fallback the shared-prefix tokens would
+// otherwise trigger), so exactly one project resolves and this takes the
+// same single-project fast path (the `dispatched` field) as an ordinary
+// exact match.
 test('negation excludes the named project end to end while the other named project still gets a real, durable run', async () => {
   await withServer(async (base) => {
     const keep = await onboardTestProject(base, 'negation-keep')
@@ -171,15 +172,8 @@ test('negation excludes the named project end to end while the other named proje
         message: `go ahead and fix ${keep.projectId}, not ${excluded.projectId}`
       })
       assert.equal(status, 200)
-      // Only the non-excluded project was ever actually dispatched to --
-      // the excluded one, even though it appears as unrelated fuzzy noise
-      // in the wider resolution, never reaches resolvedProjectIds/dispatchResults
-      // (command-responder.mjs only ever reports projects a real dispatch
-      // was attempted against).
       assert.deepEqual(body.resolvedProjectIds, [keep.projectId])
-      assert.equal(body.live, true)
-      assert.deepEqual(body.dispatchResults.map((r) => r.projectId), [keep.projectId])
-      assert.equal(body.dispatchResults[0].ok, true)
+      assert.equal(body.dispatched, true)
 
       const runKeep = await (await fetch(`${base}/api/keep-going/${keep.projectId}`)).json()
       const runExcluded = await (await fetch(`${base}/api/keep-going/${excluded.projectId}`)).json()
