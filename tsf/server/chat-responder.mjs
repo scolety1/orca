@@ -145,8 +145,15 @@ const INTENTS = [
   // correctly distinguished rather than the "next step" substring colliding.
   {
     id: 'DISPATCH_REQUEST',
+    // Command Authority repair: "proceed with (it|that|this)" only matched a
+    // pronoun -- an explicit, named-project confirmation ("yes, proceed with
+    // niners-war-room"), which is exactly the phrasing the TIM_REQUIRED
+    // refusal itself asks for ("name exactly which project(s)"), fell
+    // through to GENERAL and never dispatched, forcing a repeated ask
+    // instead of consuming the explicit authorization once. Broadened to
+    // any following word/id-shaped token, not just the three pronouns.
     pattern:
-      /\b(go ahead|go for it|please proceed|proceed with (it|that|this)|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i
+      /\b(go ahead|go for it|please proceed|proceed with [\w-]+|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i
   },
   { id: 'NEXT_ACTION', pattern: /\b(what should we do next|next step|what'?s next|what now)\b/i },
   { id: 'RATIONALE', pattern: /\b(why (did you|was)|what'?s the reasoning|why choose)\b/i },
