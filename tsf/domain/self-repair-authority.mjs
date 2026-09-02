@@ -17,6 +17,17 @@
 // match (never a fuzzy guess), that project's id matching the configured
 // self-repair project exactly, and the message clearing the normal
 // TIM_REQUIRED authority gate.
+//
+// Adversarial-review finding: `matchedOn !== 'fuzzy'` also admitted the
+// project-name-resolver.mjs 'alias' tier once durable aliases (Nytheria,
+// NWR, ...) were added -- an operator who left the toggle on (it persists
+// across messages) could then authorize self-repair via a casual nickname
+// mention rather than deliberately typing the project's own literal id/
+// displayName, contradicting this gate's own "EXACT id/displayName match"
+// requirement above. An alias is a real, trusted match for ordinary
+// targeting/dispatch, but self-repair is TSF's single highest-stakes
+// action (branching a worktree from tsf/main itself) and is held to a
+// strictly narrower bar on purpose.
 export function isAuthorizedSelfRepair({
   toggleOn,
   matchedOn,
@@ -26,8 +37,7 @@ export function isAuthorizedSelfRepair({
 }) {
   return (
     !!toggleOn &&
-    !!matchedOn &&
-    matchedOn !== 'fuzzy' &&
+    (matchedOn === 'id' || matchedOn === 'displayName') &&
     decisionClass !== 'TIM_REQUIRED' &&
     !!selfRepairProjectId &&
     projectId === selfRepairProjectId

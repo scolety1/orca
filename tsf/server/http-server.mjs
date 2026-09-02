@@ -40,6 +40,7 @@ import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { projectsById, summarizeWork, summarizeCard } from './project-catalog.mjs'
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { resolveProjectsFromText } from './project-name-resolver.mjs'
+import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
 import { handleHealthRepairRoute } from './health-repair-http-routes.mjs'
@@ -449,7 +450,14 @@ export function createRequestHandler(options = {}) {
         // (below) rather than silently entering Command's fleet-wide
         // resolution path.
         if (!project && body.projectId == null) {
-          const resolution = resolveProjectsFromText(message, projects)
+          // Adversarial-review finding: loaded once and passed to both this
+          // call and respondCommand's own internal resolution below --
+          // previously each independently re-read+re-parsed
+          // TSF_PROJECT_ALIASES_JSON for the same request.
+          const commandAliases = loadProjectAliases()
+          const resolution = resolveProjectsFromText(message, projects, {
+            aliases: commandAliases
+          })
           if (resolution.matches.length === 1 && resolution.matches[0].matchedOn !== 'fuzzy') {
             project = resolution.matches[0].project
             matchedOn = resolution.matches[0].matchedOn
@@ -458,7 +466,8 @@ export function createRequestHandler(options = {}) {
               message,
               projects,
               opState,
-              clock: () => new Date()
+              clock: () => new Date(),
+              aliases: commandAliases
             })
             const freshState = loadState()
             const threads = { ...freshState.chatThreads }

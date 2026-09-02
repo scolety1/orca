@@ -32,8 +32,20 @@ const FUZZY_CONFIDENCE_FLOOR = 0.6
 // isn't tsf-orca working?" as excluding tsf-orca, when "isn't" describes
 // STATE, not an instruction to leave it out. Exclusion is only real when the
 // cue sits immediately before the project's own matched phrase.
+//
+// Adversarial-review finding: "never"/"won't"/"without" were missing (a real
+// vocabulary gap vs. PROHIBITION_MARKERS) and are added here -- but
+// "isn't"/"aren't"/"can't"/"couldn't"/"shouldn't"/"wouldn't" are
+// deliberately NOT added, even proximity-anchored: "isn't tsf-orca" is
+// exactly as adjacent in a genuine state question ("why isn't tsf-orca
+// working?") as in a real exclusion ("this isn't tsf-orca, it's NWR"), so
+// adding them back would reintroduce the exact false-positive this file's
+// own regression suite already pins against. A disclosed, deliberate gap,
+// not an oversight -- this codebase's own convention (see
+// domain/self-repair-authority.mjs) is to leave an ambiguous case honestly
+// unhandled rather than guess.
 const EXCLUSION_PREFIX =
-  "(?:not|except(?:\\s+for)?|excluding|other than|skip|leave out|don['’]t touch|do not touch|don['’]t include|do not include)"
+  "(?:not|never|won['’]t|without|except(?:\\s+for)?|excluding|other than|skip|leave out|don['’]t touch|do not touch|don['’]t include|do not include)"
 
 function isExcludedNear(clause, literalText) {
   const pattern = new RegExp(
@@ -48,18 +60,30 @@ function isExcludedNear(clause, literalText) {
 // stays a broader whole-clause check -- acceptable here since a fuzzy match
 // is already never trusted enough to dispatch on (command-responder.mjs
 // gates real dispatch to exact/alias matches only); this only affects
-// informational answers.
-const FUZZY_EXCLUSION_CUES = /\b(?:not|except|excluding|other than|skip|leave out)\b/i
+// informational answers. Built directly from EXCLUSION_PREFIX rather than a
+// second, separately-maintained word list -- adversarial-review finding:
+// an earlier version of this list omitted "don't touch"/"do not touch"/
+// "don't include"/"do not include" (present in EXCLUSION_PREFIX above), so
+// "don't touch tsf-orca" excluded tsf-orca from an exact match only to have
+// it silently reappear as fuzzy noise from the very same clause -- the
+// identical drift-between-two-lists failure mode already found once in this
+// repair (chat-responder.mjs's PROHIBITION_MARKERS vs. this file's own
+// exclusion vocabulary); a single source here closes it for these two.
+const FUZZY_EXCLUSION_CUES = new RegExp(`\\b${EXCLUSION_PREFIX}\\b`, 'i')
 
-// Judged per-clause (comma/"but"/sentence-boundary separated) rather than
-// whole-message, for the same reason chat-responder.mjs's own directive
+// Judged per-clause (comma/"but"/em-dash/sentence-boundary separated) rather
+// than whole-message, for the same reason chat-responder.mjs's own directive
 // negation is clause-scoped: "no rush, but fix niners-war-room, not
 // tsf-orca" must not let an earlier, unrelated hedge suppress a real later
 // target, and must let a later negation exclude only the project it
-// actually names.
+// actually names. Em-dash/double-hyphen normalization and a word-bounded
+// "but" (adversarial-review finding: a literal " but " substring, and no
+// em-dash handling at all, both diverged from chat-responder.mjs's own
+// proven clause splitting for no real reason) match that file's convention.
 function splitClauses(message) {
   return String(message)
-    .split(/[.!?\n;]+|,| but /i)
+    .replace(/--|—/g, '.')
+    .split(/[.!?\n;]+|,|\bbut\b/i)
     .map((c) => c.trim())
     .filter(Boolean)
 }
@@ -70,14 +94,18 @@ function splitClauses(message) {
 // fuzzy-match it as a real target. Narrow, explicitly-reproduced pattern
 // (this file's own stated convention is never to guess broadly) -- it only
 // ever suppresses tsf-orca's FUZZY path; a literal id/displayName mention of
-// tsf-orca still resolves normally.
+// tsf-orca still resolves normally. Keyed off a small, explicit set rather
+// than a single hardcoded id check (adversarial-review finding: the next
+// project whose name collides with a common infra/tool term would otherwise
+// need another copy-pasted special case) -- extend this set, not the
+// matching logic, when a new collision is found.
 const INFRA_MENTION_PATTERN =
   /\b(?:use|using|via|through|with|run(?:ning)?(?: it| this)?(?: in| on| through)?)\s+(?:the\s+)?tsf\W{0,3}(?:and\s+|\+\s*)?orca\b/i
+const INFRA_SENSITIVE_PROJECT_IDS = new Set(['tsf-orca'])
 
 export function resolveProjectsFromText(message, projects, options = {}) {
   const aliases = options.aliases ?? loadProjectAliases()
   const clauses = splitClauses(message)
-  const infraMentionOnly = INFRA_MENTION_PATTERN.test(message)
 
   const exact = []
   const fuzzy = []
@@ -89,7 +117,11 @@ export function resolveProjectsFromText(message, projects, options = {}) {
     const aliasEntries = Object.entries(aliases)
       .filter(([, id]) => id === project.id)
       .map(([alias]) => ({ alias, pattern: new RegExp(`\\b${escapeRegExp(alias)}\\b`, 'i') }))
+    const infraSensitive = INFRA_SENSITIVE_PROJECT_IDS.has(project.id)
 
+    // Exact/alias: judged per-clause so an exclusion cue only ever
+    // suppresses the specific clause that actually names the project (the
+    // proximity anchor above), never a different, unrelated clause.
     let best = null
     for (const clause of clauses) {
       const lowerClause = clause.toLowerCase()
@@ -107,14 +139,6 @@ export function resolveProjectsFromText(message, projects, options = {}) {
         if (aliasHit) {
           clauseMatch = { matchedOn: 'alias', confidence: 1 }
           excluded = isExcludedNear(clause, aliasHit.alias)
-        } else if (nameTokens.length > 0 && !(project.id === 'tsf-orca' && infraMentionOnly)) {
-          const clauseTokens = new Set(tokenize(clause))
-          const overlap = nameTokens.filter((t) => clauseTokens.has(t)).length
-          const ratio = overlap / nameTokens.length
-          if (overlap > 0 && ratio >= FUZZY_CONFIDENCE_FLOOR) {
-            clauseMatch = { matchedOn: 'fuzzy', confidence: ratio }
-            excluded = FUZZY_EXCLUSION_CUES.test(clause)
-          }
         }
       }
 
@@ -127,7 +151,42 @@ export function resolveProjectsFromText(message, projects, options = {}) {
     }
 
     if (best) {
-      ;(best.matchedOn === 'fuzzy' ? fuzzy : exact).push({ project, ...best })
+      exact.push({ project, ...best })
+      continue
+    }
+
+    if (nameTokens.length === 0) {
+      continue
+    }
+
+    // Fuzzy: token overlap unioned across every clause that isn't negated or
+    // (for an infra-sensitive project) a pure infra-tooling mention --
+    // adversarial-review finding: scoring this per-clause-only (matching
+    // the exact/alias loop above) regressed real matches whose words are
+    // naturally scattered across a comma-joined sentence, since each
+    // clause's own ratio could fall below the floor even though the old
+    // whole-message ratio cleared it. Restores that whole-message behavior
+    // for the common (no negation) case while still letting a wholly
+    // negated or pure-infra-phrasing clause contribute nothing -- and
+    // (adversarial-review finding) the infra-mention check is now itself
+    // per-clause, so an infra-tooling mention in one clause can no longer
+    // suppress a genuine, unrelated mention of the same project in another.
+    const contributingTokens = new Set()
+    for (const clause of clauses) {
+      if (FUZZY_EXCLUSION_CUES.test(clause)) {
+        continue
+      }
+      if (infraSensitive && INFRA_MENTION_PATTERN.test(clause)) {
+        continue
+      }
+      for (const token of tokenize(clause)) {
+        contributingTokens.add(token)
+      }
+    }
+    const overlap = nameTokens.filter((t) => contributingTokens.has(t)).length
+    const ratio = overlap / nameTokens.length
+    if (overlap > 0 && ratio >= FUZZY_CONFIDENCE_FLOOR) {
+      fuzzy.push({ project, matchedOn: 'fuzzy', confidence: ratio })
     }
   }
 

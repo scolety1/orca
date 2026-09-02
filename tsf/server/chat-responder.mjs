@@ -153,7 +153,20 @@ const INTENTS = [
     // instead of consuming the explicit authorization once. Broadened to
     // any following word/id-shaped token, not just the three pronouns.
     pattern:
-      /\b(go ahead|go for it|please proceed|proceed with [\w-]+|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i
+      /\b(go ahead|go for it|please proceed|proceed with [\w-]+|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i,
+    // Adversarial-review finding: the broadened pattern above matches
+    // "proceed with X" as a plain substring, so "don't proceed with
+    // tsf-orca" was misread as an affirmative dispatch request -- a real
+    // authorization bypass (classifyIntent has no negation awareness of its
+    // own anywhere in this file; that's the job of classifyDecision's
+    // clause-level isConsequentialDirective, which only screens for
+    // TIM_REQUIRED_PATTERNS keywords, none of which "don't proceed" is).
+    // Scoped narrowly to the phrasing this repair itself introduced, not a
+    // general negation rewrite of every intent here.
+    guard: (message) =>
+      !/\b(?:don['’]t|do not|never|won['’]t|shouldn['’]t|wouldn['’]t|couldn['’]t|can['’]t|cannot|not)\s+proceed\b/i.test(
+        message
+      )
   },
   { id: 'NEXT_ACTION', pattern: /\b(what should we do next|next step|what'?s next|what now)\b/i },
   { id: 'RATIONALE', pattern: /\b(why (did you|was)|what'?s the reasoning|why choose)\b/i },
@@ -168,8 +181,8 @@ const INTENTS = [
 ]
 
 export function classifyIntent(message) {
-  for (const { id, pattern } of INTENTS) {
-    if (pattern.test(message)) {
+  for (const { id, pattern, guard } of INTENTS) {
+    if (pattern.test(message) && (!guard || guard(message))) {
       return id
     }
   }

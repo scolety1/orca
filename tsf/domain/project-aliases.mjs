@@ -39,8 +39,9 @@ export function loadProjectAliases(env = process.env) {
   }
   const normalized = {}
   for (const [alias, projectId] of Object.entries(parsed)) {
-    if (typeof alias === 'string' && typeof projectId === 'string' && alias.trim()) {
-      normalized[alias.toLowerCase()] = projectId
+    const trimmedAlias = typeof alias === 'string' ? alias.trim() : ''
+    if (trimmedAlias && typeof projectId === 'string') {
+      normalized[trimmedAlias.toLowerCase()] = projectId
     }
   }
   return { ...DEFAULT_PROJECT_ALIASES, ...normalized }

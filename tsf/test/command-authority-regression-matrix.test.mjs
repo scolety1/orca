@@ -11,6 +11,7 @@ import { resolveProjectsFromText } from '../server/project-name-resolver.mjs'
 import { respondCommand } from '../server/command-responder.mjs'
 import { classifyIntent, classifyDecision } from '../server/chat-responder.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
+import { loadProjectAliases } from '../domain/project-aliases.mjs'
 
 // Real catalog ids/displayNames as actually onboarded today
 // (tsf/server/.local-state/operator-state.json) -- not invented.
@@ -207,6 +208,73 @@ test('AUTHORIZATION-LOOP: self-repair authorization never leaks to a project rea
     selfRepairProjectId: 'tsf-orca'
   })
   assert.equal(authorized, false)
+})
+
+test('AUTHORIZATION-LOOP: a NEGATED confirmation ("don\'t proceed with X") is never treated as a dispatch request', async () => {
+  // Adversarial-review finding, pinned here: the broadened "proceed with X"
+  // pattern matched as a plain substring, so a refusal was misread as an
+  // affirmative dispatch request -- a real authorization bypass.
+  // Bounded to a negation immediately adjacent to "proceed" -- a negation
+  // several words away ("not going to proceed with X") is a disclosed,
+  // deliberately-unhandled gap rather than a guessed pattern (this file's
+  // own stated convention): reaching for it risks the same "isn't tsf-orca
+  // working" false-positive class this repair already found and fixed once.
+  assert.equal(classifyIntent("don't proceed with tsf-orca"), 'GENERAL')
+  assert.equal(classifyIntent('never proceed with tsf-orca'), 'GENERAL')
+
+  const result = await respondCommand({
+    message: "don't proceed with tsf-orca, focus on niners-war-room instead",
+    projects: [
+      {
+        id: 'tsf-orca',
+        displayName: 'TSF_ORCA',
+        mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+        candidate: null,
+        receipts: { chain: [] }
+      }
+    ],
+    opState: { keepGoingRuns: {} },
+    clock: () => new Date('2026-09-02T00:00:00.000Z')
+  })
+  assert.equal(result.dispatchResults, undefined, 'a negated confirmation never triggers a real dispatch')
+})
+
+test('TARGETING/INFRA-MENTION: an infra-tooling mention in one clause never suppresses a genuine, unrelated mention of the same project in another clause', () => {
+  const { matches } = resolveProjectsFromText(
+    'use TSF and Orca to check status, but tsf orca urgently needs a fix, go ahead',
+    REAL_PROJECTS
+  )
+  assert.ok(
+    ids(matches).includes('tsf-orca'),
+    'the genuine later mention still resolves even though an earlier clause was pure infra phrasing'
+  )
+})
+
+test('TARGETING: fuzzy overlap is unioned across the whole message, not scored per-clause only -- words naturally scattered across a comma-joined sentence still resolve', () => {
+  const { matches } = resolveProjectsFromText(
+    'the worldforge sablewake project, and its runtime repair v3 candidate, needs review',
+    REAL_PROJECTS,
+    { aliases: {} } // isolate fuzzy-overlap scoring from the alias table
+  )
+  assert.deepEqual(ids(matches), ['worldforge-sablewake-live-runtime-repair-v3'])
+})
+
+test('AUTHORIZATION-LOOP: self-repair authorization requires a literal id/displayName match -- an alias is never trusted for this one highest-stakes action, even with the toggle on and the ids matching', () => {
+  const authorized = isAuthorizedSelfRepair({
+    toggleOn: true,
+    matchedOn: 'alias',
+    decisionClass: 'AUTO_DECIDE',
+    projectId: 'tsf-orca',
+    selfRepairProjectId: 'tsf-orca' // ids match this time -- only matchedOn differs
+  })
+  assert.equal(authorized, false)
+})
+
+test('ALIAS: a whitespace-padded custom alias from TSF_PROJECT_ALIASES_JSON still resolves -- it is trimmed before being stored as a match key', () => {
+  const { matches } = resolveProjectsFromText('ship it for nickname please', REAL_PROJECTS, {
+    aliases: loadProjectAliases({ TSF_PROJECT_ALIASES_JSON: JSON.stringify({ ' nickname ': 'tsf-orca' }) })
+  })
+  assert.deepEqual(ids(matches), ['tsf-orca'])
 })
 
 test('AUTHORIZATION-LOOP: authorization for Project A never leaks to Project B in the same multi-project dispatch', async () => {
