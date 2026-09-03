@@ -6,14 +6,23 @@
 // but uses its OWN lock file so a busy research-mission write never blocks
 // a library read/write or vice versa.
 import { withFileLock } from './cross-process-file-lock.mjs'
+import { assertSupportedResearchLibrarySchemaVersion } from '../domain/research-schema-versioning.mjs'
 import { getStateFilePath, loadState, saveState } from './data-store.mjs'
 
 function lockPath() {
   return `${getStateFilePath()}.research-library.lock`
 }
 
+function libraryFrom(opState) {
+  const library = opState.researchLibrary ?? null
+  // Same fail-closed read-boundary guard research-mission-store.mjs applies
+  // to missions -- see research-schema-versioning.mjs.
+  if (library) assertSupportedResearchLibrarySchemaVersion(library)
+  return library
+}
+
 export function readResearchLibrary() {
-  return loadState().researchLibrary
+  return libraryFrom(loadState())
 }
 
 // mutateFn(current) must be synchronous and pure: given the just-loaded
@@ -24,7 +33,7 @@ export function readResearchLibrary() {
 export async function withResearchLibrary(mutateFn) {
   return withFileLock(lockPath(), undefined, () => {
     const opState = loadState()
-    const next = mutateFn(opState.researchLibrary)
+    const next = mutateFn(libraryFrom(opState))
     saveState({ ...opState, researchLibrary: next })
     return next
   })

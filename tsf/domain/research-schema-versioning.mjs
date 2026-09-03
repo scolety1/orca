@@ -18,6 +18,34 @@
 // registered the day a V2 actually ships.
 import { deepClone } from './canonical.mjs'
 
+// Generic engine shared by every durable top-level record kind this module
+// version-guards (currently: research mission, research library). Kept
+// private -- callers only ever see the kind-specific exports below, so a
+// future kind is a few lines, not a new mechanism.
+function buildSchemaVersionGuard(kind, migrations) {
+  const supportedVersions = Object.freeze([...migrations.keys()])
+  const codeKind = kind.toUpperCase().replace(/\s+/g, '_')
+  function assertSupported(record) {
+    if (!record?.schemaVersion) {
+      const error = new Error(`${kind} is missing schemaVersion -- cannot safely determine its shape`)
+      error.code = `TSF_${codeKind}_SCHEMA_VERSION_MISSING`
+      throw error
+    }
+    if (!migrations.has(record.schemaVersion)) {
+      const error = new Error(
+        `unsupported ${kind} schemaVersion: ${record.schemaVersion} (this code understands: ${supportedVersions.join(', ')}) -- refusing to operate on a shape this code was never verified against`
+      )
+      error.code = `TSF_UNSUPPORTED_${codeKind}_SCHEMA_VERSION`
+      throw error
+    }
+  }
+  function migrate(record) {
+    assertSupported(record)
+    return deepClone(migrations.get(record.schemaVersion)(record))
+  }
+  return { supportedVersions, assertSupported, migrate }
+}
+
 export const CURRENT_RESEARCH_MISSION_SCHEMA_VERSION = 'TSF_RESEARCH_MISSION_V1'
 
 // Every schemaVersion this running code can safely operate on, mapped to
@@ -25,29 +53,16 @@ export const CURRENT_RESEARCH_MISSION_SCHEMA_VERSION = 'TSF_RESEARCH_MISSION_V1'
 // current one. The current version's own migrator is the identity
 // function. There is deliberately only one entry today -- this is the
 // registration point for a real V2, not a preemptive V2 implementation.
-const SCHEMA_MIGRATIONS = new Map([[CURRENT_RESEARCH_MISSION_SCHEMA_VERSION, (mission) => mission]])
+const missionGuard = buildSchemaVersionGuard('research mission', new Map([[CURRENT_RESEARCH_MISSION_SCHEMA_VERSION, (mission) => mission]]))
 
-export const SUPPORTED_RESEARCH_MISSION_SCHEMA_VERSIONS = Object.freeze([...SCHEMA_MIGRATIONS.keys()])
+export const SUPPORTED_RESEARCH_MISSION_SCHEMA_VERSIONS = missionGuard.supportedVersions
 
 // Fail-closed: an unrecognized or missing schemaVersion throws rather than
 // being silently treated as "close enough" to the current shape. Mirrors
 // this codebase's existing fail-closed convention for unknown pricing
 // (research-cost-governance.mjs) and unknown reconciliation decision types
 // -- unknown must never be coerced into a safe-looking default.
-export function assertSupportedResearchMissionSchemaVersion(mission) {
-  if (!mission?.schemaVersion) {
-    const error = new Error('research mission is missing schemaVersion -- cannot safely determine its shape')
-    error.code = 'TSF_RESEARCH_MISSION_SCHEMA_VERSION_MISSING'
-    throw error
-  }
-  if (!SCHEMA_MIGRATIONS.has(mission.schemaVersion)) {
-    const error = new Error(
-      `unsupported research mission schemaVersion: ${mission.schemaVersion} (this code understands: ${SUPPORTED_RESEARCH_MISSION_SCHEMA_VERSIONS.join(', ')}) -- refusing to operate on a mission shape this code was never verified against`
-    )
-    error.code = 'TSF_UNSUPPORTED_RESEARCH_MISSION_SCHEMA_VERSION'
-    throw error
-  }
-}
+export const assertSupportedResearchMissionSchemaVersion = missionGuard.assertSupported
 
 // Upgrades `mission` to CURRENT_RESEARCH_MISSION_SCHEMA_VERSION via its
 // registered migrator, or throws via assertSupportedResearchMissionSchemaVersion
@@ -55,8 +70,14 @@ export function assertSupportedResearchMissionSchemaVersion(mission) {
 // but every read boundary calling this instead of using the raw loaded
 // record is what makes a real future migration a one-function change
 // rather than an audit of every call site.
-export function migrateResearchMissionSchema(mission) {
-  assertSupportedResearchMissionSchemaVersion(mission)
-  const migrate = SCHEMA_MIGRATIONS.get(mission.schemaVersion)
-  return deepClone(migrate(mission))
-}
+export const migrateResearchMissionSchema = missionGuard.migrate
+
+// Same guard, for the OTHER durable top-level singleton this session
+// introduced (research-library.mjs). Wired into research-library-store.mjs's
+// readResearchLibrary/withResearchLibrary exactly like the mission guard is
+// wired into research-mission-store.mjs.
+export const CURRENT_RESEARCH_LIBRARY_SCHEMA_VERSION = 'TSF_RESEARCH_LIBRARY_V1'
+const libraryGuard = buildSchemaVersionGuard('research library', new Map([[CURRENT_RESEARCH_LIBRARY_SCHEMA_VERSION, (library) => library]]))
+export const SUPPORTED_RESEARCH_LIBRARY_SCHEMA_VERSIONS = libraryGuard.supportedVersions
+export const assertSupportedResearchLibrarySchemaVersion = libraryGuard.assertSupported
+export const migrateResearchLibrarySchema = libraryGuard.migrate

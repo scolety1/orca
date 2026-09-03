@@ -3,11 +3,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { addResearchNode, createResearchMission } from '../domain/research-mission.mjs'
 import {
+  CURRENT_RESEARCH_LIBRARY_SCHEMA_VERSION,
   CURRENT_RESEARCH_MISSION_SCHEMA_VERSION,
   SUPPORTED_RESEARCH_MISSION_SCHEMA_VERSIONS,
+  assertSupportedResearchLibrarySchemaVersion,
   assertSupportedResearchMissionSchemaVersion,
+  migrateResearchLibrarySchema,
   migrateResearchMissionSchema
 } from '../domain/research-schema-versioning.mjs'
+import { createResearchLibrary } from '../domain/research-library.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
 
 const clock = () => new Date('2026-10-25T09:00:00.000Z')
@@ -61,4 +65,23 @@ test('addResearchNode on a mission still carries the current schemaVersion end t
   let mission = realMission()
   mission = addResearchNode(mission, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
   assert.doesNotThrow(() => assertSupportedResearchMissionSchemaVersion(mission))
+})
+
+test('the research library has its own, independent schema-version guard using the same fail-closed engine', () => {
+  const library = createResearchLibrary(clock)
+  assert.equal(library.schemaVersion, CURRENT_RESEARCH_LIBRARY_SCHEMA_VERSION)
+  assert.doesNotThrow(() => assertSupportedResearchLibrarySchemaVersion(library))
+  assert.throws(() => assertSupportedResearchLibrarySchemaVersion({ ...library, schemaVersion: 'TSF_RESEARCH_LIBRARY_V99' }), (error) => {
+    assert.equal(error.code, 'TSF_UNSUPPORTED_RESEARCH_LIBRARY_SCHEMA_VERSION')
+    return true
+  })
+  const migrated = migrateResearchLibrarySchema(library)
+  assert.deepEqual(migrated, library)
+  assert.notEqual(migrated, library)
+  // The two guards are independent -- a bad mission version must never be
+  // confused with a bad library version, and vice versa.
+  assert.throws(() => assertSupportedResearchLibrarySchemaVersion({ schemaVersion: CURRENT_RESEARCH_MISSION_SCHEMA_VERSION }), (error) => {
+    assert.equal(error.code, 'TSF_UNSUPPORTED_RESEARCH_LIBRARY_SCHEMA_VERSION')
+    return true
+  })
 })
