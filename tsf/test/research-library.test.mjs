@@ -10,7 +10,7 @@ import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
 import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
 import { addResearchNode, createResearchMission } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
-import { createResearchLibrary, decideLibraryReferenceReconciliation, indexCanonicalFact, queryResearchLibrary } from '../domain/research-library.mjs'
+import { createResearchLibrary, decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, indexCanonicalFact, queryResearchLibrary } from '../domain/research-library.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
 
 const clock = () => new Date('2026-10-10T09:00:00.000Z')
@@ -212,4 +212,98 @@ test('decideLibraryReferenceReconciliation requires a non-empty rationale, same 
     () => decideLibraryReferenceReconciliation(newMission, 'node:y', { fieldName: 'yards', libraryEntry: hit, decidedBy: 'TIM', rationale: '' }, clock, newMission.revision),
     /rationale/
   )
+})
+
+// CONTINUATION 2 Priority Block 4: the acquisition-decision gate.
+function historicalStaticSourcePolicy(overrides = {}) {
+  return { preferredSources: [], disallowedSources: [], licensingConstraints: [], freshnessPolicy: 'HISTORICAL_STATIC', requireIndependentSources: false, minSourceCount: 1, allowCrossMissionLibraryReuse: true, ...overrides }
+}
+
+test('evaluateResearchLibraryReuse: CACHE_REJECTED_POLICY when the current mission does not explicitly opt in', () => {
+  const origin = missionWithCanonicalFact()
+  let library = createResearchLibrary(clock)
+  library = indexCanonicalFact(library, origin.mission, 'node:x', origin.canonicalFactId, clock, library.revision)
+  const result = evaluateResearchLibraryReuse(library, { sourcePolicy: { freshnessPolicy: 'HISTORICAL_STATIC' }, entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards' })
+  assert.equal(result.decision, 'CACHE_REJECTED_POLICY')
+  assert.equal(result.hit, null)
+})
+
+test('evaluateResearchLibraryReuse: CACHE_MISS when nothing is indexed for this entity/field', () => {
+  const library = createResearchLibrary(clock)
+  const result = evaluateResearchLibraryReuse(library, { sourcePolicy: historicalStaticSourcePolicy(), entityId: 'nfl:2001:qb:nobody', fieldName: 'yards' })
+  assert.equal(result.decision, 'CACHE_MISS')
+})
+
+test('evaluateResearchLibraryReuse: CACHE_REJECTED_TEMPORAL when the only candidates are for a different period', () => {
+  const origin = missionWithCanonicalFact({ temporalScope: '2001-regular-season' })
+  let library = createResearchLibrary(clock)
+  library = indexCanonicalFact(library, origin.mission, 'node:x', origin.canonicalFactId, clock, library.revision)
+  const result = evaluateResearchLibraryReuse(library, { sourcePolicy: historicalStaticSourcePolicy(), entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards', requiredTemporalScope: '2001-preseason' })
+  assert.equal(result.decision, 'CACHE_REJECTED_TEMPORAL')
+  assert.equal(result.candidates.length, 1, 'the mismatched candidate is still surfaced for visibility, just not eligible')
+})
+
+test('evaluateResearchLibraryReuse: CACHE_REJECTED_FRESHNESS when the current mission\'s freshnessPolicy is not HISTORICAL_STATIC', () => {
+  const origin = missionWithCanonicalFact()
+  let library = createResearchLibrary(clock)
+  library = indexCanonicalFact(library, origin.mission, 'node:x', origin.canonicalFactId, clock, library.revision)
+  const result = evaluateResearchLibraryReuse(library, { sourcePolicy: historicalStaticSourcePolicy({ freshnessPolicy: 'WEEKLY_REFRESH' }), entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards' })
+  assert.equal(result.decision, 'CACHE_REJECTED_FRESHNESS')
+})
+
+test('evaluateResearchLibraryReuse: CACHE_REJECTED_SCHEMA when the declared valueType does not match the hit\'s real value type', () => {
+  const origin = missionWithCanonicalFact({ value: 264 })
+  let library = createResearchLibrary(clock)
+  library = indexCanonicalFact(library, origin.mission, 'node:x', origin.canonicalFactId, clock, library.revision)
+  const result = evaluateResearchLibraryReuse(library, { sourcePolicy: historicalStaticSourcePolicy(), entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards', valueType: 'string' })
+  assert.equal(result.decision, 'CACHE_REJECTED_SCHEMA')
+})
+
+test('evaluateResearchLibraryReuse: CACHE_HIT when policy/temporal/freshness/schema all clear', () => {
+  const origin = missionWithCanonicalFact({ value: 264, temporalScope: '2001-regular-season' })
+  let library = createResearchLibrary(clock)
+  library = indexCanonicalFact(library, origin.mission, 'node:x', origin.canonicalFactId, clock, library.revision)
+  const result = evaluateResearchLibraryReuse(library, { sourcePolicy: historicalStaticSourcePolicy(), entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards', requiredTemporalScope: '2001-regular-season', valueType: 'number' })
+  assert.equal(result.decision, 'CACHE_HIT')
+  assert.equal(result.hit.value, 264)
+})
+
+// The real, end-to-end proof HQ asked for: across TWO missions, a valid
+// immutable source is reused WITHOUT refetching, and WITHOUT bypassing the
+// second mission's own epistemic authority (still a real, explicit,
+// auditable ReconciliationDecision in that mission -- never a silent
+// cross-mission canonicalization).
+test('two missions: a genuine cross-mission reuse avoids a redundant fetch while preserving the second mission\'s own epistemic authority', () => {
+  const origin = missionWithCanonicalFact({ missionId: 'mission:reuse-origin', entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards', value: 264, temporalScope: '2001-regular-season' })
+  let library = createResearchLibrary(clock)
+  library = indexCanonicalFact(library, origin.mission, 'node:x', origin.canonicalFactId, clock, library.revision)
+
+  const specification = buildNflQb2001Specification()
+  const sourcePolicy = historicalStaticSourcePolicy()
+  let secondMission = createResearchMission({ id: 'mission:reuse-second', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  secondMission = addResearchNode(secondMission, { id: 'node:reuse', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'nfl:2001:qb:tom-brady' }, requestedFields: [{ fieldName: 'yards', valueType: 'number', required: true, requiredTemporalScopes: ['2001-regular-season'] }], requestedOutputSchema: {} }, clock)
+
+  // BEFORE any provider is even considered: consult the library.
+  const evaluation = evaluateResearchLibraryReuse(library, { sourcePolicy, entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards', requiredTemporalScope: '2001-regular-season', valueType: 'number' })
+  assert.equal(evaluation.decision, 'CACHE_HIT', 'a real, eligible immutable source exists -- no provider dispatch is needed for this field')
+
+  // Adopting the hit still requires the SECOND mission's own explicit
+  // decision -- never a silent, cross-mission-authority-bypassing reuse.
+  secondMission = decideLibraryReferenceReconciliation(secondMission, 'node:reuse', { fieldName: 'yards', libraryEntry: evaluation.hit, decidedBy: 'TIM', rationale: 'CACHE_HIT: reused from mission:reuse-origin, an immutable HISTORICAL_STATIC source, same required temporalScope' }, clock, secondMission.revision)
+  assert.equal(secondMission.nodes[0].canonicalFacts.length, 0, 'deciding alone never canonicalizes')
+  const decisionId = secondMission.nodes[0].reconciliationDecisions.at(-1).id
+  secondMission = admitReconciliationDecision(secondMission, 'node:reuse', decisionId, clock, secondMission.revision)
+  assert.equal(secondMission.nodes[0].canonicalFacts.length, 1)
+  assert.equal(secondMission.nodes[0].canonicalFacts[0].value, 264)
+  assert.equal(secondMission.nodes[0].canonicalFacts[0].derivationLineage.crossMissionOrigin.missionId, 'mission:reuse-origin', 'fully traceable, never hidden')
+
+  // No redundant re-fetch/re-dispatch happened for this field: the second
+  // mission's node was never even marked READY/DISPATCHED for 'yards'.
+  assert.equal(secondMission.nodes[0].status, 'PENDING', 'no dispatch cycle was ever needed for this field')
+  assert.equal(secondMission.nodes[0].dispatchRecords.length, 0)
+
+  // The origin mission and the library index are both completely
+  // unaffected by the second mission's own decision.
+  assert.equal(origin.mission.nodes[0].canonicalFacts.length, 1)
+  assert.equal(library.entries.length, 1, 'the library itself is read-only from evaluateResearchLibraryReuse -- no new entry was created by this reuse')
 })

@@ -70,8 +70,25 @@ export function decideReconciliation(
         }
       }
       if (decisionType === 'ACCEPT_TYPED_MISSING') {
-        const missing = node.typedMissingness.find((m) => m.fieldName === fieldName)
-        if (!missing) throw new Error(`no typed missingness record exists for field ${fieldName}`)
+        // Trust + Scale Hardening Continuation 2 (independent-verification
+        // follow-up on Priority Block 3): TypedMissingness can now
+        // legitimately carry distinct per-period temporalScope values for
+        // the SAME fieldName -- a fieldName-only lookup here could
+        // silently reconcile the WRONG period's missingness record. A
+        // single candidate (the overwhelming common case -- an ordinary
+        // single-period mission) is unambiguous regardless of the
+        // decision's own temporalScope; more than one candidate requires
+        // it to match explicitly, fail-closed rather than guessed.
+        const missingCandidates = node.typedMissingness.filter((m) => m.fieldName === fieldName)
+        const missing = missingCandidates.length <= 1 ? missingCandidates[0] : missingCandidates.find((m) => m.temporalScope === temporalScope)
+        if (!missing) {
+          if (missingCandidates.length > 1) {
+            const error = new Error(`ACCEPT_TYPED_MISSING for field ${fieldName} has ${missingCandidates.length} typed-missingness records across different temporalScope values (requested: ${temporalScope}) -- pass the matching temporalScope explicitly to disambiguate`)
+            error.code = 'TSF_TYPED_MISSINGNESS_AMBIGUOUS_TEMPORAL_SCOPE'
+            throw error
+          }
+          throw new Error(`no typed missingness record exists for field ${fieldName}`)
+        }
       }
       const binding = decisionBinding({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue, temporalScope })
       const id = binding
@@ -132,7 +149,14 @@ export function admitReconciliationDecision(mission, nodeId, reconciliationDecis
         throw error
       }
       if (decision.decisionType === 'ACCEPT_TYPED_MISSING') {
-        const idx = node.typedMissingness.findIndex((m) => m.fieldName === decision.fieldName)
+        // Same disambiguation as decideReconciliation's own precondition
+        // check -- a single candidate is unambiguous; more than one
+        // requires the decision's own recorded temporalScope to match.
+        const candidateIdxs = node.typedMissingness.reduce((acc, m, i) => (m.fieldName === decision.fieldName ? [...acc, i] : acc), [])
+        const idx =
+          candidateIdxs.length <= 1
+            ? (candidateIdxs[0] ?? -1)
+            : candidateIdxs.find((i) => node.typedMissingness[i].temporalScope === decision.temporalScope) ?? -1
         if (idx === -1) throw new Error(`no typed missingness record exists for field ${decision.fieldName}`)
         if (node.typedMissingness[idx].reconciliationDecisionId === reconciliationDecisionId) {
           return { next: node, changed: false }

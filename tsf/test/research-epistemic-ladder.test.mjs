@@ -505,6 +505,44 @@ test('decideDerivedFieldReconciliation infers the derived temporalScope when eve
   assert.equal(derived.temporalScope, '2001-regular-season', 'both inputs agreed on this scope -- inferred, not guessed')
 })
 
+// Independent-verification follow-up on Priority Block 3 (temporal-aware
+// completeness): TypedMissingness can now legitimately carry distinct
+// per-period temporalScope values for the same fieldName -- a fieldName-
+// only lookup in ACCEPT_TYPED_MISSING could silently reconcile the WRONG
+// period's missingness record.
+function plantTypedMissingness(mission, nodeId, fieldName, temporalScope) {
+  const missing = { schemaVersion: 'TSF_TYPED_MISSINGNESS_V1', id: `missing:${fieldName}:${temporalScope}`, fieldName, temporalScope, missingnessType: 'NOT_PUBLICLY_AVAILABLE', reason: 'test', admittedAt: clock().toISOString() }
+  return { ...mission, nodes: mission.nodes.map((n) => (n.id === nodeId ? { ...n, typedMissingness: [...n.typedMissingness, missing] } : n)) }
+}
+
+test('ACCEPT_TYPED_MISSING refuses to guess between multiple temporalScope-differentiated TypedMissingness records for the same field', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  mission = plantTypedMissingness(mission, node.id, 'yards', '2001-regular-season')
+  mission = plantTypedMissingness(mission, node.id, 'yards', '2001-preseason')
+  assert.throws(
+    () => decideReconciliation(mission, node.id, { fieldName: 'yards', decisionType: 'ACCEPT_TYPED_MISSING', decidedValue: null, rationale: 'test', decidedBy: 'TEST' }, clock, mission.revision),
+    (error) => {
+      assert.equal(error.code, 'TSF_TYPED_MISSINGNESS_AMBIGUOUS_TEMPORAL_SCOPE')
+      return true
+    }
+  )
+})
+
+test('ACCEPT_TYPED_MISSING with an explicit temporalScope reconciles the CORRECT record, never the other period\'s', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  mission = plantTypedMissingness(mission, node.id, 'yards', '2001-regular-season')
+  mission = plantTypedMissingness(mission, node.id, 'yards', '2001-preseason')
+  mission = decideReconciliation(mission, node.id, { fieldName: 'yards', decisionType: 'ACCEPT_TYPED_MISSING', decidedValue: null, temporalScope: '2001-preseason', rationale: 'test', decidedBy: 'TEST' }, clock, mission.revision)
+  const decisionId = mission.nodes[0].reconciliationDecisions.at(-1).id
+  mission = admitReconciliationDecision(mission, node.id, decisionId, clock, mission.revision)
+  const regularSeason = mission.nodes[0].typedMissingness.find((m) => m.temporalScope === '2001-regular-season')
+  const preseason = mission.nodes[0].typedMissingness.find((m) => m.temporalScope === '2001-preseason')
+  assert.equal(preseason.reconciliationDecisionId, decisionId, 'the explicitly-requested period\'s record is reconciled')
+  assert.equal(regularSeason.reconciliationDecisionId ?? null, null, 'the OTHER period\'s record must never be silently reconciled instead')
+})
+
 test('identity resolution state is recorded per node and is independent of claim/verification state', () => {
   let mission = missionWithNode()
   const node = mission.nodes[0]

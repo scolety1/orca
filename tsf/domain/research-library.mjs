@@ -110,6 +110,73 @@ export function queryResearchLibrary(library, { entityId, fieldName, temporalSco
     .sort((a, b) => (a.canonicalizedAt < b.canonicalizedAt ? 1 : a.canonicalizedAt > b.canonicalizedAt ? -1 : 0))
 }
 
+export const RESEARCH_LIBRARY_REUSE_DECISIONS = Object.freeze([
+  'CACHE_HIT',
+  'CACHE_MISS',
+  'CACHE_REJECTED_POLICY',
+  'CACHE_REJECTED_TEMPORAL',
+  'CACHE_REJECTED_SCHEMA',
+  'CACHE_REJECTED_FRESHNESS'
+])
+
+// CONTINUATION 2 Priority Block 4: the ACQUISITION-DECISION gate. Wires
+// the library into the source-first planning path -- conservatively.
+// Never itself decides anything is canonical (that invariant is untouched:
+// see decideLibraryReferenceReconciliation below); this only decides
+// whether a library hit is even SAFE TO CONSIDER before a caller pays for
+// a redundant fetch/provider call. Every rejection reason is real and
+// checkable, never a guess:
+//   POLICY     -- the CURRENT mission's own specification must explicitly
+//                 opt in (sourcePolicy.allowCrossMissionLibraryReuse ===
+//                 true). Fail-closed default: a specification that never
+//                 mentions this is treated as NOT permitting reuse, not as
+//                 silently permitting it -- reuse is an opt-in capability,
+//                 licensing/terms included (this is also where a real
+//                 licensing-constraint conflict would be judged; this
+//                 module invents no licensing-compatibility heuristic of
+//                 its own, since nothing else in this codebase has one --
+//                 an operator who has already reviewed licensing sets this
+//                 flag deliberately).
+//   TEMPORAL   -- when the caller supplies a required temporalScope, only
+//                 an EXACT match is eligible -- never a fuzzy "close
+//                 enough" date.
+//   FRESHNESS  -- only 'HISTORICAL_STATIC' (immutable-by-nature data) is
+//                 currently trusted to reuse safely regardless of age;
+//                 every other freshnessPolicy value is rejected rather
+//                 than guessed at -- a real staleness-window design for
+//                 non-static data is a separate, later piece of work, not
+//                 invented speculatively here.
+//   SCHEMA     -- when the caller's requestedField declares a valueType,
+//                 the hit's actual value must match it (typeof-level
+//                 check -- the smallest real signal available without a
+//                 shared cross-mission schema registry, which does not
+//                 exist and is not invented here).
+// A rejection never deletes/consumes the candidate hits -- the caller
+// falls through to real acquisition/research or Needs You, exactly as
+// before this function existed.
+export function evaluateResearchLibraryReuse(library, { sourcePolicy, entityId, fieldName, requiredTemporalScope = undefined, valueType = undefined }) {
+  if (sourcePolicy?.allowCrossMissionLibraryReuse !== true) {
+    return { decision: 'CACHE_REJECTED_POLICY', hit: null, reason: 'this mission\'s sourcePolicy does not explicitly permit cross-mission research-library reuse (sourcePolicy.allowCrossMissionLibraryReuse must be true)', candidates: [] }
+  }
+  const candidates = queryResearchLibrary(library, { entityId, fieldName })
+  if (candidates.length === 0) {
+    return { decision: 'CACHE_MISS', hit: null, reason: 'no prior canonical fact exists in the library for this entity/field', candidates: [] }
+  }
+  const temporallyEligible = requiredTemporalScope === undefined ? candidates : candidates.filter((c) => c.temporalScope === requiredTemporalScope)
+  if (temporallyEligible.length === 0) {
+    return { decision: 'CACHE_REJECTED_TEMPORAL', hit: null, reason: `library has ${candidates.length} candidate(s) for this entity/field, but none match the required temporalScope ${requiredTemporalScope} -- a value for a different period is never reused`, candidates }
+  }
+  const freshEligible = temporallyEligible.filter((c) => sourcePolicy?.freshnessPolicy === 'HISTORICAL_STATIC')
+  if (freshEligible.length === 0) {
+    return { decision: 'CACHE_REJECTED_FRESHNESS', hit: null, reason: `sourcePolicy.freshnessPolicy (${sourcePolicy?.freshnessPolicy ?? 'unset'}) is not trusted for cross-mission reuse -- only HISTORICAL_STATIC is today`, candidates: temporallyEligible }
+  }
+  const schemaEligible = valueType === undefined ? freshEligible : freshEligible.filter((c) => typeof c.value === valueType)
+  if (schemaEligible.length === 0) {
+    return { decision: 'CACHE_REJECTED_SCHEMA', hit: null, reason: `the library candidate's value type does not match this field's declared valueType (${valueType})`, candidates: freshEligible }
+  }
+  return { decision: 'CACHE_HIT', hit: schemaEligible[0], reason: null, candidates: schemaEligible }
+}
+
 // The ONLY sanctioned way to bring a library hit into a NEW mission: an
 // explicit ReconciliationDecision in the calling mission, decisionType
 // ACCEPT_DERIVED_VALUE (research-reconciliation.mjs's existing, unmodified
