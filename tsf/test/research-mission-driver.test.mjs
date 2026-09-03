@@ -190,6 +190,14 @@ test('research mission driver: the real persisted execution path, durable across
     const reviewItems = readResearchMissionReviewItems(MISSION_ID)
     assert.equal(reviewItems.length, 1)
     assert.equal(reviewItems[0].category, 'UNRESOLVED_CONFLICT')
+
+    // Independent-verification finding: calling this function AGAIN on the
+    // SAME still-open conflict (exactly the resume scenario this driver
+    // exists for) must never raise a second, duplicate Needs You entry.
+    const resumed = await verifyAndReconcileResearchNodeFieldDurable(MISSION_ID, 'node:conflict', 'yards', 'DRIVER_TEST', clock)
+    assert.equal(resumed.ok, true)
+    assert.equal(resumed.escalated, true)
+    assert.equal(readResearchMissionReviewItems(MISSION_ID).length, 1, 'a resumed escalation call on an already-open conflict must not duplicate the Needs You entry')
   })
 
   await t.test('CANCEL: a node in a real cancellable state is durably cancelled; a terminal node is refused', async () => {

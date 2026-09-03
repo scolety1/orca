@@ -295,9 +295,20 @@ export async function verifyAndReconcileResearchNodeFieldDurable(missionId, node
 
   const openConflict = node.conflicts.find((c) => c.fieldName === fieldName && c.status === 'OPEN')
   if (openConflict) {
-    next = await withResearchMission(missionId, (m) =>
-      raiseResearchNeedsYou(m, { question: `Unresolved conflict on ${nodeId}.${fieldName} -- multiple disagreeing claims, no automatic winner.`, nodeId, category: 'UNRESOLVED_CONFLICT' }, clock, m.revision)
-    )
+    // Independent-verification finding: raiseResearchNeedsYou itself never
+    // dedupes (each call is a genuinely new question, by design -- see its
+    // own doc comment), so calling this function AGAIN on an already-
+    // escalated, still-open conflict (exactly the resume scenario this
+    // driver exists for) previously raised a second, duplicate Needs You
+    // entry every time. Guard here, mirroring the same
+    // already-open-for-this-node check pollAndAdmitResearchNodeDurable's
+    // NEEDS_INPUT branch already uses.
+    const alreadyEscalated = next.needsYou.some((entry) => entry.nodeId === nodeId && entry.category === 'UNRESOLVED_CONFLICT' && !entry.resolvedAt)
+    if (!alreadyEscalated) {
+      next = await withResearchMission(missionId, (m) =>
+        raiseResearchNeedsYou(m, { question: `Unresolved conflict on ${nodeId}.${fieldName} -- multiple disagreeing claims, no automatic winner.`, nodeId, category: 'UNRESOLVED_CONFLICT' }, clock, m.revision)
+      )
+    }
     return { ok: true, escalated: true, mission: next }
   }
 
