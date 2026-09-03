@@ -21,7 +21,7 @@ import { addResearchNode, resolveResearchNeedsYou } from '../domain/research-mis
 import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
 import { buildBoundedResearchRequest } from '../domain/research-node.mjs'
 import { recordDispatchAttempt, resolveDispatchAttempt, classifyDispatchDeliveryGuarantee } from '../domain/research-dispatch-bookkeeping.mjs'
-import { recordSourceIndependenceMetadata } from '../domain/research-source-independence.mjs'
+import { computeIndependentEvidenceLineage, recordSourceIndependenceMetadata } from '../domain/research-source-independence.mjs'
 import { createResearchLibrary, evaluateResearchLibraryReuse, indexCanonicalFact } from '../domain/research-library.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
 
@@ -112,8 +112,17 @@ test('canonical V0 end-to-end regression: one deterministic mission through the 
     script.set(req.taskFingerprint, {
       provider: 'FAKE_B',
       proposedClaims: [{ fieldName: 'yards', proposedValue: 2843, temporalScope: '2001-regular-season', providerConfidence: 0.95, providerReasoning: 'official season stats' }],
-      evidence: [{ claimFieldName: 'yards', sourceRef: 'src:stats', snippet: '2001 season passing yards', supportsClaim: true }],
-      sourceReferences: [{ sourceRef: 'src:stats', url: 'https://example.invalid/stats', publisher: 'official-league-source', retrievedAt: clock().toISOString() }],
+      // TWO citations for the same claim -- src:mirror is a downstream
+      // aggregator restating src:stats, exactly the raw shape source
+      // independence exists to see through (step 5 below).
+      evidence: [
+        { claimFieldName: 'yards', sourceRef: 'src:stats', snippet: '2001 season passing yards', supportsClaim: true },
+        { claimFieldName: 'yards', sourceRef: 'src:mirror', snippet: 'aggregator restating the official figure', supportsClaim: true }
+      ],
+      sourceReferences: [
+        { sourceRef: 'src:stats', url: 'https://example.invalid/stats', publisher: 'official-league-source', retrievedAt: clock().toISOString() },
+        { sourceRef: 'src:mirror', url: 'https://example.invalid/mirror', publisher: 'downstream-aggregator', retrievedAt: clock().toISOString() }
+      ],
       sourceSnapshotsOrSnapshotRefs: []
     })
     const dispatched = await dispatchResearchNodeDurable(MISSION_ID, BRADY, 'FAKE_B', worker, clock)
@@ -126,15 +135,30 @@ test('canonical V0 end-to-end regression: one deterministic mission through the 
     assert.equal(node.status, 'ADMITTED')
   })
 
-  await t.test('5. source independence: the primary-league source is explicitly classified through the real persisted path', async () => {
+  await t.test('5. source independence: a genuine mirror is classified and observably collapses the independent evidence lineage', async () => {
+    // src:stats and src:mirror were both admitted as evidence for the SAME
+    // 'yards' claim in step 4 -- exactly the raw shape source independence
+    // exists to see through: two citations of the same underlying upstream
+    // must not look like two independent confirmations.
     const mission = readResearchMission(MISSION_ID)
     const node = mission.nodes.find((n) => n.id === BRADY)
-    const sourceId = node.sourceReferences.find((s) => s.sourceRef === 'src:stats').id
-    const updated = await withResearchMission(MISSION_ID, (m) =>
-      recordSourceIndependenceMetadata(m, BRADY, sourceId, { sourceQualityClass: 'PRIMARY_SOURCE', independenceState: 'INDEPENDENT' }, clock, m.revision)
+    const primaryId = node.sourceReferences.find((s) => s.sourceRef === 'src:stats').id
+    const mirrorId = node.sourceReferences.find((s) => s.sourceRef === 'src:mirror').id
+    let updated = await withResearchMission(MISSION_ID, (m) =>
+      recordSourceIndependenceMetadata(m, BRADY, primaryId, { sourceQualityClass: 'PRIMARY_SOURCE', independenceState: 'INDEPENDENT' }, clock, m.revision)
     )
-    const src = updated.nodes.find((n) => n.id === BRADY).sourceReferences.find((s) => s.id === sourceId)
-    assert.equal(src.sourceQualityClass, 'PRIMARY_SOURCE')
+    updated = await withResearchMission(MISSION_ID, (m) =>
+      recordSourceIndependenceMetadata(m, BRADY, mirrorId, { sourceQualityClass: 'MIRROR', upstreamSourceId: primaryId, independenceState: 'KNOWN_SHARED_UPSTREAM' }, clock, m.revision)
+    )
+
+    // Observable proof, not just "the write succeeds": the real downstream
+    // consumer (computeIndependentEvidenceLineage, the same function
+    // verifyResearchClaim itself calls) genuinely collapses the mirror.
+    const yardsClaimId = updated.nodes.find((n) => n.id === BRADY).claims.find((c) => c.fieldName === 'yards').id
+    const lineage = computeIndependentEvidenceLineage(updated.nodes.find((n) => n.id === BRADY), yardsClaimId)
+    assert.equal(lineage.sourceCount, 2, 'the official-stats source and its mirror are 2 raw citations for this one claim')
+    assert.equal(lineage.independentLineageCount, 1, 'but only 1 independent evidence lineage -- the mirror must not count as a second confirmation')
+    assert.equal(lineage.hasPrimarySource, true)
   })
 
   await t.test('6. verification + reconciliation -> real CanonicalFacts for both fields, through the real driver', async () => {
@@ -231,17 +255,28 @@ test('canonical V0 end-to-end regression: one deterministic mission through the 
     assert.equal(finalWarnerNode.canonicalFacts.find((f) => f.fieldName === 'yards').value, 4830)
   })
 
-  await t.test('10. CANCEL: an unrelated pending node can still be safely cancelled through the real path', async () => {
+  await t.test('10. CANCEL: an unrelated pending node can still be safely cancelled through the real path, leaving BRADY/WARNER provably untouched', async () => {
+    const before = readResearchMission(MISSION_ID)
+    const bradyBefore = before.nodes.find((n) => n.id === BRADY)
+    const warnerBefore = before.nodes.find((n) => n.id === WARNER)
     await withResearchMission(MISSION_ID, (m) => addResearchNode(m, { id: 'node:extra', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock))
     const cancelled = await cancelResearchNodeDurable(MISSION_ID, 'node:extra', clock)
     assert.equal(cancelled.nodes.find((n) => n.id === 'node:extra').status, 'CANCELLED')
+    const bradyAfter = cancelled.nodes.find((n) => n.id === BRADY)
+    const warnerAfter = cancelled.nodes.find((n) => n.id === WARNER)
+    assert.deepEqual(bradyAfter, bradyBefore, 'cancelling an unrelated node must not touch BRADY at all')
+    assert.deepEqual(warnerAfter, warnerBefore, 'cancelling an unrelated node must not touch WARNER at all')
   })
 
   await t.test('11. completeness reflects the real, durable state -- not a fabricated ratio', () => {
     const completeness = readResearchMissionCompleteness(MISSION_ID, clock)
     assert.equal(completeness.schemaVersion, 'TSF_COMPLETENESS_METRICS_V1')
-    assert.ok(completeness.fieldCoverage > 0 && completeness.fieldCoverage <= 1)
-    assert.equal(completeness.unresolvedConflictCount, 0, 'the conflict was resolved via reconciliation-adjacent Needs You, not left dangling')
+    // By this point every requested field (BRADY.team, BRADY.yards@2001-
+    // regular-season, WARNER.yards) has a real CanonicalFact -- an exact
+    // check, not just a loose bounds check that a regression could still
+    // slip through (e.g. dropping to 0.67 would still pass ">0 && <=1").
+    assert.equal(completeness.fieldCoverage, 1)
+    assert.equal(completeness.unresolvedConflictCount, 0, 'the conflict was genuinely reconciled (step 9), not left dangling')
   })
 
   await t.test('12. the artifact package assembles from the real, integrity-checked durable mission', () => {
