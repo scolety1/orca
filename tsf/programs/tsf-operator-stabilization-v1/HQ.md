@@ -6,7 +6,7 @@
 **Branch:** `tsf-operator-stabilization-v1`
 **Base:** `tsf/main` @ `2613be403cd12ed27f2953e9fade6521ebb0fb79` (clean, current-accepted at mission creation)
 **Created:** 2026-09-03
-**Phase:** `RECONCILED` — mission scaffolded, bug ledger seeded, no implementation started yet.
+**Phase:** `WAVE_1_READY_FOR_ADOPTION` — first bounded implementation wave complete. 6 bugs (BUG-08, 11, 12, 13, 14, 16) are READY_FOR_ADOPTION: self-verified, live-verified against the real running app, and independently verified (2-3 separate agent-context rounds each for BUG-08/BUG-14, whose fixes had real defects the first independent pass caught -- fixed and re-verified clean). **Ledger correction (2026-09-03):** BUG-08's original title bundled negation-classification correctness (done, verified) with scoped one-time approval consumption (never started) -- marking the whole bug READY_FOR_ADOPTION was status inflation against ACCEPT-07's full criterion. Split: BUG-08 now covers classification correctness only (READY_FOR_ADOPTION, accurate); the approval-consumption mechanism is BUG-17 (REPORTED, not started, tracked as wave-2+ work). Nothing ADOPTED, merged, or pushed -- stopped here per this mission's own operating rule.
 
 This file is the durable next-session startup source for this mission, matching this repo's own established PROJECT_HQ.md / M-wave-doc convention. Any session picking up this worktree should read this file and `bug-ledger.json` first.
 
@@ -55,6 +55,18 @@ Nothing is marked DONE before live verification after adoption. See `bug-ledger.
 
 **P0:** one canonical durable runtime state shared by Planner Chat/Work/Keep Going/Flight Recorder/Home/Fleet/notifications; reliable stall/recovery controls; authorization/negation correctness; global execution visibility.
 **Then:** mission-creation UX; navigation/context preservation; Needs You / Ready for Review workflow; notifications; forms/composer polish; jargon reduction.
+
+## Wave 1 (2026-09-03): canonical state + P0 operator-control + authorization negation
+
+Scope: BUG-14 (canonical state -- root), BUG-11 (non-interactive CONTINUE), BUG-12 (deep-link to exact run), BUG-13 (Planner Chat blindness), BUG-16 (Flight Recorder/Evidence gap), BUG-08 (authorization negation -- the real, reproduced `and`-clause-splitting gap; the fuller scoped-approval-consumption ask is deliberately deferred to a following wave, disclosed in bug-ledger.json's BUG-08 entry).
+
+Deliberately deferred to the next wave (not started): BUG-15 (full stall-recovery UX: heartbeat/worker/provider display -- worker/provider identity is a genuine, disclosed pre-existing gap, not yet wired to any live orchestration binding), BUG-05 (Health Repair surface -- separate investigation needed), BUG-01/02/03/06/07/09/10 (P1, out of this wave's P0 scope), a persistent always-visible global state indicator (BUG-14's own remaining gap), and a real chat-triggered Resume/Retry/Replan/Abandon action (chat can *describe* the exact recovery control now, per BUG-13's fix; *triggering* it from chat is new dispatch-bridge-shaped surface area not yet built).
+
+All 6 bugs: reproduced first (failing test or live repro before the fix), fixed, unit-tested (target module + wiring layer), full suite re-run clean (986/988 server tests pass -- the 1 failure is `keep-going-autonomy-proof.test.mjs`, a pre-existing timing flake confirmed via isolated reruns before AND after this wave's changes, unrelated; 43/43 ui tests, `tsc -b --noEmit` clean, `vite build` clean), then live-verified against the real running standalone server + built UI in a real Chrome tab using the safe local FIXTURE project (real Keep Going run started/paused, cross-checked consistent across Keep Going/Flight Recorder/Planner Chat, including one genuine live Claude Code/Sonnet 5 planner call proving BUG-13's capsule grounding end to end) -- zero console errors throughout. Full detail per bug in bug-ledger.json.
+
+Independent verification (separate agent context each round, per the provider-split rule below): 3 rounds total. Round 1 cleared BUG-11/12/13/16 outright and found 2 real defects: BUG-08's own `and`-fix had introduced a new false-negative on future-tense directive fragments ("...and will deploy after that"), and BUG-14's HomePage.tsx had a genuine untested React key collision (a project can appear in both `work.blocked` and `work.needsYou` at once). Both fixed; round 2 (fresh agent context) confirmed both fixes correct and, while re-checking BUG-08, found a THIRD real pre-existing gap unrelated to the "and" fix: `PROHIBITION_MARKERS` had no idiom awareness, so "whether ... or not"/"no matter" (meaning "regardless") were misread as real negations. Fixed; round 3 (fresh agent context) confirmed that fix too, plus a final full-suite sanity check on the whole wave. All 6 bugs are now READY_FOR_ADOPTION -- see bug-ledger.json per-bug for full detail. This 3-round pattern is itself the strongest evidence yet in this mission for HQ's own provider-split rule: self-review alone would have shipped 2 real classification defects.
+
+Zero Orca-core delta: every change is inside tsf/. `tsf/ui` node_modules/dist were installed/built locally to run typecheck/build verification -- both gitignored, no tracked-file impact.
 
 ## Operating rules
 

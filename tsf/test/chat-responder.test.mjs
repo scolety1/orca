@@ -102,6 +102,78 @@ test('a genuine consequential directive is still refused even alongside an unrel
   assert.equal(classifyDecision(message, classifyIntent(message)), 'TIM_REQUIRED')
 })
 
+// BUG-08 (bug-ledger.json) real, reproduced regression: a bare "and" (no
+// comma/"but"/em-dash) between a negated clause and a genuine, separate
+// directive was NOT a clause boundary, so PROHIBITION_MARKERS matching
+// anywhere in the whole (unsplit) clause silently laundered the real
+// directive through as non-TIM_REQUIRED. Same class of bug the comma/
+// "but"/em-dash regressions above already close -- "and" just wasn't
+// included.
+test('a negation and a genuine directive joined by a bare "and" (no comma) does not launder the directive through', () => {
+  const message = 'do not deploy this and push it now'
+  assert.equal(classifyDecision(message, classifyIntent(message)), 'TIM_REQUIRED')
+})
+
+test('a negation and a chained "go ahead and X" directive joined by "and" is still refused', () => {
+  const message = 'please do not deploy and go ahead and merge this'
+  assert.equal(classifyDecision(message, classifyIntent(message)), 'TIM_REQUIRED')
+})
+
+test('a bare "and" join between two ordinary (non-consequential) actions is unaffected', () => {
+  const message = 'test and verify the fix'
+  assert.equal(classifyDecision(message, classifyIntent(message)), 'AUTO_DECIDE')
+})
+
+test('"and" splitting does not regress a already-negated, single consequential clause', () => {
+  assert.equal(classifyDecision('do not merge this', 'GENERAL'), 'AUTO_DECIDE')
+  assert.equal(classifyDecision('please do not push to production', 'GENERAL'), 'AUTO_DECIDE')
+})
+
+// Independent-verification finding: the "and" clause-split above (BUG-08)
+// introduced its own new false-negative regression -- when "and"-splitting
+// isolates an informal, subject-less future-tense fragment ("...and will
+// deploy after that") as its own clause, that clause starts with a bare
+// inquiry-opener word ("will"/"should"/etc.) purely by grammatical
+// coincidence, not because anything is actually being asked. The bare-
+// opener check now additionally requires the clause's own sentence to
+// contain a real "?" (TELL_ME_WHETHER's explicit "tell me...whether" shape
+// stays unconditional, since it's unambiguous regardless of punctuation).
+test('an "and"-joined future-tense directive fragment starting with a bare opener word is not misread as a question', () => {
+  assert.equal(classifyDecision('run the tests and will deploy after that', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('looks good and will push this to prod', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('tests pass and will deploy it now', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('wrap this up and should merge soon', 'GENERAL'), 'TIM_REQUIRED')
+})
+
+test('a genuine bare-opener inquiry (no "?" but the sentence is unambiguously a question) still classifies as an inquiry', () => {
+  // Regression guard the other direction: BARE_OPENER's sentence-wide "?"
+  // gate must not have quietly broken the case it was designed for.
+  assert.equal(classifyDecision('tell me whether to deploy', 'GENERAL'), 'AUTO_DECIDE')
+  assert.equal(classifyDecision('Should this be deployed to production?', 'GENERAL'), 'AUTO_DECIDE')
+})
+
+// Second-independent-verification-pass finding, real and reproduced, found
+// while re-checking the "and" fix above but pre-existing/unrelated to it:
+// "whether ... or not" and "no matter" are idioms meaning "regardless,"
+// never a real negation -- PROHIBITION_MARKERS' bare "not"/"no" match had
+// no idiom awareness and silently waved a genuine, unhedged directive
+// through as AUTO_DECIDE whenever its only "negation-looking" text was one
+// of these two idioms.
+test('a "whether ... or not" / "no matter" idiom does not launder a genuine directive as a negation', () => {
+  assert.equal(classifyDecision('deploy it whether tim likes it or not', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(
+    classifyDecision('push this to production whether you approve or not', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
+  assert.equal(classifyDecision('deploy this no matter what', 'GENERAL'), 'TIM_REQUIRED')
+})
+
+test('a real negation alongside an unrelated "or not"/"no matter" idiom in the same message still reads as a negation where it belongs', () => {
+  // The strip is scoped to matching substrings only -- a genuine "do not"
+  // elsewhere in the same clause must still count.
+  assert.equal(classifyDecision('do not deploy this, no matter what anyone says', 'GENERAL'), 'AUTO_DECIDE')
+})
+
 test('a bare imperative consequential request with no hedging is still TIM_REQUIRED', () => {
   assert.equal(classifyDecision('Merge this to main.', 'GENERAL'), 'TIM_REQUIRED')
   assert.equal(classifyDecision('Adopt the candidate.', 'GENERAL'), 'TIM_REQUIRED')

@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Copy } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
@@ -14,6 +14,7 @@ import { KeepGoingPanel } from '@/components/keep-going/KeepGoingPanel'
 import { PlannerChatPanel } from '@/components/chat/PlannerChatPanel'
 import { RefreshProjectButton } from '@/components/onboarding/RefreshProjectButton'
 import { MembershipPanel } from '@/components/projects/MembershipPanel'
+import { resolveProjectDetailTab } from '@/lib/project-work-deep-link'
 
 function copy(text: string) {
   navigator.clipboard?.writeText(text).catch(() => undefined)
@@ -52,6 +53,14 @@ export function ProjectDetailPage() {
 
 function ProjectDetailPageForId({ id }: { id?: string }) {
   const { data: project, loading, error, reload } = useApi(() => api.project(id!), [id])
+  // BUG-12 (bug-ledger.json): a Work/Home card's deep link (?tab=keep-going
+  // etc., see project-work-deep-link.ts) now lands directly on the exact
+  // surface instead of always the Overview tab. resolveProjectDetailTab
+  // falls back to 'overview' for a missing/unrecognized value, so a plain
+  // /projects/:id link (no query) or a stale/hand-edited one behaves
+  // exactly as before.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = resolveProjectDetailTab(searchParams.get('tab'))
 
   // Real V1 stabilization finding (see ProjectsPage.tsx for the full real-
   // browser reproduction): gating on bare loading flashes this whole page
@@ -99,7 +108,18 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
         <div>
-          <Tabs defaultValue="overview">
+          <Tabs
+            value={activeTab}
+            onValueChange={(tab) => setSearchParams((prev) => {
+              const next = new URLSearchParams(prev)
+              if (tab === 'overview') {
+                next.delete('tab')
+              } else {
+                next.set('tab', tab)
+              }
+              return next
+            }, { replace: true })}
+          >
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="keep-going">Keep Going</TabsTrigger>

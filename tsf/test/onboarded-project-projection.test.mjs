@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { projectOnboardedProject } from '../server/onboarded-project-projection.mjs'
+import { createOvernightRun, recordWave } from '../domain/keep-going.mjs'
 
 function baseAnalysis(overrides = {}) {
   return {
@@ -96,4 +97,45 @@ test('the underlying HEALTHY_WITH_CAVEATS findings remain visible in evidence ev
     project.health.findings.some((f) => f.code === 'REPOSITORY_IS_LINKED_WORKTREE'),
     'the real finding is never hidden, only the summary badge is not overstated'
   )
+})
+
+// BUG-16: no run passed -> unchanged prior behavior (honestly empty), never
+// a regression for a project with no Keep Going run yet.
+test('no Keep Going run -> resultCapsules stays honestly empty', () => {
+  const project = projectWithHealth('HEALTHY')
+  assert.deepEqual(project.evidence.resultCapsules, [])
+})
+
+// BUG-16 fix proof, one full layer up from resultCapsulesFromRun's own
+// domain-level test: a real run passed through projectOnboardedProject
+// reaches evidence.resultCapsules -- the exact field ProjectDetailPage's
+// Evidence tab reads, closing the "Flight Recorder records waves while
+// Evidence shows nothing" gap end to end at this projection layer.
+test('a real Keep Going run with a settled wave -> evidence.resultCapsules reflects it', () => {
+  const clock = () => new Date('2026-09-03T00:00:00.000Z')
+  const run = recordWave(
+    createOvernightRun(
+      { id: 'run-1', projectId: 'test-project', originalGoal: 'Fix it.', acceptanceCriteria: ['X'] },
+      clock
+    ),
+    { workItems: [{ id: 'w1', scope: ['x'] }] },
+    {
+      schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
+      outcomes: [{ workItemId: 'w1', taskId: 'task-1', outcome: 'COMPLETED' }],
+      settledAt: clock().toISOString()
+    },
+    clock,
+    0
+  )
+  const record = {
+    acceptedAt: '2026-08-23T00:00:00.000Z',
+    receipts: [],
+    lastAnalysis: baseAnalysis({
+      health: { status: 'HEALTHY', findings: [], observedAt: '2026-08-23T00:00:00.000Z' }
+    })
+  }
+  const project = projectOnboardedProject(record, { activeFleet: false, workSet: false }, run)
+  assert.equal(project.evidence.resultCapsules.length, 1)
+  assert.equal(project.evidence.resultCapsules[0].id, 'w1')
+  assert.equal(project.evidence.resultCapsules[0].status, 'COMPLETED')
 })

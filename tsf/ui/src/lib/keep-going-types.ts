@@ -60,6 +60,11 @@ export type KeepGoingRunView =
       readyForAdoption: boolean
       orchestrationRunId: string | null
       dispatchTickActive: boolean
+      // BUG-14: mirrors domain/live-work-feed.mjs's own inFlightWave-still-
+      // set-but-last-checkpointed-WAVE_STALLED override -- see keep-going-
+      // controller.mjs's own comment on this field for why it's exposed as
+      // a boolean rather than sending the raw inFlightWave/checkpoints.
+      inFlightWaveStalled: boolean
       createdAt: string
       updatedAt: string
     }

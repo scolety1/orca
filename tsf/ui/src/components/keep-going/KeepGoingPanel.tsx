@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import type { KeepGoingActiveRunView, KeepGoingRunState } from '@/lib/keep-going-types'
+import { shouldShowGapDecisionBadge } from '@/lib/keep-going-gap-display'
 import { KeepGoingStartForm } from './KeepGoingStartForm'
 import { KeepGoingTickForm } from './KeepGoingTickForm'
 import { LiveWorkFeed } from './LiveWorkFeed'
@@ -147,17 +148,24 @@ function LiveRun({
         <div className="text-[12px]">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-muted-foreground">Gap analysis</span>
-            <Badge
-              variant={
-                run.gap.decision === 'STOP_COMPLETE'
-                  ? 'healthy'
-                  : run.gap.decision === 'STOP_BLOCKED'
-                    ? 'blocked'
-                    : 'neutral'
-              }
-            >
-              {run.gap.decision}
-            </Badge>
+            {/* BUG-11: gap.decision says "CONTINUE" regardless of run.state
+                -- shown only while ACTIVE, where it's real in-progress
+                judgment, never as a non-interactive pill next to a
+                STALLED/PAUSED/NEEDS_YOU/BLOCKED run's actual recovery
+                controls below. */}
+            {shouldShowGapDecisionBadge(run.state) && (
+              <Badge
+                variant={
+                  run.gap.decision === 'STOP_COMPLETE'
+                    ? 'healthy'
+                    : run.gap.decision === 'STOP_BLOCKED'
+                      ? 'blocked'
+                      : 'neutral'
+                }
+              >
+                {run.gap.decision}
+              </Badge>
+            )}
           </div>
           {run.gap.remainingGaps.length === 0 ? (
             <div className="text-status-healthy">All criteria independently verified.</div>

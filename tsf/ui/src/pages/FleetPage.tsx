@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightFleetDialog'
 import type { FleetSchedule } from '@/lib/fleet-types'
+import { buildLiveWorkFeedLookup, liveWorkFeedBadgeVariant } from '@/lib/work-feed-lookup'
 
 function ProjectScheduleCard({ project }: { project: FleetSchedule['projects'][number] }) {
   return (
@@ -43,6 +44,13 @@ function ProjectScheduleCard({ project }: { project: FleetSchedule['projects'][n
 
 export function FleetPage() {
   const { data: portfolio, loading, error, reload } = useApi(() => api.portfolio(), [])
+  // BUG-14: the same real run-driven state Work/Home already read, so a
+  // project already RUNNING/STALLED/etc. is visible here too before an
+  // operator builds a schedule around it. Optional -- absent on a slow
+  // load never blocks the rest of the page (portfolio alone still gates
+  // the loading/error states below, unchanged).
+  const { data: work } = useApi(() => api.work(), [])
+  const liveWorkFeedLookup = work ? buildLiveWorkFeedLookup(work) : null
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [priorities, setPriorities] = useState<Record<string, number>>({})
   const [maxConcurrentWorkers, setMaxConcurrentWorkers] = useState(2)
@@ -149,7 +157,9 @@ export function FleetPage() {
         <div className="flex flex-col gap-4">
           <Card>
             <CardContent className="flex flex-col gap-3 p-4">
-              {portfolio.workSet.map((id) => (
+              {portfolio.workSet.map((id) => {
+                const feed = liveWorkFeedLookup?.get(id)
+                return (
                 <div key={id} className="flex items-center gap-3 text-sm">
                   <input
                     type="checkbox"
@@ -157,6 +167,11 @@ export function FleetPage() {
                     onChange={(e) => setSelected((prev) => ({ ...prev, [id]: e.target.checked }))}
                   />
                   <span className="min-w-0 flex-1 truncate">{id}</span>
+                  {feed && (
+                    <Badge variant={liveWorkFeedBadgeVariant(feed.state)} title={feed.reason}>
+                      {feed.state}
+                    </Badge>
+                  )}
                   <label className="text-[11px] text-muted-foreground">Priority</label>
                   <input
                     type="number"
@@ -168,7 +183,8 @@ export function FleetPage() {
                     }
                   />
                 </div>
-              ))}
+                )
+              })}
               <div className="flex items-center gap-3">
                 <label className="text-[11px] text-muted-foreground">
                   Max concurrent workers (Windows safety)

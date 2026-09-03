@@ -12,7 +12,7 @@ import {
   raiseNeedsYou,
   settleInFlightWave
 } from '../domain/keep-going.mjs'
-import { projectLiveWorkFeedState } from '../domain/live-work-feed.mjs'
+import { projectLiveWorkFeedState, describeLiveRunStatus } from '../domain/live-work-feed.mjs'
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 const PROJECT_ID = 'fixture:proj'
@@ -188,4 +188,24 @@ test('NEEDS_YOU is checked before STALLED/PAUSED/BLOCKED -- ordering matters, an
   // raiseNeedsYou already put run.state at NEEDS_YOU; assert the function
   // does not fall through to some other branch first.
   assert.equal(projectLiveWorkFeedState(run).state, 'NEEDS_YOU')
+})
+
+// BUG-13: describeLiveRunStatus is the one grounding sentence Planner
+// Chat's deterministic fallback and the live conversational planner's
+// context capsule both reuse -- proving it here proves both call sites'
+// grounding is correct, not two independently-drifting copies.
+test('describeLiveRunStatus: no run -> null, never fabricated', () => {
+  assert.equal(describeLiveRunStatus(null), null)
+})
+
+test('describeLiveRunStatus: a real run -> id, state, and reason all present, grounded in projectLiveWorkFeedState', () => {
+  const run = baseRun()
+  const description = describeLiveRunStatus(run)
+  assert.match(description, /Keep Going run run-1 is PLANNING:/)
+})
+
+test('describeLiveRunStatus: STALLED run reads STALLED, not the raw gap decision', () => {
+  let run = baseRun()
+  run = markStalled(run, [], clock, false, run.revision)
+  assert.match(describeLiveRunStatus(run), /is STALLED:/)
 })

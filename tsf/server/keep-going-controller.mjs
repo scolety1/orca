@@ -219,6 +219,15 @@ export function projectKeepGoingRun(run, clock) {
     // without leaking the lock's own internal shape.
     dispatchTickActive:
       !!run.tickLock && run.tickLock.kind === 'DISPATCH' && isTickLockActive(run, clock),
+    // BUG-14 (bug-ledger.json): same "expose exactly the boolean the
+    // client needs, never the raw domain internal" pattern as
+    // dispatchTickActive above. Without this, the client's Live Work Feed
+    // mapping (tsf/ui/src/lib/live-work-feed.ts) had no way to detect
+    // domain/live-work-feed.mjs's own inFlightWave-still-set-but-last-
+    // checkpointed-WAVE_STALLED case -- it fell through to a guessed
+    // WORKING/VERIFYING/REVISION instead of the real STALLED, a genuine
+    // drift between the two projections of the same run.
+    inFlightWaveStalled: !!(run.inFlightWave && lastCheckpoint?.phase === 'WAVE_STALLED'),
     createdAt: run.createdAt,
     updatedAt: run.updatedAt
   }
