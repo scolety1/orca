@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createDeterministicFakeResearchWorker } from '../adapters/deterministic-fake-research-worker.mjs'
-import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
+import { admitBoundedResearchResult, recordIdentityResolutionState } from '../domain/research-admission.mjs'
 import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
 import { markResearchNodeReady, recordResearchNodeAttempt, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
 import { canonicalOutputToCsv, buildResearchProvenancePackage } from '../domain/research-provenance.mjs'
@@ -149,6 +149,27 @@ test('NFL 2001 QB fixture runs end to end through the full research engine', asy
   assert.equal(millerNode.claims.find((c) => c.id === badTeamClaim.id).status, 'REJECTED', 'the mis-scoped (non-2001) team claim must fail temporal verification')
   assert.equal(millerNode.typedMissingness.length, 1, 'signingBonusUsd is honestly admitted as missing')
   assert.equal(millerNode.typedMissingness[0].fieldName, 'signingBonusUsd')
+  assert.ok(millerNode.observations[0].rawContent.toLowerCase().includes('ambiguous'), 'the worker itself flagged the namesake ambiguity in its observation')
+
+  // Identity resolution: the worker's own low-confidence, ambiguous
+  // observation is what triggers TSF to explicitly resolve the alias --
+  // never guessed/auto-attributed (see the security-boundary tests in
+  // research-epistemic-ladder.test.mjs).
+  mission = recordIdentityResolutionState(
+    mission,
+    'node:jim-miller',
+    {
+      candidateEntityRefs: [{ entityId: 'nfl:2001:qb:jim-miller', team: 'CHI' }, { entityId: 'unrelated:jim-miller:other-1' }, { entityId: 'unrelated:jim-miller:other-2' }],
+      resolvedEntityId: 'nfl:2001:qb:jim-miller',
+      status: 'RESOLVED',
+      rationale: 'Disambiguated by cross-referencing team (CHI) and 2001-dated primary roster source against the fixture ExpectedUniverse entity.'
+    },
+    clock,
+    mission.revision
+  )
+  millerNode = mission.nodes.find((n) => n.id === 'node:jim-miller')
+  assert.equal(millerNode.identityResolutionState.status, 'RESOLVED')
+  assert.equal(millerNode.identityResolutionState.resolvedEntityId, 'nfl:2001:qb:jim-miller')
 
   mission = recordResearchNodeAttempt(mission, 'node:jim-miller', 'RETRY', clock, mission.revision)
   mission = await runRequestToAdmission(mission, millerFixedRequest, worker)
@@ -185,9 +206,22 @@ test('NFL 2001 QB fixture runs end to end through the full research engine', asy
   const completeness = computeCompletenessMetrics(mission, clock)
   assert.equal(completeness.presentEntityCoverage, 1, 'all 3 expected players present')
   assert.equal(completeness.expectedEntityCoverage, 1)
+  // Direct, real-valued assertions (not just edge cases) -- an
+  // independent-verification finding on the prior version of this test:
+  // fieldCoverage/evidenceCoverage/verifiedCoverage were only exercised
+  // for degenerate (empty/zero) cases elsewhere, never for this fixture's
+  // real, fully-worked-through numbers.
+  assert.equal(completeness.fieldCoverage, 1, 'every one of the 11 requested fields across all 3 players resolved -- canonical or honestly typed-missing')
+  assert.equal(completeness.evidenceCoverage, 1, 'every one of the 11 claims (including the later-superseded/rejected ones) carries real evidence')
+  assert.equal(
+    completeness.verifiedCoverage,
+    0.9,
+    '9 of 10 non-rejected claims reached VERIFIED/RECONCILED -- the one exception is Warner\'s undisclosed-methodology aggregator claim, correctly left CONFLICTED (superseded, never itself verified) rather than silently counted as verified'
+  )
   assert.ok(completeness.unresolvedConflictCount === 0, 'the Warner conflict was reconciled')
   assert.equal(completeness.conflictCount, 1)
   assert.ok(completeness.typedMissingnessCount >= 1)
+  assert.equal(completeness.identityReviewCount, 1, 'exactly the Jim Miller node required identity review')
   assert.ok(completeness.derivedFieldReproducibilityCoverage === 1, 'the one derived field (passerRating) is reproducible from its still-canonical inputs')
 
   // --- Provenance / reproducibility export ---
@@ -198,8 +232,10 @@ test('NFL 2001 QB fixture runs end to end through the full research engine', asy
   assert.ok(packageBody.timeline.events.length > 10)
   assert.ok(packageBody.workerProviderManifest.some((p) => p.provider === 'FAKE'))
   assert.ok(packageBody.workerProviderManifest.every((p) => p.totalCostUsd === 0), 'fake worker runs are real $0, never a fabricated unknown coerced to 0')
+  assert.equal(packageBody.integrityReport.status, 'CLEAN', 'every exported CanonicalFact went through real, valid ReconciliationDecision lineage')
+  assert.equal(packageBody.integrityReport.findings.length, 0)
 
-  const csv = canonicalOutputToCsv(mission)
+  const csv = canonicalOutputToCsv(mission, clock)
   const lines = csv.trim().split('\n')
   assert.equal(lines[0], 'nodeId,entityId,fieldName,value,missingnessType,temporalScope,canonicalizedAt')
   assert.ok(lines.some((l) => l.includes('passerRating')))

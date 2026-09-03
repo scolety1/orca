@@ -18,6 +18,7 @@
 import { isoNow, sha256 } from './canonical.mjs'
 import { createReceipt } from './receipts.mjs'
 import { computeCompletenessMetrics } from './research-completeness.mjs'
+import { integrityCheckedMission } from './research-integrity.mjs'
 
 function durationMs(fromIso, toIso) {
   if (!fromIso || !toIso) return null
@@ -131,7 +132,12 @@ function providerManifest(mission) {
   }))
 }
 
-export function buildResearchProvenancePackage(mission, { decidedBy = 'TSF_SYSTEM', clock } = {}) {
+export function buildResearchProvenancePackage(rawMission, { decidedBy = 'TSF_SYSTEM', clock } = {}) {
+  // Fail-closed at the artifact-export boundary: any CanonicalFact whose
+  // ReconciliationDecision lineage doesn't check out is excluded from
+  // `nodes[].canonicalFacts`/`completeness` below and surfaced instead in
+  // `integrityReport` -- never silently emitted as if it were trustworthy.
+  const { mission, integrityReport } = integrityCheckedMission(rawMission, clock)
   const completeness = computeCompletenessMetrics(mission, clock)
   const timeline = buildResearchMissionTimeline(mission)
   const packageBody = {
@@ -140,6 +146,7 @@ export function buildResearchProvenancePackage(mission, { decidedBy = 'TSF_SYSTE
     projectId: mission.projectId,
     specification: mission.specification,
     expectedUniverse: mission.expectedUniverse,
+    integrityReport,
     nodes: mission.nodes.map((node) => ({
       id: node.id,
       targetEntity: node.targetEntity,
@@ -154,7 +161,8 @@ export function buildResearchProvenancePackage(mission, { decidedBy = 'TSF_SYSTE
       verifications: node.verifications,
       conflicts: node.conflicts,
       reconciliationDecisions: node.reconciliationDecisions,
-      canonicalFacts: node.canonicalFacts
+      canonicalFacts: node.canonicalFacts,
+      quarantinedCanonicalFacts: node.quarantinedCanonicalFacts
     })),
     completeness,
     timeline,
@@ -185,7 +193,10 @@ function csvEscape(value) {
 // honest typed-missing row -- never a silently blank/absent row for a
 // field TSF simply hasn't gotten to yet (those are excluded entirely,
 // distinguishable from "resolved but missing").
-export function canonicalOutputToCsv(mission) {
+export function canonicalOutputToCsv(rawMission, clock) {
+  // Same fail-closed boundary as buildResearchProvenancePackage -- a
+  // lineage-invalid CanonicalFact never reaches the CSV.
+  const { mission } = integrityCheckedMission(rawMission, clock)
   const header = ['nodeId', 'entityId', 'fieldName', 'value', 'missingnessType', 'temporalScope', 'canonicalizedAt']
   const rows = [header.join(',')]
   for (const node of mission.nodes) {

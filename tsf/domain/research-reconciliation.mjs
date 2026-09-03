@@ -17,6 +17,18 @@ export const RECONCILIATION_DECISION_TYPES = Object.freeze([
   'ACCEPT_DERIVED_VALUE'
 ])
 
+// The subset of decision types that DO produce a CanonicalFact --
+// everything in RECONCILIATION_DECISION_TYPES except ACCEPT_TYPED_MISSING.
+// EXPORTED as the one shared instance research-integrity.mjs's read-side
+// check imports directly (not a second independently-filtered copy) --
+// an independent-verification finding on the prior copy-via-filter
+// approach: the exclusion of ACCEPT_TYPED_MISSING was a literal repeated
+// in two files, a real (if narrow) future-drift risk if a future decision
+// type also needed excluding. Now there is exactly one Set instance.
+export const VALID_CANONICAL_DECISION_TYPES = new Set(
+  RECONCILIATION_DECISION_TYPES.filter((t) => t !== 'ACCEPT_TYPED_MISSING')
+)
+
 function decisionBinding({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue }) {
   return sha256({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue })
 }
@@ -127,6 +139,15 @@ export function admitReconciliationDecision(mission, nodeId, reconciliationDecis
         const next = deepClone(node)
         next.typedMissingness[idx] = { ...next.typedMissingness[idx], reconciliationDecisionId, reconciledAt: isoNow(clock) }
         return { next, changed: true }
+      }
+      if (!VALID_CANONICAL_DECISION_TYPES.has(decision.decisionType)) {
+        // Guards against a future bug in THIS function ever constructing a
+        // CanonicalFact from a decision type that isn't supposed to
+        // produce one -- the same invariant research-integrity.mjs checks
+        // at the read/export boundary, asserted here at the one write
+        // boundary too so a regression fails loudly at write time rather
+        // than silently at read time.
+        throw new Error(`unreachable: decisionType ${decision.decisionType} must not produce a CanonicalFact`)
       }
       const id = sha256({ kind: 'CanonicalFact', reconciliationDecisionId })
       if (node.canonicalFacts.some((f) => f.id === id)) return { next: node, changed: false }

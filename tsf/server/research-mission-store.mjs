@@ -7,6 +7,7 @@
 // data-store.mjs + cross-process-file-lock.mjs primitive TSF already uses
 // for keepGoingRuns, applied to a new top-level collection.
 import { withFileLock } from './cross-process-file-lock.mjs'
+import { integrityCheckedMission } from '../domain/research-integrity.mjs'
 import { getStateFilePath, loadState, saveState } from './data-store.mjs'
 
 function lockPath() {
@@ -19,6 +20,23 @@ export function researchMissionFor(opState, missionId) {
 
 export function readResearchMission(missionId) {
   return researchMissionFor(loadState(), missionId)
+}
+
+// The integrity-checked read: canonicalFacts lacking valid, consistent
+// ReconciliationDecision lineage are excluded from what's treated as
+// canonical (never silently deleted from the underlying store -- see
+// research-integrity.mjs). Consumption-facing readers (a future UI/export
+// endpoint) should call this, not readResearchMission, whenever
+// canonicalFacts will be presented as trustworthy. Mutation logic
+// (dispatch/admit/verify/reconcile) intentionally keeps using the raw
+// readResearchMission/withResearchMission path -- those functions only
+// ever construct new, valid CanonicalFacts through the real reconciliation
+// path regardless, so filtering would be a no-op there and would need to
+// diverge state seen by a mutateFn from state seen by a plain read.
+export function readResearchMissionIntegrityChecked(missionId, clock) {
+  const mission = readResearchMission(missionId)
+  if (!mission) return { mission: null, integrityReport: null }
+  return integrityCheckedMission(mission, clock)
 }
 
 // mutateFn(current) must be synchronous and pure: given the just-loaded
