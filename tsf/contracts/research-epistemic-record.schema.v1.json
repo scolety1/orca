@@ -119,11 +119,12 @@
       "description": "Raised when >=2 verified/proposed Claims for the same fieldName disagree. Distinct from competing-commitments.mjs's project-resource conflict concept -- this is a field-value conflict.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "id", "fieldName", "conflictingClaimIds", "status", "raisedAt", "resolvedAt"],
+      "required": ["schemaVersion", "id", "fieldName", "temporalScope", "conflictingClaimIds", "status", "raisedAt", "resolvedAt"],
       "properties": {
         "schemaVersion": { "const": "TSF_CONFLICT_V1" },
         "id": { "type": "string", "minLength": 1 },
         "fieldName": { "type": "string", "minLength": 1 },
+        "temporalScope": { "description": "Trust + Scale Hardening: claims are only grouped as conflicting within the SAME temporalScope -- two claims about the same fieldName but genuinely different time periods are not a real conflict.", "type": ["string", "null"] },
         "conflictingClaimIds": { "type": "array", "minItems": 2, "items": { "type": "string" } },
         "status": { "enum": ["OPEN", "RECONCILED"] },
         "raisedAt": { "type": "string" },
@@ -148,7 +149,7 @@
       "description": "The sole gate that may promote a Claim (or a TSF-computed derived value) to a CanonicalFact. Must preserve enough rationale/input references to answer why the selected value became canonical.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "id", "fieldName", "decidedValue", "decisionType", "selectedClaimId", "consideredClaimIds", "verificationIds", "conflictId", "rationale", "decidedBy", "binding", "decidedAt"],
+      "required": ["schemaVersion", "id", "fieldName", "decidedValue", "decisionType", "selectedClaimId", "consideredClaimIds", "verificationIds", "conflictId", "rationale", "decidedBy", "binding", "temporalScope", "decidedAt"],
       "properties": {
         "schemaVersion": { "const": "TSF_RECONCILIATION_DECISION_V1" },
         "id": { "type": "string", "minLength": 1 },
@@ -161,8 +162,9 @@
         "conflictId": { "type": ["string", "null"] },
         "rationale": { "type": "string", "minLength": 1 },
         "decidedBy": { "type": "string", "minLength": 1 },
-        "binding": { "type": "string", "description": "sha256 staleness-detection hash, mirrors adoption.mjs's candidateBinding." },
+        "binding": { "type": "string", "description": "sha256 staleness-detection hash, mirrors adoption.mjs's candidateBinding. Includes temporalScope so two decisions differing only by period never collide." },
         "derivationLineage": { "anyOf": [{ "$ref": "#/$defs/DerivationLineage" }, { "type": "null" }] },
+        "temporalScope": { "description": "Trust + Scale Hardening: explicit for ACCEPT_DERIVED_VALUE (never guessed from a single input); for other decision types defaults to the selected claim's own temporalScope at admission time.", "type": ["string", "null"] },
         "decidedAt": { "type": "string" }
       }
     },
@@ -174,7 +176,19 @@
         "schemaVersion": { "const": "TSF_DERIVATION_LINEAGE_V1" },
         "derivationRule": { "type": "string", "minLength": 1 },
         "inputFieldNames": { "type": "array", "items": { "type": "string" } },
-        "inputCanonicalFactIds": { "type": "array", "items": { "type": "string" } }
+        "inputCanonicalFactIds": { "type": "array", "items": { "type": "string" } },
+        "crossMissionOrigin": {
+          "description": "Trust + Scale Hardening Phase 7: present only for derivationRule CROSS_MISSION_LIBRARY_REFERENCE -- preserves exactly which OTHER mission's CanonicalFact a research-library hit was adopted from, so cross-mission reuse is always traceable back to its real origin, never hidden inside an opaque derived value.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "libraryEntryId": { "type": "string" },
+            "missionId": { "type": "string" },
+            "nodeId": { "type": "string" },
+            "canonicalFactId": { "type": "string" },
+            "canonicalizedAt": { "type": "string" }
+          }
+        }
       }
     },
     "CanonicalFact": {

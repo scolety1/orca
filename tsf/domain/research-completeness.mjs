@@ -47,6 +47,15 @@ export function computeCompletenessMetrics(mission, clock) {
   for (const node of nodes) {
     for (const rf of node.requestedFields) {
       requestedFieldTotal += 1
+      // KNOWN LIMITATION (Trust + Scale Hardening, temporal semantics):
+      // requestedFields has no temporalScope of its own, so this picks the
+      // FIRST CanonicalFact for this fieldName if more than one exists
+      // across different periods (legitimate since admitReconciliationDecision
+      // allows that -- e.g. via research-library.mjs's cross-mission reuse).
+      // Fine for this codebase's current single-periodScope-per-mission
+      // fixtures; a genuinely multi-period-per-field completeness metric
+      // needs requestedFields to carry its own temporalScope before this
+      // can be made unambiguous -- deferred rather than guessed at here.
       const fact = node.canonicalFacts.find((f) => f.fieldName === rf.fieldName)
       const hasMissing = node.typedMissingness.some((m) => m.fieldName === rf.fieldName)
       if (fact || hasMissing) resolvedFieldTotal += 1

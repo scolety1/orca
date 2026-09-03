@@ -29,8 +29,8 @@ export const VALID_CANONICAL_DECISION_TYPES = new Set(
   RECONCILIATION_DECISION_TYPES.filter((t) => t !== 'ACCEPT_TYPED_MISSING')
 )
 
-function decisionBinding({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue }) {
-  return sha256({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue })
+function decisionBinding({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue, temporalScope }) {
+  return sha256({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue, temporalScope })
 }
 
 // Records a durable ReconciliationDecision. Does NOT create a CanonicalFact
@@ -40,7 +40,7 @@ function decisionBinding({ fieldName, decisionType, selectedClaimId, consideredC
 export function decideReconciliation(
   mission,
   nodeId,
-  { fieldName, decisionType, selectedClaimId = null, consideredClaimIds = [], verificationIds = [], conflictId = null, decidedValue, rationale, decidedBy, derivationLineage = null },
+  { fieldName, decisionType, selectedClaimId = null, consideredClaimIds = [], verificationIds = [], conflictId = null, decidedValue, rationale, decidedBy, derivationLineage = null, temporalScope = null },
   clock,
   expectedRevision
 ) {
@@ -73,7 +73,7 @@ export function decideReconciliation(
         const missing = node.typedMissingness.find((m) => m.fieldName === fieldName)
         if (!missing) throw new Error(`no typed missingness record exists for field ${fieldName}`)
       }
-      const binding = decisionBinding({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue })
+      const binding = decisionBinding({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue, temporalScope })
       const id = binding
       if (node.reconciliationDecisions.some((d) => d.id === id)) return { next: node, changed: false }
       const next = deepClone(node)
@@ -92,6 +92,7 @@ export function decideReconciliation(
         decidedBy,
         binding,
         derivationLineage,
+        temporalScope,
         decidedAt
       })
       if (selectedClaimId) {
@@ -158,7 +159,7 @@ export function admitReconciliationDecision(mission, nodeId, reconciliationDecis
         id,
         fieldName: decision.fieldName,
         value: decision.decidedValue,
-        temporalScope: selectedClaim?.temporalScope ?? null,
+        temporalScope: decision.temporalScope ?? selectedClaim?.temporalScope ?? null,
         reconciliationDecisionId,
         derivationLineage: decision.derivationLineage ?? null,
         canonicalizedAt: isoNow(clock)
@@ -175,25 +176,59 @@ export function admitReconciliationDecision(mission, nodeId, reconciliationDecis
 // only in facts that already survived the full ladder) and records the
 // decision with a populated DerivationLineage. Still requires the separate
 // admitReconciliationDecision call to actually produce the CanonicalFact.
+//
+// Trust + Scale Hardening finding: admitReconciliationDecision already lets
+// the SAME fieldName carry multiple CanonicalFacts across different
+// temporalScope values (each keyed by its own ReconciliationDecision, not
+// by fieldName) -- correct for a multi-period mission. This function's
+// lookup previously ignored temporalScope entirely and silently took
+// node.canonicalFacts.find's first match, which could derive from the
+// WRONG period's fact once more than one existed. An explicit optional
+// temporalScope now disambiguates; when omitted, more than one candidate
+// for a single input field is a fail-closed error rather than a guess.
 export function decideDerivedFieldReconciliation(
   mission,
   nodeId,
-  { fieldName, derivationRule, inputFieldNames, computeFn, decidedBy = 'TSF_DERIVATION_ENGINE' },
+  { fieldName, derivationRule, inputFieldNames, computeFn, decidedBy = 'TSF_DERIVATION_ENGINE', temporalScope: requestedTemporalScope = undefined },
   clock,
   expectedRevision
 ) {
   const node = mission.nodes.find((n) => n.id === nodeId)
   if (!node) throw new Error(`unknown research node: ${nodeId}`)
   const inputFacts = inputFieldNames.map((name) => {
-    const fact = node.canonicalFacts.find((f) => f.fieldName === name)
+    const candidates = node.canonicalFacts.filter((f) => f.fieldName === name)
+    let fact
+    if (requestedTemporalScope !== undefined) {
+      fact = candidates.find((f) => f.temporalScope === requestedTemporalScope)
+    } else if (candidates.length > 1) {
+      const error = new Error(
+        `derived field ${fieldName} input ${name} has ${candidates.length} CanonicalFacts across different temporalScope values -- an explicit temporalScope is required to disambiguate which one to derive from`
+      )
+      error.code = 'TSF_DERIVATION_INPUT_AMBIGUOUS_TEMPORAL_SCOPE'
+      throw error
+    } else {
+      fact = candidates[0]
+    }
     if (!fact) {
-      const error = new Error(`derived field ${fieldName} requires input ${name} to already be a CanonicalFact`)
+      const error = new Error(`derived field ${fieldName} requires input ${name} to already be a CanonicalFact${requestedTemporalScope !== undefined ? ` for temporalScope ${requestedTemporalScope}` : ''}`)
       error.code = 'TSF_DERIVATION_INPUT_NOT_CANONICAL'
       throw error
     }
     return fact
   })
   const decidedValue = computeFn(...inputFacts.map((f) => f.value))
+  // The derived fact's own temporalScope: whatever the caller explicitly
+  // requested, else the single scope every input already agreed on (a
+  // natural, non-guessed inference -- combining five facts that are all
+  // "2001 regular season" produces a "2001 regular season" result), else
+  // null when the inputs genuinely disagree and no explicit scope was
+  // given (never silently picks one input's scope over another's).
+  const resolvedTemporalScope =
+    requestedTemporalScope !== undefined
+      ? requestedTemporalScope
+      : inputFacts.every((f) => f.temporalScope === inputFacts[0].temporalScope)
+        ? inputFacts[0].temporalScope
+        : null
   return decideReconciliation(
     mission,
     nodeId,
@@ -205,6 +240,7 @@ export function decideDerivedFieldReconciliation(
       decidedValue,
       rationale: `derived via ${derivationRule} from canonical input(s): ${inputFieldNames.join(', ')}`,
       decidedBy,
+      temporalScope: resolvedTemporalScope,
       derivationLineage: {
         schemaVersion: 'TSF_DERIVATION_LINEAGE_V1',
         derivationRule,

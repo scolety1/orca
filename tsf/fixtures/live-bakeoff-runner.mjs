@@ -21,6 +21,7 @@ import { createParallelResearchWorker, PARALLEL_PROVIDER_ID } from '../adapters/
 import { createExaResearchWorker, EXA_PROVIDER_ID } from '../adapters/exa-research-worker.mjs'
 import { authorizeMeteredExecution } from '../domain/research-cost-governance.mjs'
 import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
+import { recordDispatchAttempt, resolveDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
 import { buildNflQb2001Mission } from './nfl-2001-qb-research-fixture.mjs'
 
@@ -64,7 +65,15 @@ export function createGovernedDispatcher({
     return { ok: true, projected, decision }
   }
 
-  async function dispatchGoverned({ providerId, worker, request, isRetry = false }) {
+  // onBeforeDispatch/onAfterDispatch are optional hooks fired immediately
+  // around the real network call only -- never around a gate refusal
+  // (nothing was risked, so nothing durable needs recording). This lets a
+  // caller with mission/nodeId context (runLiveBakeoff below) wire in
+  // research-dispatch-bookkeeping.mjs's attempt ledger at the exact real
+  // provider-call boundary without this dispatcher itself taking on a
+  // mission/persistence dependency -- it stays the pure, mission-agnostic,
+  // cost/request/retry gate this file's own tests exercise in isolation.
+  async function dispatchGoverned({ providerId, worker, request, isRetry = false, onBeforeDispatch, onAfterDispatch }) {
     if (totalDispatched >= maxTotalRequests) {
       const error = new Error(`STOP_FOR_HQ_COST_LIMIT: max total dispatched requests (${maxTotalRequests}) reached`)
       error.code = 'STOP_FOR_HQ_REQUEST_LIMIT'
@@ -81,8 +90,10 @@ export function createGovernedDispatcher({
       error.code = 'STOP_FOR_HQ_COST_LIMIT'
       throw error
     }
+    if (onBeforeDispatch) await onBeforeDispatch()
     const startedAt = Date.now()
     const dispatched = await worker.dispatch(request)
+    if (onAfterDispatch) await onAfterDispatch(dispatched)
     if (!dispatched.ok) {
       callLog.push({ providerId, nodeId: request.nodeId, taskFingerprint: request.taskFingerprint, ok: false, reason: dispatched.reason, detail: dispatched.detail, isRetry, at: new Date().toISOString() })
       return { ok: false, dispatched }
@@ -145,7 +156,29 @@ export async function runLiveBakeoff({ parallelApiKey, exaApiKey, outDir }) {
     ]) {
       mission = markResearchNodeReady(mission, node.id, clock, mission.revision)
       const request = buildBoundedResearchRequest(mission, mission.nodes.find((n) => n.id === node.id), providerId, clock)
-      let outcome = await dispatcher.dispatchGoverned({ providerId, worker, request })
+      // The attempt is recorded durably in the in-memory mission BEFORE the
+      // real network call and resolved immediately after -- if this process
+      // crashes mid-call, the next load of this mission (once routed
+      // through the real durable store, as the crash/resume gauntlet's
+      // withResearchMission pattern already proves for every other
+      // boundary) shows an honest AMBIGUOUS_REQUIRES_RECONCILIATION
+      // classification instead of silently permitting a blind, possibly
+      // duplicate, billable redispatch.
+      const attemptHooks = (tf) => ({
+        onBeforeDispatch: async () => {
+          mission = recordDispatchAttempt(mission, node.id, { taskFingerprint: tf }, clock, mission.revision)
+        },
+        onAfterDispatch: async (dispatched) => {
+          mission = resolveDispatchAttempt(
+            mission,
+            node.id,
+            { taskFingerprint: tf, outcome: dispatched.ok ? 'CONFIRMED' : 'FAILED_CLEAN', workerRunRef: dispatched.ok ? dispatched.workerRunRef : null },
+            clock,
+            mission.revision
+          )
+        }
+      })
+      let outcome = await dispatcher.dispatchGoverned({ providerId, worker, request, ...attemptHooks(request.taskFingerprint) })
       if (outcome.ok && !outcome.fetched.ok) {
         // dispatch succeeded but polling never resolved to a real result --
         // not eligible for retry under HQ's policy unless it's a genuine
@@ -153,7 +186,7 @@ export async function runLiveBakeoff({ parallelApiKey, exaApiKey, outDir }) {
       }
       let finalFetched = outcome.fetched
       if (outcome.entry && isRetryableFailure(outcome.entry)) {
-        outcome = await dispatcher.dispatchGoverned({ providerId, worker, request, isRetry: true })
+        outcome = await dispatcher.dispatchGoverned({ providerId, worker, request, isRetry: true, ...attemptHooks(request.taskFingerprint) })
         finalFetched = outcome.fetched
       }
       if (outcome.ok && finalFetched?.ok && finalFetched.status === 'READY') {

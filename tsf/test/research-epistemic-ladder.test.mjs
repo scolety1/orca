@@ -3,7 +3,7 @@ import test from 'node:test'
 import { admitBoundedResearchResult, recordIdentityResolutionState } from '../domain/research-admission.mjs'
 import { addResearchNode, createResearchMission } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
-import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
+import { admitReconciliationDecision, decideDerivedFieldReconciliation, decideReconciliation } from '../domain/research-reconciliation.mjs'
 import { detectResearchConflicts, verifyResearchClaim } from '../domain/research-verification.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
 
@@ -210,6 +210,33 @@ test('detectResearchConflicts raises a Conflict when two non-rejected claims dis
   assert.equal(next.nodes[0].claims.every((c) => c.status === 'CONFLICTED'), true)
 })
 
+// Trust + Scale Hardening (temporal semantics): two claims for the same
+// field but genuinely DIFFERENT time periods are not a real conflict --
+// an apparent disagreement fully explained by temporal difference, not a
+// source disagreement. Grouping used to be by fieldName alone; this proves
+// the temporalScope-aware fix.
+test('detectResearchConflicts does NOT flag two claims for the same field with genuinely different temporalScope -- temporal difference explains the apparent conflict', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  const requestA = buildBoundedResearchRequest(mission, node, 'FAKE_A', clock)
+  const requestB = buildBoundedResearchRequest(mission, node, 'FAKE_B', clock)
+  let next = markResearchNodeReady(mission, node.id, clock, mission.revision)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: requestA.taskFingerprint, workerRunRef: { provider: 'FAKE_A', providerRunId: 'a', dispatchedAt: clock().toISOString() } }, clock, next.revision)
+  next = recordResearchNodeResult(next, node.id, successResult(requestA, { proposedClaims: [{ fieldName: 'yards', proposedValue: 100, temporalScope: '2001-regular-season', providerConfidence: 0.9, providerReasoning: 'r' }] }), clock, next.revision)
+  let digest = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest, clock, next.revision)
+
+  next = markResearchNodeReady(next, node.id, clock, next.revision)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: requestB.taskFingerprint, workerRunRef: { provider: 'FAKE_B', providerRunId: 'b', dispatchedAt: clock().toISOString() } }, clock, next.revision)
+  next = recordResearchNodeResult(next, node.id, successResult(requestB, { provider: 'FAKE_B', taskFingerprint: requestB.taskFingerprint, proposedClaims: [{ fieldName: 'yards', proposedValue: 12, temporalScope: '2001-preseason', providerConfidence: 0.8, providerReasoning: 'r' }] }), clock, next.revision)
+  digest = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest, clock, next.revision)
+
+  next = detectResearchConflicts(next, node.id, clock, next.revision)
+  assert.equal(next.nodes[0].conflicts.length, 0, 'different temporal scopes are different facts, not a disagreement')
+  assert.equal(next.nodes[0].claims.every((c) => c.status === 'UNVERIFIED'), true, 'neither claim is wrongly marked CONFLICTED')
+})
+
 test('decideReconciliation ACCEPT_SINGLE_VERIFIED_CLAIM requires an actually VERIFIED claim', () => {
   let mission = missionWithNode()
   const node = mission.nodes[0]
@@ -265,6 +292,83 @@ test('CANONICALIZATION INVARIANT: admitReconciliationDecision is the only path t
   const admittedAgain = admitReconciliationDecision(admitted, node.id, decisionId, clock, admitted.revision)
   assert.equal(admittedAgain.nodes[0].canonicalFacts.length, 1)
   assert.equal(admittedAgain.revision, admitted.revision)
+})
+
+// Trust + Scale Hardening (temporal semantics): admitReconciliationDecision
+// already lets the SAME fieldName carry multiple CanonicalFacts across
+// different temporalScope values (correct for a multi-period mission).
+// decideDerivedFieldReconciliation must never silently pick one of them --
+// an explicit temporalScope is required to disambiguate, or a fail-closed
+// error if the caller doesn't supply one.
+function plantCanonicalFact(mission, nodeId, { fieldName, decidedValue, temporalScope }, clock) {
+  let next = decideReconciliation(
+    mission,
+    nodeId,
+    { fieldName, decisionType: 'ACCEPT_DERIVED_VALUE', decidedValue, temporalScope, rationale: 'test setup: planting a canonical input fact', decidedBy: 'TEST' },
+    clock,
+    mission.revision
+  )
+  const decisionId = next.nodes.find((n) => n.id === nodeId).reconciliationDecisions.at(-1).id
+  return admitReconciliationDecision(next, nodeId, decisionId, clock, next.revision)
+}
+
+test('decideDerivedFieldReconciliation refuses to guess between multiple temporalScope-differentiated CanonicalFacts for the same input field', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  mission = plantCanonicalFact(mission, node.id, { fieldName: 'yards', decidedValue: 100, temporalScope: '2001-regular-season' }, clock)
+  mission = plantCanonicalFact(mission, node.id, { fieldName: 'yards', decidedValue: 12, temporalScope: '2001-preseason' }, clock)
+  assert.throws(
+    () =>
+      decideDerivedFieldReconciliation(
+        mission,
+        node.id,
+        { fieldName: 'doubled', derivationRule: 'DOUBLE', inputFieldNames: ['yards'], computeFn: (y) => y * 2 },
+        clock,
+        mission.revision
+      ),
+    (error) => {
+      assert.equal(error.code, 'TSF_DERIVATION_INPUT_AMBIGUOUS_TEMPORAL_SCOPE')
+      return true
+    }
+  )
+})
+
+test('decideDerivedFieldReconciliation with an explicit temporalScope picks the correct input and stamps it onto the derived CanonicalFact', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  mission = plantCanonicalFact(mission, node.id, { fieldName: 'yards', decidedValue: 100, temporalScope: '2001-regular-season' }, clock)
+  mission = plantCanonicalFact(mission, node.id, { fieldName: 'yards', decidedValue: 12, temporalScope: '2001-preseason' }, clock)
+  mission = decideDerivedFieldReconciliation(
+    mission,
+    node.id,
+    { fieldName: 'doubled', derivationRule: 'DOUBLE', inputFieldNames: ['yards'], computeFn: (y) => y * 2, temporalScope: '2001-preseason' },
+    clock,
+    mission.revision
+  )
+  const decisionId = mission.nodes[0].reconciliationDecisions.at(-1).id
+  mission = admitReconciliationDecision(mission, node.id, decisionId, clock, mission.revision)
+  const derived = mission.nodes[0].canonicalFacts.find((f) => f.fieldName === 'doubled')
+  assert.equal(derived.value, 24, 'must derive from the preseason (12), never the regular-season (100), input')
+  assert.equal(derived.temporalScope, '2001-preseason', 'the derived fact carries the explicit disambiguating scope, not null')
+})
+
+test('decideDerivedFieldReconciliation infers the derived temporalScope when every input already agrees, with no explicit override', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  mission = plantCanonicalFact(mission, node.id, { fieldName: 'completions', decidedValue: 10, temporalScope: '2001-regular-season' }, clock)
+  mission = plantCanonicalFact(mission, node.id, { fieldName: 'attempts', decidedValue: 20, temporalScope: '2001-regular-season' }, clock)
+  mission = decideDerivedFieldReconciliation(
+    mission,
+    node.id,
+    { fieldName: 'completionPct', derivationRule: 'PCT', inputFieldNames: ['completions', 'attempts'], computeFn: (c, a) => c / a },
+    clock,
+    mission.revision
+  )
+  const decisionId = mission.nodes[0].reconciliationDecisions.at(-1).id
+  mission = admitReconciliationDecision(mission, node.id, decisionId, clock, mission.revision)
+  const derived = mission.nodes[0].canonicalFacts.find((f) => f.fieldName === 'completionPct')
+  assert.equal(derived.value, 0.5)
+  assert.equal(derived.temporalScope, '2001-regular-season', 'both inputs agreed on this scope -- inferred, not guessed')
 })
 
 test('identity resolution state is recorded per node and is independent of claim/verification state', () => {

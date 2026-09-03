@@ -137,6 +137,7 @@ export const blockResearchMission = (mission, reason, evidence, clock, expectedR
 
 function emptyEpistemicArrays() {
   return {
+    dispatchAttempts: [],
     dispatchRecords: [],
     rawResults: [],
     admittedResultDigests: [],
