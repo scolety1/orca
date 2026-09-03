@@ -264,6 +264,16 @@ test('research mission driver: the real persisted execution path, durable across
     let node = readResearchMission(MISSION_ID).nodes.find((n) => n.id === 'node:needs-input-escalate')
     assert.equal(node.status, 'BLOCKED')
     assert.equal(readResearchMissionStatus(MISSION_ID).state, 'NEEDS_YOU')
+
+    // Independent-verification finding: a resumed poll call on an already-
+    // escalated (BLOCKED) node must never throw -- admitBoundedResearchResult's
+    // digest-based short-circuit must fire regardless of node.status having
+    // moved on since the original admission.
+    const resumedPoll = await pollAndAdmitResearchNodeDurable(MISSION_ID, 'node:needs-input-escalate', worker, clock)
+    assert.equal(resumedPoll.ok, true, 'a resumed poll on an already-escalated node must not throw')
+    assert.equal(readResearchMission(MISSION_ID).nodes.find((n) => n.id === 'node:needs-input-escalate').status, 'BLOCKED', 'must not be silently forced back to ADMITTED')
+    assert.equal(readResearchMissionReviewItems(MISSION_ID).filter((i) => i.nodeId === 'node:needs-input-escalate').length, 1, 'must not raise a second duplicate Needs You either')
+
     const openItem = readResearchMissionReviewItems(MISSION_ID).find((i) => i.nodeId === 'node:needs-input-escalate')
     assert.ok(openItem)
 

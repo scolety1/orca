@@ -33,7 +33,19 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
     (node) => {
       const raw = (node.rawResults ?? []).find((r) => r.digest === resultDigest)
       if (!raw) throw new Error(`unknown raw result digest for node ${nodeId}: ${resultDigest}`)
-      if ((node.admittedResultDigests ?? []).includes(resultDigest) && node.status === 'ADMITTED') {
+      // Independent-verification finding: this previously also required
+      // node.status === 'ADMITTED' to short-circuit -- but "was THIS EXACT
+      // resultDigest already fully processed" is a fact about history
+      // (content-derived, permanent), not about current status. Requiring
+      // status==='ADMITTED' broke the moment ANY legitimate later
+      // transition moved the node past ADMITTED (escalateResearchNodeToNeedsYou
+      // -> BLOCKED being the concrete case found: a resumed
+      // pollAndAdmitResearchNodeDurable call on an already-escalated node
+      // re-admitted the same digest and threw BLOCKED -> ADMITTED, an
+      // illegal transition). A specific digest already in
+      // admittedResultDigests is done, full stop, regardless of what has
+      // happened to node.status since.
+      if ((node.admittedResultDigests ?? []).includes(resultDigest)) {
         return { next: node, changed: false }
       }
       const result = raw.result
