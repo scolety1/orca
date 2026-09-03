@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Copy } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
@@ -15,6 +16,8 @@ import { PlannerChatPanel } from '@/components/chat/PlannerChatPanel'
 import { RefreshProjectButton } from '@/components/onboarding/RefreshProjectButton'
 import { MembershipPanel } from '@/components/projects/MembershipPanel'
 import { resolveProjectDetailTab } from '@/lib/project-work-deep-link'
+import { humanizeConstant } from '@/lib/orchestration-terminology'
+import { writeLastViewedProject } from '@/lib/last-viewed-project'
 
 function copy(text: string) {
   navigator.clipboard?.writeText(text).catch(() => undefined)
@@ -61,6 +64,27 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
   // exactly as before.
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = resolveProjectDetailTab(searchParams.get('tab'))
+  // BUG-02 (bug-ledger.json), real-project validation finding: the bug's
+  // own title is "Last-viewed project/navigation position is not reliably
+  // preserved" -- the URL-search-params fix above only covers Projects'
+  // own filter/search/sort surviving a click-in-and-back round trip, not
+  // the ORIGINAL literal complaint (leave for Health Repair/another
+  // section, come back to Projects, still have to re-find the project) --
+  // reproduced live against a real project during final review. This is
+  // the other half: remember the single fact of which project this was,
+  // so Projects can scroll it into view (see ProjectsPage.tsx).
+  //
+  // Independent-verification finding: this must key off the loaded
+  // project, not the raw route param -- writing on the bare id fires even
+  // when api.project(id!) never resolves (a stale/broken deep link, a
+  // deleted project), overwriting a real prior last-viewed project with a
+  // dead id that then matches nothing on Projects, silently defeating the
+  // whole feature until another valid project is viewed.
+  useEffect(() => {
+    if (project?.id) {
+      writeLastViewedProject(project.id)
+    }
+  }, [project?.id])
 
   // Real V1 stabilization finding (see ProjectsPage.tsx for the full real-
   // browser reproduction): gating on bare loading flashes this whole page
@@ -318,8 +342,9 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
                               ? 'healthy'
                               : 'blocked'
                           }
+                          title={r.status}
                         >
-                          {r.status}
+                          {humanizeConstant(r.status)}
                         </Badge>
                       </div>
                       {r.implementationSummary && (

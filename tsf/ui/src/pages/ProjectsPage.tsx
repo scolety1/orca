@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
@@ -12,6 +12,7 @@ import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightF
 import { classifyProjectLifecycle, type LifecycleBucket } from '@/lib/project-lifecycle'
 import { matchesSearch, sortProjects } from '@/lib/project-filtering'
 import { readProjectsListFilters, writeProjectsListFilters } from '@/lib/projects-list-filters'
+import { readLastViewedProject } from '@/lib/last-viewed-project'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -35,6 +36,36 @@ export function ProjectsPage() {
   }
   const [missionDialogOpen, setMissionDialogOpen] = useState(false)
   const [overnightDialogOpen, setOvernightDialogOpen] = useState(false)
+
+  // Real-project validation finding (BUG-02, final review wave): the URL-
+  // filter restoration above only covers a click-in-and-back round trip
+  // within Projects' own history entry -- it does NOT address the bug's
+  // own literal original complaint (leave for an entirely different
+  // section, e.g. Health Repair, then return to Projects and still have
+  // to re-find/re-scroll to the project you were just on), reproduced
+  // live against a real project. Scrolling the last-viewed project into
+  // view closes that gap without changing the default sort or silently
+  // redirecting anywhere -- only fires on a genuinely fresh arrival (no
+  // explicit filter/search/sort in the URL at all); a filtered/sorted
+  // browser-back restoration is left exactly as BUG-02's own fix already
+  // handles it, and never re-triggered by this.
+  const lastViewedId = useMemo(() => readLastViewedProject(), [])
+  const lastViewedCardRef = useRef<HTMLDivElement | null>(null)
+  const hasAutoScrolledRef = useRef(false)
+  useEffect(() => {
+    if (hasAutoScrolledRef.current) {
+      return
+    }
+    if (searchParams.toString() !== '') {
+      hasAutoScrolledRef.current = true
+      return
+    }
+    if (lastViewedCardRef.current) {
+      lastViewedCardRef.current.scrollIntoView({ block: 'center' })
+      hasAutoScrolledRef.current = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portfolio])
 
   const selectedIds = useMemo(() => Object.keys(selected).filter((id) => selected[id]), [selected])
 
@@ -145,13 +176,17 @@ export function ProjectsPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {visible.map((project) => (
-              <ProjectCard
+              <div
                 key={project.id}
-                project={project}
-                selectable
-                selected={selected[project.id] ?? false}
-                onToggleSelect={toggleSelect}
-              />
+                ref={project.id === lastViewedId ? lastViewedCardRef : undefined}
+              >
+                <ProjectCard
+                  project={project}
+                  selectable
+                  selected={selected[project.id] ?? false}
+                  onToggleSelect={toggleSelect}
+                />
+              </div>
             ))}
           </div>
         )}
