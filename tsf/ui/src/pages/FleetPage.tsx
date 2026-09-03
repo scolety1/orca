@@ -155,6 +155,17 @@ export function FleetPage() {
         />
       ) : (
         <div className="flex flex-col gap-4">
+          {/* BUG-03 (bug-ledger.json): this checkbox LOOKS identical to
+              ProjectsPage.tsx's selection checkbox but means something
+              completely different -- here it only feeds a schedule-
+              building/Overnight-Fleet-selection choice among Work Set
+              members, never Active Fleet/Work Set membership itself
+              (ProjectsPage's BulkActionBar owns that). One caption instead
+              of relabeling every row. */}
+          <p className="text-[11px] text-muted-foreground">
+            Selecting here chooses which Work Set projects to schedule/dispatch below -- it never
+            changes Active Fleet or Work Set membership (that's on the Projects page).
+          </p>
           <Card>
             <CardContent className="flex flex-col gap-3 p-4">
               {portfolio.workSet.map((id) => {
@@ -165,6 +176,7 @@ export function FleetPage() {
                     type="checkbox"
                     checked={selected[id] ?? false}
                     onChange={(e) => setSelected((prev) => ({ ...prev, [id]: e.target.checked }))}
+                    aria-label={`Select ${id} for scheduling`}
                   />
                   <span className="min-w-0 flex-1 truncate">{id}</span>
                   {feed && (
