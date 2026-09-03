@@ -14,6 +14,7 @@ import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
 import { CapacityIndicator } from '@/components/CapacityIndicator'
 import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
+import { GlobalRunStatusIndicator } from '@/components/GlobalRunStatusIndicator'
 
 const NAV = [
   { to: '/', label: 'Home', icon: LayoutGrid, end: true },
@@ -74,6 +75,7 @@ export function AppShell() {
             ))}
           </nav>
           <div className="mt-4 flex shrink-0 flex-col gap-2 px-3">
+            <GlobalRunStatusIndicator />
             <SystemStatusIndicator />
             <CapacityIndicator />
             <div className="flex flex-col gap-1 px-2 text-[10px] text-muted-foreground">

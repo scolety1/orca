@@ -20,7 +20,8 @@ export function fleetWorkStatus(projects, keepGoingRuns = {}, clock = () => new 
         hasRun: false,
         feed: null,
         runId: null,
-        executing: false
+        executing: false,
+        lastCheckpointAt: null
       }
     }
     // Mirrors keep-going-controller.mjs's projectKeepGoingRun: no autonomous
@@ -37,7 +38,13 @@ export function fleetWorkStatus(projects, keepGoingRuns = {}, clock = () => new 
       runId: run.id,
       // The one real fact update-safety.mjs's adoption gate actually needs
       // -- see isRunExecuting's own comment in live-work-feed.mjs.
-      executing: isRunExecuting(run)
+      executing: isRunExecuting(run),
+      // BUG-15/persistent-visibility (bug-ledger.json): the real, already-
+      // persisted "when did this run last do anything" fact -- no
+      // fabricated heartbeat (see keep-going-result-capsules.mjs/
+      // domain/live-work-feed.mjs's own comments on why no true per-
+      // worker heartbeat exists in this codebase).
+      lastCheckpointAt: run.checkpoints.at(-1)?.at ?? null
     }
   })
 }

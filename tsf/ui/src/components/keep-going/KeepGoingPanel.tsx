@@ -36,6 +36,15 @@ function LiveRun({
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // BUG-15: captured from the real, still-in-flight wave right before
+  // abandoning it (inFlightWaveDetail clears once settled) so the "Run
+  // now" form below can prefill the same real work item once the run
+  // resumes -- see KeepGoingTickForm's own comment for why this is the
+  // safest real recovery this codebase supports (no single-item Retry
+  // primitive exists).
+  const [prefillRetry, setPrefillRetry] = useState<{ workItemId: string; scope: string } | null>(
+    null
+  )
 
   async function pause() {
     setBusy(true)
@@ -71,11 +80,15 @@ function LiveRun({
     setBusy(true)
     setError(null)
     try {
+      const stuckItem = run.inFlightWaveDetail?.items[0]
       await api.abandonStalledKeepGoingWave(
         projectId,
         'OPERATOR_ABANDONED_STALLED_WAVE',
         run.revision
       )
+      if (stuckItem) {
+        setPrefillRetry({ workItemId: stuckItem.workItemId, scope: stuckItem.scope.join('\n') })
+      }
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not abandon the stalled wave.')
@@ -237,9 +250,41 @@ function LiveRun({
           </div>
         )}
 
+        {/* BUG-15 (bug-ledger.json): real stalled-wave detail -- ground-
+            truth investigated first (see keep-going-controller.mjs's own
+            comment on inFlightWaveDetail). No fabricated worker/provider
+            identity: this codebase genuinely never persists one. */}
+        {run.state === 'STALLED' && run.inFlightWaveDetail && (
+          <div className="rounded-md border border-status-degraded/40 bg-status-degraded/10 p-3 text-[12px]">
+            <div className="mb-1 font-medium text-status-degraded">Stalled wave</div>
+            <div className="text-muted-foreground">
+              Dispatched {new Date(run.inFlightWaveDetail.dispatchedAt).toLocaleString()} — no
+              terminal outcome yet.
+            </div>
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {run.inFlightWaveDetail.items.map((item) => (
+                <li key={item.workItemId} className="font-mono text-[11px]">
+                  {item.workItemId} · {item.scope.join(', ')}
+                  {item.taskId && <span className="text-muted-foreground"> · task {item.taskId}</span>}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Worker/provider identity: not tracked by TSF for a UI-started run today.
+            </div>
+          </div>
+        )}
+
         {error && <p className="text-xs text-status-blocked">{error}</p>}
 
-        {run.state === 'ACTIVE' && <KeepGoingTickForm projectId={projectId} onTicked={onChanged} />}
+        {run.state === 'ACTIVE' && (
+          <KeepGoingTickForm
+            projectId={projectId}
+            onTicked={onChanged}
+            defaultWorkItemId={prefillRetry?.workItemId}
+            defaultScope={prefillRetry?.scope}
+          />
+        )}
 
         <div className="flex gap-2">
           {canPause && (

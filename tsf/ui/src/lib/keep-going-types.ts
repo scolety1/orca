@@ -36,6 +36,19 @@ export type KeepGoingGapAnalysis = {
   decision: 'CONTINUE' | 'STOP_COMPLETE' | 'STOP_BLOCKED' | 'STOP_BUDGET_EXHAUSTED'
 }
 
+// BUG-15 (bug-ledger.json): real detail for a genuinely in-flight (incl.
+// now-stalled) wave -- see keep-going-controller.mjs's own comment on
+// exactly what is/isn't real here. workerIdentityAvailable is always
+// false today (no agent/provider/model is ever persisted onto a dispatch
+// record anywhere in this codebase) -- sent explicitly rather than simply
+// omitting the field, so the UI has one clear place to read "not
+// available" from instead of silently omitting the section.
+export type KeepGoingInFlightWaveDetail = {
+  dispatchedAt: string
+  items: { workItemId: string; scope: string[]; taskId: string | null }[]
+  workerIdentityAvailable: false
+}
+
 export type KeepGoingRunView =
   | { started: false }
   | {
@@ -54,6 +67,7 @@ export type KeepGoingRunView =
       retryCounts: Record<string, number>
       gap: KeepGoingGapAnalysis
       workers: unknown[]
+      inFlightWaveDetail: KeepGoingInFlightWaveDetail | null
       verifierResults: unknown[]
       openNeedsYou: KeepGoingNeedsYouEntry[]
       lastCheckpoint: KeepGoingCheckpoint | null

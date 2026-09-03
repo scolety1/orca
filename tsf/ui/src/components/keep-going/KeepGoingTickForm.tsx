@@ -16,15 +16,26 @@ function linesOf(value: string): string[] {
 // and where. Kept deliberately minimal (single item) rather than a full
 // multi-item batch editor. Split out of KeepGoingPanel.tsx to keep that
 // file under the repo's max-lines lint limit.
+// BUG-15: defaultWorkItemId/defaultScope let the panel prefill these from
+// a real, just-abandoned stalled work item's own workItemId/scope -- the
+// safest real recovery this codebase supports today (there is no single-
+// work-item "Retry" domain primitive, see keep-going.mjs) is Abandon
+// followed by a fresh dispatch of the same real work, and this is what
+// makes that one click instead of retyping it from scratch. Still fully
+// editable -- never auto-submitted.
 export function KeepGoingTickForm({
   projectId,
-  onTicked
+  onTicked,
+  defaultWorkItemId,
+  defaultScope
 }: {
   projectId: string
   onTicked: () => void
+  defaultWorkItemId?: string
+  defaultScope?: string
 }) {
-  const [workItemId, setWorkItemId] = useState('')
-  const [scope, setScope] = useState('')
+  const [workItemId, setWorkItemId] = useState(defaultWorkItemId ?? '')
+  const [scope, setScope] = useState(defaultScope ?? '')
   const [spec, setSpec] = useState('')
   // No pre-filled default -- see hasExplicitPlacement (keep-going-dispatch-loop.mjs).
   const [worktree, setWorktree] = useState('')

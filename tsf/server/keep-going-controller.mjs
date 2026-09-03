@@ -194,6 +194,27 @@ export function projectKeepGoingRun(run, clock) {
       decision: gap.decision
     },
     workers: [],
+    // BUG-15 (bug-ledger.json): the real, already-persisted detail of a
+    // genuinely in-flight (including now-stalled) wave -- ground-truth
+    // investigated before building this: taskId/dispatchId/workItemId/
+    // scope/dispatchedAt are the ONLY facts the real dispatch/settle path
+    // ever records (keep-going-dispatch-loop.mjs); no agent/provider/model
+    // identity is ever persisted onto a dispatch record anywhere in this
+    // codebase, so none is invented here -- see workerIdentityAvailable.
+    // null once inFlightWave clears (settled, abandoned, or never
+    // dispatched) -- this is deliberately NOT a historical log, only what
+    // is genuinely, currently in flight.
+    inFlightWaveDetail: run.inFlightWave
+      ? {
+          dispatchedAt: run.inFlightWave.dispatchedAt,
+          items: run.inFlightWave.dispatchRecords.map(({ workItemId, scope, taskId }) => ({
+            workItemId,
+            scope,
+            taskId
+          })),
+          workerIdentityAvailable: false
+        }
+      : null,
     verifierResults: [],
     openNeedsYou: openNeedsYou.map(({ id, question, options, raisedAt }) => ({
       id,

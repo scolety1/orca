@@ -74,7 +74,12 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
       }
       continue
     }
-    const item = { ...project, liveWorkFeed: status.feed, runId: status.runId }
+    const item = {
+      ...project,
+      liveWorkFeed: status.feed,
+      runId: status.runId,
+      lastCheckpointAt: status.lastCheckpointAt
+    }
     const section = RUN_FEED_SECTION[status.feed.state]
     switch (section) {
       case 'active':

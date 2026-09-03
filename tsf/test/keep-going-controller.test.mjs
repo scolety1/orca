@@ -217,3 +217,32 @@ test('projectKeepGoingRun exposes inFlightWaveStalled -- true only when a wave i
   }
   assert.equal(projectKeepGoingRun(inFlightStalled, clock).inFlightWaveStalled, true)
 })
+
+// BUG-15 (bug-ledger.json): the real stalled-wave detail an operator needs
+// to actually understand and act on a STALLED run -- ground-truth
+// investigated first (no fabricated worker/provider identity).
+test('projectKeepGoingRun exposes inFlightWaveDetail -- real dispatchedAt/items, null once no wave is in flight, honest workerIdentityAvailable:false', () => {
+  const { run } = startKeepGoingRun(
+    {},
+    'proj-1',
+    { originalGoal: 'Ship it.', acceptanceCriteria: ['A_DONE'] },
+    clock
+  )
+  assert.equal(projectKeepGoingRun(run, clock).inFlightWaveDetail, null)
+
+  const withInFlightWave = {
+    ...run,
+    inFlightWave: {
+      dispatchedAt: clock().toISOString(),
+      dispatchRecords: [
+        { workItemId: 'w1', scope: ['src/a.mjs'], taskId: 'task-1', dispatchId: 'dispatch-1' }
+      ]
+    }
+  }
+  const view = projectKeepGoingRun(withInFlightWave, clock)
+  assert.equal(view.inFlightWaveDetail.dispatchedAt, clock().toISOString())
+  assert.deepEqual(view.inFlightWaveDetail.items, [
+    { workItemId: 'w1', scope: ['src/a.mjs'], taskId: 'task-1' }
+  ])
+  assert.equal(view.inFlightWaveDetail.workerIdentityAvailable, false)
+})
