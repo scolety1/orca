@@ -59,7 +59,12 @@ export function createDeterministicFakeResearchWorker({ provider = 'FAKE', scrip
       taskFingerprint: request.taskFingerprint,
       provider: resultProvider,
       providerRunRef: workerRunRef,
-      status: 'SUCCEEDED',
+      // PARTIAL/NEEDS_INPUT (Trust + Scale Hardening Continuation 2
+      // Priority Block 2): an explicit script `resultStatus` override lets
+      // a test produce either -- defaults to SUCCEEDED unchanged, so every
+      // existing script entry (no resultStatus field) behaves exactly as
+      // before.
+      status,
       observations: entry.observations ?? [],
       proposedClaims: entry.proposedClaims ?? [],
       evidence: entry.evidence ?? [],
@@ -96,7 +101,7 @@ export function createDeterministicFakeResearchWorker({ provider = 'FAKE', scrip
     if (entry.behavior === 'DELAYED_COMPLETION' && run.pollCount < (entry.readyAfterPolls ?? 2)) {
       return { ok: true, status: 'PENDING' }
     }
-    const status = entry.behavior === 'FAILURE' ? 'FAILED' : 'SUCCEEDED'
+    const status = entry.behavior === 'FAILURE' ? 'FAILED' : (entry.resultStatus ?? 'SUCCEEDED')
     return { ok: true, status: 'READY', result: buildResult(request, entry, status, run.workerRunRef) }
   }
 

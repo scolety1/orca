@@ -10,7 +10,7 @@ import test from 'node:test'
 import { rmSync } from 'node:fs'
 import path from 'node:path'
 import { createDeterministicFakeResearchWorker } from '../adapters/deterministic-fake-research-worker.mjs'
-import { addResearchNode } from '../domain/research-mission.mjs'
+import { addResearchNode, resolveResearchNeedsYou, withResearchNode } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest } from '../domain/research-node.mjs'
 import { recordDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
@@ -205,6 +205,83 @@ test('research mission driver: the real persisted execution path, durable across
     assert.equal(replay.revision, mission.revision)
     // A COMPLETED/terminal node cannot be cancelled.
     await assert.rejects(cancelResearchNodeDurable(MISSION_ID, NODE_ID, clock), /invalid research node transition/)
+  })
+
+  // CONTINUATION 2 Priority Block 2 (PARTIAL/NEEDS_INPUT): "use Needs You
+  // only when human intervention is genuinely necessary; if the missing
+  // input can be resolved automatically through authorized bounded
+  // research, propose/reconcile that work through TSF" -- proves both
+  // halves of that policy, plus the full "resumed -> SUCCEEDED" cycle.
+  await t.test('NEEDS_INPUT with real proposed follow-up research does NOT escalate to Needs You -- TSF can address it itself', async () => {
+    let mission = readResearchMission(MISSION_ID)
+    mission = await withResearchMission(MISSION_ID, (m) => addResearchNode(m, { id: 'node:needs-input-with-gap', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock))
+    void mission
+    const req = buildBoundedResearchRequest(readResearchMission(MISSION_ID), readResearchMission(MISSION_ID).nodes.find((n) => n.id === 'node:needs-input-with-gap'), 'FAKE', clock)
+    script.set(req.taskFingerprint, {
+      resultStatus: 'NEEDS_INPUT',
+      proposedClaims: [{ fieldName: 'yards', proposedValue: 50, temporalScope: null, providerConfidence: 0.5, providerReasoning: 'r' }],
+      evidence: [],
+      newGapProposals: [{ fieldName: 'careerTotalYards', reason: 'requires a separate career-spanning lookup' }],
+      unresolvedQuestions: ['career total not yet resolved']
+    })
+    const dispatched = await dispatchResearchNodeDurable(MISSION_ID, 'node:needs-input-with-gap', 'FAKE', worker, clock)
+    assert.equal(dispatched.ok, true)
+    const polled = await pollAndAdmitResearchNodeDurable(MISSION_ID, 'node:needs-input-with-gap', worker, clock)
+    assert.equal(polled.ok, true)
+    assert.equal(polled.escalated, false, 'a real gap proposal exists -- TSF can address this itself, no human escalation')
+    const node = readResearchMission(MISSION_ID).nodes.find((n) => n.id === 'node:needs-input-with-gap')
+    assert.equal(node.status, 'ADMITTED')
+    assert.equal(node.lastResultOutcome, 'NEEDS_INPUT')
+    assert.equal(node.gapProposals.length, 1)
+    assert.equal(node.status, 'ADMITTED', 'never escalated to BLOCKED -- the earlier conflict-escalation test may have already put the mission itself in NEEDS_YOU, but THIS node is untouched by it')
+  })
+
+  await t.test('NEEDS_INPUT with NO proposed follow-up escalates to a real Needs You; resuming after resolution reaches SUCCEEDED', async () => {
+    let mission = readResearchMission(MISSION_ID)
+    mission = await withResearchMission(MISSION_ID, (m) => addResearchNode(m, { id: 'node:needs-input-escalate', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock))
+    void mission
+    const req = buildBoundedResearchRequest(readResearchMission(MISSION_ID), readResearchMission(MISSION_ID).nodes.find((n) => n.id === 'node:needs-input-escalate'), 'FAKE', clock)
+    script.set(req.taskFingerprint, {
+      resultStatus: 'NEEDS_INPUT',
+      proposedClaims: [],
+      evidence: [],
+      newGapProposals: [],
+      unresolvedQuestions: ['which of two same-named entities is meant?']
+    })
+    const dispatched = await dispatchResearchNodeDurable(MISSION_ID, 'node:needs-input-escalate', 'FAKE', worker, clock)
+    assert.equal(dispatched.ok, true)
+    const polled = await pollAndAdmitResearchNodeDurable(MISSION_ID, 'node:needs-input-escalate', worker, clock)
+    assert.equal(polled.ok, true)
+    assert.equal(polled.escalated, true, 'no proposed follow-up exists -- a human must decide, so this is a genuine Needs You')
+    let node = readResearchMission(MISSION_ID).nodes.find((n) => n.id === 'node:needs-input-escalate')
+    assert.equal(node.status, 'BLOCKED')
+    assert.equal(readResearchMissionStatus(MISSION_ID).state, 'NEEDS_YOU')
+    const openItem = readResearchMissionReviewItems(MISSION_ID).find((i) => i.nodeId === 'node:needs-input-escalate')
+    assert.ok(openItem)
+
+    // RESUMED: a human resolves the Needs You, the node moves back to
+    // READY, and a fresh dispatch cycle now succeeds -- the full
+    // "NEEDS_INPUT -> resumed -> SUCCEEDED" path HQ asked to be proven.
+    let resumedMission = await withResearchMission(MISSION_ID, (m) => resolveResearchNeedsYou(m, openItem.id, 'RESOLVED_BY_OPERATOR', clock, m.revision))
+    resumedMission = await withResearchMission(MISSION_ID, (m) =>
+      withResearchNode(
+        m,
+        'node:needs-input-escalate',
+        (n) => (n.status === 'READY' ? { next: n, changed: false } : { next: { ...n, status: 'READY' }, changed: true }),
+        clock,
+        m.revision
+      )
+    )
+    void resumedMission
+    const req2 = buildBoundedResearchRequest(readResearchMission(MISSION_ID), readResearchMission(MISSION_ID).nodes.find((n) => n.id === 'node:needs-input-escalate'), 'FAKE_RESOLVED', clock)
+    script.set(req2.taskFingerprint, { provider: 'FAKE_RESOLVED', proposedClaims: [{ fieldName: 'yards', proposedValue: 75, temporalScope: null, providerConfidence: 0.9, providerReasoning: 'r' }], evidence: [] })
+    const dispatched2 = await dispatchResearchNodeDurable(MISSION_ID, 'node:needs-input-escalate', 'FAKE_RESOLVED', worker, clock)
+    assert.equal(dispatched2.ok, true)
+    const polled2 = await pollAndAdmitResearchNodeDurable(MISSION_ID, 'node:needs-input-escalate', worker, clock)
+    assert.equal(polled2.ok, true)
+    node = readResearchMission(MISSION_ID).nodes.find((n) => n.id === 'node:needs-input-escalate')
+    assert.equal(node.lastResultOutcome, 'SUCCEEDED')
+    assert.equal(node.claims.length, 1)
   })
 
   // Real, DURABLE cumulative spend -- gated against what actually landed on

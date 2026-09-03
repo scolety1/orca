@@ -147,6 +147,7 @@ function emptyEpistemicArrays() {
     dispatchRecords: [],
     rawResults: [],
     admittedResultDigests: [],
+    lastResultOutcome: null, // most recent result's status: SUCCEEDED | PARTIAL | NEEDS_INPUT | FAILED | null (never dispatched)
     observations: [],
     claims: [],
     evidence: [],

@@ -100,6 +100,7 @@ test('a FAILED provider result produces an honest FAILED node, not a silent empt
     next.revision
   )
   assert.equal(next.nodes[0].status, 'FAILED')
+  assert.equal(next.nodes[0].lastResultOutcome, 'FAILED')
   const digest = next.nodes[0].rawResults.at(-1).digest
   next = admitBoundedResearchResult(next, node.id, digest, clock, next.revision)
   assert.equal(next.nodes[0].status, 'FAILED', 'admitting a FAILED result must not force it to look like a real ADMITTED admission')
@@ -125,10 +126,95 @@ test('a FAILED result on a SECOND dispatch cycle never erases an earlier success
     next.revision
   )
   assert.equal(next.nodes[0].status, 'FAILED', 'the node execution status honestly reflects the most recent cycle')
+  assert.equal(next.nodes[0].lastResultOutcome, 'FAILED')
   const digest2 = next.nodes[0].rawResults.at(-1).digest
   next = admitBoundedResearchResult(next, node.id, digest2, clock, next.revision)
   assert.equal(next.nodes[0].status, 'ADMITTED', 'existing real claims from the first cycle mean this must be restored to ADMITTED, never left looking like nothing was ever admitted')
   assert.equal(next.nodes[0].claims.length, 1, 'the first cycle\'s real claim is untouched')
+})
+
+// CONTINUATION 2 Priority Block 2: PARTIAL/NEEDS_INPUT are neither a
+// failure nor a full success -- both admit their real content exactly
+// like SUCCEEDED, but the raw outcome kind is durably distinguishable via
+// lastResultOutcome so no reader can mistake either for full completion.
+function partialResult(request, overrides = {}) {
+  return { ...successResult(request), status: 'PARTIAL', unresolvedQuestions: ['still need career-total context'], ...overrides }
+}
+function needsInputResult(request, overrides = {}) {
+  return { ...successResult(request), status: 'NEEDS_INPUT', unresolvedQuestions: ['which Jim Miller -- 2001 Bears or 2001 Saints roster?'], ...overrides }
+}
+
+test('PARTIAL first attempt: real content is admitted, node reaches ADMITTED, lastResultOutcome honestly stays PARTIAL', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  let next = markResearchNodeReady(mission, node.id, clock, mission.revision)
+  const request = buildBoundedResearchRequest(next, node, 'FAKE', clock)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: request.taskFingerprint, workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: '2026-09-10T12:00:00.000Z' } }, clock, next.revision)
+  next = recordResearchNodeResult(next, node.id, partialResult(request), clock, next.revision)
+  assert.equal(next.nodes[0].status, 'RESULT_RECEIVED', 'PARTIAL is not a failure -- it flows to RESULT_RECEIVED exactly like SUCCEEDED')
+  assert.equal(next.nodes[0].lastResultOutcome, 'PARTIAL')
+  const digest = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest, clock, next.revision)
+  assert.equal(next.nodes[0].status, 'ADMITTED')
+  assert.equal(next.nodes[0].claims.length, 1, 'the real content PARTIAL actually returned is genuinely admitted')
+  assert.equal(next.nodes[0].lastResultOutcome, 'PARTIAL', 'ADMITTED alone must never be mistaken for full completion -- this is the honest signal')
+})
+
+test('NEEDS_INPUT first attempt: real content is admitted, lastResultOutcome honestly stays NEEDS_INPUT', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  let next = markResearchNodeReady(mission, node.id, clock, mission.revision)
+  const request = buildBoundedResearchRequest(next, node, 'FAKE', clock)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: request.taskFingerprint, workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: '2026-09-10T12:00:00.000Z' } }, clock, next.revision)
+  next = recordResearchNodeResult(next, node.id, needsInputResult(request), clock, next.revision)
+  assert.equal(next.nodes[0].status, 'RESULT_RECEIVED')
+  assert.equal(next.nodes[0].lastResultOutcome, 'NEEDS_INPUT')
+  const digest = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest, clock, next.revision)
+  assert.equal(next.nodes[0].status, 'ADMITTED')
+  assert.equal(next.nodes[0].claims.length, 1)
+  assert.equal(next.nodes[0].lastResultOutcome, 'NEEDS_INPUT')
+})
+
+test('SUCCEEDED -> PARTIAL: a second, merely-partial cycle never erases the first cycle\'s real claim; prior evidence preserved', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  const { mission: afterFirstCycle } = dispatchAndAdmit(mission, node)
+  assert.equal(afterFirstCycle.nodes[0].claims.length, 1)
+  assert.equal(afterFirstCycle.nodes[0].lastResultOutcome, 'SUCCEEDED')
+
+  let next = markResearchNodeReady(afterFirstCycle, node.id, clock, afterFirstCycle.revision)
+  const request2 = buildBoundedResearchRequest(next, node, 'FAKE_B', clock)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: request2.taskFingerprint, workerRunRef: { provider: 'FAKE_B', providerRunId: 'r2', dispatchedAt: '2026-09-10T12:00:00.000Z' } }, clock, next.revision)
+  next = recordResearchNodeResult(next, node.id, partialResult(request2, { proposedClaims: [{ fieldName: 'team', proposedValue: 'NE', providerConfidence: 0.5, providerReasoning: 'r' }], evidence: [] }), clock, next.revision)
+  assert.equal(next.nodes[0].lastResultOutcome, 'PARTIAL')
+  const digest2 = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest2, clock, next.revision)
+  assert.equal(next.nodes[0].status, 'ADMITTED')
+  assert.equal(next.nodes[0].claims.length, 2, 'the first cycle\'s claim is preserved, the second cycle\'s new claim is added -- prior evidence never lost')
+  assert.equal(next.nodes[0].lastResultOutcome, 'PARTIAL', 'the most recent cycle\'s honest outcome, even though real content exists overall')
+})
+
+test('PARTIAL -> SUCCEEDED: a later fully-successful cycle correctly updates lastResultOutcome forward, prior partial evidence preserved', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  let next = markResearchNodeReady(mission, node.id, clock, mission.revision)
+  const request = buildBoundedResearchRequest(next, node, 'FAKE', clock)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: request.taskFingerprint, workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: '2026-09-10T12:00:00.000Z' } }, clock, next.revision)
+  next = recordResearchNodeResult(next, node.id, partialResult(request), clock, next.revision)
+  let digest = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest, clock, next.revision)
+  assert.equal(next.nodes[0].claims.length, 1)
+  assert.equal(next.nodes[0].lastResultOutcome, 'PARTIAL')
+
+  next = markResearchNodeReady(next, node.id, clock, next.revision)
+  const request2 = buildBoundedResearchRequest(next, node, 'FAKE_B', clock)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: request2.taskFingerprint, workerRunRef: { provider: 'FAKE_B', providerRunId: 'r2', dispatchedAt: '2026-09-10T12:00:00.000Z' } }, clock, next.revision)
+  next = recordResearchNodeResult(next, node.id, successResult(request2, { proposedClaims: [{ fieldName: 'team', proposedValue: 'NE', providerConfidence: 0.9, providerReasoning: 'r' }], evidence: [] }), clock, next.revision)
+  assert.equal(next.nodes[0].lastResultOutcome, 'SUCCEEDED', 'the outcome marker moves forward to reflect the most recent, now-fully-successful cycle')
+  digest = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest, clock, next.revision)
+  assert.equal(next.nodes[0].claims.length, 2, 'the earlier PARTIAL cycle\'s claim is still there -- never erased by a later, different-field claim')
 })
 
 test('a proposedValue of null is admitted as TypedMissingness, not a Claim -- missingness honesty', () => {

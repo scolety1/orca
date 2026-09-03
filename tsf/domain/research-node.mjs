@@ -112,6 +112,18 @@ export function recordResearchNodeDispatch(mission, nodeId, { taskFingerprint, w
 // FAILED execution state (DISPATCHED -> FAILED was already a legal, but
 // previously unreachable, transition) so a failed dispatch is an honest,
 // visible signal instead of a silent no-op.
+//
+// CONTINUATION 2 Priority Block 2: PARTIAL and NEEDS_INPUT are NEITHER a
+// failure NOR a full success -- both carry real, honest content that
+// belongs in the epistemic ladder (admission's per-item loops already
+// admit whatever observations/claims/evidence a result actually contains,
+// regardless of its overall status), so both route to RESULT_RECEIVED
+// exactly like SUCCEEDED, never FAILED. What must NOT happen is silently
+// treating them as equivalent to a full SUCCEEDED result -- this stamps
+// the raw outcome kind durably onto the node (lastResultOutcome) so every
+// downstream reader (completeness, the driver, a future operator UI) can
+// tell "fully succeeded" apart from "partial" apart from "needs input"
+// without having to dig through rawResults history.
 export function recordResearchNodeResult(mission, nodeId, result, clock, expectedRevision) {
   validateBoundedResearchResult(result)
   const digest = sha256(result)
@@ -129,6 +141,7 @@ export function recordResearchNodeResult(mission, nodeId, result, clock, expecte
       const next = deepClone(node)
       next.rawResults = [...(next.rawResults ?? []), { digest, result: deepClone(result), receivedAt: isoNow(clock) }]
       next.status = targetStatus
+      next.lastResultOutcome = result.status
       return { next, changed: true }
     },
     clock,

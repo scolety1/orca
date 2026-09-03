@@ -20,7 +20,7 @@
 // AMBIGUOUS_REQUIRES_RECONCILIATION) -- calling the SAME driver function
 // again is the resume action, and it checks that classification FIRST,
 // before ever risking a second real call.
-import { addResearchNode, assertNodeTransition, createResearchMission, findResearchNode, raiseResearchNeedsYou, withResearchNode } from '../domain/research-mission.mjs'
+import { addResearchNode, assertNodeTransition, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, withResearchNode } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
 import { classifyDispatchDeliveryGuarantee, recordDispatchAttempt, resolveDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
@@ -219,6 +219,22 @@ export async function dispatchResearchNodeDurable(missionId, nodeId, providerId,
 // a safe, idempotent read; recordResearchNodeResult/admitBoundedResearchResult
 // are already digest-idempotent, so calling this repeatedly (including
 // after a crash between the two) always converges correctly.
+//
+// CONTINUATION 2 Priority Block 2 (PARTIAL/NEEDS_INPUT): both statuses
+// admit their real content exactly like SUCCEEDED (unchanged admission
+// behavior -- see recordResearchNodeResult's own comment). What this adds
+// is the escalation POLICY for NEEDS_INPUT specifically: "use Needs You
+// only when human intervention is genuinely necessary; if the missing
+// input can be resolved automatically through authorized bounded
+// research, propose/reconcile that work through TSF" (HQ's own wording).
+// A NEEDS_INPUT result that already came with real newGapProposals is
+// exactly the "TSF can address this itself" case -- those proposals are
+// already durably recorded by admission (research-admission.mjs), ready
+// for a human/future driver logic to promote into new bounded research
+// nodes; no escalation is raised. A NEEDS_INPUT result with unresolvedQuestions
+// but NO proposed follow-up work is a genuine "a human must decide what
+// this even means" case -- escalated via the existing, real Needs You
+// mechanism, never invented as a new parallel review path.
 // ---------------------------------------------------------------------
 export async function pollAndAdmitResearchNodeDurable(missionId, nodeId, worker, clock) {
   const mission = readResearchMission(missionId)
@@ -235,7 +251,25 @@ export async function pollAndAdmitResearchNodeDurable(missionId, nodeId, worker,
   let next = await withResearchMission(missionId, (m) => recordResearchNodeResult(m, nodeId, fetched.result, clock, m.revision))
   const digest = findResearchNode(next, nodeId).rawResults.at(-1).digest
   next = await withResearchMission(missionId, (m) => admitBoundedResearchResult(m, nodeId, digest, clock, m.revision))
-  return { ok: true, ready: true, mission: next }
+
+  if (fetched.result.status === 'NEEDS_INPUT') {
+    const hasProposedFollowUp = fetched.result.newGapProposals.length > 0
+    const unresolvedQuestions = fetched.result.unresolvedQuestions
+    const alreadyOpen = findResearchNode(next, nodeId).status === 'BLOCKED'
+    if (!hasProposedFollowUp && unresolvedQuestions.length > 0 && !alreadyOpen) {
+      next = await withResearchMission(missionId, (m) =>
+        escalateResearchNodeToNeedsYou(
+          m,
+          nodeId,
+          { question: `Provider reported NEEDS_INPUT with no proposed follow-up research: ${unresolvedQuestions.join('; ')}`, category: 'SCHEMA_AMBIGUITY' },
+          clock,
+          m.revision
+        )
+      )
+      return { ok: true, ready: true, mission: next, escalated: true }
+    }
+  }
+  return { ok: true, ready: true, mission: next, escalated: false }
 }
 
 // ---------------------------------------------------------------------
