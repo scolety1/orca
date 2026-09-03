@@ -83,6 +83,54 @@ test('admission is idempotent: re-admitting the same result digest changes nothi
   assert.equal(twice.nodes[0].observations.length, once.nodes[0].observations.length)
 })
 
+// Trust + Scale Hardening (human review integration): a clean, honest
+// FAILED provider result must produce an honest FAILED node, never a
+// disguised ADMITTED-with-nothing-in-it.
+test('a FAILED provider result produces an honest FAILED node, not a silent empty ADMITTED', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  let next = markResearchNodeReady(mission, node.id, clock, mission.revision)
+  const request = buildBoundedResearchRequest(next, node, 'FAKE', clock)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: request.taskFingerprint, workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: '2026-09-10T12:00:00.000Z' } }, clock, next.revision)
+  next = recordResearchNodeResult(
+    next,
+    node.id,
+    { ...successResult(request), status: 'FAILED', observations: [], proposedClaims: [], evidence: [], failureDetails: { reason: 'PROVIDER_REPORTED_FAILURE', detail: 'x' } },
+    clock,
+    next.revision
+  )
+  assert.equal(next.nodes[0].status, 'FAILED')
+  const digest = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest, clock, next.revision)
+  assert.equal(next.nodes[0].status, 'FAILED', 'admitting a FAILED result must not force it to look like a real ADMITTED admission')
+  assert.equal(next.nodes[0].claims.length, 0)
+  assert.equal(next.nodes[0].admittedResultDigests.includes(digest), true, 'still durably marked processed, for idempotency')
+})
+
+test('a FAILED result on a SECOND dispatch cycle never erases an earlier successful ADMITTED cycle\'s status', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  const { mission: afterFirstCycle } = dispatchAndAdmit(mission, node)
+  assert.equal(afterFirstCycle.nodes[0].status, 'ADMITTED')
+  assert.equal(afterFirstCycle.nodes[0].claims.length, 1)
+
+  let next = markResearchNodeReady(afterFirstCycle, node.id, clock, afterFirstCycle.revision)
+  const request2 = buildBoundedResearchRequest(next, node, 'FAKE_B', clock)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: request2.taskFingerprint, workerRunRef: { provider: 'FAKE_B', providerRunId: 'r2', dispatchedAt: '2026-09-10T12:00:00.000Z' } }, clock, next.revision)
+  next = recordResearchNodeResult(
+    next,
+    node.id,
+    { ...successResult(request2), status: 'FAILED', observations: [], proposedClaims: [], evidence: [], failureDetails: { reason: 'PROVIDER_REPORTED_FAILURE', detail: 'x' } },
+    clock,
+    next.revision
+  )
+  assert.equal(next.nodes[0].status, 'FAILED', 'the node execution status honestly reflects the most recent cycle')
+  const digest2 = next.nodes[0].rawResults.at(-1).digest
+  next = admitBoundedResearchResult(next, node.id, digest2, clock, next.revision)
+  assert.equal(next.nodes[0].status, 'ADMITTED', 'existing real claims from the first cycle mean this must be restored to ADMITTED, never left looking like nothing was ever admitted')
+  assert.equal(next.nodes[0].claims.length, 1, 'the first cycle\'s real claim is untouched')
+})
+
 test('a proposedValue of null is admitted as TypedMissingness, not a Claim -- missingness honesty', () => {
   let mission = missionWithNode()
   const node = mission.nodes[0]

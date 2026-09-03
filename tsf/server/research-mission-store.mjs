@@ -8,6 +8,7 @@
 // for keepGoingRuns, applied to a new top-level collection.
 import { withFileLock } from './cross-process-file-lock.mjs'
 import { integrityCheckedMission } from '../domain/research-integrity.mjs'
+import { assertSupportedResearchMissionSchemaVersion } from '../domain/research-schema-versioning.mjs'
 import { getStateFilePath, loadState, saveState } from './data-store.mjs'
 
 function lockPath() {
@@ -15,7 +16,13 @@ function lockPath() {
 }
 
 export function researchMissionFor(opState, missionId) {
-  return opState.researchMissions?.[missionId] ?? null
+  const mission = opState.researchMissions?.[missionId] ?? null
+  // Every read boundary asserts schema-version compatibility BEFORE the
+  // mission reaches any caller -- see research-schema-versioning.mjs.
+  // Fails closed on a version this running code was never verified
+  // against, rather than silently operating on an unfamiliar shape.
+  if (mission) assertSupportedResearchMissionSchemaVersion(mission)
+  return mission
 }
 
 export function readResearchMission(missionId) {

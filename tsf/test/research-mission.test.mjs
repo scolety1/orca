@@ -4,13 +4,36 @@ import {
   addResearchNode,
   checkpointResearchMission,
   createResearchMission,
+  escalateResearchNodeToNeedsYou,
   pauseResearchMission,
   raiseResearchNeedsYou,
   resolveResearchNeedsYou,
   resumeResearchMission,
   transitionResearchMission
 } from '../domain/research-mission.mjs'
+import { markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
+
+function failedResultFor(nodeId) {
+  return {
+    schemaVersion: 'TSF_BOUNDED_RESEARCH_RESULT_V1',
+    nodeId,
+    taskFingerprint: 'a'.repeat(64),
+    provider: 'FAKE',
+    providerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() },
+    status: 'FAILED',
+    observations: [],
+    proposedClaims: [],
+    evidence: [],
+    sourceReferences: [],
+    sourceSnapshotsOrSnapshotRefs: [],
+    newGapProposals: [],
+    warnings: [],
+    unresolvedQuestions: [],
+    usage: { requestCount: 1, tokensOrUnits: null, providerReportedCostUsd: 0 },
+    failureDetails: { reason: 'PROVIDER_REPORTED_FAILURE', detail: 'synthetic test failure' }
+  }
+}
 
 const clock = () => new Date('2026-09-10T12:00:00.000Z')
 
@@ -95,4 +118,32 @@ test('raiseResearchNeedsYou accepts an optional named review category, proven li
 test('raiseResearchNeedsYou rejects an unknown category rather than silently accepting it', () => {
   const mission = baseMission()
   assert.throws(() => raiseResearchNeedsYou(mission, { question: 'x', category: 'NOT_A_REAL_CATEGORY' }, clock, mission.revision), /unknown research Needs You category/)
+})
+
+// Trust + Scale Hardening (human review integration): escalating one
+// blocked node to Needs You must never require halting the whole mission
+// -- an independent, unrelated node keeps its own status untouched.
+test('escalateResearchNodeToNeedsYou blocks the one affected FAILED node and raises Needs You, leaving an unrelated node untouched', () => {
+  let mission = baseMission()
+  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(mission, { id: 'node:b', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = markResearchNodeReady(mission, 'node:a', clock, mission.revision)
+  mission = recordResearchNodeDispatch(mission, 'node:a', { taskFingerprint: 'a'.repeat(64), workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() } }, clock, mission.revision)
+  mission = recordResearchNodeResult(mission, 'node:a', failedResultFor('node:a'), clock, mission.revision)
+  assert.equal(mission.nodes.find((n) => n.id === 'node:a').status, 'FAILED', 'precondition: a FAILED provider result must produce an honest FAILED node status')
+
+  mission = escalateResearchNodeToNeedsYou(mission, 'node:a', { question: 'Provider repeatedly failed for node:a' }, clock, mission.revision)
+  const nodeA = mission.nodes.find((n) => n.id === 'node:a')
+  const nodeB = mission.nodes.find((n) => n.id === 'node:b')
+  assert.equal(nodeA.status, 'BLOCKED')
+  assert.equal(nodeB.status, 'PENDING', 'an unrelated node must never be affected by another node\'s escalation')
+  assert.equal(mission.state, 'NEEDS_YOU')
+  assert.equal(mission.needsYou[0].nodeId, 'node:a')
+  assert.equal(mission.needsYou[0].category, 'SOURCE_UNAVAILABLE', 'defaults to SOURCE_UNAVAILABLE when not overridden')
+})
+
+test('escalateResearchNodeToNeedsYou rejects a node that has never actually failed/admitted -- BLOCKED is not reachable from PENDING', () => {
+  let mission = baseMission()
+  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  assert.throws(() => escalateResearchNodeToNeedsYou(mission, 'node:a', { question: 'x' }, clock, mission.revision), /invalid research node transition/)
 })

@@ -65,7 +65,13 @@ const NODE_ALLOWED = Object.freeze({
   // dispatched for this node"; COMPLETED is the real terminal state.
   ADMITTED: ['READY', 'COMPLETED', 'BLOCKED'],
   COMPLETED: [],
-  FAILED: ['READY', 'BLOCKED'],
+  // FAILED -> ADMITTED (Trust + Scale Hardening, human review integration):
+  // a LATER dispatch cycle can honestly fail (FAILED) after an EARLIER
+  // cycle already produced real admitted claims -- admitBoundedResearchResult
+  // restores ADMITTED rather than leaving the node looking like it has
+  // nothing admitted, in exactly that one case (see its own guard: only
+  // when next.claims.length > 0).
+  FAILED: ['READY', 'BLOCKED', 'ADMITTED'],
   BLOCKED: ['READY'],
   CANCELLED: []
 })
@@ -316,6 +322,29 @@ export function raiseResearchNeedsYou(
     return next
   }
   return transitionResearchMission(next, 'NEEDS_YOU', { reason: 'HUMAN_DECISION_REQUIRED', evidence: nodeId ? [nodeId] : [] }, clock)
+}
+
+// Trust + Scale Hardening (human review integration): the graceful
+// counterpart to a hard failure -- a node whose retry budget is exhausted
+// (recordResearchNodeAttempt's TSF_RESEARCH_RETRY_BUDGET_EXCEEDED) or whose
+// dispatch cleanly and repeatedly FAILED should never crash the whole
+// orchestration driver. This atomically blocks the ONE affected node
+// (execution state, from FAILED or ADMITTED only -- the node-status
+// transition table's real legal sources for BLOCKED) and raises a real,
+// human-reviewable Needs You for it, so independent, unrelated nodes in the
+// same mission can keep making progress (never a global halt for one
+// node's problem).
+export function escalateResearchNodeToNeedsYou(mission, nodeId, { question, category = 'SOURCE_UNAVAILABLE' }, clock, expectedRevision) {
+  assertExpectedRevision(mission, expectedRevision)
+  const node = findResearchNode(mission, nodeId)
+  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  assertNodeTransition(node.status, 'BLOCKED')
+  const next = deepClone(mission)
+  const idx = next.nodes.findIndex((n) => n.id === nodeId)
+  next.nodes[idx] = { ...next.nodes[idx], status: 'BLOCKED' }
+  next.revision += 1
+  next.updatedAt = isoNow(clock)
+  return raiseResearchNeedsYou(next, { question: question ?? `Research node ${nodeId} could not be completed and needs human review.`, nodeId, category }, clock, next.revision)
 }
 
 export function resolveResearchNeedsYou(mission, needsYouId, resolution, clock, expectedRevision) {

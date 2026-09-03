@@ -184,7 +184,20 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
         next.admittedResultDigests = [...(next.admittedResultDigests ?? []), resultDigest]
         wrote = true
       }
-      if (next.status !== 'ADMITTED') {
+      // A FAILED raw result has nothing epistemic to admit -- forcing
+      // ADMITTED here would silently disguise a real dispatch failure as a
+      // successful admission. Leave the node's FAILED status (set by
+      // recordResearchNodeResult) as-is UNLESS this node already carries
+      // real claims from an earlier, successful dispatch cycle (the
+      // re-dispatch/multi-cycle pattern) -- a later cycle's failure must
+      // never erase or hide previously admitted content.
+      if (result.status === 'FAILED') {
+        if (next.claims.length > 0 && next.status !== 'ADMITTED') {
+          assertNodeTransition(next.status, 'ADMITTED')
+          next.status = 'ADMITTED'
+          wrote = true
+        }
+      } else if (next.status !== 'ADMITTED') {
         assertNodeTransition(next.status, 'ADMITTED')
         next.status = 'ADMITTED'
         wrote = true

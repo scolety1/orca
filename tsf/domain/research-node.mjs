@@ -102,9 +102,20 @@ export function recordResearchNodeDispatch(mission, nodeId, { taskFingerprint, w
 // (crash before admission) is exactly "rawResults holds this digest but
 // admittedResultDigests does not yet" -- research-admission.mjs resumes
 // from there.
+//
+// Trust + Scale Hardening (human review integration) finding: this
+// previously routed EVERY result to RESULT_RECEIVED regardless of
+// result.status, and admitBoundedResearchResult then unconditionally
+// forced ADMITTED -- a clean, honest FAILED provider result (real
+// failureDetails, zero observations/claims) was silently indistinguishable
+// from a real successful admission. FAILED now routes to the node's own
+// FAILED execution state (DISPATCHED -> FAILED was already a legal, but
+// previously unreachable, transition) so a failed dispatch is an honest,
+// visible signal instead of a silent no-op.
 export function recordResearchNodeResult(mission, nodeId, result, clock, expectedRevision) {
   validateBoundedResearchResult(result)
   const digest = sha256(result)
+  const targetStatus = result.status === 'FAILED' ? 'FAILED' : 'RESULT_RECEIVED'
   return withResearchNode(
     mission,
     nodeId,
@@ -112,12 +123,12 @@ export function recordResearchNodeResult(mission, nodeId, result, clock, expecte
       if (node.rawResults?.some((r) => r.digest === digest)) {
         return { next: node, changed: false }
       }
-      if (node.status !== 'RESULT_RECEIVED') {
-        assertNodeTransition(node.status, 'RESULT_RECEIVED')
+      if (node.status !== targetStatus) {
+        assertNodeTransition(node.status, targetStatus)
       }
       const next = deepClone(node)
       next.rawResults = [...(next.rawResults ?? []), { digest, result: deepClone(result), receivedAt: isoNow(clock) }]
-      next.status = 'RESULT_RECEIVED'
+      next.status = targetStatus
       return { next, changed: true }
     },
     clock,
