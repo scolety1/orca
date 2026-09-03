@@ -67,9 +67,16 @@ export function BulkActionBar({
   // actual portfolio refetch, so a second action started right after a
   // first one could still read the FIRST action's now-stale workSetBefore
   // prop, silently under-reporting a real cascade. refreshing is the
-  // parent's real portfolio-loading flag: disabling actions while it's
-  // true means the next action can only start once the same render that
-  // clears it has also delivered the fresh workSetBefore.
+  // parent's real portfolio-loading-or-errored flag: disabling actions
+  // while it's true means the next action can only start once a
+  // SUCCESSFUL reload has actually delivered the fresh workSetBefore.
+  // Cross-cutting-review finding: gating on bare loading alone isn't
+  // enough -- a FAILED background reload also clears loading (use-api.ts's
+  // own .finally()) while leaving portfolio/workSetBefore stale, so
+  // ProjectsPage passes loading || !!error here, keeping actions honestly
+  // disabled (with the existing RefreshFailedBanner's Retry as the real
+  // way out) until data is genuinely current, not just until the request
+  // merely finished.
   refreshing: boolean
   onClearSelection: () => void
   onChanged: () => void

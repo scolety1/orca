@@ -147,7 +147,20 @@ export function ProjectsPage() {
             <BulkActionBar
               selectedIds={selectedIds}
               workSetBefore={portfolio.workSet}
-              refreshing={loading}
+              // Final-review-wave finding (cross-cutting adversarial
+              // review): gating on bare `loading` alone re-enables actions
+              // the instant a FAILED background reload's request settles
+              // (use-api.ts's loading always clears in .finally(), even on
+              // error) -- but on a failed reload, `portfolio`/workSetBefore
+              // is still the STALE pre-mutation snapshot, not fresh. A
+              // second action right after would compute cascadedFromWorkSet
+              // against that stale data, exactly the fabricated-cascade
+              // class BUG-03 exists to prevent. `error` stays truthy until
+              // an explicit, successful retry (the existing
+              // RefreshFailedBanner's own Retry button) actually lands, so
+              // gating on it too keeps actions honestly disabled -- with a
+              // real, visible way out -- until data is genuinely current.
+              refreshing={loading || !!error}
               onClearSelection={() => setSelected({})}
               onChanged={reload}
               onStartMission={() => setMissionDialogOpen(true)}
