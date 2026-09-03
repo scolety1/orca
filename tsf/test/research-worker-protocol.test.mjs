@@ -29,6 +29,26 @@ test('computeTaskFingerprint is a stable 64-hex digest and differs per provider'
   assert.equal(a, computeTaskFingerprint({ nodeId: 'n', researchQuestion: 'q', requestedOutputSchema: {}, provider: 'A' }))
 })
 
+test('buildBoundedResearchRequest scopes researchQuestion to the node\'s targetEntity -- live-bake-off regression', () => {
+  const specification = buildNflQb2001Specification()
+  let mission = createResearchMission({ id: 'm', projectId: 'p', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  mission = addResearchNode(mission, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'e:1', name: 'Example Entity Name' }, requestedFields: [], requestedOutputSchema: { type: 'object' } }, clock)
+  const request = buildBoundedResearchRequest(mission, mission.nodes[0], 'FAKE', clock)
+  assert.ok(request.researchQuestion.includes('Example Entity Name'), 'a real provider has no other signal to scope from -- the node\'s target entity must appear in the question text')
+  assert.notEqual(request.researchQuestion, specification.researchQuestion, 'must not send the bare mission-level question unscoped')
+})
+
+test('buildBoundedResearchRequest falls back to entityId when targetEntity has no name, and to the bare question when there is no targetEntity at all', () => {
+  const specification = buildNflQb2001Specification()
+  let mission = createResearchMission({ id: 'm', projectId: 'p', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  mission = addResearchNode(mission, { id: 'node:no-name', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'e:only-id' }, requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(mission, { id: 'node:no-entity', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  const withId = buildBoundedResearchRequest(mission, mission.nodes.find((n) => n.id === 'node:no-name'), 'FAKE', clock)
+  assert.ok(withId.researchQuestion.includes('e:only-id'))
+  const withoutEntity = buildBoundedResearchRequest(mission, mission.nodes.find((n) => n.id === 'node:no-entity'), 'FAKE', clock)
+  assert.equal(withoutEntity.researchQuestion, specification.researchQuestion)
+})
+
 test('buildBoundedResearchRequest never leaks worker input into scope/toolPermissions -- always copied from the specification', () => {
   const mission = missionWithOneNode()
   const request = buildBoundedResearchRequest(mission, mission.nodes[0], 'FAKE', clock)

@@ -43,7 +43,16 @@ export function buildNflQb2001Specification() {
       minSourceCount: 1
     },
     temporalRequirements: { asOfDate: '2002-02-01', periodScope: PERIOD_SCOPE },
-    budget: { maxCostUsd: 0, maxLatencyMs: 60000, maxToolCallsPerNode: 5 },
+    // Live-bake-off finding (2026-09-03): maxCostUsd: 0 was a placeholder
+    // that only made sense against the deterministic fake worker (which
+    // ignores budget entirely). Forwarded verbatim to a REAL provider as
+    // maxCostDollars: 0, Exa rejected the whole request with a 400 (a $0
+    // provider-side hard cap is nonsensical, not "no cap"). null is the
+    // correct "no cap requested" sentinel (see
+    // provider-adapter-conformance.test.mjs's fixture, which already used
+    // null) -- a real live run should pass an explicit small positive
+    // ceiling instead if one is wanted; this fixture stays cap-agnostic.
+    budget: { maxCostUsd: null, maxLatencyMs: 60000, maxToolCallsPerNode: 5 },
     toolPermissions: ['fake-research-worker'],
     expectedUniverse: {
       schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
@@ -58,8 +67,28 @@ export function buildNflQb2001Specification() {
   }
 }
 
+// Live-bake-off finding (2026-09-03): a property schema with no 'type' key
+// (e.g. `{}`) is REJECTED by Parallel's Task API with a real 422
+// validation error ("Schema node must have a 'type' key, or a keyword one
+// can be inferred from"). The Wave 4 synthetic fixture never caught this
+// because the deterministic fake worker never validates its input schema.
+// Every field below now gets its real JSON Schema type.
+const FIELD_TYPES = Object.freeze({
+  team: 'string',
+  passingYards: 'number',
+  passingTouchdowns: 'number',
+  interceptions: 'number',
+  completions: 'number',
+  attempts: 'number',
+  mvpVotingNote: 'string',
+  signingBonusUsd: 'number'
+})
+
 function fieldsSchema(fieldNames) {
-  return { type: 'object', properties: Object.fromEntries(fieldNames.map((f) => [f, {}])) }
+  return {
+    type: 'object',
+    properties: Object.fromEntries(fieldNames.map((f) => [f, { type: FIELD_TYPES[f] ?? 'string' }]))
+  }
 }
 
 export function buildNflQb2001Mission(clock) {

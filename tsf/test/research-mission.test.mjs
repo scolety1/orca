@@ -85,3 +85,14 @@ test('raiseResearchNeedsYou / resolveResearchNeedsYou round-trips through NEEDS_
   assert.equal(mission.state, 'ACTIVE')
   assert.ok(mission.needsYou[0].resolvedAt)
 })
+
+test('raiseResearchNeedsYou accepts an optional named review category, proven live in the bake-off\'s UNRESOLVED_CONFLICT escalation', () => {
+  let mission = baseMission()
+  mission = raiseResearchNeedsYou(mission, { question: 'signingBonusUsd conflict', category: 'UNRESOLVED_CONFLICT' }, clock, mission.revision)
+  assert.equal(mission.needsYou[0].category, 'UNRESOLVED_CONFLICT')
+})
+
+test('raiseResearchNeedsYou rejects an unknown category rather than silently accepting it', () => {
+  const mission = baseMission()
+  assert.throws(() => raiseResearchNeedsYou(mission, { question: 'x', category: 'NOT_A_REAL_CATEGORY' }, clock, mission.revision), /unknown research Needs You category/)
+})

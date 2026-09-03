@@ -18,6 +18,22 @@ export function computeTaskFingerprint({ nodeId, researchQuestion, requestedOutp
   return sha256(canonicalize({ nodeId, researchQuestion, requestedOutputSchema, provider }))
 }
 
+// Live-bake-off finding (2026-09-03): every node was previously sent the
+// SAME mission-level researchQuestion verbatim, with no mention of which
+// entity this node actually concerns. A real provider has no other signal
+// to scope from (`scope: ['node:...']` is a TSF-internal tag, meaningless
+// to a provider) -- a live Exa Agent call built from the un-scoped
+// question returned a broad multi-entity survey instead of one player,
+// with an internally inconsistent result (missing a field for the exact
+// entity being asked about). This composes a domain-neutral, generic
+// entity label (name, falling back to entityId) into the question sent to
+// the provider -- no entity-specific field NAMES are hardcoded here, only
+// whatever the caller already put in targetEntity.
+function scopedResearchQuestion(spec, node) {
+  const entityLabel = node.targetEntity?.name ?? node.targetEntity?.entityId
+  return entityLabel ? `${spec.researchQuestion} Research only the following entity for this request: ${entityLabel}.` : spec.researchQuestion
+}
+
 // Builds the provider-independent request. No provider-specific field, no
 // scope/toolPermissions widening beyond what the owning ResearchSpecification
 // already declares -- the security boundary (§11) is enforced structurally
@@ -26,17 +42,18 @@ export function computeTaskFingerprint({ nodeId, researchQuestion, requestedOutp
 // specification, never from worker-supplied input.
 export function buildBoundedResearchRequest(mission, node, provider, clock) {
   const spec = mission.specification
+  const researchQuestion = scopedResearchQuestion(spec, node)
   const request = {
     schemaVersion: 'TSF_BOUNDED_RESEARCH_REQUEST_V1',
     nodeId: node.id,
     taskFingerprint: computeTaskFingerprint({
       nodeId: node.id,
-      researchQuestion: spec.researchQuestion,
+      researchQuestion,
       requestedOutputSchema: node.requestedOutputSchema,
       provider
     }),
     nodeRole: node.nodeRole,
-    researchQuestion: spec.researchQuestion,
+    researchQuestion,
     scope: [`node:${node.id}`],
     requestedOutputSchema: deepClone(node.requestedOutputSchema),
     temporalRequirements: deepClone(spec.temporalRequirements),

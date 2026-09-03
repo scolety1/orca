@@ -269,13 +269,33 @@ export function recentCheckpointTrail(mission, limit = 5) {
 // (e.g. a provider outage) as well as epistemic escalations (e.g. an
 // unresolved identity-alias case) -- research-reconciliation.mjs raises
 // these for epistemic reasons, this module only holds the mechanism.
+// Named review categories -- reuses TSF's existing Needs You mechanism
+// (proven live in the bake-off's Jim Miller signingBonusUsd escalation)
+// rather than a new review-queue framework. `category` is optional and
+// purely classificatory (never gates behavior) so existing callers that
+// omit it are unaffected. Only durable, consequential ambiguity should
+// reach here -- ordinary missing values are typed missingness, not a
+// human interrupt.
+export const RESEARCH_NEEDS_YOU_CATEGORIES = Object.freeze([
+  'AMBIGUOUS_IDENTITY',
+  'UNRESOLVED_CONFLICT',
+  'SOURCE_LICENSE_UNCLEAR',
+  'UNIVERSE_AMBIGUITY',
+  'SCHEMA_AMBIGUITY',
+  'HIGH_RISK_CLAIM',
+  'SOURCE_UNAVAILABLE'
+])
+
 export function raiseResearchNeedsYou(
   mission,
-  { question, options = [], nodeId = null },
+  { question, options = [], nodeId = null, category = null },
   clock,
   expectedRevision
 ) {
   if (!question?.trim()) throw new Error('a question is required to raise Needs You')
+  if (category != null && !RESEARCH_NEEDS_YOU_CATEGORIES.includes(category)) {
+    throw new Error(`unknown research Needs You category: ${category}`)
+  }
   assertExpectedRevision(mission, expectedRevision)
   const at = isoNow(clock)
   const next = deepClone(mission)
@@ -284,6 +304,7 @@ export function raiseResearchNeedsYou(
     question,
     options,
     nodeId,
+    category,
     raisedAt: at,
     resolvedAt: null,
     resolution: null

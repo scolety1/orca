@@ -1,0 +1,10 @@
+nodeId,entityId,fieldName,value,missingnessType,temporalScope,canonicalizedAt
+node:tom-brady,nfl:2001:qb:tom-brady,passingYards,2843,,2001-regular-season,2026-09-03T10:20:00.000Z
+node:tom-brady,nfl:2001:qb:tom-brady,passingTouchdowns,18,,2001-regular-season,2026-09-03T10:20:00.000Z
+node:tom-brady,nfl:2001:qb:tom-brady,interceptions,12,,2001-regular-season,2026-09-03T10:20:00.000Z
+node:tom-brady,nfl:2001:qb:tom-brady,completions,264,,2001-regular-season,2026-09-03T10:20:00.000Z
+node:tom-brady,nfl:2001:qb:tom-brady,attempts,413,,2001-regular-season,2026-09-03T10:20:00.000Z
+node:tom-brady,nfl:2001:qb:tom-brady,team,NWE,,2001-regular-season,2026-09-03T10:20:00.000Z
+node:kurt-warner,nfl:2001:qb:kurt-warner,passingYards,4830,,2001-regular-season,2026-09-03T10:20:00.000Z
+node:kurt-warner,nfl:2001:qb:kurt-warner,mvpVotingNote,AP MVP: Kurt Warner finished 1st with 21.5 votes (43% share).,,2001-regular-season,2026-09-03T10:20:00.000Z
+node:jim-miller,nfl:2001:qb:jim-miller,team,Chicago Bears,,2001-regular-season,2026-09-03T10:20:00.000Z

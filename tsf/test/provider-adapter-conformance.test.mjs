@@ -52,9 +52,12 @@ const PARALLEL = {
     completed_at: '2026-09-22T10:05:00.000Z',
     output: {
       content: { fieldA, fieldB },
+      // Test-shared citation shape ({url, excerpt, publisher}) reshaped
+      // here into the real Parallel Citation contract ({url, title,
+      // excerpts: [...]}) confirmed by live-doc revalidation.
       basis: [
-        { field: 'fieldA', citations: citations.fieldA ?? [], confidence: 0.87, reasoning: 'primary source review' },
-        { field: 'fieldB', citations: citations.fieldB ?? [], confidence: 0.91, reasoning: 'cross-checked total' }
+        { field: 'fieldA', citations: (citations.fieldA ?? []).map((c) => ({ url: c.url, title: c.publisher ?? null, excerpts: c.excerpt ? [c.excerpt] : [] })), confidence: 'high', reasoning: 'primary source review' },
+        { field: 'fieldB', citations: (citations.fieldB ?? []).map((c) => ({ url: c.url, title: c.publisher ?? null, excerpts: c.excerpt ? [c.excerpt] : [] })), confidence: 'medium', reasoning: 'cross-checked total' }
       ]
     },
     usage: { num_requests: 3, tokens: 500, cost_usd: 0.12 }
@@ -68,7 +71,11 @@ const PARALLEL = {
 const EXA = {
   name: 'EXA',
   providerId: EXA_PROVIDER_ID,
-  hasNativeConfidence: false,
+  // Live-bake-off finding (2026-09-03): Exa's real grounding entries DO
+  // carry a per-field confidence (low/medium/high, same scale as
+  // Parallel's basis) -- not documented anywhere fetchable during the
+  // adoption-audit research phase, but confirmed against a real response.
+  hasNativeConfidence: true,
   createWorker: (transport) => createExaResearchWorker({ transport, clock }),
   makeTransport: (script) => ({
     createAgentRun: async (spec) => script.onCreate(spec),
@@ -78,23 +85,28 @@ const EXA = {
     id: runId,
     status: 'completed',
     completed_at: '2026-09-22T10:05:00.000Z',
+    // Real shape confirmed by live-bake-off (2026-09-03): grounding[].field
+    // is prefixed 'structured.<name>', citations (not 'sources') carry
+    // only {url, title} (no excerpt text), and a per-field confidence
+    // string IS present despite not being documented.
     output: {
       structured: { fieldA, fieldB },
       grounding: [
-        { field: 'fieldA', sources: (citations.fieldA ?? []).map((c) => ({ url: c.url, snippet: c.excerpt, publisher: c.publisher })) },
-        { field: 'fieldB', sources: (citations.fieldB ?? []).map((c) => ({ url: c.url, snippet: c.excerpt, publisher: c.publisher })) }
+        { field: 'structured.fieldA', citations: (citations.fieldA ?? []).map((c) => ({ url: c.url, title: c.publisher ?? null })), confidence: 'high' },
+        { field: 'structured.fieldB', citations: (citations.fieldB ?? []).map((c) => ({ url: c.url, title: c.publisher ?? null })), confidence: 'medium' }
       ]
     },
-    usage: { requests: 4, units: 2.5, cost_usd: 0.4 }
+    usage: { agentComputeUnits: 2.5 },
+    costDollars: { total: 0.4, agentCompute: 0.25, search: 0.15, emails: 0, phoneNumbers: 0 }
   }),
   failedRun: (runId) => ({ id: runId, status: 'failed', error: { message: 'provider-side agent failure' } }),
-  pendingRun: (runId) => ({ id: runId, status: 'pending' }),
+  pendingRun: (runId) => ({ id: runId, status: 'queued' }),
   malformedRun: (runId) => ({ id: runId, status: 'completed' }),
   missingFieldRun: (runId) => ({ id: runId, status: 'completed', completed_at: '2026-09-22T10:05:00.000Z', output: { structured: { fieldA: 'present' }, grounding: [] }, usage: {} })
 }
 
 for (const provider of [PARALLEL, EXA]) {
-  test(`[${provider.name}] request normalization: researchQuestion/schema/temporal/source-policy reach the transport unmodified`, async () => {
+  test(`[${provider.name}] request normalization: researchQuestion/source-policy reach the transport unmodified, using each provider's REAL documented fields only`, async () => {
     const { request } = buildRequest(provider.providerId)
     let capturedSpec
     const transport = provider.makeTransport({ onCreate: async (spec) => { capturedSpec = spec; return provider.name === 'PARALLEL' ? { run_id: 'r1' } : { id: 'r1' } }, onGet: async () => provider.pendingRun('r1') })
@@ -103,11 +115,55 @@ for (const provider of [PARALLEL, EXA]) {
     assert.ok(capturedSpec, 'the transport must actually be called with a spec')
     const captured = JSON.stringify(capturedSpec)
     assert.ok(captured.includes(request.researchQuestion))
-    assert.ok(captured.includes(request.nodeId))
-    assert.ok(captured.includes(request.taskFingerprint))
-    assert.ok(captured.includes(request.temporalRequirements.periodScope))
     assert.ok(captured.includes(request.preferredSources[0]))
     assert.ok(captured.includes(request.disallowedSources[0]))
+    if (provider.name === 'PARALLEL') {
+      // Live-bake-off finding: Parallel's metadata field only accepts
+      // scalar values (max 16 chars/key) -- node_id/task_fingerprint/
+      // temporal_scope/as_of_date fit there; source filtering moved to
+      // the real source_policy.{include_domains,exclude_domains} field.
+      assert.ok(captured.includes(request.nodeId))
+      assert.ok(captured.includes(request.taskFingerprint))
+      assert.ok(captured.includes(request.temporalRequirements.periodScope))
+      assert.deepEqual(capturedSpec.source_policy.include_domains, request.preferredSources)
+      assert.deepEqual(capturedSpec.source_policy.exclude_domains, request.disallowedSources)
+      for (const key of Object.keys(capturedSpec.metadata)) {
+        assert.ok(key.length <= 16, `Parallel metadata key "${key}" exceeds the documented 16-char limit`)
+        assert.ok(typeof capturedSpec.metadata[key] !== 'object', `Parallel metadata value for "${key}" must be a scalar, not an object/array`)
+      }
+    }
+    if (provider.name === 'EXA') {
+      // Regression guard: an earlier build of this adapter never set
+      // effort at all -- caught during live-doc revalidation. HQ's
+      // governed bake-off policy forbids auto-escalating past 'medium'.
+      assert.equal(capturedSpec.effort, 'medium')
+      // Live-bake-off finding: Exa's Agent run schema has no documented
+      // metadata field -- an earlier build sent one and Exa rejected the
+      // whole request with a 400. Source guidance moved to the real,
+      // documented systemPrompt field.
+      assert.equal(capturedSpec.metadata, undefined)
+      assert.ok(capturedSpec.systemPrompt.includes(request.preferredSources[0]))
+    }
+  })
+
+  test(`[${provider.name}] never auto-escalates processor/effort beyond the governed tier`, async () => {
+    const { request } = buildRequest(provider.providerId)
+    let capturedSpec
+    const transport = provider.makeTransport({ onCreate: async (spec) => { capturedSpec = spec; return provider.name === 'PARALLEL' ? { run_id: 'r1' } : { id: 'r1' } }, onGet: async () => provider.pendingRun('r1') })
+    const worker = provider.createWorker(transport)
+    await worker.dispatch(request)
+    if (provider.name === 'PARALLEL') {
+      // Regression guard: an earlier build of this adapter hardcoded the
+      // unrelated 'base' processor, never HQ's governed 'core' tier --
+      // caught during live-doc revalidation.
+      assert.equal(capturedSpec.processor, 'core')
+      assert.notEqual(capturedSpec.processor, 'ultra')
+      assert.notEqual(capturedSpec.processor, 'pro')
+    } else {
+      assert.equal(capturedSpec.effort, 'medium')
+      assert.notEqual(capturedSpec.effort, 'high')
+      assert.notEqual(capturedSpec.effort, 'auto')
+    }
   })
 
   test(`[${provider.name}] requested output-schema translation reaches the transport`, async () => {
@@ -221,6 +277,7 @@ for (const provider of [PARALLEL, EXA]) {
       onGet: async () => {
         const run = provider.completedRun('r1', { fieldA: 'x', fieldB: 1 })
         run.usage = {} // provider omitted usage entirely
+        delete run.costDollars // Exa reports cost as a top-level field, not under usage -- must be cleared separately
         return run
       }
     })
@@ -282,6 +339,6 @@ for (const provider of [PARALLEL, EXA]) {
 
 test('the SAME shared conformance assertions were exercised against both providers -- neither adapter got a weaker suite', () => {
   assert.deepEqual(PARALLEL.hasNativeConfidence, true)
-  assert.deepEqual(EXA.hasNativeConfidence, false)
+  assert.deepEqual(EXA.hasNativeConfidence, true)
   assert.notEqual(PARALLEL.providerId, EXA.providerId)
 })
