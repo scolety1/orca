@@ -1,0 +1,155 @@
+{
+  "schemaVersion": "TSF_OPERATOR_STABILIZATION_BUG_LEDGER_V1",
+  "missionId": "tsf-operator-stabilization-v1",
+  "createdAt": "2026-09-03T00:00:00.000Z",
+  "statusFlow": [
+    "REPORTED",
+    "REPRODUCED",
+    "FIXING",
+    "VERIFYING",
+    "READY_FOR_ADOPTION",
+    "ADOPTED",
+    "LIVE_VERIFIED"
+  ],
+  "note": "Nothing is marked DONE before LIVE_VERIFIED (post-adoption live smoke test). All entries start REPORTED at mission creation -- no bug in this ledger has been independently reproduced or fixed by this mission yet, regardless of any prior unverified work found elsewhere.",
+  "bugs": [
+    {
+      "id": "BUG-01",
+      "priority": "P1",
+      "title": "Project/Planner context can unexpectedly return to Home",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-02",
+      "priority": "P1",
+      "title": "Last-viewed project/navigation position is not reliably preserved",
+      "status": "REPORTED",
+      "evidence": [
+        "Prior stalled run keep-going-tsf-orca-1787691592122 targeted this same bug ('Projects navigation-position bug') and left an unverified, uncommitted tsf/ui/src/lib/projects-navigation-state.ts(+test) in worktree command-tsf-orca-1788395222325 -- not reused without independent reproduction/review."
+      ]
+    },
+    {
+      "id": "BUG-03",
+      "priority": "P1",
+      "title": "Project Work Set/selection behavior across tabs is confusing",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-04",
+      "priority": "P1",
+      "title": "Planner Chat composer does not auto-grow enough",
+      "status": "REPORTED",
+      "evidence": [
+        "Prior stalled run keep-going-tsf-orca-1787691592122 targeted this same bug and left an unverified, uncommitted tsf/ui/src/lib/chat-composer-height.ts(+test) in worktree command-tsf-orca-1788395222325 -- not reused without independent reproduction/review."
+      ]
+    },
+    {
+      "id": "BUG-05",
+      "priority": "P0",
+      "title": "Repair/run state becomes unclear after navigating away",
+      "status": "REPORTED",
+      "evidence": [
+        "Prior stalled run keep-going-tsf-orca-1787691592122 targeted this same bug ('Repair Health navigation/state bug') and left unverified, uncommitted changes to ProjectHealthRepairCard.tsx/HealthRepairCenterPage.tsx and a new tsf/ui/src/lib/health-repair-activity.ts(+test) in worktree command-tsf-orca-1788395222325 -- not reused without independent reproduction/review. Its own independent verification pass (2026-09-03T00:53:25Z) found this criterion still unsatisfied.",
+        "Directly related to the P0 canonical-state theme, not just a UI polish item -- tracked P0 here."
+      ]
+    },
+    {
+      "id": "BUG-06",
+      "priority": "P1",
+      "title": "New mission creation vs dispatching work into an existing mission is unclear",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-07",
+      "priority": "P1",
+      "title": "Orca/Windows notifications expose raw internal run IDs and are noisy",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-08",
+      "priority": "P0",
+      "title": "Authorization can repeatedly trigger on negated consequential language (e.g. \"do not merge/push/deploy\") and may fail to consume explicit approval once",
+      "status": "REPORTED",
+      "evidence": [
+        "Directly related to (but distinct surface from) the negation/authorization-loop work already fixed for Command's project-targeting resolver in tsf-command-authority-repair-v1 (chat-responder.mjs's isConsequentialDirective/PROHIBITION_MARKERS clause-level negation already exists and is adversarial-review-hardened for TIM_REQUIRED classification specifically) -- this bug is about the operator-facing UI authorization/approval-consumption flow, not yet reproduced in that context. Worth checking whether the same clause-level negation logic is (or isn't) actually reaching the surface Tim observed this on before assuming a fresh fix is needed."
+      ]
+    },
+    {
+      "id": "BUG-09",
+      "priority": "P1",
+      "title": "Excessive internal orchestration terminology is exposed to the operator",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-10",
+      "priority": "P1",
+      "title": "Run-now forms use disappearing placeholders instead of persistent labels/help text and provide insufficient space to review scope/spec content",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-11",
+      "priority": "P0",
+      "title": "A stalled mission can display CONTINUE as non-interactive text instead of a usable control",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-12",
+      "priority": "P0",
+      "title": "Active Work cards can deep-link to generic project Overview instead of the exact mission/run",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-13",
+      "priority": "P0",
+      "title": "Planner Chat can be blind to durable state visible in Keep Going / Flight Recorder",
+      "status": "REPORTED",
+      "evidence": []
+    },
+    {
+      "id": "BUG-14",
+      "priority": "P0",
+      "title": "No trustworthy persistent global surface showing RUNNING / PAUSED / WAITING / STALLED / VERIFYING / NEEDS YOU / READY FOR ADOPTION",
+      "status": "REPORTED",
+      "evidence": [
+        "This is the P0 canonical-state item: one shared runtime state read by Planner Chat, Work, Keep Going, Flight Recorder, Home, Fleet, and notifications. Likely the root dependency several other bugs (05, 12, 13) sit on top of -- candidate for first real implementation wave."
+      ]
+    },
+    {
+      "id": "BUG-15",
+      "priority": "P0",
+      "title": "Stalled-run recovery lacks clear reason, heartbeat, worker/provider, retries, and Resume / Retry / Replan / Abandon actions",
+      "status": "REPORTED",
+      "evidence": [
+        "The currently-STALLED keep-going-tsf-orca-1787691592122 run is a live, real fixture for reproducing this exact bug -- read-only inspection only, never mutated (it belongs to the preserved historical run, not this mission)."
+      ]
+    },
+    {
+      "id": "BUG-16",
+      "priority": "P0",
+      "title": "Investigate: Flight Recorder records waves while Evidence shows no recorded results",
+      "status": "REPORTED",
+      "evidence": [
+        "Explicitly framed as an investigation, not a confirmed bug yet -- first task is reproduction/root-cause, which may reveal a data-integrity gap in the same canonical-state layer BUG-14 targets."
+      ]
+    }
+  ],
+  "acceptance": [
+    { "id": "ACCEPT-01", "title": "User requests a new governed mission through Planner Chat", "status": "REPORTED" },
+    { "id": "ACCEPT-02", "title": "TSF creates a separate isolated mission/worktree", "status": "REPORTED" },
+    { "id": "ACCEPT-03", "title": "Exact mission appears globally as RUNNING", "status": "REPORTED" },
+    { "id": "ACCEPT-04", "title": "User navigates elsewhere and returns without losing context", "status": "REPORTED" },
+    { "id": "ACCEPT-05", "title": "A test mission can enter STALLED and be recovered through the UI/Planner", "status": "REPORTED" },
+    { "id": "ACCEPT-06", "title": "Planner Chat reports the exact same canonical state as Flight Recorder/Work", "status": "REPORTED" },
+    { "id": "ACCEPT-07", "title": "Needs You authorization is requested only when appropriate, understands negation, and consumes scoped approval once", "status": "REPORTED" },
+    { "id": "ACCEPT-08", "title": "Finished work reaches READY_FOR_ADOPTION clearly", "status": "REPORTED" },
+    { "id": "ACCEPT-09", "title": "Post-adoption live smoke tests verify the actual operator workflow", "status": "REPORTED" }
+  ]
+}
