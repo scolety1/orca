@@ -5,23 +5,13 @@ import { LoadingState, ErrorState, RefreshFailedBanner } from '@/components/Stat
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import type { KeepGoingActiveRunView, KeepGoingRunState } from '@/lib/keep-going-types'
+import type { KeepGoingActiveRunView } from '@/lib/keep-going-types'
 import { shouldShowGapDecisionBadge } from '@/lib/keep-going-gap-display'
+import { humanizePhase, humanizeGapDecision } from '@/lib/orchestration-terminology'
+import { KEEP_GOING_RUN_STATE_BADGE } from '@/lib/keep-going-run-state-badge'
 import { KeepGoingStartForm } from './KeepGoingStartForm'
 import { KeepGoingTickForm } from './KeepGoingTickForm'
 import { LiveWorkFeed } from './LiveWorkFeed'
-
-const STATE_BADGE: Record<
-  KeepGoingRunState,
-  'primary' | 'neutral' | 'degraded' | 'healthy' | 'blocked'
-> = {
-  ACTIVE: 'primary',
-  NEEDS_YOU: 'degraded',
-  PAUSED: 'neutral',
-  STALLED: 'degraded',
-  COMPLETE: 'healthy',
-  BLOCKED: 'blocked'
-}
 
 function LiveRun({
   projectId,
@@ -108,7 +98,7 @@ function LiveRun({
             Keep Going / Overnight
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={STATE_BADGE[run.state]}>{run.state}</Badge>
+            <Badge variant={KEEP_GOING_RUN_STATE_BADGE[run.state]}>{run.state}</Badge>
             {run.readyForAdoption && <Badge variant="healthy">Ready for adoption</Badge>}
           </div>
         </div>
@@ -138,7 +128,7 @@ function LiveRun({
           </div>
           <div>
             <div className="text-muted-foreground">Phase</div>
-            <div>{run.phase}</div>
+            <div title={run.phase}>{humanizePhase(run.phase)}</div>
           </div>
           <div>
             <div className="text-muted-foreground">Retries</div>
@@ -176,7 +166,7 @@ function LiveRun({
                       : 'neutral'
                 }
               >
-                {run.gap.decision}
+                {humanizeGapDecision(run.gap.decision)}
               </Badge>
             )}
           </div>
@@ -240,7 +230,7 @@ function LiveRun({
 
         {run.lastCheckpoint && (
           <div className="text-[11px] text-muted-foreground">
-            Last checkpoint: {run.lastCheckpoint.phase} ·{' '}
+            Last checkpoint: {humanizePhase(run.lastCheckpoint.phase)} ·{' '}
             {new Date(run.lastCheckpoint.at).toLocaleString()}
             {/* A real, live-confirmed gap: a DISPATCH_FAILED checkpoint's
                 own reason previously only ever appeared in the transient

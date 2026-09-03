@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
@@ -10,7 +10,8 @@ import { LifecycleFilterBar } from '@/components/projects/LifecycleFilterBar'
 import { StartMissionDialog } from '@/components/missions/StartMissionDialog'
 import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightFleetDialog'
 import { classifyProjectLifecycle, type LifecycleBucket } from '@/lib/project-lifecycle'
-import { matchesSearch, sortProjects, type ProjectSort } from '@/lib/project-filtering'
+import { matchesSearch, sortProjects } from '@/lib/project-filtering'
+import { readProjectsListFilters, writeProjectsListFilters } from '@/lib/projects-list-filters'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -23,9 +24,15 @@ export function ProjectsPage() {
   const navigate = useNavigate()
   const { data: portfolio, loading, error, reload } = useApi(() => api.portfolio(), [])
   const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [filter, setFilter] = useState<LifecycleBucket | 'ALL'>('ALL')
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<ProjectSort>('NEEDS_ATTENTION_FIRST')
+  // BUG-02 (bug-ledger.json): filter/search/sort now live in the URL
+  // (projects-list-filters.ts), not local useState -- clicking into a
+  // project and back (or browser back/forward) restores exactly what was
+  // showing, instead of resetting to defaults on every remount.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { filter, search, sort } = readProjectsListFilters(searchParams)
+  function updateFilters(next: Partial<{ filter: LifecycleBucket | 'ALL'; search: string; sort: typeof sort }>) {
+    setSearchParams(writeProjectsListFilters({ filter, search, sort, ...next }), { replace: true })
+  }
   const [missionDialogOpen, setMissionDialogOpen] = useState(false)
   const [overnightDialogOpen, setOvernightDialogOpen] = useState(false)
 
@@ -117,12 +124,12 @@ export function ProjectsPage() {
         ) : (
           <LifecycleFilterBar
             active={filter}
-            onChange={setFilter}
+            onChange={(next) => updateFilters({ filter: next })}
             counts={counts}
             search={search}
-            onSearchChange={setSearch}
+            onSearchChange={(next) => updateFilters({ search: next })}
             sort={sort}
-            onSortChange={setSort}
+            onSortChange={(next) => updateFilters({ sort: next })}
           />
         )}
       </div>

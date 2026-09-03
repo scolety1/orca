@@ -42,7 +42,10 @@ import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { resolveProjectsFromText } from './project-name-resolver.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
-import { handleHealthRepairRoute } from './health-repair-http-routes.mjs'
+import {
+  handleHealthRepairRoute,
+  recoverInterruptedHealthRepairOperations
+} from './health-repair-http-routes.mjs'
 import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
 import { handleEstimateRoute } from './estimate-http-routes.mjs'
 import { handleEvalRoute } from './eval-http-routes.mjs'
@@ -775,6 +778,12 @@ export function startStandaloneServer(port = 4610, options = {}) {
   // block on however long the resumed pipeline(s) take.
   recoverInterruptedPrepareForWorkOperations().catch((error) => {
     console.error('prepare-for-work recovery scan failed:', error)
+  })
+  // BUG-05 (bug-ledger.json): same reacquire-on-startup posture as Prepare
+  // for Work above, now that Health Repair's baseline/repair/repair-
+  // selected actions are durable operations too.
+  recoverInterruptedHealthRepairOperations().catch((error) => {
+    console.error('health-repair recovery scan failed:', error)
   })
   // Safe Update Manager (spec Phase 5): records this real process's own
   // PID/commit/startedAt so a later checker can tell a genuinely-alive
