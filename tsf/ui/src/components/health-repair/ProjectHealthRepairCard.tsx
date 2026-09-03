@@ -136,7 +136,18 @@ export function ProjectHealthRepairCard({
         readyForWork: result.readyForWork
       })
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Baseline check failed.')
+      // Independent-verification finding (BUG-05, second pass): unlike
+      // repair(), healthRepairBaseline (healthRepairBaselineDurable,
+      // health-repair-polling.ts) deliberately THROWS a plain Error --
+      // never ApiError -- for every real settled-failure/version-mismatch/
+      // timeout case (result.error verbatim, or a specific poll-failure
+      // message), so gating only on `instanceof ApiError` discarded every
+      // one of those real, actionable messages behind a generic "Baseline
+      // check failed." -- the exact same masking class already fixed for
+      // repair() below, just missed here on the first pass. Any real
+      // Error's own message is honest and specific; only a genuinely
+      // non-Error throw falls back to the generic string.
+      setError(err instanceof Error ? err.message : 'Baseline check failed.')
     } finally {
       setBaselineBusy(false)
     }

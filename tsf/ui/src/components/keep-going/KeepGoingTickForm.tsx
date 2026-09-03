@@ -86,16 +86,29 @@ export function KeepGoingTickForm({
   // safe default for where a real dispatch lands), just clearly marked as
   // the advanced/technical half of this form rather than blended in with
   // the ordinary work-item/scope/spec fields above it.
+  //
+  // Independent-verification finding: every label here was visually
+  // positioned above its field but had no real htmlFor/id association, so
+  // a screen reader announced nothing for any of them -- a purely visual
+  // fix, not a real accessibility one. Every label now carries a real
+  // htmlFor matching its field's id (prefixed with projectId so multiple
+  // instances of this form never collide). This is a known, pre-existing,
+  // codebase-wide pattern elsewhere too (e.g. KeepGoingStartForm.tsx) --
+  // fixed here, not there; disclosed as a separate, out-of-scope gap.
   return (
     <div className="rounded-md border border-border p-3 text-[12px]">
       <div className="mb-3 font-medium text-muted-foreground">Run now (dispatch one work item)</div>
 
       <div className="flex flex-col gap-3">
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+          <label
+            htmlFor={`${projectId}-tick-work-item-id`}
+            className="mb-1 block text-[11px] font-medium text-muted-foreground"
+          >
             Work item id
           </label>
           <input
+            id={`${projectId}-tick-work-item-id`}
             className="w-full rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
             placeholder="e.g. impl-1"
             value={workItemId}
@@ -103,10 +116,14 @@ export function KeepGoingTickForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+          <label
+            htmlFor={`${projectId}-tick-scope`}
+            className="mb-1 block text-[11px] font-medium text-muted-foreground"
+          >
             File scope (one path per line)
           </label>
           <Textarea
+            id={`${projectId}-tick-scope`}
             rows={5}
             placeholder="src/example.mjs"
             value={scope}
@@ -114,10 +131,14 @@ export function KeepGoingTickForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+          <label
+            htmlFor={`${projectId}-tick-spec`}
+            className="mb-1 block text-[11px] font-medium text-muted-foreground"
+          >
             Spec (optional -- what should the worker do)
           </label>
           <Textarea
+            id={`${projectId}-tick-spec`}
             rows={4}
             placeholder="What should the worker do?"
             value={spec}
@@ -131,10 +152,14 @@ export function KeepGoingTickForm({
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+              <label
+                htmlFor={`${projectId}-tick-worktree`}
+                className="mb-1 block text-[11px] font-medium text-muted-foreground"
+              >
                 Worktree (required)
               </label>
               <input
+                id={`${projectId}-tick-worktree`}
                 className="w-full rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 placeholder="An exact path, or literally 'current'"
                 value={worktree}
@@ -145,10 +170,14 @@ export function KeepGoingTickForm({
               </p>
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+              <label
+                htmlFor={`${projectId}-tick-agent`}
+                className="mb-1 block text-[11px] font-medium text-muted-foreground"
+              >
                 Agent
               </label>
               <input
+                id={`${projectId}-tick-agent`}
                 className="w-full rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 placeholder="codex"
                 value={agent}
