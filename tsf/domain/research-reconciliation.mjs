@@ -69,6 +69,7 @@ export function decideReconciliation(
           throw new Error('selected claim is not part of the conflict it is meant to resolve')
         }
       }
+      let resolvedTypedMissingnessId = null
       if (decisionType === 'ACCEPT_TYPED_MISSING') {
         // Trust + Scale Hardening Continuation 2 (independent-verification
         // follow-up on Priority Block 3): TypedMissingness can now
@@ -89,6 +90,15 @@ export function decideReconciliation(
           }
           throw new Error(`no typed missingness record exists for field ${fieldName}`)
         }
+        // Independent-verification finding: re-deriving which record to
+        // touch a second time at admission (by fieldName+temporalScope
+        // again) is not guaranteed to still agree with THIS resolution if
+        // another same-field record was admitted in the window between
+        // decide and admit. Recording the exact id resolved HERE and
+        // having admitReconciliationDecision use it directly (never
+        // re-deriving) makes divergence structurally impossible instead of
+        // merely unlikely.
+        resolvedTypedMissingnessId = missing.id
       }
       const binding = decisionBinding({ fieldName, decisionType, selectedClaimId, consideredClaimIds, verificationIds, conflictId, decidedValue, temporalScope })
       const id = binding
@@ -110,6 +120,7 @@ export function decideReconciliation(
         binding,
         derivationLineage,
         temporalScope,
+        resolvedTypedMissingnessId,
         decidedAt
       })
       if (selectedClaimId) {
@@ -149,14 +160,23 @@ export function admitReconciliationDecision(mission, nodeId, reconciliationDecis
         throw error
       }
       if (decision.decisionType === 'ACCEPT_TYPED_MISSING') {
-        // Same disambiguation as decideReconciliation's own precondition
-        // check -- a single candidate is unambiguous; more than one
-        // requires the decision's own recorded temporalScope to match.
-        const candidateIdxs = node.typedMissingness.reduce((acc, m, i) => (m.fieldName === decision.fieldName ? [...acc, i] : acc), [])
-        const idx =
-          candidateIdxs.length <= 1
-            ? (candidateIdxs[0] ?? -1)
-            : candidateIdxs.find((i) => node.typedMissingness[i].temporalScope === decision.temporalScope) ?? -1
+        // Independent-verification finding: re-deriving which record to
+        // touch a second time here (by fieldName+temporalScope again) is
+        // NOT guaranteed to still agree with what decideReconciliation
+        // actually resolved, if another same-field record was admitted in
+        // the window between decide and admit. decision.resolvedTypedMissingnessId
+        // (recorded at decide time, the exact id that was checked then) is
+        // the real source of truth -- using it directly makes divergence
+        // structurally impossible instead of merely unlikely. Falls back
+        // to the old re-derivation only for a decision that somehow
+        // predates this field (defensive, not the real path going forward).
+        let idx = decision.resolvedTypedMissingnessId
+          ? node.typedMissingness.findIndex((m) => m.id === decision.resolvedTypedMissingnessId)
+          : -1
+        if (idx === -1 && !decision.resolvedTypedMissingnessId) {
+          const candidateIdxs = node.typedMissingness.reduce((acc, m, i) => (m.fieldName === decision.fieldName ? [...acc, i] : acc), [])
+          idx = candidateIdxs.length <= 1 ? (candidateIdxs[0] ?? -1) : candidateIdxs.find((i) => node.typedMissingness[i].temporalScope === decision.temporalScope) ?? -1
+        }
         if (idx === -1) throw new Error(`no typed missingness record exists for field ${decision.fieldName}`)
         if (node.typedMissingness[idx].reconciliationDecisionId === reconciliationDecisionId) {
           return { next: node, changed: false }

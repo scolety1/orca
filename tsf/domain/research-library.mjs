@@ -103,10 +103,20 @@ export function indexCanonicalFact(library, mission, nodeId, canonicalFactId, cl
 // source-independence/quality metadata lives on the ORIGIN mission's own
 // records, not duplicated into the library; a caller wanting that detail
 // re-reads the origin mission via missionId/nodeId/canonicalFactId.
+//
+// Independent-verification finding: this previously returned LIVE
+// references into library.entries -- a caller mutating a returned
+// candidate (e.g. via evaluateResearchLibraryReuse's `hit`) could
+// permanently corrupt the shared, cross-mission library's own stored
+// data, since indexCanonicalFact's deepClone(library) on every future
+// write would then propagate the corruption forward forever. Deep-cloning
+// here closes that gap the same way indexCanonicalFact already protects
+// the ORIGIN mission's object graph -- the library's own stored data is
+// now equally protected from a reader.
 export function queryResearchLibrary(library, { entityId, fieldName, temporalScope = undefined }) {
   return library.entries
     .filter((e) => e.entityId === entityId && e.fieldName === fieldName && (temporalScope === undefined || e.temporalScope === temporalScope))
-    .slice()
+    .map((e) => deepClone(e))
     .sort((a, b) => (a.canonicalizedAt < b.canonicalizedAt ? 1 : a.canonicalizedAt > b.canonicalizedAt ? -1 : 0))
 }
 

@@ -543,6 +543,36 @@ test('ACCEPT_TYPED_MISSING with an explicit temporalScope reconciles the CORRECT
   assert.equal(regularSeason.reconciliationDecisionId ?? null, null, 'the OTHER period\'s record must never be silently reconciled instead')
 })
 
+// Independent-verification finding on the ACCEPT_TYPED_MISSING temporal
+// fix above: decideReconciliation's precondition and
+// admitReconciliationDecision's write previously each independently
+// RE-DERIVED which record to touch by (fieldName, temporalScope) --  not
+// guaranteed to agree if a NEW same-field record was admitted in the
+// window between decide and admit. resolvedTypedMissingnessId (recorded
+// once, at decide time, used directly at admit time -- never re-derived)
+// makes this structurally impossible instead of merely unlikely.
+test('ACCEPT_TYPED_MISSING reconciles the record resolved at DECIDE time, even if a new same-field record is admitted before the ADMIT call', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  // A single candidate at decide time, with a temporalScope that does NOT
+  // match the caller-supplied one (the compound trigger condition found).
+  mission = plantTypedMissingness(mission, node.id, 'yards', '2001-regular-season')
+  mission = decideReconciliation(mission, node.id, { fieldName: 'yards', decisionType: 'ACCEPT_TYPED_MISSING', decidedValue: null, temporalScope: null, rationale: 'test', decidedBy: 'TEST' }, clock, mission.revision)
+  const decisionId = mission.nodes[0].reconciliationDecisions.at(-1).id
+  assert.equal(mission.nodes[0].reconciliationDecisions[0].resolvedTypedMissingnessId, mission.nodes[0].typedMissingness[0].id, 'the exact record resolved at decide time is recorded on the decision itself')
+
+  // A NEW, unrelated same-field record with temporalScope null (matching
+  // the decision's OWN temporalScope) arrives in the decide->admit window
+  // -- the old re-derivation logic would match THIS one instead.
+  mission = plantTypedMissingness(mission, node.id, 'yards', null)
+
+  mission = admitReconciliationDecision(mission, node.id, decisionId, clock, mission.revision)
+  const original = mission.nodes[0].typedMissingness.find((m) => m.temporalScope === '2001-regular-season')
+  const interloper = mission.nodes[0].typedMissingness.find((m) => m.temporalScope === null)
+  assert.equal(original.reconciliationDecisionId, decisionId, 'the record actually resolved at decide time is reconciled')
+  assert.equal(interloper.reconciliationDecisionId ?? null, null, 'the later-arriving, unrelated record must never be silently reconciled instead')
+})
+
 test('identity resolution state is recorded per node and is independent of claim/verification state', () => {
   let mission = missionWithNode()
   const node = mission.nodes[0]

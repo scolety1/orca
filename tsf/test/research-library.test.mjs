@@ -131,6 +131,23 @@ test('a library entry\'s value is never a live reference into the origin mission
   assert.equal(mission.nodes[0].canonicalFacts[0].value.a, 1, 'the origin mission\'s own CanonicalFact must be unaffected')
 })
 
+// Independent-verification finding: queryResearchLibrary previously
+// returned LIVE references into library.entries -- a caller mutating a
+// returned candidate (e.g. via evaluateResearchLibraryReuse's `hit`) could
+// permanently corrupt the shared, cross-mission library's own stored
+// data, since indexCanonicalFact's deepClone(library) on every future
+// write would then propagate the corruption forward forever.
+test('queryResearchLibrary never returns a live reference -- mutating a returned entry cannot corrupt the shared library', () => {
+  const origin = missionWithCanonicalFact({ value: { nested: 1 } })
+  let library = createResearchLibrary(clock)
+  library = indexCanonicalFact(library, origin.mission, 'node:x', origin.canonicalFactId, clock, library.revision)
+  const [hit] = queryResearchLibrary(library, { entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards' })
+  hit.value.nested = 999 // a caller mutating the returned candidate in memory
+  const [hitAgain] = queryResearchLibrary(library, { entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards' })
+  assert.equal(hitAgain.value.nested, 1, 'the shared library\'s own stored data must be unaffected by a caller mutating a prior read')
+  assert.equal(library.entries[0].value.nested, 1, 'the underlying library.entries array itself is untouched')
+})
+
 test('indexCanonicalFact rejects an unknown node or unknown canonical fact id', () => {
   const { mission, canonicalFactId } = missionWithCanonicalFact()
   const library = createResearchLibrary(clock)
