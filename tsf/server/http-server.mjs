@@ -41,6 +41,7 @@ import { projectsById, summarizeWork, summarizeCard } from './project-catalog.mj
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { resolveProjectsFromText } from './project-name-resolver.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
+import { handleResearchRoute } from './research-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
 import { handleHealthRepairRoute } from './health-repair-http-routes.mjs'
 import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
@@ -403,6 +404,14 @@ export function createRequestHandler(options = {}) {
           { json, notFound, readBody, saveState }
         )
       ) {
+        return
+      }
+
+      // GET/POST /api/research/:missionId[/review-items|completeness|artifacts|usage|nodes/:nodeId/cancel]
+      // -- see research-http-routes.mjs. CREATE/READ/CANCEL only (never
+      // spends real money); real dispatch stays a server-side-only driver
+      // call, not a bare HTTP route -- see that file's own header comment.
+      if (await handleResearchRoute(parts, req, res, {}, { json, notFound, readBody })) {
         return
       }
 
