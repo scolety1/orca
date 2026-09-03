@@ -46,16 +46,46 @@ export function computeCompletenessMetrics(mission, clock) {
 
   for (const node of nodes) {
     for (const rf of node.requestedFields) {
+      // Trust + Scale Hardening Continuation 2 Priority Block 3: temporal-
+      // aware completeness. requestedFields.requiredTemporalScopes is
+      // OPTIONAL and domain-neutral -- absent/empty means "this field has
+      // no point-in-time requirement," preserving every existing single-
+      // period fixture's behavior byte-for-byte (falls straight into the
+      // untouched fieldName-only branch below). When present, each entry
+      // is its own required (fieldName, temporalScope) coverage unit --
+      // "ADP at T-7" and "ADP at T-14" are two DISTINCT snapshots that
+      // must EACH resolve, and neither is satisfied by a fact/missingness
+      // for a different date or with no temporalScope at all (a scope-
+      // less record never satisfies a specific required scope -- failing
+      // honestly rather than guessing it's "close enough").
+      const requiredScopes = rf.requiredTemporalScopes ?? null
+      if (requiredScopes && requiredScopes.length > 0) {
+        for (const scope of requiredScopes) {
+          requestedFieldTotal += 1
+          const scopedFact = node.canonicalFacts.find((f) => f.fieldName === rf.fieldName && f.temporalScope === scope)
+          const scopedMissing = node.typedMissingness.some((m) => m.fieldName === rf.fieldName && m.temporalScope === scope)
+          if (scopedFact || scopedMissing) resolvedFieldTotal += 1
+          if (rf.derivationRule) {
+            derivedFieldTotal += 1
+            if (scopedFact?.derivationLineage) {
+              const inputsStillCanonical = scopedFact.derivationLineage.inputCanonicalFactIds.every((id) => node.canonicalFacts.some((f) => f.id === id))
+              if (inputsStillCanonical) derivedFieldReproducible += 1
+            }
+          }
+        }
+        continue
+      }
+
       requestedFieldTotal += 1
-      // KNOWN LIMITATION (Trust + Scale Hardening, temporal semantics):
-      // requestedFields has no temporalScope of its own, so this picks the
-      // FIRST CanonicalFact for this fieldName if more than one exists
-      // across different periods (legitimate since admitReconciliationDecision
-      // allows that -- e.g. via research-library.mjs's cross-mission reuse).
-      // Fine for this codebase's current single-periodScope-per-mission
-      // fixtures; a genuinely multi-period-per-field completeness metric
-      // needs requestedFields to carry its own temporalScope before this
-      // can be made unambiguous -- deferred rather than guessed at here.
+      // No required temporal scope for this field (the common case: a
+      // historical immutable value, or a mission with a single implicit
+      // periodScope) -- unchanged from before: any CanonicalFact/
+      // TypedMissingness for this fieldName resolves it, regardless of
+      // its own temporalScope. A field with multiple CanonicalFacts across
+      // periods still picks the first match here, same known, accepted
+      // limitation as before for the untyped case -- callers that need
+      // point-in-time precision opt in via requiredTemporalScopes instead
+      // of this module guessing at one.
       const fact = node.canonicalFacts.find((f) => f.fieldName === rf.fieldName)
       const hasMissing = node.typedMissingness.some((m) => m.fieldName === rf.fieldName)
       if (fact || hasMissing) resolvedFieldTotal += 1

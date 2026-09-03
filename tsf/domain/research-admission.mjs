@@ -112,6 +112,12 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
               schemaVersion: 'TSF_TYPED_MISSINGNESS_V1',
               id,
               fieldName: pc.fieldName,
+              // Trust + Scale Hardening Continuation 2 Priority Block 3:
+              // carried through exactly like Claim.temporalScope already
+              // is, so "this field is honestly missing FOR THIS PERIOD"
+              // can be told apart from missingness with no period context
+              // at all -- required for temporal-aware completeness below.
+              temporalScope: pc.temporalScope ?? null,
               missingnessType: 'NOT_PUBLICLY_AVAILABLE',
               reason: pc.providerReasoning ?? 'no value found by provider',
               admittedAt

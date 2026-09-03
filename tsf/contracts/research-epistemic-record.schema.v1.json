@@ -88,11 +88,12 @@
       "description": "A field's canonical missingness status. Reconciled via ReconciliationDecision(decisionType: ACCEPT_TYPED_MISSING) + admitReconciliationDecision, which stamps reconciliationDecisionId/reconciledAt on THIS record rather than synthesizing a value-bearing CanonicalFact -- 'definitively absent' is never collapsed into a canonical null value.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "id", "fieldName", "missingnessType", "reason", "admittedAt"],
+      "required": ["schemaVersion", "id", "fieldName", "temporalScope", "missingnessType", "reason", "admittedAt"],
       "properties": {
         "schemaVersion": { "const": "TSF_TYPED_MISSINGNESS_V1" },
         "id": { "type": "string", "minLength": 1 },
         "fieldName": { "type": "string", "minLength": 1 },
+        "temporalScope": { "description": "Trust + Scale Hardening Continuation 2 Priority Block 3: carried through from the ProposedClaim exactly like Claim.temporalScope, so temporal-aware completeness can tell 'honestly missing for THIS period' apart from missingness with no period context.", "type": ["string", "null"] },
         "missingnessType": { "enum": ["NOT_PUBLICLY_AVAILABLE", "NOT_APPLICABLE", "NOT_YET_RESEARCHED", "SOURCE_EXHAUSTED"] },
         "reason": { "type": "string" },
         "admittedAt": { "type": "string" },
