@@ -328,12 +328,17 @@ export function raiseResearchNeedsYou(
 // counterpart to a hard failure -- a node whose retry budget is exhausted
 // (recordResearchNodeAttempt's TSF_RESEARCH_RETRY_BUDGET_EXCEEDED) or whose
 // dispatch cleanly and repeatedly FAILED should never crash the whole
-// orchestration driver. This atomically blocks the ONE affected node
-// (execution state, from FAILED or ADMITTED only -- the node-status
-// transition table's real legal sources for BLOCKED) and raises a real,
-// human-reviewable Needs You for it, so independent, unrelated nodes in the
-// same mission can keep making progress (never a global halt for one
-// node's problem).
+// orchestration driver. This blocks the ONE affected node (execution
+// state, from FAILED or ADMITTED only -- the node-status transition
+// table's real legal sources for BLOCKED) and raises a real, human-
+// reviewable Needs You for it, so independent, unrelated nodes in the same
+// mission can keep making progress (never a global halt for one node's
+// problem). Independent-verification note: this is two sequential
+// revision bumps (the BLOCKED write, then raiseResearchNeedsYou's own),
+// not one -- a caller never observes the intermediate state since nothing
+// is persisted until the eventual withResearchMission write, so this
+// remains safe, but do not assume the revision counter advances by
+// exactly 1 per call.
 export function escalateResearchNodeToNeedsYou(mission, nodeId, { question, category = 'SOURCE_UNAVAILABLE' }, clock, expectedRevision) {
   assertExpectedRevision(mission, expectedRevision)
   const node = findResearchNode(mission, nodeId)
