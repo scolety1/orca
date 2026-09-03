@@ -156,10 +156,20 @@ async function dispatchFromChat({ project, message, placement, selfRepairFromBra
   }
 
   const items = dispatch.tickResult.dispatchRecords ?? []
+  // BUG-06 (bug-ledger.json): the SAME chat phrasing ("go ahead" etc.)
+  // silently either creates a brand new Keep Going run/mission or adds a
+  // work item to whichever run is already ACTIVE for this project,
+  // depending on hidden server-side state the operator cannot see --
+  // freshlyCreated (now threaded through planAndDispatchFromChat, was
+  // previously computed and discarded) is what actually distinguishes
+  // them; said explicitly here rather than identical text either way.
+  const missionPhrase = dispatch.freshlyCreated
+    ? 'Started a new mission'
+    : 'Added to the mission already running'
   const dispatchedText =
     items.length > 0
-      ? `Dispatched **${dispatch.candidateWorkItem.id}** on **${project.displayName}** (task ${items[0].taskId}) -- real Orca worker, no terminal opened by hand.`
-      : `Started work on **${project.displayName}**: ${dispatch.tickResult.action}.`
+      ? `${missionPhrase} for **${project.displayName}**: dispatched **${dispatch.candidateWorkItem.id}** (task ${items[0].taskId}) -- real Orca worker, no terminal opened by hand.`
+      : `${missionPhrase} for **${project.displayName}**: ${dispatch.tickResult.action}.`
   return {
     intent,
     decisionClass,

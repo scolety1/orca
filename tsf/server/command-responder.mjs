@@ -147,9 +147,13 @@ export async function respondCommand({
     clock,
     deps
   })
+  // BUG-06 (bug-ledger.json): r.detail already states the real outcome
+  // (e.g. "new mission started, task X dispatched" vs. "added to running
+  // mission: WAVE_DISPATCHED") -- a "dispatched:" prefix here read as a
+  // redundant double statement ("dispatched: new mission started...").
   const lines = dispatch.results.map((r) =>
     r.ok
-      ? `- **${r.project.displayName}** — dispatched: ${r.detail}.`
+      ? `- **${r.project.displayName}** — ${r.detail}.`
       : `- **${r.project.displayName}** — skipped: ${r.reason}${r.detail ? ` (${r.detail})` : ''}.`
   )
   return {

@@ -191,7 +191,13 @@ export async function planAndDispatchFromChat({
     return { ok: false, reason: error.code ?? 'TSF_PLACEMENT_ERROR', detail: error.message }
   }
 
-  const { run: activeRun } = await ensureActiveRun(project.id, capsule, clock, deps)
+  // BUG-06 (bug-ledger.json): freshlyCreated was computed by ensureActiveRun
+  // but discarded here -- the caller (and, transitively, the operator-
+  // facing chat reply) had no way to tell "this started a brand NEW
+  // mission/run" apart from "this added a work item to the run already
+  // active for this project," even though the distinction is exactly what
+  // an operator needs to understand what "go ahead" just did.
+  const { run: activeRun, freshlyCreated } = await ensureActiveRun(project.id, capsule, clock, deps)
   if (activeRun.state !== 'ACTIVE') {
     // A COMPLETE/BLOCKED existing run cannot be ticked -- ensureActiveRun
     // only creates a NEW run when none exists at all; a finished one needs
@@ -237,7 +243,7 @@ export async function planAndDispatchFromChat({
       run: tickResult.run ?? activeRun
     }
   }
-  return { ok: true, planCapsule: capsule, candidateWorkItem, tickResult }
+  return { ok: true, planCapsule: capsule, candidateWorkItem, tickResult, freshlyCreated }
 }
 
 // Command/Planner Chat worktree auto-provisioning (M-Command): when a
@@ -311,6 +317,12 @@ async function dispatchOneProject(project, message, clock, deps, selfRepairFromB
     return { project, ok: false, reason: dispatch.reason, detail: dispatch.detail }
   }
   const items = dispatch.tickResult.dispatchRecords ?? []
+  // BUG-06 (bug-ledger.json): same freshlyCreated distinction as the
+  // single-project chat path (http-server.mjs's dispatchFromChat) --
+  // threaded through here too so a fleet-wide Command dispatch can say
+  // which of the resolved projects got a brand new mission vs. an added
+  // work item, per project (not a fleet-wide guess).
+  const missionPhrase = dispatch.freshlyCreated ? 'new mission started' : 'added to running mission'
   return {
     project,
     ok: true,
@@ -319,7 +331,11 @@ async function dispatchOneProject(project, message, clock, deps, selfRepairFromB
     // Going run id, same field http-chat-dispatch.test.mjs's own
     // "revision.body.tickResult.run.id" assertion already relies on.
     runId: dispatch.tickResult.run?.id ?? null,
-    detail: items.length > 0 ? `task ${items[0].taskId} dispatched` : dispatch.tickResult.action
+    freshlyCreated: dispatch.freshlyCreated,
+    detail:
+      items.length > 0
+        ? `${missionPhrase}, task ${items[0].taskId} dispatched`
+        : `${missionPhrase}: ${dispatch.tickResult.action}`
   }
 }
 

@@ -258,6 +258,47 @@
 
 <script>
   const TSF_URL = 'http://127.0.0.1:4610';
+  // BUG-01 (bug-ledger.json): this page used to always send the operator
+  // back to the bare origin (-> Home) once the backend answered again,
+  // discarding whatever project/tab they were actually on before an
+  // outage. Launch-TSF.ps1 now captures that real pre-outage URL and
+  // passes it here as ?return=<encoded> when it navigates to this guide
+  // -- read back and validated (same-origin, TSF_URL prefix only) before
+  // ever being trusted as a navigation target, same as this codebase's
+  // own "never trust unvalidated input" posture elsewhere.
+  function resolveReturnUrl() {
+    try {
+      const raw = new URLSearchParams(location.search).get('return');
+      // Independent-verification finding (round 1): a plain
+      // raw.startsWith(TSF_URL) check is NOT a real origin boundary --
+      // 'http://127.0.0.1:4610.evil.com/x' and 'http://127.0.0.1:46100/x'
+      // both pass a bare string-prefix test despite being a different host
+      // entirely. Comparing the parsed origin (scheme+host+port) is the
+      // real same-origin check this comment always claimed to be doing.
+      //
+      // Independent-verification finding (round 2): validating raw against
+      // TSF_URL as the resolution base is not enough on its own -- this
+      // script can itself be loaded from a file:// document (Launch-
+      // TSF.ps1 navigates here via a file path), so `location.href = raw`
+      // later resolves the SAME raw string against that file:// base
+      // instead. A scheme-relative value like 'http:evil.com' resolves to
+      // the safe TSF_URL origin when validated against TSF_URL, but to a
+      // genuine http://evil.com/ when later navigated against a file://
+      // base -- an exact-origin open redirect, not just a lookalike.
+      // Returning the RESOLVED absolute URL (not the raw string) makes the
+      // value that was validated identical, byte for byte, to the value
+      // that is ever navigated to -- no second resolution against a
+      // different base can happen.
+      const resolved = raw ? new URL(raw, TSF_URL) : null;
+      if (resolved && resolved.origin === new URL(TSF_URL).origin) {
+        return resolved.href;
+      }
+    } catch (e) {
+      // Malformed/missing -- fall through to the honest default below.
+    }
+    return TSF_URL;
+  }
+  const RETURN_URL = resolveReturnUrl();
   // M14: real live evidence (process creation timestamps on Tim's own
   // machine) confirmed Orca's own plugin-host activation for TSF can
   // genuinely take several minutes past Orca itself becoming ready --
@@ -357,7 +398,7 @@
         dot.classList.remove('stalled');
         dot.classList.add('ok');
         text.textContent = 'Ready — opening Thousand Sunny Fleet…';
-        location.href = TSF_URL;
+        location.href = RETURN_URL;
         return;
       }
     } catch (e) {

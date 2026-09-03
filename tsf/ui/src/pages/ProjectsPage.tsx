@@ -115,6 +115,8 @@ export function ProjectsPage() {
           <div className="py-3">
             <BulkActionBar
               selectedIds={selectedIds}
+              workSetBefore={portfolio.workSet}
+              refreshing={loading}
               onClearSelection={() => setSelected({})}
               onChanged={reload}
               onStartMission={() => setMissionDialogOpen(true)}

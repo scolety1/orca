@@ -75,7 +75,10 @@ test('a dispatch-worthy chat message with an explicit placement genuinely dispat
     assert.equal(body.decisionClass, 'RECOMMEND_AND_PROCEED')
     assert.equal(body.dispatched, true)
     assert.equal(body.tickResult.action, 'WAVE_DISPATCHED')
-    assert.match(body.text, /Dispatched/)
+    // BUG-06 (bug-ledger.json): the text now distinguishes a brand new
+    // mission from adding a work item to an existing one -- this project
+    // had no prior run, so "new mission" is the real, correct outcome.
+    assert.match(body.text, /Started a new mission.*dispatched/s)
     assert.ok(
       body.planCapsule.repository.head.match(/^[0-9a-f]{40}$/),
       'a real HEAD was resolved, not fabricated'

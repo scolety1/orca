@@ -488,6 +488,18 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
         spec: item.spec ?? item.id,
         run: orchestrationRunId,
         taskTitle: item.id,
+        // BUG-07 (bug-ledger.json): displayName was never populated --
+        // createOrchestrationTask/the real Orca CLI already accept it as a
+        // distinct --display-name flag from --task-title, but with only
+        // taskTitle (a bare internal work-item id, e.g. "impl-1") ever
+        // set, any Orca-side surface (task lists, terminal titles, and
+        // transitively any Orca-owned notification whose label draws on
+        // task identity) had nothing more human-readable to draw from.
+        // Composed from real, already-available facts only -- the real
+        // project id and the real file scope this work item touches --
+        // never a fabricated "friendly project name" this call site
+        // doesn't actually have.
+        displayName: `${projectId}: ${item.scope.slice(0, 3).join(', ')}`,
         from
       })
       if (!taskResult.ok) {

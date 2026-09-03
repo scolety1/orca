@@ -113,6 +113,29 @@ test('tickKeepGoingRun dispatches the next wave, creating the orchestration run 
   assert.equal(run.inFlightWave.dispatchRecords[0].taskId, 'task-t1')
 })
 
+// BUG-07 (bug-ledger.json): displayName was never populated on the real
+// createOrchestrationTask call -- only the bare internal work-item id was
+// ever set as taskTitle, so any Orca-side surface drawing on task
+// identity (task lists, terminal titles, and transitively any Orca-owned
+// notification) had nothing more human-readable to draw from. Composed
+// from real, already-available facts only (the real project id + the
+// real file scope this work item touches) -- never a fabricated project
+// name this call site doesn't actually have.
+test('a real dispatch supplies a human-readable displayName -- project id + real file scope, never just the bare work-item id', async () => {
+  const store = makeFakeStore(baseRun())
+  let capturedDisplayName
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      createOrchestrationTask: async ({ taskTitle, displayName }) => {
+        capturedDisplayName = displayName
+        return { ok: true, result: { task: { id: `task-${taskTitle}` } } }
+      }
+    }),
+    store
+  })
+  assert.equal(capturedDisplayName, `${PROJECT_ID}: src/a.mjs`)
+})
+
 // M5: a real, low-capacity signal must pause and checkpoint BEFORE any
 // Orca CLI dispatch work happens -- never start a real worker that
 // capacity can't finish. Seeds a genuinely high codex usage into the

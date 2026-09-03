@@ -143,6 +143,11 @@ test('a project with no Keep Going run yet: creates one and genuinely dispatches
   assert.equal(result.tickResult.dispatchRecords[0].workItemId, result.candidateWorkItem.id)
   assert.equal(store.readRun().state, 'ACTIVE')
   assert.ok(store.readRun().inFlightWave, 'a real wave is genuinely in flight')
+  // BUG-06 (bug-ledger.json): freshlyCreated was computed by
+  // ensureActiveRun but silently discarded before reaching the caller --
+  // this is the exact real fact the operator-facing chat text now needs
+  // to distinguish "new mission" from "added to the existing one."
+  assert.equal(result.freshlyCreated, true)
 })
 
 test('the loser of a real concurrent run-creation race recovers gracefully instead of throwing uncaught (an independent-review-caught TOCTOU)', async () => {
@@ -290,6 +295,10 @@ test('reuses an existing ACTIVE run rather than creating a second one', async ()
   // in flight, not yet settled -- settling it is a separate tick, not part
   // of this dispatch call.
   assert.equal(store.readRun().waves.length, 1)
+  // BUG-06 (bug-ledger.json): the real distinguishing fact -- this
+  // dispatch added a work item to the SAME already-active run, it did not
+  // start a new mission, and the operator-facing text must say so.
+  assert.equal(second.freshlyCreated, false)
   assert.ok(store.readRun().inFlightWave, 'the second dispatch is genuinely in flight')
 })
 

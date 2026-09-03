@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import type { ProjectDetail } from '@/lib/types'
+import { ACTIVE_FLEET_EXPLANATION, WORK_SET_EXPLANATION } from '@/lib/membership-tier-copy'
 
 // Mirrors domain/onboarding.mjs's portfolioGatingForClassification exactly
 // -- DIRTY_PRESERVE, in particular, allows Active Fleet but not Work Set;
@@ -102,14 +103,14 @@ export function MembershipPanel({
         Always on once onboarded.
       </div>
       <Row
-        label="Active Fleet -- TSF actively manages/monitors this project"
+        label={`Active Fleet -- ${ACTIVE_FLEET_EXPLANATION}`}
         active={project.activeFleet}
         unavailableReason={fleetReason}
         onToggle={() => toggle('activeFleet')}
         busy={busy === 'activeFleet'}
       />
       <Row
-        label="Work Set -- TSF may dispatch new work for this project"
+        label={`Work Set -- ${WORK_SET_EXPLANATION}`}
         active={project.workSet}
         unavailableReason={workSetReason}
         onToggle={() => toggle('workSet')}
