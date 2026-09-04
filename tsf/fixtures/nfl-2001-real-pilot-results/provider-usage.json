@@ -1,0 +1,15 @@
+{
+  "missionId": "mission:nfl-2001-real-pilot",
+  "totalRequests": 33,
+  "totalProviderReportedCostUsd": 0,
+  "byProvider": {
+    "DETERMINISTIC_WIKIPEDIA_EXTRACTION": {
+      "requests": 31,
+      "providerReportedCostUsd": 0
+    },
+    "PARALLEL": {
+      "requests": 2,
+      "providerReportedCostUsd": 0
+    }
+  }
+}

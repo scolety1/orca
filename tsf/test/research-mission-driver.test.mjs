@@ -20,6 +20,7 @@ const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-sta
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 
 const {
+  adoptResearchLibraryReuseDurable,
   cancelResearchNodeDurable,
   createResearchMissionDurable,
   dispatchResearchNodeDurable,
@@ -32,9 +33,11 @@ const {
   verifyAndReconcileResearchNodeFieldDurable
 } = await import('../server/research-mission-driver.mjs')
 const { withResearchMission, readResearchMission } = await import('../server/research-mission-store.mjs')
+const { readResearchLibrary, withResearchLibrary } = await import('../server/research-library-store.mjs')
+const { createResearchLibrary, indexCanonicalFact } = await import('../domain/research-library.mjs')
 
 function cleanupStateFile() {
-  for (const suffix of ['', '.tmp', '.research.lock']) rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  for (const suffix of ['', '.tmp', '.research.lock', '.research-library.lock']) rmSync(`${STATE_FILE}${suffix}`, { force: true })
 }
 cleanupStateFile()
 
@@ -328,6 +331,57 @@ test('research mission driver: the real persisted execution path, durable across
     assert.equal(second.costRefused, true)
     assert.equal(second.decision.reason, 'PROJECTED_SPEND_EXCEEDS_CEILING')
     assert.equal(dispatchCallCount, before, 'a cost-refused dispatch must never reach the real network call')
+  })
+
+  // Real-pilot, independent-verification finding: a library-reuse-only
+  // node previously stayed PENDING/READY forever, under-reporting
+  // completeness. adoptResearchLibraryReuseDurable is the durable, correct,
+  // complete sequence -- CACHE_HIT -> decide -> admit -> mark ADMITTED.
+  await t.test('LIBRARY REUSE: adoptResearchLibraryReuseDurable moves a zero-dispatch node to ADMITTED, fixing completeness for a reuse-only mission', async () => {
+    // A separate origin mission with a real canonical fact, indexed into
+    // the shared library.
+    const ORIGIN_ID = 'mission:driver-test-library-origin'
+    const { buildNflQb2001Specification } = await import('../fixtures/nfl-2001-qb-research-fixture.mjs')
+    const originSpec = buildNflQb2001Specification()
+    let origin = await createResearchMissionDurable(ORIGIN_ID, { projectId: 'fixture:proj', specification: originSpec, expectedUniverse: originSpec.expectedUniverse, nodes: [{ id: 'node:origin', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'nfl:2001:qb:library-reuse-origin' }, requestedFields: [{ fieldName: 'yards', valueType: 'number', required: true }], requestedOutputSchema: {} }] })
+    void origin
+    const req = buildBoundedResearchRequest(readResearchMission(ORIGIN_ID), readResearchMission(ORIGIN_ID).nodes[0], 'FAKE', clock)
+    const scripted = scriptedResult(req, { proposedClaims: [{ fieldName: 'yards', proposedValue: 4321, temporalScope: '2001-regular-season', providerConfidence: 0.9, providerReasoning: 'r' }] })
+    script.set(req.taskFingerprint, { proposedClaims: scripted.proposedClaims, evidence: scripted.evidence, sourceReferences: scripted.sourceReferences, sourceSnapshotsOrSnapshotRefs: scripted.sourceSnapshotsOrSnapshotRefs, usage: scripted.usage })
+    const dispatchResult = await dispatchResearchNodeDurable(ORIGIN_ID, 'node:origin', 'FAKE', worker, clock)
+    assert.equal(dispatchResult.ok, true)
+    const pollResult = await pollAndAdmitResearchNodeDurable(ORIGIN_ID, 'node:origin', worker, clock)
+    assert.equal(pollResult.ok, true)
+    const verifyResult = await verifyAndReconcileResearchNodeFieldDurable(ORIGIN_ID, 'node:origin', 'yards', 'DRIVER_TEST', clock)
+    assert.equal(verifyResult.ok, true)
+    assert.equal(verifyResult.canonicalized, true)
+    const originFact = readResearchMission(ORIGIN_ID).nodes[0].canonicalFacts[0]
+
+    await withResearchLibrary((current) => current ?? createResearchLibrary(clock))
+    await withResearchLibrary((current) => indexCanonicalFact(current, readResearchMission(ORIGIN_ID), 'node:origin', originFact.id, clock, current.revision))
+
+    // A SEPARATE target mission (not the shared MISSION_ID, which was
+    // created without allowCrossMissionLibraryReuse -- the policy check is
+    // real and fail-closed, so this test needs a mission whose
+    // specification genuinely opts in from creation).
+    const TARGET_ID = 'mission:driver-test-library-target'
+    const targetSpec = { ...originSpec, sourcePolicy: { ...originSpec.sourcePolicy, allowCrossMissionLibraryReuse: true } }
+    await createResearchMissionDurable(TARGET_ID, { projectId: 'fixture:proj', specification: targetSpec, expectedUniverse: targetSpec.expectedUniverse, nodes: [{ id: 'node:library-reuse-target', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'nfl:2001:qb:library-reuse-origin' }, requestedFields: [{ fieldName: 'yards', valueType: 'number', required: true, requiredTemporalScopes: ['2001-regular-season'] }], requestedOutputSchema: {} }] })
+    const library = readResearchLibrary()
+
+    const result = await adoptResearchLibraryReuseDurable(TARGET_ID, 'node:library-reuse-target', 'yards', library, { requiredTemporalScope: '2001-regular-season', valueType: 'number', decidedBy: 'DRIVER_TEST' }, clock)
+    assert.equal(result.ok, true)
+    assert.equal(result.adopted, true)
+    assert.equal(result.evaluation.decision, 'CACHE_HIT')
+    const node = readResearchMission(TARGET_ID).nodes.find((n) => n.id === 'node:library-reuse-target')
+    assert.equal(node.status, 'ADMITTED', 'the real fix: no longer stuck at PENDING despite having a genuine CanonicalFact')
+    assert.equal(node.canonicalFacts[0].value, 4321)
+    assert.equal(node.dispatchRecords.length, 0, 'genuinely zero dispatch -- this really was pure reuse')
+
+    // Idempotent replay through the full driver call.
+    const replay = await adoptResearchLibraryReuseDurable(TARGET_ID, 'node:library-reuse-target', 'yards', library, { requiredTemporalScope: '2001-regular-season', valueType: 'number', decidedBy: 'DRIVER_TEST' }, clock)
+    assert.equal(replay.ok, true)
+    assert.equal(readResearchMission(TARGET_ID).nodes.find((n) => n.id === 'node:library-reuse-target').canonicalFacts.length, 1, 'no duplicate fact from a resumed call')
   })
  } finally {
   cleanupStateFile()

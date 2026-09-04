@@ -1,0 +1,11 @@
+{
+  "missionId": "mission:nfl-2001-real-pilot",
+  "state": "ACTIVE",
+  "revision": 841,
+  "nodeCount": 33,
+  "nodesByStatus": {
+    "ADMITTED": 33
+  },
+  "openNeedsYouCount": 0,
+  "updatedAt": "2026-09-04T00:16:18.683Z"
+}

@@ -10,7 +10,7 @@ import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
 import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
 import { addResearchNode, createResearchMission } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
-import { createResearchLibrary, decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, indexCanonicalFact, queryResearchLibrary } from '../domain/research-library.mjs'
+import { createResearchLibrary, decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, indexCanonicalFact, markResearchNodeAdmittedViaLibraryReuse, queryResearchLibrary } from '../domain/research-library.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
 
 const clock = () => new Date('2026-10-10T09:00:00.000Z')
@@ -323,4 +323,74 @@ test('two missions: a genuine cross-mission reuse avoids a redundant fetch while
   // unaffected by the second mission's own decision.
   assert.equal(origin.mission.nodes[0].canonicalFacts.length, 1)
   assert.equal(library.entries.length, 1, 'the library itself is read-only from evaluateResearchLibraryReuse -- no new entry was created by this reuse')
+})
+
+// Real-pilot, independent-verification finding: a node resolved ENTIRELY
+// via library reuse (zero dispatch) previously stayed PENDING/READY
+// forever, under-reporting presentEntityCoverage/evidenceCoverage/
+// verifiedCoverage for a reuse-only mission despite having real
+// CanonicalFacts. markResearchNodeAdmittedViaLibraryReuse is the
+// sanctioned, opt-in fix for that -- the plain decide+admit sequence
+// (proven above) is UNCHANGED and still leaves status at PENDING on its
+// own; a caller must explicitly also call this.
+test('markResearchNodeAdmittedViaLibraryReuse moves a zero-dispatch node to ADMITTED, fixing the completeness under-report', () => {
+  const origin = missionWithCanonicalFact({ missionId: 'mission:reuse-admit-origin', value: 100 })
+  let library = createResearchLibrary(clock)
+  library = indexCanonicalFact(library, origin.mission, 'node:x', origin.canonicalFactId, clock, library.revision)
+  const [hit] = queryResearchLibrary(library, { entityId: 'nfl:2001:qb:tom-brady', fieldName: 'yards' })
+
+  const specification = buildNflQb2001Specification()
+  let newMission = createResearchMission({ id: 'mission:reuse-admit-new', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  newMission = addResearchNode(newMission, { id: 'node:y', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  newMission = decideLibraryReferenceReconciliation(newMission, 'node:y', { fieldName: 'yards', libraryEntry: hit, decidedBy: 'TIM', rationale: 'reuse test' }, clock, newMission.revision)
+  const decisionId = newMission.nodes[0].reconciliationDecisions.at(-1).id
+  newMission = admitReconciliationDecision(newMission, 'node:y', decisionId, clock, newMission.revision)
+  assert.equal(newMission.nodes[0].status, 'PENDING', 'precondition: plain decide+admit alone still leaves status untouched')
+
+  newMission = markResearchNodeAdmittedViaLibraryReuse(newMission, 'node:y', clock, newMission.revision)
+  assert.equal(newMission.nodes[0].status, 'ADMITTED')
+  assert.equal(newMission.nodes[0].canonicalFacts.length, 1, 'the real canonical fact from reuse is untouched')
+
+  // Idempotent replay.
+  const replay = markResearchNodeAdmittedViaLibraryReuse(newMission, 'node:y', clock, newMission.revision)
+  assert.equal(replay.revision, newMission.revision)
+})
+
+test('markResearchNodeAdmittedViaLibraryReuse refuses a node with real dispatch history -- never a generic bypass of the real admission path', () => {
+  const specification = buildNflQb2001Specification()
+  let mission = createResearchMission({ id: 'mission:reuse-admit-guard', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  mission = addResearchNode(mission, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  const request = buildBoundedResearchRequest(mission, mission.nodes[0], 'FAKE', clock)
+  mission = markResearchNodeReady(mission, 'node:x', clock, mission.revision)
+  mission = recordResearchNodeDispatch(mission, 'node:x', { taskFingerprint: request.taskFingerprint, workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() } }, clock, mission.revision)
+  assert.ok(mission.nodes[0].dispatchRecords.length > 0, 'precondition: this node has real dispatch history, and is NOT yet ADMITTED')
+  assert.notEqual(mission.nodes[0].status, 'ADMITTED')
+  assert.throws(
+    () => markResearchNodeAdmittedViaLibraryReuse(mission, 'node:x', clock, mission.revision),
+    (error) => {
+      assert.equal(error.code, 'TSF_NODE_HAS_REAL_DISPATCH_HISTORY')
+      return true
+    }
+  )
+})
+
+// Independent-verification finding: the dispatch-history guard alone does
+// not stop a caller other than the one sanctioned
+// adoptResearchLibraryReuseDurable sequence from marking a genuinely
+// fact-less node ADMITTED. Proven directly here (bypassing the driver's
+// own decide+admit-first sequencing) that the domain function itself
+// refuses this, not just the driver's call order.
+test('markResearchNodeAdmittedViaLibraryReuse refuses a node with zero canonicalFacts, even with zero dispatch history -- self-defending, not reliant on caller discipline', () => {
+  const specification = buildNflQb2001Specification()
+  let mission = createResearchMission({ id: 'mission:reuse-admit-fact-guard', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  mission = addResearchNode(mission, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  assert.equal(mission.nodes[0].dispatchRecords.length, 0, 'precondition: zero dispatch history')
+  assert.equal(mission.nodes[0].canonicalFacts.length, 0, 'precondition: zero canonicalFacts')
+  assert.throws(
+    () => markResearchNodeAdmittedViaLibraryReuse(mission, 'node:x', clock, mission.revision),
+    (error) => {
+      assert.equal(error.code, 'TSF_NODE_HAS_NO_CANONICAL_FACT')
+      return true
+    }
+  )
 })

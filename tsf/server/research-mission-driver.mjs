@@ -28,6 +28,7 @@ import { detectResearchConflicts, verifyResearchClaim } from '../domain/research
 import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
 import { authorizeMeteredExecution } from '../domain/research-cost-governance.mjs'
 import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
+import { decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, markResearchNodeAdmittedViaLibraryReuse } from '../domain/research-library.mjs'
 import { buildResearchProvenancePackage } from '../domain/research-provenance.mjs'
 import { readResearchMission, readResearchMissionIntegrityChecked, withResearchMission } from './research-mission-store.mjs'
 
@@ -340,4 +341,37 @@ export async function verifyAndReconcileResearchNodeFieldDurable(missionId, node
   const decisionId = findResearchNode(next, nodeId).reconciliationDecisions.at(-1).id
   next = await withResearchMission(missionId, (m) => admitReconciliationDecision(m, nodeId, decisionId, clock, m.revision))
   return { ok: true, canonicalized: true, mission: next }
+}
+
+// ---------------------------------------------------------------------
+// LIBRARY REUSE -- the durable, complete, correct sequence for adopting a
+// cross-mission research-library hit. Real-pilot, independent-verification
+// finding: a node resolved entirely through library reuse (no dispatch)
+// previously stayed PENDING/READY forever despite having real
+// CanonicalFacts, under-reporting completeness for a reuse-only mission.
+// This driver function is now the sanctioned, complete path: evaluate,
+// decide, admit, and mark the node ADMITTED, each its own durable commit.
+// ---------------------------------------------------------------------
+export async function adoptResearchLibraryReuseDurable(missionId, nodeId, fieldName, library, { requiredTemporalScope = undefined, valueType = undefined, decidedBy, rationale }, clock) {
+  const mission = readResearchMission(missionId)
+  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  const node = findResearchNode(mission, nodeId)
+  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  const evaluation = evaluateResearchLibraryReuse(library, { sourcePolicy: mission.specification.sourcePolicy, entityId: node.targetEntity?.entityId, fieldName, requiredTemporalScope, valueType })
+  if (evaluation.decision !== 'CACHE_HIT') {
+    return { ok: true, adopted: false, evaluation, mission }
+  }
+  let next = await withResearchMission(missionId, (m) =>
+    decideLibraryReferenceReconciliation(m, nodeId, { fieldName, libraryEntry: evaluation.hit, decidedBy, rationale: rationale ?? `CACHE_HIT: reused from ${evaluation.hit.missionId}, same required temporalScope, HISTORICAL_STATIC source.` }, clock, m.revision)
+  )
+  const decisionId = findResearchNode(next, nodeId).reconciliationDecisions.at(-1).id
+  next = await withResearchMission(missionId, (m) => admitReconciliationDecision(m, nodeId, decisionId, clock, m.revision))
+  // Only ever moves a node with ZERO real dispatch history -- a node that
+  // has already been through a real dispatch cycle keeps its real
+  // execution status untouched (markResearchNodeAdmittedViaLibraryReuse
+  // itself refuses that case defensively).
+  if (findResearchNode(next, nodeId).status !== 'ADMITTED' && (findResearchNode(next, nodeId).dispatchRecords ?? []).length === 0) {
+    next = await withResearchMission(missionId, (m) => markResearchNodeAdmittedViaLibraryReuse(m, nodeId, clock, m.revision))
+  }
+  return { ok: true, adopted: true, evaluation, mission: next }
 }

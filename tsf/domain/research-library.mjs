@@ -19,6 +19,7 @@
 // every reuse is its own fully-audited decision, with the cross-mission
 // origin preserved in derivationLineage rather than hidden.
 import { canonicalize, deepClone, isoNow, sha256 } from './canonical.mjs'
+import { assertNodeTransition, withResearchNode } from './research-mission.mjs'
 import { decideReconciliation } from './research-reconciliation.mjs'
 
 function assertLibraryRevision(library, expectedRevision) {
@@ -220,6 +221,48 @@ export function decideLibraryReferenceReconciliation(mission, nodeId, { fieldNam
           canonicalizedAt: libraryEntry.canonicalizedAt
         }
       }
+    },
+    clock,
+    expectedRevision
+  )
+}
+
+// Real-pilot, independent-verification finding: a node resolved ENTIRELY
+// via cross-mission library reuse (decideLibraryReferenceReconciliation +
+// admitReconciliationDecision, zero real dispatch) previously stayed
+// PENDING/READY forever -- genuine epistemic content (real CanonicalFacts)
+// with an execution status that silently under-reported
+// presentEntityCoverage/evidenceCoverage/verifiedCoverage for a reuse-only
+// mission. This is the ONE sanctioned way to move such a node to ADMITTED
+// without ever going through recordResearchNodeDispatch/
+// admitBoundedResearchResult -- it asserts defensively that no dispatch
+// ever actually happened first, so it can never be used as a generic
+// bypass of the real DISPATCHED -> RESULT_RECEIVED -> ADMITTED path (a
+// node with any real dispatch/result history must go through that path,
+// not this one).
+export function markResearchNodeAdmittedViaLibraryReuse(mission, nodeId, clock, expectedRevision) {
+  return withResearchNode(
+    mission,
+    nodeId,
+    (node) => {
+      if (node.status === 'ADMITTED') return { next: node, changed: false }
+      if ((node.dispatchRecords ?? []).length > 0 || (node.rawResults ?? []).length > 0) {
+        const error = new Error(`node ${nodeId} has real dispatch/result history -- markResearchNodeAdmittedViaLibraryReuse is only for a node resolved ENTIRELY via cross-mission reuse with zero dispatch; use the normal admission path instead`)
+        error.code = 'TSF_NODE_HAS_REAL_DISPATCH_HISTORY'
+        throw error
+      }
+      // Independent-verification finding: the dispatch-history check above
+      // guards the "no real dispatch" half of the invariant, but not the
+      // "genuinely has a real fact" half -- self-defense against any future
+      // caller (not just the one sanctioned adoptResearchLibraryReuseDurable
+      // sequence, which always creates the fact first).
+      if ((node.canonicalFacts ?? []).length === 0) {
+        const error = new Error(`node ${nodeId} has zero canonicalFacts -- markResearchNodeAdmittedViaLibraryReuse must never mark a node ADMITTED without a real fact behind it`)
+        error.code = 'TSF_NODE_HAS_NO_CANONICAL_FACT'
+        throw error
+      }
+      assertNodeTransition(node.status, 'ADMITTED')
+      return { next: { ...node, status: 'ADMITTED' }, changed: true }
     },
     clock,
     expectedRevision

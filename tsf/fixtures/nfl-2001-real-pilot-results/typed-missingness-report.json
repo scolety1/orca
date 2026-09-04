@@ -1,0 +1,98 @@
+[
+  {
+    "nodeId": "node:rb:corey-dillon",
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "schemaVersion": "TSF_TYPED_MISSINGNESS_V1",
+    "id": "f527665a993242858cccea0f7a14bf327965b57de265ce8019eb1878b5470003",
+    "fieldName": "gamesStarted",
+    "temporalScope": "2001-regular-season",
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "reason": "not confidently extracted from the Wikipedia stats table for this player",
+    "admittedAt": "2026-09-03T23:48:38.675Z"
+  },
+  {
+    "nodeId": "node:rb:ahman-green",
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "schemaVersion": "TSF_TYPED_MISSINGNESS_V1",
+    "id": "ca113b2a2a4b5ed671298f49c17c7f79c310448d94b25191f7c4a61f74fd92b3",
+    "fieldName": "gamesStarted",
+    "temporalScope": "2001-regular-season",
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "reason": "not confidently extracted from the Wikipedia stats table for this player",
+    "admittedAt": "2026-09-03T23:48:38.715Z"
+  },
+  {
+    "nodeId": "node:rb:garrison-hearst",
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "schemaVersion": "TSF_TYPED_MISSINGNESS_V1",
+    "id": "974b8d21d966df0b5751c9e9c6c630189b6696c34f2bd504ab53f137ec370861",
+    "fieldName": "gamesStarted",
+    "temporalScope": "2001-regular-season",
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "reason": "not confidently extracted from the Wikipedia stats table for this player",
+    "admittedAt": "2026-09-03T23:48:38.736Z"
+  },
+  {
+    "nodeId": "node:wr:keyshawn-johnson",
+    "entityId": "nfl:2001:wr:keyshawn-johnson",
+    "entityName": "Keyshawn Johnson",
+    "schemaVersion": "TSF_TYPED_MISSINGNESS_V1",
+    "id": "26c001538871ae8f0189e7fc188fc96ec54a85e9b35c07fae4557f1864e88a85",
+    "fieldName": "gamesStarted",
+    "temporalScope": "2001-regular-season",
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "reason": "not confidently extracted from the Wikipedia stats table for this player",
+    "admittedAt": "2026-09-03T23:48:38.940Z"
+  },
+  {
+    "nodeId": "node:te:shannon-sharpe",
+    "entityId": "nfl:2001:te:shannon-sharpe",
+    "entityName": "Shannon Sharpe",
+    "schemaVersion": "TSF_TYPED_MISSINGNESS_V1",
+    "id": "1f50fb464e822311768640cc37127e1459bfbc584fdb6c9bcfc332a6e3bc55d0",
+    "fieldName": "gamesStarted",
+    "temporalScope": "2001-regular-season",
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "reason": "not confidently extracted from the Wikipedia stats table for this player",
+    "admittedAt": "2026-09-03T23:48:39.069Z"
+  },
+  {
+    "nodeId": "node:te:bubba-franks",
+    "entityId": "nfl:2001:te:bubba-franks",
+    "entityName": "Bubba Franks",
+    "schemaVersion": "TSF_TYPED_MISSINGNESS_V1",
+    "id": "e71ae89cc400c94ade33ae6b73a6713abc0dabcd7693e7a5c78f7912869459b5",
+    "fieldName": "gamesStarted",
+    "temporalScope": "2001-regular-season",
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "reason": "not confidently extracted from the Wikipedia stats table for this player",
+    "admittedAt": "2026-09-03T23:48:39.154Z"
+  },
+  {
+    "nodeId": "node:te:byron-chamberlain",
+    "entityId": "nfl:2001:te:byron-chamberlain",
+    "entityName": "Byron Chamberlain",
+    "schemaVersion": "TSF_TYPED_MISSINGNESS_V1",
+    "id": "055dfe02adf862c910785daee54742fc4bf9f44c4e17d7cc0d3e2da2c6cb1bd8",
+    "fieldName": "gamesStarted",
+    "temporalScope": "2001-regular-season",
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "reason": "not confidently extracted from the Wikipedia stats table for this player",
+    "admittedAt": "2026-09-03T23:48:39.182Z"
+  },
+  {
+    "nodeId": "node:te:wesley-walls",
+    "entityId": "nfl:2001:te:wesley-walls",
+    "entityName": "Wesley Walls",
+    "schemaVersion": "TSF_TYPED_MISSINGNESS_V1",
+    "id": "3308f4f8725a02d6350fb2057cf1ea800be739c396fc60aa5913d77926d30a77",
+    "fieldName": "gamesStarted",
+    "temporalScope": "2001-regular-season",
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "reason": "not confidently extracted from the Wikipedia stats table for this player",
+    "admittedAt": "2026-09-03T23:48:39.213Z"
+  }
+]

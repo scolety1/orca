@@ -1,0 +1,308 @@
+{
+  "source": {
+    "locator": "https://en.wikipedia.org/wiki/2002_Pro_Bowl",
+    "description": "2002 Pro Bowl selections (honoring the 2001 NFL regular season) -- the independent universe-enumeration oracle for this pilot.",
+    "retrievedAt": "2026-09-04T00:00:00.000Z",
+    "license": "CC-BY-SA (Wikipedia)"
+  },
+  "expectedCount": 33,
+  "entities": [
+    {
+      "entityId": "nfl:2001:qb:rich-gannon",
+      "identityHints": {
+        "team": "OAK",
+        "position": "QB",
+        "name": "Rich Gannon"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:qb:tom-brady",
+      "identityHints": {
+        "team": "NE",
+        "position": "QB",
+        "name": "Tom Brady"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:qb:kordell-stewart",
+      "identityHints": {
+        "team": "PIT",
+        "position": "QB",
+        "name": "Kordell Stewart"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:qb:kurt-warner",
+      "identityHints": {
+        "team": "STL",
+        "position": "QB",
+        "name": "Kurt Warner"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:qb:jeff-garcia",
+      "identityHints": {
+        "team": "SF",
+        "position": "QB",
+        "name": "Jeff Garcia"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:qb:donovan-mcnabb",
+      "identityHints": {
+        "team": "PHI",
+        "position": "QB",
+        "name": "Donovan McNabb"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:qb:brett-favre",
+      "identityHints": {
+        "team": "GB",
+        "position": "QB",
+        "name": "Brett Favre"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:rb:curtis-martin",
+      "identityHints": {
+        "team": "NYJ",
+        "position": "RB",
+        "name": "Curtis Martin"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:rb:priest-holmes",
+      "identityHints": {
+        "team": "KC",
+        "position": "RB",
+        "name": "Priest Holmes"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:rb:jerome-bettis",
+      "identityHints": {
+        "team": "PIT",
+        "position": "RB",
+        "name": "Jerome Bettis"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:rb:corey-dillon",
+      "identityHints": {
+        "team": "CIN",
+        "position": "RB",
+        "name": "Corey Dillon"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:rb:marshall-faulk",
+      "identityHints": {
+        "team": "STL",
+        "position": "RB",
+        "name": "Marshall Faulk"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:rb:ahman-green",
+      "identityHints": {
+        "team": "GB",
+        "position": "RB",
+        "name": "Ahman Green"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:rb:garrison-hearst",
+      "identityHints": {
+        "team": "SF",
+        "position": "RB",
+        "name": "Garrison Hearst"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:marvin-harrison",
+      "identityHints": {
+        "team": "IND",
+        "position": "WR",
+        "name": "Marvin Harrison"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:rod-smith",
+      "identityHints": {
+        "team": "DEN",
+        "position": "WR",
+        "name": "Rod Smith"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:tim-brown",
+      "identityHints": {
+        "team": "OAK",
+        "position": "WR",
+        "name": "Tim Brown"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:jimmy-smith",
+      "identityHints": {
+        "team": "JAX",
+        "position": "WR",
+        "name": "Jimmy Smith"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:troy-brown",
+      "identityHints": {
+        "team": "NE",
+        "position": "WR",
+        "name": "Troy Brown"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:hines-ward",
+      "identityHints": {
+        "team": "PIT",
+        "position": "WR",
+        "name": "Hines Ward"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:david-boston",
+      "identityHints": {
+        "team": "ARI",
+        "position": "WR",
+        "name": "David Boston"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:terrell-owens",
+      "identityHints": {
+        "team": "SF",
+        "position": "WR",
+        "name": "Terrell Owens"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:keyshawn-johnson",
+      "identityHints": {
+        "team": "TB",
+        "position": "WR",
+        "name": "Keyshawn Johnson"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:isaac-bruce",
+      "identityHints": {
+        "team": "STL",
+        "position": "WR",
+        "name": "Isaac Bruce"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:joe-horn",
+      "identityHints": {
+        "team": "NO",
+        "position": "WR",
+        "name": "Joe Horn"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:wr:torry-holt",
+      "identityHints": {
+        "team": "STL",
+        "position": "WR",
+        "name": "Torry Holt"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:te:tony-gonzalez",
+      "identityHints": {
+        "team": "KC",
+        "position": "TE",
+        "name": "Tony Gonzalez"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:te:shannon-sharpe",
+      "identityHints": {
+        "team": "BAL",
+        "position": "TE",
+        "name": "Shannon Sharpe"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:te:ken-dilger",
+      "identityHints": {
+        "team": "IND",
+        "position": "TE",
+        "name": "Ken Dilger"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:te:dwayne-carswell",
+      "identityHints": {
+        "team": "DEN",
+        "position": "TE",
+        "name": "Dwayne Carswell"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:te:bubba-franks",
+      "identityHints": {
+        "team": "GB",
+        "position": "TE",
+        "name": "Bubba Franks"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:te:byron-chamberlain",
+      "identityHints": {
+        "team": "MIN",
+        "position": "TE",
+        "name": "Byron Chamberlain"
+      },
+      "status": "RESOLVED"
+    },
+    {
+      "entityId": "nfl:2001:te:wesley-walls",
+      "identityHints": {
+        "team": "CAR",
+        "position": "TE",
+        "name": "Wesley Walls"
+      },
+      "status": "RESOLVED"
+    }
+  ]
+}

@@ -1,0 +1,2002 @@
+[
+  {
+    "entityId": "nfl:2001:qb:rich-gannon",
+    "entityName": "Rich Gannon",
+    "nodeId": "node:qb:rich-gannon",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ee63e45da98e9dec87a7dced2ab34cff79c499d4a88f81da4d05002c73353df3",
+    "canonicalizedAt": "2026-09-03T23:51:19.057Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:rich-gannon",
+    "entityName": "Rich Gannon",
+    "nodeId": "node:qb:rich-gannon",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "06f4589aaf4ee7c9fe68f699eac99712f1378e1f0279156301410e2d0e5cd79d",
+    "canonicalizedAt": "2026-09-03T23:51:19.101Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:rich-gannon",
+    "entityName": "Rich Gannon",
+    "nodeId": "node:qb:rich-gannon",
+    "fieldName": "passCompletions",
+    "value": 361,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "d369050df1ef15ce847be2b74bf3ff82c92685c0f99659d706212e5c88d1cd7f",
+    "canonicalizedAt": "2026-09-03T23:51:19.145Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:rich-gannon",
+    "entityName": "Rich Gannon",
+    "nodeId": "node:qb:rich-gannon",
+    "fieldName": "passAttempts",
+    "value": 549,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "dfba421f376bc620d395d2a75cca67a55fa0db6265159c7aa2eeaa892717833b",
+    "canonicalizedAt": "2026-09-03T23:51:19.189Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:rich-gannon",
+    "entityName": "Rich Gannon",
+    "nodeId": "node:qb:rich-gannon",
+    "fieldName": "passingYards",
+    "value": 3828,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "7bbaac2e94b846a9dfebd79b9f63f2826bfafa8c760505d0a6fb284069436816",
+    "canonicalizedAt": "2026-09-03T23:51:19.230Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:rich-gannon",
+    "entityName": "Rich Gannon",
+    "nodeId": "node:qb:rich-gannon",
+    "fieldName": "passingTouchdowns",
+    "value": 27,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1b542cc1b2f2bd053e0c7d9ff931606bae24335e00ab5367b8b5c73bdf6333dc",
+    "canonicalizedAt": "2026-09-03T23:51:19.272Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:rich-gannon",
+    "entityName": "Rich Gannon",
+    "nodeId": "node:qb:rich-gannon",
+    "fieldName": "interceptions",
+    "value": 9,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "a304b190b09c0800212650b290ed892c4caabbbad3d0970313313f13e2b0d365",
+    "canonicalizedAt": "2026-09-03T23:51:19.314Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:tom-brady",
+    "entityName": "Tom Brady",
+    "nodeId": "node:qb:tom-brady",
+    "fieldName": "gamesPlayed",
+    "value": 15,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "c0b236214aaf9ceddfce374d88ce35fdb38c2ef1c7532e582f4ff4bf85ba6ba5",
+    "canonicalizedAt": "2026-09-03T23:51:19.362Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:tom-brady",
+    "entityName": "Tom Brady",
+    "nodeId": "node:qb:tom-brady",
+    "fieldName": "gamesStarted",
+    "value": 14,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "2e7ce549f888e9765c2ede1697b2af6af643e82845d5ebc79378f494efb63d1d",
+    "canonicalizedAt": "2026-09-03T23:51:19.407Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:tom-brady",
+    "entityName": "Tom Brady",
+    "nodeId": "node:qb:tom-brady",
+    "fieldName": "passCompletions",
+    "value": 264,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f83f7889ea757f5006c8dec542a6c68d8a17d0de52923c06fdeb60f642cccb91",
+    "canonicalizedAt": "2026-09-03T23:51:19.452Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:tom-brady",
+    "entityName": "Tom Brady",
+    "nodeId": "node:qb:tom-brady",
+    "fieldName": "passAttempts",
+    "value": 413,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "d75d3ce34cdd6771641041d9b22233366bc96acb081853e2d377250e7f7b1a6b",
+    "canonicalizedAt": "2026-09-03T23:51:19.500Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:tom-brady",
+    "entityName": "Tom Brady",
+    "nodeId": "node:qb:tom-brady",
+    "fieldName": "passingYards",
+    "value": 2843,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "e08680b8c0e00935f7c1d2e712bcc1269c8d7ca67ed2a466a59ba5250e13da42",
+    "canonicalizedAt": "2026-09-03T23:51:19.544Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:tom-brady",
+    "entityName": "Tom Brady",
+    "nodeId": "node:qb:tom-brady",
+    "fieldName": "passingTouchdowns",
+    "value": 18,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ce31a70fe6e88bb2f0e049e12dec62cfc1f13d5ea605cf3538635db0cc8df0a7",
+    "canonicalizedAt": "2026-09-03T23:51:19.590Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:tom-brady",
+    "entityName": "Tom Brady",
+    "nodeId": "node:qb:tom-brady",
+    "fieldName": "interceptions",
+    "value": 12,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "a2cba935b7f5f0477875669cca43520d9a51be69a25a07e8c4b0cf4b13609aa0",
+    "canonicalizedAt": "2026-09-03T23:51:19.633Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kordell-stewart",
+    "entityName": "Kordell Stewart",
+    "nodeId": "node:qb:kordell-stewart",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "548a3098b50e9f7df93cd13570877a27667f2a7a01d3dcf78f5957c9c8d362c4",
+    "canonicalizedAt": "2026-09-03T23:51:19.679Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kordell-stewart",
+    "entityName": "Kordell Stewart",
+    "nodeId": "node:qb:kordell-stewart",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "da5d15b102a518309b12467ae5164bf5796a37c60d7770b259b5340226760982",
+    "canonicalizedAt": "2026-09-03T23:51:19.720Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kordell-stewart",
+    "entityName": "Kordell Stewart",
+    "nodeId": "node:qb:kordell-stewart",
+    "fieldName": "passCompletions",
+    "value": 266,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "dc1dae7c18e6a50b907d42912c831c4b420895b64780a6a3917fc3810012cd93",
+    "canonicalizedAt": "2026-09-03T23:51:19.765Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kordell-stewart",
+    "entityName": "Kordell Stewart",
+    "nodeId": "node:qb:kordell-stewart",
+    "fieldName": "passAttempts",
+    "value": 442,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "e5bcc67c856b7ced4ab2ade936d73c999673746f766bfc9c18457984876ff863",
+    "canonicalizedAt": "2026-09-03T23:51:19.810Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kordell-stewart",
+    "entityName": "Kordell Stewart",
+    "nodeId": "node:qb:kordell-stewart",
+    "fieldName": "passingYards",
+    "value": 3109,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "a41054879e45f0daf561027617ceae43c22ab30787466dfddf1bf46cd7e8c0bf",
+    "canonicalizedAt": "2026-09-03T23:51:19.853Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kordell-stewart",
+    "entityName": "Kordell Stewart",
+    "nodeId": "node:qb:kordell-stewart",
+    "fieldName": "passingTouchdowns",
+    "value": 14,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "e36705b4e52f99c14fd2ed2bcea471f00972816ed8c2b3bed673e9dad479478d",
+    "canonicalizedAt": "2026-09-03T23:51:19.904Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kordell-stewart",
+    "entityName": "Kordell Stewart",
+    "nodeId": "node:qb:kordell-stewart",
+    "fieldName": "interceptions",
+    "value": 11,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1f1cd9459846b59835c41b1b66425f93994ae7518eeb2933bd34885ac7b3ab27",
+    "canonicalizedAt": "2026-09-03T23:51:19.949Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "entityName": "Kurt Warner",
+    "nodeId": "node:qb:kurt-warner",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "690669a4ba0140dd7e6c40131c1f06415bcbbfe7c6414df0b579000c24eef81f",
+    "canonicalizedAt": "2026-09-03T23:51:19.996Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "entityName": "Kurt Warner",
+    "nodeId": "node:qb:kurt-warner",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "3b4f41a4622b321116220b0930409b4ebb99cdc6728627e0363b0a7db84a2e71",
+    "canonicalizedAt": "2026-09-03T23:51:20.042Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "entityName": "Kurt Warner",
+    "nodeId": "node:qb:kurt-warner",
+    "fieldName": "passCompletions",
+    "value": 375,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "899d6aca02e24673940da334f50bda5baedf040aebe93933defaa4c08b2ffaba",
+    "canonicalizedAt": "2026-09-03T23:51:20.086Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "entityName": "Kurt Warner",
+    "nodeId": "node:qb:kurt-warner",
+    "fieldName": "passAttempts",
+    "value": 546,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "75a9a2e6580727351d8771512d261f9b40382b5d9b6ec8e6b3fb602e0b9cd2c9",
+    "canonicalizedAt": "2026-09-03T23:51:20.133Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "entityName": "Kurt Warner",
+    "nodeId": "node:qb:kurt-warner",
+    "fieldName": "passingYards",
+    "value": 4830,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1c9245eb90799f54b75b2370ca18c39af44f223c4e02842d479b1ea9573e0663",
+    "canonicalizedAt": "2026-09-03T23:51:20.177Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "entityName": "Kurt Warner",
+    "nodeId": "node:qb:kurt-warner",
+    "fieldName": "passingTouchdowns",
+    "value": 36,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "24cbc6653b1aab56500019c87a51a2ae64e406e52e083b13998cafdd5ee2fc64",
+    "canonicalizedAt": "2026-09-03T23:51:20.220Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "entityName": "Kurt Warner",
+    "nodeId": "node:qb:kurt-warner",
+    "fieldName": "interceptions",
+    "value": 22,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "9d8178cd8cc3fc3d98966c3b1a9902e72d60295503deaa872b74fc0b707e7307",
+    "canonicalizedAt": "2026-09-03T23:51:20.269Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:jeff-garcia",
+    "entityName": "Jeff Garcia",
+    "nodeId": "node:qb:jeff-garcia",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "fa11b2963978c9bf019910489ceb86a88e1b3402ac00a7a543bf5b9a3d4bb9e4",
+    "canonicalizedAt": "2026-09-03T23:51:20.315Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:jeff-garcia",
+    "entityName": "Jeff Garcia",
+    "nodeId": "node:qb:jeff-garcia",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "d4a9874f0f8f2e01833ec061a0808919e070e30b166d435b7f5c895a193ee50e",
+    "canonicalizedAt": "2026-09-03T23:51:20.366Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:jeff-garcia",
+    "entityName": "Jeff Garcia",
+    "nodeId": "node:qb:jeff-garcia",
+    "fieldName": "passCompletions",
+    "value": 316,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "85a7c3ec6382b0bd20174693bb85d0bca7addf0cb45ff2231b005069ab0c8ca2",
+    "canonicalizedAt": "2026-09-03T23:51:20.409Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:jeff-garcia",
+    "entityName": "Jeff Garcia",
+    "nodeId": "node:qb:jeff-garcia",
+    "fieldName": "passAttempts",
+    "value": 504,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "357799b615b906f849361c87a2038c860df40f38c1a1970044acd362e5f2b84e",
+    "canonicalizedAt": "2026-09-03T23:51:20.453Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:jeff-garcia",
+    "entityName": "Jeff Garcia",
+    "nodeId": "node:qb:jeff-garcia",
+    "fieldName": "passingYards",
+    "value": 3538,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "8a5c47934d2ec6d3ce32435b9ca81062ee41a6618a8e01ad35edbb558d137193",
+    "canonicalizedAt": "2026-09-03T23:51:20.501Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:jeff-garcia",
+    "entityName": "Jeff Garcia",
+    "nodeId": "node:qb:jeff-garcia",
+    "fieldName": "passingTouchdowns",
+    "value": 32,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "cd4f5c1aab03de8820a946968e45f64b8158e9548d21f052b41db60100fa4c58",
+    "canonicalizedAt": "2026-09-03T23:51:20.545Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:jeff-garcia",
+    "entityName": "Jeff Garcia",
+    "nodeId": "node:qb:jeff-garcia",
+    "fieldName": "interceptions",
+    "value": 12,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "6c93ccc5241831deb987d0f68290dc04d917d428c1617d7167444cb5c1c7b27a",
+    "canonicalizedAt": "2026-09-03T23:51:20.591Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:donovan-mcnabb",
+    "entityName": "Donovan McNabb",
+    "nodeId": "node:qb:donovan-mcnabb",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "a34088153ee49fea1a0dc380eea4045ba2ebd27ed1cc425a1d7562318477b9f8",
+    "canonicalizedAt": "2026-09-03T23:51:20.641Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:donovan-mcnabb",
+    "entityName": "Donovan McNabb",
+    "nodeId": "node:qb:donovan-mcnabb",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "985ddaeb62118b624360e466b78c61efbbc4b9db2a05036a61ea6699da5c7467",
+    "canonicalizedAt": "2026-09-03T23:51:20.685Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:donovan-mcnabb",
+    "entityName": "Donovan McNabb",
+    "nodeId": "node:qb:donovan-mcnabb",
+    "fieldName": "passCompletions",
+    "value": 285,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ddd67fe6209df6d43c1dbf32db785fb9e6545bf3b7c0fa33b927f7ab8791c90d",
+    "canonicalizedAt": "2026-09-03T23:51:20.734Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:donovan-mcnabb",
+    "entityName": "Donovan McNabb",
+    "nodeId": "node:qb:donovan-mcnabb",
+    "fieldName": "passAttempts",
+    "value": 493,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "bdf1c2c08b4b0dbe434ad5b523f4cf7106176d68138d3b4e1cef5ba55fee92ea",
+    "canonicalizedAt": "2026-09-03T23:51:20.779Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:donovan-mcnabb",
+    "entityName": "Donovan McNabb",
+    "nodeId": "node:qb:donovan-mcnabb",
+    "fieldName": "passingYards",
+    "value": 3233,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "16fad233bd7e7ac789b6bdcb7dcec53f7a41cd4d9c8f26fd9703f1573c97a214",
+    "canonicalizedAt": "2026-09-03T23:51:20.829Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:donovan-mcnabb",
+    "entityName": "Donovan McNabb",
+    "nodeId": "node:qb:donovan-mcnabb",
+    "fieldName": "passingTouchdowns",
+    "value": 25,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ae246f7264fb82328a79e2a98ad2eaa10c529e0eb6759dd65a8e435d3559e76d",
+    "canonicalizedAt": "2026-09-03T23:51:20.875Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:donovan-mcnabb",
+    "entityName": "Donovan McNabb",
+    "nodeId": "node:qb:donovan-mcnabb",
+    "fieldName": "interceptions",
+    "value": 12,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "8545478125d83908f747ab55ee02ae5693ab24a75f611190d6c6ed2c56e5c7b0",
+    "canonicalizedAt": "2026-09-03T23:51:20.919Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:brett-favre",
+    "entityName": "Brett Favre",
+    "nodeId": "node:qb:brett-favre",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "4de5f3ce77c7df81b1299121f42899bb59f869f976d2d1026b721b5818c70f95",
+    "canonicalizedAt": "2026-09-03T23:51:20.971Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:brett-favre",
+    "entityName": "Brett Favre",
+    "nodeId": "node:qb:brett-favre",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "2ffa7a2011d2e934186e992f0068db3809a2c84c6341e47f9faefe288be4d1cf",
+    "canonicalizedAt": "2026-09-03T23:51:21.016Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:brett-favre",
+    "entityName": "Brett Favre",
+    "nodeId": "node:qb:brett-favre",
+    "fieldName": "passCompletions",
+    "value": 314,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "11d5ec249944fe4414b224e3e895ce5b483a847231a50e7579300add82899896",
+    "canonicalizedAt": "2026-09-03T23:51:21.068Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:brett-favre",
+    "entityName": "Brett Favre",
+    "nodeId": "node:qb:brett-favre",
+    "fieldName": "passAttempts",
+    "value": 510,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "231df1c7205e7c255dd502a3a3d7ab56a916a8e7b4396d258b5e0aa86d3fab41",
+    "canonicalizedAt": "2026-09-03T23:51:21.113Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:brett-favre",
+    "entityName": "Brett Favre",
+    "nodeId": "node:qb:brett-favre",
+    "fieldName": "passingYards",
+    "value": 3921,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1e25d91123a22d07d817f34ac4f5baadbaeaac8992a811f9e9fe724bcce4ece8",
+    "canonicalizedAt": "2026-09-03T23:51:21.162Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:brett-favre",
+    "entityName": "Brett Favre",
+    "nodeId": "node:qb:brett-favre",
+    "fieldName": "passingTouchdowns",
+    "value": 32,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f28a78f0aa7bbb272ad4c2c0d5a503d43b65c29babec4699666adc1966ef8d56",
+    "canonicalizedAt": "2026-09-03T23:51:21.211Z"
+  },
+  {
+    "entityId": "nfl:2001:qb:brett-favre",
+    "entityName": "Brett Favre",
+    "nodeId": "node:qb:brett-favre",
+    "fieldName": "interceptions",
+    "value": 15,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "636a9f28ed3c9c90c3dc72ad9693bcb0772d3ecbc35959316b60f6445f64f1c0",
+    "canonicalizedAt": "2026-09-03T23:51:21.262Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "nodeId": "node:rb:curtis-martin",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "3443da253c6ad3f3ad1ee9e4f971cc2e85e8f28de99cd8cb0ea3670b53170be9",
+    "canonicalizedAt": "2026-09-03T23:51:21.316Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "nodeId": "node:rb:curtis-martin",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "c6628547b9396b244a2858cc714d7874dc7fd28d171619aede97677cd557c654",
+    "canonicalizedAt": "2026-09-03T23:51:21.366Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "nodeId": "node:rb:curtis-martin",
+    "fieldName": "rushingAttempts",
+    "value": 333,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "28c1784a7e7e6f75d8d800ea0c05bb98ad75b2e0497c8702862a8f8b2fe8781a",
+    "canonicalizedAt": "2026-09-03T23:51:21.419Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "nodeId": "node:rb:curtis-martin",
+    "fieldName": "rushingYards",
+    "value": 1513,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1d9a4a68877206165f75443f2a09e00345ca4e2652807b6eff8eb8212604676d",
+    "canonicalizedAt": "2026-09-03T23:51:21.464Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "nodeId": "node:rb:curtis-martin",
+    "fieldName": "rushingTouchdowns",
+    "value": 10,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "148233e6079047f21b7706ad2863a5c577d54764930942e73fe36accda1d89fd",
+    "canonicalizedAt": "2026-09-03T23:51:21.513Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "nodeId": "node:rb:curtis-martin",
+    "fieldName": "receptions",
+    "value": 53,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "982b91ff05bec06bd7fc2ec6f5b78dd4c47d23994f192bd12fb7e170ce240fca",
+    "canonicalizedAt": "2026-09-03T23:51:21.562Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "nodeId": "node:rb:curtis-martin",
+    "fieldName": "receivingYards",
+    "value": 320,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "9240f97e467e079226a0dc8d4bf6e21979873fb3fda54f257e3fa6638224c249",
+    "canonicalizedAt": "2026-09-03T23:51:21.611Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "nodeId": "node:rb:curtis-martin",
+    "fieldName": "receivingTouchdowns",
+    "value": 0,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "6b051fb888fb34f5b29c19d9bd8cb0720702e0d62d02da9604072d692bfa4f48",
+    "canonicalizedAt": "2026-09-03T23:51:21.666Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "nodeId": "node:rb:priest-holmes",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1eaac53c7d8879d8012ceb5e0fa0b885565be770baec583f0d61c23fece3af0a",
+    "canonicalizedAt": "2026-09-03T23:51:21.714Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "nodeId": "node:rb:priest-holmes",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "4262c3ca2720c15368c84fa5299c4945f77544a7b93a6eeff84ccd791dc67392",
+    "canonicalizedAt": "2026-09-03T23:51:21.763Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "nodeId": "node:rb:priest-holmes",
+    "fieldName": "rushingAttempts",
+    "value": 327,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "4df86048b08bfd5730e0de8cc4489f8cfb377bca7d4267f4c5505d1e753201fd",
+    "canonicalizedAt": "2026-09-03T23:51:21.813Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "nodeId": "node:rb:priest-holmes",
+    "fieldName": "rushingYards",
+    "value": 1555,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "295c22f9851c63ae9a931a4dbb40eaf5f767242516405b80d3d96817789add16",
+    "canonicalizedAt": "2026-09-03T23:51:21.861Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "nodeId": "node:rb:priest-holmes",
+    "fieldName": "rushingTouchdowns",
+    "value": 8,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "93406f1cb5fe9b707f2ffd83c507a2b627d1f231005883da903b6982c2d9f5fb",
+    "canonicalizedAt": "2026-09-03T23:51:21.913Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "nodeId": "node:rb:priest-holmes",
+    "fieldName": "receptions",
+    "value": 62,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "fdcbbc79592b6dcc6316d1358e3691dfd408eff3b909172d62623aea58330a5e",
+    "canonicalizedAt": "2026-09-03T23:51:21.960Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "nodeId": "node:rb:priest-holmes",
+    "fieldName": "receivingYards",
+    "value": 614,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "86a5d25029a9129b5e16d1fafd41521bcd17523eb1dcf255b3a63231a0bcd6d2",
+    "canonicalizedAt": "2026-09-03T23:51:22.014Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "nodeId": "node:rb:priest-holmes",
+    "fieldName": "receivingTouchdowns",
+    "value": 2,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1785e9d4bf4ce1a93caffdf4f7f5483b9eb410032823d700e82cc58c160ca8d6",
+    "canonicalizedAt": "2026-09-03T23:51:22.062Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "nodeId": "node:rb:jerome-bettis",
+    "fieldName": "gamesPlayed",
+    "value": 11,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "23c0c4999774325ca5fd711f9f91bdaf0af3c7bd58ff416a0d6cd60daa388e2a",
+    "canonicalizedAt": "2026-09-03T23:51:22.119Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "nodeId": "node:rb:jerome-bettis",
+    "fieldName": "gamesStarted",
+    "value": 11,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "5e1dc4a10f58d4beedc9c23c1df6def2bb00a0ce0fdecafe2980ca2fb258e9f9",
+    "canonicalizedAt": "2026-09-03T23:51:22.168Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "nodeId": "node:rb:jerome-bettis",
+    "fieldName": "rushingAttempts",
+    "value": 225,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "0574fe9528d99b163241e4d55f0754c6a05bf552e6ce81426d3012234da26317",
+    "canonicalizedAt": "2026-09-03T23:51:22.217Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "nodeId": "node:rb:jerome-bettis",
+    "fieldName": "rushingYards",
+    "value": 1072,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "5c8e6ab6b87725654ed7e0db327baf3939d455adc31acf2960d16ec3f7821e4c",
+    "canonicalizedAt": "2026-09-03T23:51:22.267Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "nodeId": "node:rb:jerome-bettis",
+    "fieldName": "rushingTouchdowns",
+    "value": 4,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "679596268f20521401795849932fb5b7b6843551e06333c0b177e51b66d8190c",
+    "canonicalizedAt": "2026-09-03T23:51:22.313Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "nodeId": "node:rb:jerome-bettis",
+    "fieldName": "receptions",
+    "value": 8,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "48a2f593530c4455bc5d61529f5b3e184ba158727478e81c4aecfb59f04eabf5",
+    "canonicalizedAt": "2026-09-03T23:51:22.366Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "nodeId": "node:rb:jerome-bettis",
+    "fieldName": "receivingYards",
+    "value": 48,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "2e9ef25f89d6918d62fef78ce4fa625f729510a80599ac323b82695e7b38e96e",
+    "canonicalizedAt": "2026-09-03T23:51:22.413Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "nodeId": "node:rb:jerome-bettis",
+    "fieldName": "receivingTouchdowns",
+    "value": 0,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "92f422dd6e6357cadd2dfc7e2381353b0269a104163f34e4881560f6a0e034ab",
+    "canonicalizedAt": "2026-09-03T23:51:22.466Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "nodeId": "node:rb:corey-dillon",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "235f6990937afbfaa83001d8ca213455d048f2fdf9f1459858117757ce0d6b85",
+    "canonicalizedAt": "2026-09-03T23:51:22.517Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "nodeId": "node:rb:corey-dillon",
+    "fieldName": "rushingAttempts",
+    "value": 340,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "994fd28dc08dc4eeba1920dec8875fdd5b37d7c59abf98a86e786454466ee246",
+    "canonicalizedAt": "2026-09-03T23:51:22.566Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "nodeId": "node:rb:corey-dillon",
+    "fieldName": "rushingYards",
+    "value": 1315,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "e7188d4ef26e2cff1fcc6b9dde825dce2a8c7933215cf4efe70cb5d302a837cd",
+    "canonicalizedAt": "2026-09-03T23:51:22.617Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "nodeId": "node:rb:corey-dillon",
+    "fieldName": "rushingTouchdowns",
+    "value": 10,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "dad3c4d29accc32ed3ba447507a93abe6263a75c86ffafe7196a10084d085129",
+    "canonicalizedAt": "2026-09-03T23:51:22.664Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "nodeId": "node:rb:corey-dillon",
+    "fieldName": "receptions",
+    "value": 34,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "bf063b43c35ed09af459900ae7ce798817d76fd84c5517a7807cf9568f3ac962",
+    "canonicalizedAt": "2026-09-03T23:51:22.716Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "nodeId": "node:rb:corey-dillon",
+    "fieldName": "receivingYards",
+    "value": 228,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "8d4fb8be4931d3ba930245ed244025052f8daa5958a619dcac50136741ae94af",
+    "canonicalizedAt": "2026-09-03T23:51:22.763Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "nodeId": "node:rb:corey-dillon",
+    "fieldName": "receivingTouchdowns",
+    "value": 3,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "bc69ec4c761fcb2db8b6ec763e8205c960f74d8486e665fb58441696e10e0dd8",
+    "canonicalizedAt": "2026-09-03T23:51:22.815Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "nodeId": "node:rb:corey-dillon",
+    "fieldName": "gamesStarted",
+    "value": null,
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "temporalScope": "2001-regular-season",
+    "canonicalizedAt": null
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "nodeId": "node:rb:marshall-faulk",
+    "fieldName": "gamesPlayed",
+    "value": 14,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1730fa3732bc9ba174d6bbcec36f215525fed21c40f9933ca5a66299501c1499",
+    "canonicalizedAt": "2026-09-03T23:51:22.866Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "nodeId": "node:rb:marshall-faulk",
+    "fieldName": "gamesStarted",
+    "value": 14,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "bb7e730feb74415a61c5c05f9bc33a8bdeecb4f1854e74fde611e2e7639e8be4",
+    "canonicalizedAt": "2026-09-03T23:51:22.919Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "nodeId": "node:rb:marshall-faulk",
+    "fieldName": "rushingAttempts",
+    "value": 260,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "cb941711d87e8b8d8ccb981e10da2edffd4b478b527822fac6a46a1fb8a192e1",
+    "canonicalizedAt": "2026-09-03T23:51:22.969Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "nodeId": "node:rb:marshall-faulk",
+    "fieldName": "rushingYards",
+    "value": 1382,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "11e45e99798edb5835ba405463b70ebf1a91930cd6867e1837763bccc837a765",
+    "canonicalizedAt": "2026-09-03T23:51:23.022Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "nodeId": "node:rb:marshall-faulk",
+    "fieldName": "rushingTouchdowns",
+    "value": 12,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "4ab4732e01d25639c33eaae11f9f54fb9e9e43266d47f72e005de455a8e58af7",
+    "canonicalizedAt": "2026-09-03T23:51:23.073Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "nodeId": "node:rb:marshall-faulk",
+    "fieldName": "receptions",
+    "value": 83,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "7bb8cdf1c7990b0bf36b179a7e16fb2bd1dab351c7afef89eb56de08586732ee",
+    "canonicalizedAt": "2026-09-03T23:51:23.125Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "nodeId": "node:rb:marshall-faulk",
+    "fieldName": "receivingYards",
+    "value": 765,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "c2791f9ef821bbd25d652a317277a24784478e675ab4096f02c3dcc35f24c844",
+    "canonicalizedAt": "2026-09-03T23:51:23.181Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "nodeId": "node:rb:marshall-faulk",
+    "fieldName": "receivingTouchdowns",
+    "value": 9,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "378d7c4fb21dbab3d069339ae01a1d994f97b324ce7afa824cbe9896cba9bfde",
+    "canonicalizedAt": "2026-09-03T23:51:23.233Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "nodeId": "node:rb:ahman-green",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "fe1fbb116a517cc27ee4f47e475345edd8557ee7654aa35d34097e77e33c2c6b",
+    "canonicalizedAt": "2026-09-03T23:51:23.291Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "nodeId": "node:rb:ahman-green",
+    "fieldName": "rushingAttempts",
+    "value": 304,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f0844ce6cf9a4880df9451ac94f9402385ae53fd909a27dc62a273e3dcf8b4e1",
+    "canonicalizedAt": "2026-09-03T23:51:23.344Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "nodeId": "node:rb:ahman-green",
+    "fieldName": "rushingYards",
+    "value": 1387,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "67ce0a09fb0131350eec8b3ac0ef4d535e67c401fed0707964882ea8662b98f3",
+    "canonicalizedAt": "2026-09-03T23:51:23.396Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "nodeId": "node:rb:ahman-green",
+    "fieldName": "rushingTouchdowns",
+    "value": 9,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "874f3ec7416e3d06fa181030cbf955feaa4814dacb9743440344b168e884af45",
+    "canonicalizedAt": "2026-09-03T23:51:23.443Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "nodeId": "node:rb:ahman-green",
+    "fieldName": "receptions",
+    "value": 62,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "d31ac47884c4297b39290ae5b1b1b2df815e850e50063ab0f3970f91147686c0",
+    "canonicalizedAt": "2026-09-03T23:51:23.493Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "nodeId": "node:rb:ahman-green",
+    "fieldName": "receivingYards",
+    "value": 594,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "2bac40fb3ebabf9ae6c1af961094f67aa2fab7d0adf86b9855ab2bd46fd1a9bd",
+    "canonicalizedAt": "2026-09-03T23:51:23.539Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "nodeId": "node:rb:ahman-green",
+    "fieldName": "receivingTouchdowns",
+    "value": 2,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "7c5ffaea2a6e9165d7a0ca5edd407ea3477319732807e2ed12cd176ef40360d3",
+    "canonicalizedAt": "2026-09-03T23:51:23.587Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "nodeId": "node:rb:ahman-green",
+    "fieldName": "gamesStarted",
+    "value": null,
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "temporalScope": "2001-regular-season",
+    "canonicalizedAt": null
+  },
+  {
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "nodeId": "node:rb:garrison-hearst",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "d340e42a8ceb61749a164eb13b64b0669d7f191c2e437775fed957fe75850c15",
+    "canonicalizedAt": "2026-09-03T23:51:23.640Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "nodeId": "node:rb:garrison-hearst",
+    "fieldName": "rushingAttempts",
+    "value": 252,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "eb85c1111a28ac392426a7a408c4869c2b5f1fa36b00f589be14f5c4ddd8f5a5",
+    "canonicalizedAt": "2026-09-03T23:51:23.686Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "nodeId": "node:rb:garrison-hearst",
+    "fieldName": "rushingYards",
+    "value": 1206,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "776be061f21e06ca1b674f7655e20294892d62108c141f640f81338496fef3a9",
+    "canonicalizedAt": "2026-09-03T23:51:23.736Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "nodeId": "node:rb:garrison-hearst",
+    "fieldName": "rushingTouchdowns",
+    "value": 4,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "4eada2b406e85eb2886568a51164fa07d87b34c84a7f681d0539d33b6cf3d986",
+    "canonicalizedAt": "2026-09-03T23:51:23.782Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "nodeId": "node:rb:garrison-hearst",
+    "fieldName": "receptions",
+    "value": 41,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "79690fedfb4211260b9e01c66f8f296b20c0d5cfcd9e00397655246668f02f82",
+    "canonicalizedAt": "2026-09-03T23:51:23.832Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "nodeId": "node:rb:garrison-hearst",
+    "fieldName": "receivingYards",
+    "value": 347,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1f7a9c6f3a2a578fb095e1037d5b60935b399106bedd82cf6b1469cc8c7e34cf",
+    "canonicalizedAt": "2026-09-03T23:51:23.883Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "nodeId": "node:rb:garrison-hearst",
+    "fieldName": "receivingTouchdowns",
+    "value": 1,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "35f82a4ec5ff99d1a36c252386777b0c39159d0475d7119410d46b4b2d9cf3e3",
+    "canonicalizedAt": "2026-09-03T23:51:23.934Z"
+  },
+  {
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "nodeId": "node:rb:garrison-hearst",
+    "fieldName": "gamesStarted",
+    "value": null,
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "temporalScope": "2001-regular-season",
+    "canonicalizedAt": null
+  },
+  {
+    "entityId": "nfl:2001:wr:marvin-harrison",
+    "entityName": "Marvin Harrison",
+    "nodeId": "node:wr:marvin-harrison",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "01e68fdfd078a8763b655a2ed63281914d34df4a036bf50061615d0d970aab29",
+    "canonicalizedAt": "2026-09-03T23:51:23.991Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:marvin-harrison",
+    "entityName": "Marvin Harrison",
+    "nodeId": "node:wr:marvin-harrison",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "584b85c95960c3b1a024485ca3f83d6eb9f8136616072e9b5d5707b2ed015114",
+    "canonicalizedAt": "2026-09-03T23:51:24.044Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:marvin-harrison",
+    "entityName": "Marvin Harrison",
+    "nodeId": "node:wr:marvin-harrison",
+    "fieldName": "receptions",
+    "value": 109,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f43d55a2627cf91747c19c1b930a6d05f76b2c075d5bbe66d9fa84cd8582cf3a",
+    "canonicalizedAt": "2026-09-03T23:51:24.095Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:marvin-harrison",
+    "entityName": "Marvin Harrison",
+    "nodeId": "node:wr:marvin-harrison",
+    "fieldName": "receivingYards",
+    "value": 1524,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "acc1cb7b0bfd3e2bf034057d5a501106223a72a958363be79aedbc316a22a2de",
+    "canonicalizedAt": "2026-09-03T23:51:24.149Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:marvin-harrison",
+    "entityName": "Marvin Harrison",
+    "nodeId": "node:wr:marvin-harrison",
+    "fieldName": "receivingTouchdowns",
+    "value": 15,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "31600eea3bde3921e44f4033f3dcdb51e83fe7a83d9943ef68a34afec672b84f",
+    "canonicalizedAt": "2026-09-03T23:51:24.198Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:rod-smith",
+    "entityName": "Rod Smith",
+    "nodeId": "node:wr:rod-smith",
+    "fieldName": "gamesPlayed",
+    "value": 15,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "9ff278c21002b2fd48b9a04c083b90470f240895f72773b98fa827b0dbc05caf",
+    "canonicalizedAt": "2026-09-03T23:51:24.254Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:rod-smith",
+    "entityName": "Rod Smith",
+    "nodeId": "node:wr:rod-smith",
+    "fieldName": "gamesStarted",
+    "value": 14,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "5f65c2f228f2201f6d96de3000ee29f2623dc9826798dba2034ceddf8712cc00",
+    "canonicalizedAt": "2026-09-03T23:51:24.301Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:rod-smith",
+    "entityName": "Rod Smith",
+    "nodeId": "node:wr:rod-smith",
+    "fieldName": "receptions",
+    "value": 113,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "af14ea012e88a73cda8b5ac78952a85bfe9cc1bb3cf93b0e7cc4f69a3c120f1c",
+    "canonicalizedAt": "2026-09-03T23:51:24.353Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:rod-smith",
+    "entityName": "Rod Smith",
+    "nodeId": "node:wr:rod-smith",
+    "fieldName": "receivingYards",
+    "value": 1343,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "712537ad89f463a109aaaca22f21d6aa3a8d72990186dfeb01fd831c25a7ca64",
+    "canonicalizedAt": "2026-09-03T23:51:24.402Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:rod-smith",
+    "entityName": "Rod Smith",
+    "nodeId": "node:wr:rod-smith",
+    "fieldName": "receivingTouchdowns",
+    "value": 11,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "2976fc98861f3efb364bbc8eedc7a2a5d6b085e040910a796426cccef4c42369",
+    "canonicalizedAt": "2026-09-03T23:51:24.450Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:tim-brown",
+    "entityName": "Tim Brown",
+    "nodeId": "node:wr:tim-brown",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "fb0fe259bae301078b7160a5e59ceb909f8f2a1af9516a2fe2ff91ed5650c91a",
+    "canonicalizedAt": "2026-09-03T23:51:24.505Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:tim-brown",
+    "entityName": "Tim Brown",
+    "nodeId": "node:wr:tim-brown",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ec9ee3bf9414fc63f4151aadf07fef580170ac174e14511ee554077eeacf8d07",
+    "canonicalizedAt": "2026-09-03T23:51:24.553Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:tim-brown",
+    "entityName": "Tim Brown",
+    "nodeId": "node:wr:tim-brown",
+    "fieldName": "receptions",
+    "value": 91,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "9b7eb8d2c75aac57abac66925a67a5f82710fd491724d734aad8fb6a72d4f741",
+    "canonicalizedAt": "2026-09-03T23:51:24.605Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:tim-brown",
+    "entityName": "Tim Brown",
+    "nodeId": "node:wr:tim-brown",
+    "fieldName": "receivingYards",
+    "value": 1165,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "855fed5f88fad5671098165c4352546bd8a4f1732d0a0091214f0dc978749f6c",
+    "canonicalizedAt": "2026-09-03T23:51:24.653Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:tim-brown",
+    "entityName": "Tim Brown",
+    "nodeId": "node:wr:tim-brown",
+    "fieldName": "receivingTouchdowns",
+    "value": 9,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "2eb5a86958061982050696b94fcc58704b9d28623d40e8b2e3606bbfd8a61697",
+    "canonicalizedAt": "2026-09-03T23:51:24.705Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:jimmy-smith",
+    "entityName": "Jimmy Smith",
+    "nodeId": "node:wr:jimmy-smith",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f412db1cffd0c488a9f59d366725861e2e8898b0d8d755cdd9d5992e54bf25c7",
+    "canonicalizedAt": "2026-09-03T23:51:24.757Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:jimmy-smith",
+    "entityName": "Jimmy Smith",
+    "nodeId": "node:wr:jimmy-smith",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "9e04ff8d8ff91623ed2766b088e8f3b4a56b0c11f1fe6f3dc886d0496d9a0efe",
+    "canonicalizedAt": "2026-09-03T23:51:24.808Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:jimmy-smith",
+    "entityName": "Jimmy Smith",
+    "nodeId": "node:wr:jimmy-smith",
+    "fieldName": "receptions",
+    "value": 112,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "adc1d0c4b02f7a2e037a0e81cd9c559413632c4ea8d44ccf6ab683092e530735",
+    "canonicalizedAt": "2026-09-03T23:51:24.859Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:jimmy-smith",
+    "entityName": "Jimmy Smith",
+    "nodeId": "node:wr:jimmy-smith",
+    "fieldName": "receivingYards",
+    "value": 1373,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "635125cab067d2c8ae280c706ce0534c70b1c049748266a0e8a8227ebc2005f0",
+    "canonicalizedAt": "2026-09-03T23:51:24.913Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:jimmy-smith",
+    "entityName": "Jimmy Smith",
+    "nodeId": "node:wr:jimmy-smith",
+    "fieldName": "receivingTouchdowns",
+    "value": 8,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "061f4ae15aa274b1db9c715634a265c4f1be03a39f304818fe398b5367e9b59e",
+    "canonicalizedAt": "2026-09-03T23:51:24.963Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:troy-brown",
+    "entityName": "Troy Brown",
+    "nodeId": "node:wr:troy-brown",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "6746b1a7a440b8b832ea2fe90c80cd18606fad09af48275fc5f1911eb6612571",
+    "canonicalizedAt": "2026-09-03T23:51:25.024Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:troy-brown",
+    "entityName": "Troy Brown",
+    "nodeId": "node:wr:troy-brown",
+    "fieldName": "gamesStarted",
+    "value": 13,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "46b7f0104ae11cfa9469797f5f50eff0e02b46c35a0d80932bbf1338977e99f2",
+    "canonicalizedAt": "2026-09-03T23:51:25.076Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:troy-brown",
+    "entityName": "Troy Brown",
+    "nodeId": "node:wr:troy-brown",
+    "fieldName": "receptions",
+    "value": 101,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "616d1291f3339b19b454d85f4fd0222374a2a28220a9d04a3abb6261361f3f64",
+    "canonicalizedAt": "2026-09-03T23:51:25.130Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:troy-brown",
+    "entityName": "Troy Brown",
+    "nodeId": "node:wr:troy-brown",
+    "fieldName": "receivingYards",
+    "value": 1199,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ca246cde1182a0ef863ea35811be01942a4fd9dd2dc38cc97836b53cbb4a36db",
+    "canonicalizedAt": "2026-09-03T23:51:25.180Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:troy-brown",
+    "entityName": "Troy Brown",
+    "nodeId": "node:wr:troy-brown",
+    "fieldName": "receivingTouchdowns",
+    "value": 5,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "50356e11b6c54399504f8c144fef69939106f96c5a06ab58be2bc8eb026ee36b",
+    "canonicalizedAt": "2026-09-03T23:51:25.233Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:hines-ward",
+    "entityName": "Hines Ward",
+    "nodeId": "node:wr:hines-ward",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "145d5cc8559295b732b61bbba5fec23a0da86d1082314e21729d88b2d306bef7",
+    "canonicalizedAt": "2026-09-03T23:51:25.287Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:hines-ward",
+    "entityName": "Hines Ward",
+    "nodeId": "node:wr:hines-ward",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "872e773428a18800074dff01e8357ceb8334657c437f315ff8cbc1c6ead803c5",
+    "canonicalizedAt": "2026-09-03T23:51:25.341Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:hines-ward",
+    "entityName": "Hines Ward",
+    "nodeId": "node:wr:hines-ward",
+    "fieldName": "receptions",
+    "value": 94,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "0471a99e07453353076a660ef6d91d3e74bb0c95dc8b6625f2f4fe1a39faadfc",
+    "canonicalizedAt": "2026-09-03T23:51:25.390Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:hines-ward",
+    "entityName": "Hines Ward",
+    "nodeId": "node:wr:hines-ward",
+    "fieldName": "receivingYards",
+    "value": 1003,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "4992d8efc0e4d588a46c1a9e5081ab58a9bd2917fed8b23d7127c678983d9cb8",
+    "canonicalizedAt": "2026-09-03T23:51:25.442Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:hines-ward",
+    "entityName": "Hines Ward",
+    "nodeId": "node:wr:hines-ward",
+    "fieldName": "receivingTouchdowns",
+    "value": 4,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "d85d485d014235eb23a420943d7578976001fcfd5bac2c3780e28ef55519b866",
+    "canonicalizedAt": "2026-09-03T23:51:25.492Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:david-boston",
+    "entityName": "David Boston",
+    "nodeId": "node:wr:david-boston",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "56b6763fc8a880312b6fa7e4f4cc2bfe619b1cd74df563db6d16e82f08746a40",
+    "canonicalizedAt": "2026-09-03T23:51:25.549Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:david-boston",
+    "entityName": "David Boston",
+    "nodeId": "node:wr:david-boston",
+    "fieldName": "gamesStarted",
+    "value": 15,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1bfc5ad0e358f856e6a0ea5a33073297bb4eac3e76da67c2ed5fd88d76cad0c1",
+    "canonicalizedAt": "2026-09-03T23:51:25.602Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:david-boston",
+    "entityName": "David Boston",
+    "nodeId": "node:wr:david-boston",
+    "fieldName": "receptions",
+    "value": 98,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f64833d89099a1665104dcdc53527962089d53161b173d83a32cd326d62e2aba",
+    "canonicalizedAt": "2026-09-03T23:51:25.656Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:david-boston",
+    "entityName": "David Boston",
+    "nodeId": "node:wr:david-boston",
+    "fieldName": "receivingYards",
+    "value": 1598,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "308bad7fcff4194467ab624db37a2c00bc1d42723f97112379bf10b458f460b5",
+    "canonicalizedAt": "2026-09-03T23:51:25.707Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:david-boston",
+    "entityName": "David Boston",
+    "nodeId": "node:wr:david-boston",
+    "fieldName": "receivingTouchdowns",
+    "value": 8,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "aa3e76881682f5c51f89b92c875c2ecc0d547cd75e9a289a9dae1db31964f4d2",
+    "canonicalizedAt": "2026-09-03T23:51:25.761Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:terrell-owens",
+    "entityName": "Terrell Owens",
+    "nodeId": "node:wr:terrell-owens",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "121d49120425237a342026f134c3e56ce7c5e3df96c1c0580a12f304f79231db",
+    "canonicalizedAt": "2026-09-03T23:51:25.815Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:terrell-owens",
+    "entityName": "Terrell Owens",
+    "nodeId": "node:wr:terrell-owens",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "df90b42d9f3bf3d1543109ae8403ae841cbcc9a63581c5575c5e0001e84ef45b",
+    "canonicalizedAt": "2026-09-03T23:51:25.870Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:terrell-owens",
+    "entityName": "Terrell Owens",
+    "nodeId": "node:wr:terrell-owens",
+    "fieldName": "receptions",
+    "value": 93,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "97570094fb7b2afeacaa7ee00387ba1e56974dee400fc330290399da21fc164e",
+    "canonicalizedAt": "2026-09-03T23:51:25.921Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:terrell-owens",
+    "entityName": "Terrell Owens",
+    "nodeId": "node:wr:terrell-owens",
+    "fieldName": "receivingYards",
+    "value": 1412,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "e71f18da7ca358cd0a6b8ea84562a3568274b0fed67d99679d674407692b35b9",
+    "canonicalizedAt": "2026-09-03T23:51:25.977Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:terrell-owens",
+    "entityName": "Terrell Owens",
+    "nodeId": "node:wr:terrell-owens",
+    "fieldName": "receivingTouchdowns",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "c1fcdaa4bd512b13db32474442669dd25094ad795e92d159aaeaf7182c48a33c",
+    "canonicalizedAt": "2026-09-03T23:51:26.031Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:keyshawn-johnson",
+    "entityName": "Keyshawn Johnson",
+    "nodeId": "node:wr:keyshawn-johnson",
+    "fieldName": "gamesPlayed",
+    "value": 15,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "5b27a29f1438ef8399c3557746ab2b64ef75607fb54444bcae1e6a704b6d8c6a",
+    "canonicalizedAt": "2026-09-03T23:51:26.090Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:keyshawn-johnson",
+    "entityName": "Keyshawn Johnson",
+    "nodeId": "node:wr:keyshawn-johnson",
+    "fieldName": "receptions",
+    "value": 106,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "17ab6bb1fb4bf76b7b6384f2ab63fb2b1674ae0207b06c464043420af2b7fd94",
+    "canonicalizedAt": "2026-09-03T23:51:26.141Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:keyshawn-johnson",
+    "entityName": "Keyshawn Johnson",
+    "nodeId": "node:wr:keyshawn-johnson",
+    "fieldName": "receivingYards",
+    "value": 1266,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "7e77f3bad80453a694fc45e574f9fbbe10f97aefc2d6fe4eb8ff0d0bd9aff9c7",
+    "canonicalizedAt": "2026-09-03T23:51:26.196Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:keyshawn-johnson",
+    "entityName": "Keyshawn Johnson",
+    "nodeId": "node:wr:keyshawn-johnson",
+    "fieldName": "receivingTouchdowns",
+    "value": 1,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "e7da51650e3d325370b83692de8466285607ea154e84eef1596e1b0f338a345d",
+    "canonicalizedAt": "2026-09-03T23:51:26.247Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:keyshawn-johnson",
+    "entityName": "Keyshawn Johnson",
+    "nodeId": "node:wr:keyshawn-johnson",
+    "fieldName": "gamesStarted",
+    "value": null,
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "temporalScope": "2001-regular-season",
+    "canonicalizedAt": null
+  },
+  {
+    "entityId": "nfl:2001:wr:isaac-bruce",
+    "entityName": "Isaac Bruce",
+    "nodeId": "node:wr:isaac-bruce",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f593936734da9ab3aa6c096c6e8ce4229efa04b96a298c37b441379775118774",
+    "canonicalizedAt": "2026-09-03T23:51:26.305Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:isaac-bruce",
+    "entityName": "Isaac Bruce",
+    "nodeId": "node:wr:isaac-bruce",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "4d591846249790d7cda28b0754a20aae618fc61d28345d2fd2746c58a69f7f3c",
+    "canonicalizedAt": "2026-09-03T23:51:26.357Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:isaac-bruce",
+    "entityName": "Isaac Bruce",
+    "nodeId": "node:wr:isaac-bruce",
+    "fieldName": "receptions",
+    "value": 64,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "b16b6334b5f76b9f3ca5641366732aa23ff5c4fb97307d95abb36510f2ce4837",
+    "canonicalizedAt": "2026-09-03T23:51:26.411Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:isaac-bruce",
+    "entityName": "Isaac Bruce",
+    "nodeId": "node:wr:isaac-bruce",
+    "fieldName": "receivingYards",
+    "value": 1106,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f27f95f743bd37e61de44a0407f55548126a26f172941b7e1e2029b013bc2eec",
+    "canonicalizedAt": "2026-09-03T23:51:26.463Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:isaac-bruce",
+    "entityName": "Isaac Bruce",
+    "nodeId": "node:wr:isaac-bruce",
+    "fieldName": "receivingTouchdowns",
+    "value": 6,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "22c1afeaae725026c73389f5c9b829bd77aae0149a447ad42d3e9661154cc7fc",
+    "canonicalizedAt": "2026-09-03T23:51:26.517Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:joe-horn",
+    "entityName": "Joe Horn",
+    "nodeId": "node:wr:joe-horn",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "d4243e763e368539e4b9810105a561e449fd2af2b9f820cbb7ce685b0d7c7452",
+    "canonicalizedAt": "2026-09-03T23:51:26.576Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:joe-horn",
+    "entityName": "Joe Horn",
+    "nodeId": "node:wr:joe-horn",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "e67f22f78eba9d044026b14c8120a0cb6416691cd7ead35f27053105750fda7c",
+    "canonicalizedAt": "2026-09-03T23:51:26.628Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:joe-horn",
+    "entityName": "Joe Horn",
+    "nodeId": "node:wr:joe-horn",
+    "fieldName": "receptions",
+    "value": 83,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "2bad53f5a3da3f1936210f8a0c42ae4388d50800b10a9a7cab66f4adbe2d7126",
+    "canonicalizedAt": "2026-09-03T23:51:26.685Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:joe-horn",
+    "entityName": "Joe Horn",
+    "nodeId": "node:wr:joe-horn",
+    "fieldName": "receivingYards",
+    "value": 1265,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "919380cc5d637c0b77f684b7d791f605d262b5a03e391c938a5b4a89e4982e18",
+    "canonicalizedAt": "2026-09-03T23:51:26.738Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:joe-horn",
+    "entityName": "Joe Horn",
+    "nodeId": "node:wr:joe-horn",
+    "fieldName": "receivingTouchdowns",
+    "value": 9,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "c92aaaa2b97cace955ca9e4df5a2aacda5bd4ebc6fe53dfd7fd4f00a54ba7984",
+    "canonicalizedAt": "2026-09-03T23:51:26.794Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:torry-holt",
+    "entityName": "Torry Holt",
+    "nodeId": "node:wr:torry-holt",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "0e581fc2f8584444ca9d0c721dc5fce6b4e9a582b3501539cc6672f42a583431",
+    "canonicalizedAt": "2026-09-03T23:51:26.850Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:torry-holt",
+    "entityName": "Torry Holt",
+    "nodeId": "node:wr:torry-holt",
+    "fieldName": "gamesStarted",
+    "value": 14,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "fea493de5a1026f4ccdec1ed55f593bc404e7adbaa8a2374d1d0b40a321e0390",
+    "canonicalizedAt": "2026-09-03T23:51:26.906Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:torry-holt",
+    "entityName": "Torry Holt",
+    "nodeId": "node:wr:torry-holt",
+    "fieldName": "receptions",
+    "value": 81,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ea6f0c6f1e39a4b31270fbf80d30b3f1f22c71b2b83c9ae5b5827ecb0427de33",
+    "canonicalizedAt": "2026-09-03T23:51:26.959Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:torry-holt",
+    "entityName": "Torry Holt",
+    "nodeId": "node:wr:torry-holt",
+    "fieldName": "receivingYards",
+    "value": 1363,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "66cb527373c3f29c698ef97e2c252868e6279fa77fd83022b0a94aa1a3dabdc7",
+    "canonicalizedAt": "2026-09-03T23:51:27.019Z"
+  },
+  {
+    "entityId": "nfl:2001:wr:torry-holt",
+    "entityName": "Torry Holt",
+    "nodeId": "node:wr:torry-holt",
+    "fieldName": "receivingTouchdowns",
+    "value": 7,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f7438b397884123a182ca43e2a7d5fb3e16348e28694e36460d862a8f40d8de4",
+    "canonicalizedAt": "2026-09-03T23:51:27.073Z"
+  },
+  {
+    "entityId": "nfl:2001:te:tony-gonzalez",
+    "entityName": "Tony Gonzalez",
+    "nodeId": "node:te:tony-gonzalez",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "3b14079cecaa19f3d241dabd7d4a80a0b84e13e071461ab3273017efe5e1d5d4",
+    "canonicalizedAt": "2026-09-03T23:51:27.134Z"
+  },
+  {
+    "entityId": "nfl:2001:te:tony-gonzalez",
+    "entityName": "Tony Gonzalez",
+    "nodeId": "node:te:tony-gonzalez",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "deb22cdec07927c219e4e5c665902f81df680893bf1d44ab106be76cf46ab543",
+    "canonicalizedAt": "2026-09-03T23:51:27.187Z"
+  },
+  {
+    "entityId": "nfl:2001:te:tony-gonzalez",
+    "entityName": "Tony Gonzalez",
+    "nodeId": "node:te:tony-gonzalez",
+    "fieldName": "receptions",
+    "value": 73,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "dfe6de41f752f31364185a2019c4c64f6f94782a83dff5652c5069edf782ff43",
+    "canonicalizedAt": "2026-09-03T23:51:27.247Z"
+  },
+  {
+    "entityId": "nfl:2001:te:tony-gonzalez",
+    "entityName": "Tony Gonzalez",
+    "nodeId": "node:te:tony-gonzalez",
+    "fieldName": "receivingYards",
+    "value": 917,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ead37283e69a4a8a7a0c652a7de9d832bef121960ec13e058a9ed821c7eb73d0",
+    "canonicalizedAt": "2026-09-03T23:51:27.301Z"
+  },
+  {
+    "entityId": "nfl:2001:te:tony-gonzalez",
+    "entityName": "Tony Gonzalez",
+    "nodeId": "node:te:tony-gonzalez",
+    "fieldName": "receivingTouchdowns",
+    "value": 6,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "3d3b8b540ea876c5cd2fe097b36531e13eb9cc5fdeb71c932c33071faae8f25d",
+    "canonicalizedAt": "2026-09-03T23:51:27.358Z"
+  },
+  {
+    "entityId": "nfl:2001:te:shannon-sharpe",
+    "entityName": "Shannon Sharpe",
+    "nodeId": "node:te:shannon-sharpe",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "67d15173f62aa72218d21fc465059b5f1e2f91db8249b9cea16cc52f95794b94",
+    "canonicalizedAt": "2026-09-03T23:51:27.414Z"
+  },
+  {
+    "entityId": "nfl:2001:te:shannon-sharpe",
+    "entityName": "Shannon Sharpe",
+    "nodeId": "node:te:shannon-sharpe",
+    "fieldName": "receptions",
+    "value": 73,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "87335f425c9cfef3369b3e57ae431064022d5de1f8306900844fa48761107aa2",
+    "canonicalizedAt": "2026-09-03T23:51:27.471Z"
+  },
+  {
+    "entityId": "nfl:2001:te:shannon-sharpe",
+    "entityName": "Shannon Sharpe",
+    "nodeId": "node:te:shannon-sharpe",
+    "fieldName": "receivingYards",
+    "value": 811,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "0b34995b01b603424a7eadc3e9bf2c27c47b8dc21d09fa438b474cabb715f7b4",
+    "canonicalizedAt": "2026-09-03T23:51:27.529Z"
+  },
+  {
+    "entityId": "nfl:2001:te:shannon-sharpe",
+    "entityName": "Shannon Sharpe",
+    "nodeId": "node:te:shannon-sharpe",
+    "fieldName": "receivingTouchdowns",
+    "value": 2,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "72195f77c733b5a1878475d7c61ae8dfc3ab8a49153e3ca97f088013d558462c",
+    "canonicalizedAt": "2026-09-03T23:51:27.583Z"
+  },
+  {
+    "entityId": "nfl:2001:te:shannon-sharpe",
+    "entityName": "Shannon Sharpe",
+    "nodeId": "node:te:shannon-sharpe",
+    "fieldName": "gamesStarted",
+    "value": null,
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "temporalScope": "2001-regular-season",
+    "canonicalizedAt": null
+  },
+  {
+    "entityId": "nfl:2001:te:ken-dilger",
+    "entityName": "Ken Dilger",
+    "nodeId": "node:te:ken-dilger",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "f4a431f9f22483a6a508496ca4b76764c18136d0f8ee895f945ea2a57a089a24",
+    "canonicalizedAt": "2026-09-03T23:51:27.646Z"
+  },
+  {
+    "entityId": "nfl:2001:te:ken-dilger",
+    "entityName": "Ken Dilger",
+    "nodeId": "node:te:ken-dilger",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "09fcf352e387e6278758662e5b56ceffc059ec3377e4bca2e4ed2f8b9d816c84",
+    "canonicalizedAt": "2026-09-03T23:51:27.700Z"
+  },
+  {
+    "entityId": "nfl:2001:te:ken-dilger",
+    "entityName": "Ken Dilger",
+    "nodeId": "node:te:ken-dilger",
+    "fieldName": "receptions",
+    "value": 32,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "ac3277726d2e976f14fbdc9149fd666c96cf0625e3ec728dcfc20f7d9f0828b8",
+    "canonicalizedAt": "2026-09-03T23:51:27.760Z"
+  },
+  {
+    "entityId": "nfl:2001:te:ken-dilger",
+    "entityName": "Ken Dilger",
+    "nodeId": "node:te:ken-dilger",
+    "fieldName": "receivingYards",
+    "value": 343,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "c6bdc41332f90a55a1f17de9007f4dfe1565f75218161a37921c119fa9ddce6a",
+    "canonicalizedAt": "2026-09-03T23:51:27.814Z"
+  },
+  {
+    "entityId": "nfl:2001:te:ken-dilger",
+    "entityName": "Ken Dilger",
+    "nodeId": "node:te:ken-dilger",
+    "fieldName": "receivingTouchdowns",
+    "value": 1,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "7c7a5ce4e343bd9a52c9661c2023cfb4068f94f1f02fd5b002c80441c059ff99",
+    "canonicalizedAt": "2026-09-03T23:51:27.874Z"
+  },
+  {
+    "entityId": "nfl:2001:te:dwayne-carswell",
+    "entityName": "Dwayne Carswell",
+    "nodeId": "node:te:dwayne-carswell",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "6ff815956489d85cf46ceefcfadf65aec38674d8d4b39293a8e2f2222e55c2ec",
+    "canonicalizedAt": "2026-09-03T23:51:27.933Z"
+  },
+  {
+    "entityId": "nfl:2001:te:dwayne-carswell",
+    "entityName": "Dwayne Carswell",
+    "nodeId": "node:te:dwayne-carswell",
+    "fieldName": "gamesStarted",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "fb7a3a09b16c760a34b3714e2ecf12609db72890ed75ccac780a37370e115237",
+    "canonicalizedAt": "2026-09-03T23:51:27.993Z"
+  },
+  {
+    "entityId": "nfl:2001:te:dwayne-carswell",
+    "entityName": "Dwayne Carswell",
+    "nodeId": "node:te:dwayne-carswell",
+    "fieldName": "receptions",
+    "value": 34,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "966d66de55cf3e064b71f4baf4e1afaa66743f74c139838ff53635841c521bec",
+    "canonicalizedAt": "2026-09-03T23:51:28.051Z"
+  },
+  {
+    "entityId": "nfl:2001:te:dwayne-carswell",
+    "entityName": "Dwayne Carswell",
+    "nodeId": "node:te:dwayne-carswell",
+    "fieldName": "receivingYards",
+    "value": 299,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "5fd185e9fef14c902a5469e9e0ef926960d6159070a6e7822e9ab61c08545bf1",
+    "canonicalizedAt": "2026-09-03T23:51:28.112Z"
+  },
+  {
+    "entityId": "nfl:2001:te:dwayne-carswell",
+    "entityName": "Dwayne Carswell",
+    "nodeId": "node:te:dwayne-carswell",
+    "fieldName": "receivingTouchdowns",
+    "value": 4,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "0ea97b650e3e1245f9d92a25780e39aed0348505b0583ecc393a868b16bb3a5d",
+    "canonicalizedAt": "2026-09-03T23:51:28.171Z"
+  },
+  {
+    "entityId": "nfl:2001:te:bubba-franks",
+    "entityName": "Bubba Franks",
+    "nodeId": "node:te:bubba-franks",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "02c2e26c96a499450f0cf893ceeb7470e2c26c95c5a74017934e0d0840938df4",
+    "canonicalizedAt": "2026-09-03T23:51:28.236Z"
+  },
+  {
+    "entityId": "nfl:2001:te:bubba-franks",
+    "entityName": "Bubba Franks",
+    "nodeId": "node:te:bubba-franks",
+    "fieldName": "receptions",
+    "value": 36,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "1e19a40a237c7afaebe73f8d5e075d55eeeccd72db429a5157c85267f98cd6d9",
+    "canonicalizedAt": "2026-09-03T23:51:28.303Z"
+  },
+  {
+    "entityId": "nfl:2001:te:bubba-franks",
+    "entityName": "Bubba Franks",
+    "nodeId": "node:te:bubba-franks",
+    "fieldName": "receivingYards",
+    "value": 322,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "4a33a76e5f315062732233c21a9b4a8d488bfc9433bee1ec80a042058873bca6",
+    "canonicalizedAt": "2026-09-03T23:51:28.362Z"
+  },
+  {
+    "entityId": "nfl:2001:te:bubba-franks",
+    "entityName": "Bubba Franks",
+    "nodeId": "node:te:bubba-franks",
+    "fieldName": "receivingTouchdowns",
+    "value": 9,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "a9caaa253cee849d972651a8a3c815bd430b521bfbdc804bdb4320d7c98852d2",
+    "canonicalizedAt": "2026-09-03T23:51:28.430Z"
+  },
+  {
+    "entityId": "nfl:2001:te:bubba-franks",
+    "entityName": "Bubba Franks",
+    "nodeId": "node:te:bubba-franks",
+    "fieldName": "gamesStarted",
+    "value": null,
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "temporalScope": "2001-regular-season",
+    "canonicalizedAt": null
+  },
+  {
+    "entityId": "nfl:2001:te:byron-chamberlain",
+    "entityName": "Byron Chamberlain",
+    "nodeId": "node:te:byron-chamberlain",
+    "fieldName": "gamesPlayed",
+    "value": 16,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "e8d8bfe49e3cd625c8acefb8b3c35e8986280778b676774274f2e2d755442a6a",
+    "canonicalizedAt": "2026-09-03T23:51:28.496Z"
+  },
+  {
+    "entityId": "nfl:2001:te:byron-chamberlain",
+    "entityName": "Byron Chamberlain",
+    "nodeId": "node:te:byron-chamberlain",
+    "fieldName": "receptions",
+    "value": 57,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "8dd80e3d7e92c7aaf06e657e79aad63b7670b2be9436faf0f6d70616b6aab1e4",
+    "canonicalizedAt": "2026-09-03T23:51:28.555Z"
+  },
+  {
+    "entityId": "nfl:2001:te:byron-chamberlain",
+    "entityName": "Byron Chamberlain",
+    "nodeId": "node:te:byron-chamberlain",
+    "fieldName": "receivingYards",
+    "value": 666,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "7714f80db90665f63e9e2f3e5172f0294f594486939ea2e6e932de6b18571818",
+    "canonicalizedAt": "2026-09-03T23:51:28.611Z"
+  },
+  {
+    "entityId": "nfl:2001:te:byron-chamberlain",
+    "entityName": "Byron Chamberlain",
+    "nodeId": "node:te:byron-chamberlain",
+    "fieldName": "receivingTouchdowns",
+    "value": 3,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "8e67a69ca9220046339d7c18dc2d5f47a2160d3c3d73ff0a29db4933d9802fd7",
+    "canonicalizedAt": "2026-09-03T23:51:28.670Z"
+  },
+  {
+    "entityId": "nfl:2001:te:byron-chamberlain",
+    "entityName": "Byron Chamberlain",
+    "nodeId": "node:te:byron-chamberlain",
+    "fieldName": "gamesStarted",
+    "value": null,
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "temporalScope": "2001-regular-season",
+    "canonicalizedAt": null
+  },
+  {
+    "entityId": "nfl:2001:te:wesley-walls",
+    "entityName": "Wesley Walls",
+    "nodeId": "node:te:wesley-walls",
+    "fieldName": "gamesPlayed",
+    "value": 14,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "826b9f64203b52449b3713f70edb47962b39e3656dfacbe99d470d2af3818d0a",
+    "canonicalizedAt": "2026-09-03T23:51:28.730Z"
+  },
+  {
+    "entityId": "nfl:2001:te:wesley-walls",
+    "entityName": "Wesley Walls",
+    "nodeId": "node:te:wesley-walls",
+    "fieldName": "receptions",
+    "value": 43,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "9fc91db98b4a9a5d07ea42b7295736dd7208bef3d5d9b52cbb4411cdf1c27424",
+    "canonicalizedAt": "2026-09-03T23:51:28.788Z"
+  },
+  {
+    "entityId": "nfl:2001:te:wesley-walls",
+    "entityName": "Wesley Walls",
+    "nodeId": "node:te:wesley-walls",
+    "fieldName": "receivingYards",
+    "value": 452,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "7b74899888bafbf56717320699054bf1614d2ac8cdd144837bec7e6cea08abdb",
+    "canonicalizedAt": "2026-09-03T23:51:28.846Z"
+  },
+  {
+    "entityId": "nfl:2001:te:wesley-walls",
+    "entityName": "Wesley Walls",
+    "nodeId": "node:te:wesley-walls",
+    "fieldName": "receivingTouchdowns",
+    "value": 5,
+    "temporalScope": "2001-regular-season",
+    "reconciliationDecisionId": "882550ce9d60b5971cdd5f04fe1ca066ee5e064d61787f13197aa353ccd22d54",
+    "canonicalizedAt": "2026-09-03T23:51:28.901Z"
+  },
+  {
+    "entityId": "nfl:2001:te:wesley-walls",
+    "entityName": "Wesley Walls",
+    "nodeId": "node:te:wesley-walls",
+    "fieldName": "gamesStarted",
+    "value": null,
+    "missingnessType": "NOT_PUBLICLY_AVAILABLE",
+    "temporalScope": "2001-regular-season",
+    "canonicalizedAt": null
+  }
+]

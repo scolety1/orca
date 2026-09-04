@@ -54,8 +54,20 @@ export const RESEARCH_NODE_EXECUTION_STATES = Object.freeze([
 ])
 
 const NODE_ALLOWED = Object.freeze({
-  PENDING: ['READY', 'CANCELLED'],
-  READY: ['DISPATCHED', 'CANCELLED'],
+  // PENDING/READY -> ADMITTED (real-pilot, independent-verification
+  // finding): research-library.mjs's cross-mission reuse path can produce
+  // a real CanonicalFact via decideLibraryReferenceReconciliation +
+  // admitReconciliationDecision with ZERO dispatch ever happening for that
+  // node -- the node's execution status was staying PENDING/READY forever
+  // even though it had genuine, real epistemic content, which silently
+  // under-reported presentEntityCoverage/evidenceCoverage/verifiedCoverage
+  // for a reuse-only mission (found by re-running computeCompletenessMetrics
+  // against the real second-mission-library-reuse-proof output). Reachable
+  // ONLY via markResearchNodeAdmittedViaLibraryReuse below, which asserts
+  // no dispatch ever occurred first -- this is not a generic bypass of the
+  // normal DISPATCHED -> RESULT_RECEIVED -> ADMITTED path.
+  PENDING: ['READY', 'CANCELLED', 'ADMITTED'],
+  READY: ['DISPATCHED', 'CANCELLED', 'ADMITTED'],
   DISPATCHED: ['RESULT_RECEIVED', 'READY', 'FAILED'],
   RESULT_RECEIVED: ['ADMITTED', 'FAILED'],
   // A node stays open to further dispatch cycles after one result is

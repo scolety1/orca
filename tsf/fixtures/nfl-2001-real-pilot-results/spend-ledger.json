@@ -1,0 +1,40 @@
+[
+  {
+    "at": "2026-09-03T23:48:39.217Z",
+    "purpose": "targeted gap research: Tom Brady 2001 passing stats",
+    "provider": "PARALLEL",
+    "tier": "core",
+    "projectedPriceUsd": 0.025,
+    "remainingBudgetUsd": 15,
+    "classification": "PLANNED_RESEARCH"
+  },
+  {
+    "at": "2026-09-03T23:50:57.113Z",
+    "purpose": "targeted gap research result: Tom Brady",
+    "provider": "PARALLEL",
+    "ok": true,
+    "ready": true,
+    "actualBilledCostUsd": "unknown (Parallel reports no usage cost)",
+    "listPriceCostUsd": 0.025,
+    "classification": "PLANNED_RESEARCH"
+  },
+  {
+    "at": "2026-09-03T23:50:57.113Z",
+    "purpose": "targeted gap research: Brett Favre 2001 passing stats",
+    "provider": "PARALLEL",
+    "tier": "core",
+    "projectedPriceUsd": 0.025,
+    "remainingBudgetUsd": 14.975,
+    "classification": "PLANNED_RESEARCH"
+  },
+  {
+    "at": "2026-09-03T23:51:19.012Z",
+    "purpose": "targeted gap research result: Brett Favre",
+    "provider": "PARALLEL",
+    "ok": true,
+    "ready": true,
+    "actualBilledCostUsd": "unknown (Parallel reports no usage cost)",
+    "listPriceCostUsd": 0.025,
+    "classification": "PLANNED_RESEARCH"
+  }
+]
