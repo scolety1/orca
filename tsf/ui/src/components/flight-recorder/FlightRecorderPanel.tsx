@@ -4,6 +4,8 @@ import { LoadingState, ErrorState, EmptyState } from '@/components/States'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import type { TimelineEvent } from '@/lib/flight-recorder-types'
+import { humanizeEventType, humanizePhase } from '@/lib/orchestration-terminology'
+import { keepGoingRunStateBadgeVariant } from '@/lib/keep-going-run-state-badge'
 
 function formatMs(ms: number | null): string {
   if (ms === null) {
@@ -20,10 +22,12 @@ function EventRow({ event }: { event: TimelineEvent }) {
   return (
     <div className="flex items-center justify-between gap-2 text-[12px]">
       <div className="flex items-center gap-2">
-        <Badge variant="neutral">{event.type}</Badge>
+        <Badge variant="neutral" title={event.type}>
+          {humanizeEventType(event.type)}
+        </Badge>
         <span className="text-muted-foreground">
           {'question' in event.detail ? String(event.detail.question) : ''}
-          {'phase' in event.detail ? String(event.detail.phase) : ''}
+          {'phase' in event.detail ? humanizePhase(String(event.detail.phase)) : ''}
           {'to' in event.detail ? `→ ${String(event.detail.to)}` : ''}
         </span>
       </div>
@@ -64,7 +68,7 @@ export function FlightRecorderPanel({ projectId }: { projectId: string }) {
             <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Run Timeline
             </div>
-            <Badge variant="neutral">{timeline.state}</Badge>
+            <Badge variant={keepGoingRunStateBadgeVariant(timeline.state)}>{timeline.state}</Badge>
           </div>
           <div className="grid grid-cols-2 gap-3 text-[12px] sm:grid-cols-4">
             <div>

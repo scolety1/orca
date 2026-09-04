@@ -4,6 +4,7 @@
 // projects render through the existing Projects/Work/ProjectDetail UI
 // without any UI-side special-casing.
 import { verifyReceipt } from '../domain/receipts.mjs'
+import { resultCapsulesFromRun } from '../domain/keep-going-result-capsules.mjs'
 
 // OnboardingHealth (HEALTHY/HEALTHY_WITH_CAVEATS/NEEDS_ATTENTION/BLOCKED/
 // UNKNOWN) maps onto the existing shared HealthStatus vocabulary
@@ -46,7 +47,10 @@ function missionStateFor(classification) {
   }
 }
 
-export function projectOnboardedProject(record, membership) {
+// `run` (the project's real Keep Going run, or null) is optional so every
+// existing caller that doesn't have one yet keeps the prior, unchanged
+// behavior -- see project-catalog.mjs's call site for the real wiring.
+export function projectOnboardedProject(record, membership, run = null) {
   const analysis = record.lastAnalysis
   const health = {
     schemaVersion: 'TSF_HEALTH_REPORT_V1',
@@ -117,7 +121,12 @@ export function projectOnboardedProject(record, membership) {
         : null,
       verifier: null,
       browser: null,
-      resultCapsules: [],
+      // BUG-16: previously always [], so Evidence showed nothing even
+      // once Flight Recorder had real recorded waves -- same run.waves
+      // Flight Recorder itself reads, projected honestly (see
+      // resultCapsulesFromRun's own header for exactly what is/isn't
+      // derivable from a real run).
+      resultCapsules: resultCapsulesFromRun(run),
       verifierRaw: null,
       onboarding: {
         maturity: analysis.maturity,

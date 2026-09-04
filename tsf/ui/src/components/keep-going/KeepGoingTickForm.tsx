@@ -16,15 +16,26 @@ function linesOf(value: string): string[] {
 // and where. Kept deliberately minimal (single item) rather than a full
 // multi-item batch editor. Split out of KeepGoingPanel.tsx to keep that
 // file under the repo's max-lines lint limit.
+// BUG-15: defaultWorkItemId/defaultScope let the panel prefill these from
+// a real, just-abandoned stalled work item's own workItemId/scope -- the
+// safest real recovery this codebase supports today (there is no single-
+// work-item "Retry" domain primitive, see keep-going.mjs) is Abandon
+// followed by a fresh dispatch of the same real work, and this is what
+// makes that one click instead of retyping it from scratch. Still fully
+// editable -- never auto-submitted.
 export function KeepGoingTickForm({
   projectId,
-  onTicked
+  onTicked,
+  defaultWorkItemId,
+  defaultScope
 }: {
   projectId: string
   onTicked: () => void
+  defaultWorkItemId?: string
+  defaultScope?: string
 }) {
-  const [workItemId, setWorkItemId] = useState('')
-  const [scope, setScope] = useState('')
+  const [workItemId, setWorkItemId] = useState(defaultWorkItemId ?? '')
+  const [scope, setScope] = useState(defaultScope ?? '')
   const [spec, setSpec] = useState('')
   // No pre-filled default -- see hasExplicitPlacement (keep-going-dispatch-loop.mjs).
   const [worktree, setWorktree] = useState('')
@@ -63,46 +74,123 @@ export function KeepGoingTickForm({
     }
   }
 
+  // BUG-10 (bug-ledger.json): every field below now has a persistent
+  // <label> above it (the KeepGoingStartForm.tsx/StartMissionDialog.tsx
+  // convention) instead of relying solely on a placeholder that vanishes
+  // on the first keystroke, and the scope/spec textareas are sized to
+  // actually review multi-line pasted content (5-10 file paths, a longer
+  // spec) instead of a cramped 2 rows. Worktree/Agent are grouped under
+  // an explicit "Advanced" heading, matching the codebase's own established
+  // idea (KeepGoingStartForm.tsx's real Usage Mode/budget fields are
+  // similarly grouped) -- Worktree stays visible and required (there is no
+  // safe default for where a real dispatch lands), just clearly marked as
+  // the advanced/technical half of this form rather than blended in with
+  // the ordinary work-item/scope/spec fields above it.
+  //
+  // Independent-verification finding: every label here was visually
+  // positioned above its field but had no real htmlFor/id association, so
+  // a screen reader announced nothing for any of them -- a purely visual
+  // fix, not a real accessibility one. Every label now carries a real
+  // htmlFor matching its field's id (prefixed with projectId so multiple
+  // instances of this form never collide). This is a known, pre-existing,
+  // codebase-wide pattern elsewhere too (e.g. KeepGoingStartForm.tsx) --
+  // fixed here, not there; disclosed as a separate, out-of-scope gap.
   return (
     <div className="rounded-md border border-border p-3 text-[12px]">
-      <div className="mb-2 font-medium text-muted-foreground">Run now (dispatch one work item)</div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <input
-          className="rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="Work item id"
-          value={workItemId}
-          onChange={(e) => setWorkItemId(e.target.value)}
-        />
-        <input
-          className="rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="Worktree (required -- e.g. an exact path, or literally 'current')"
-          value={worktree}
-          onChange={(e) => setWorktree(e.target.value)}
-        />
-        <input
-          className="rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="Agent (default: codex)"
-          value={agent}
-          onChange={(e) => setAgent(e.target.value)}
-        />
+      <div className="mb-3 font-medium text-muted-foreground">Run now (dispatch one work item)</div>
+
+      <div className="flex flex-col gap-3">
+        <div>
+          <label
+            htmlFor={`${projectId}-tick-work-item-id`}
+            className="mb-1 block text-[11px] font-medium text-muted-foreground"
+          >
+            Work item id
+          </label>
+          <input
+            id={`${projectId}-tick-work-item-id`}
+            className="w-full rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="e.g. impl-1"
+            value={workItemId}
+            onChange={(e) => setWorkItemId(e.target.value)}
+          />
+        </div>
+        <div>
+          <label
+            htmlFor={`${projectId}-tick-scope`}
+            className="mb-1 block text-[11px] font-medium text-muted-foreground"
+          >
+            File scope (one path per line)
+          </label>
+          <Textarea
+            id={`${projectId}-tick-scope`}
+            rows={5}
+            placeholder="src/example.mjs"
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+          />
+        </div>
+        <div>
+          <label
+            htmlFor={`${projectId}-tick-spec`}
+            className="mb-1 block text-[11px] font-medium text-muted-foreground"
+          >
+            Spec (optional -- what should the worker do)
+          </label>
+          <Textarea
+            id={`${projectId}-tick-spec`}
+            rows={4}
+            placeholder="What should the worker do?"
+            value={spec}
+            onChange={(e) => setSpec(e.target.value)}
+          />
+        </div>
+
+        <div className="rounded-md border border-dashed border-border p-2">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Advanced
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor={`${projectId}-tick-worktree`}
+                className="mb-1 block text-[11px] font-medium text-muted-foreground"
+              >
+                Worktree (required)
+              </label>
+              <input
+                id={`${projectId}-tick-worktree`}
+                className="w-full rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="An exact path, or literally 'current'"
+                value={worktree}
+                onChange={(e) => setWorktree(e.target.value)}
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                No safe default -- required so a real dispatch never lands somewhere unintended.
+              </p>
+            </div>
+            <div>
+              <label
+                htmlFor={`${projectId}-tick-agent`}
+                className="mb-1 block text-[11px] font-medium text-muted-foreground"
+              >
+                Agent
+              </label>
+              <input
+                id={`${projectId}-tick-agent`}
+                className="w-full rounded-md border border-input bg-input px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="codex"
+                value={agent}
+                onChange={(e) => setAgent(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
       </div>
-      <Textarea
-        rows={2}
-        className="mt-2"
-        placeholder={'File scope, one path per line\nsrc/example.mjs'}
-        value={scope}
-        onChange={(e) => setScope(e.target.value)}
-      />
-      <Textarea
-        rows={2}
-        className="mt-2"
-        placeholder="Spec (optional -- what should the worker do)"
-        value={spec}
-        onChange={(e) => setSpec(e.target.value)}
-      />
+
       {error && <p className="mt-2 text-status-blocked">{error}</p>}
       {result && <p className="mt-2 text-muted-foreground">{result}</p>}
-      <div className="mt-2">
+      <div className="mt-3">
         <Button size="sm" variant="outline" onClick={runNow} disabled={submitting}>
           {submitting ? 'Dispatching…' : 'Run now'}
         </Button>

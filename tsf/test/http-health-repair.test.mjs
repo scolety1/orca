@@ -30,6 +30,12 @@ process.env.STUB_ORCA_MODE = 'success'
 process.env.STUB_ORCA_REPOS = '[]'
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
+const { readHealthRepairOperation, withHealthRepairOperation } = await import(
+  '../server/health-repair-store.mjs'
+)
+const { recoverInterruptedHealthRepairOperations } = await import(
+  '../server/health-repair-http-routes.mjs'
+)
 
 function git(cwd, args) {
   execFileSync('git', args, { cwd, stdio: 'ignore' })
@@ -73,6 +79,37 @@ async function post(base, urlPath, body) {
 async function get(base, urlPath) {
   const res = await fetch(`${base}${urlPath}`)
   return { status: res.status, body: await res.json() }
+}
+
+// BUG-05 (bug-ledger.json): baseline/repair/repair-selected are now durable
+// operations (202 + operationId, same real work run detached) rather than
+// one blocking synchronous response -- mirrors http-prepare-for-work.test.
+// mjs's own pollOperation exactly, proving the same real contract the UI's
+// poller depends on. /scan (already sync) and /prepare-mission (fast,
+// synchronous, no I/O) are unaffected -- still direct 200 responses.
+async function pollHealthRepairOperation(base, operationId, { timeoutMs = 15000 } = {}) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const res = await get(base, `/api/health-repair-operations/${operationId}`)
+    assert.equal(res.status, 200)
+    if (res.body.operation.status === 'COMPLETED') {
+      return res.body.operation
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`health repair operation ${operationId} did not settle within ${timeoutMs}ms`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+}
+
+// Starts a durable operation and polls it to completion, returning the
+// settled operation. `startRes` is the raw 202 response from the POST --
+// callers that need to assert on the 202 shape itself do that separately
+// before calling this.
+async function settleHealthRepairOperation(base, startRes) {
+  assert.equal(startRes.status, 202)
+  assert.ok(startRes.body.operationId, 'a durable operation id must be returned immediately')
+  return pollHealthRepairOperation(base, startRes.body.operationId)
 }
 
 async function withEnvDuring(vars, fn) {
@@ -139,11 +176,14 @@ test("GET /api/health-repair/scan surfaces a real onboarded project's real cause
 test('POST /api/health-repair/:projectId/repair actually repairs an AUTO_REPAIR_SAFE cause and persists the result', async () => {
   await withServer(async (base) => {
     const { projectId } = await onboardRealProject(base)
-    const repair = await post(base, `/api/health-repair/${projectId}/repair`, {
+    const start = await post(base, `/api/health-repair/${projectId}/repair`, {
       cause: 'ORCA_NOT_REGISTERED'
     })
-    assert.equal(repair.status, 200)
-    assert.equal(repair.body.repairResult.action, 'REFRESH_ORCA_REGISTRATION')
+    const operation = await settleHealthRepairOperation(base, start)
+    const result = operation.results[projectId]
+    assert.equal(result.phase, 'SUCCEEDED')
+    assert.equal(result.repairResult.action, 'REFRESH_ORCA_REGISTRATION')
+    assert.ok(result.causesBefore, 'the pre-repair diagnosis is preserved, not silently dropped')
     // Re-scan proves the repair was actually persisted, not just returned
     // once and forgotten.
     const rescan = await get(base, '/api/health-repair/scan')
@@ -197,10 +237,12 @@ test("POST /api/health-repair/:projectId/baseline runs the project's real discov
       analysis: analyze.body,
       addTo: { knownProjects: true }
     })
-    const baseline = await post(base, `/api/health-repair/${commit.body.projectId}/baseline`, {})
-    assert.equal(baseline.status, 200)
-    assert.equal(baseline.body.baseline.test, 'PASS')
-    assert.equal(baseline.body.baseline.build, 'NOT_APPLICABLE')
+    const start = await post(base, `/api/health-repair/${commit.body.projectId}/baseline`, {})
+    const operation = await settleHealthRepairOperation(base, start)
+    const result = operation.results[commit.body.projectId]
+    assert.equal(result.phase, 'SUCCEEDED')
+    assert.equal(result.baseline.test, 'PASS')
+    assert.equal(result.baseline.build, 'NOT_APPLICABLE')
   })
 })
 
@@ -258,14 +300,13 @@ test('POST /api/health-repair/repair-selected repairs multiple real projects ind
   await withServer(async (base) => {
     const { projectId: p1 } = await onboardRealProject(base)
     const { projectId: p2 } = await onboardRealProject(base)
-    const { status, body } = await post(base, '/api/health-repair/repair-selected', {
+    const start = await post(base, '/api/health-repair/repair-selected', {
       projectIds: [p1, 'does-not-exist', p2]
     })
-    assert.equal(status, 200)
-    const byId = Object.fromEntries(body.results.map((r) => [r.projectId, r]))
-    assert.equal(byId[p1].ok, true)
-    assert.equal(byId[p2].ok, true)
-    assert.equal(byId['does-not-exist'].ok, false)
+    const operation = await settleHealthRepairOperation(base, start)
+    assert.equal(operation.results[p1].ok, true)
+    assert.equal(operation.results[p2].ok, true)
+    assert.equal(operation.results['does-not-exist'].ok, false)
   })
 })
 
@@ -322,12 +363,12 @@ test('POST /api/health-repair/repair-selected skips a SENSITIVE project entirely
     }
     writeState(state)
 
-    const { body } = await post(base, '/api/health-repair/repair-selected', {
+    const start = await post(base, '/api/health-repair/repair-selected', {
       projectIds: [sensitive, safe]
     })
-    const byId = Object.fromEntries(body.results.map((r) => [r.projectId, r]))
-    assert.equal(byId[sensitive].ok, false)
-    assert.equal(byId[safe].ok, true)
+    const operation = await settleHealthRepairOperation(base, start)
+    assert.equal(operation.results[sensitive].ok, false)
+    assert.equal(operation.results[safe].ok, true)
   })
 })
 
@@ -368,22 +409,22 @@ test("POST /api/health-repair/repair-selected: a real exception on one project n
     }
     writeState(state)
 
-    const { status, body } = await post(base, '/api/health-repair/repair-selected', {
+    const start = await post(base, '/api/health-repair/repair-selected', {
       projectIds: [p1, p2, p3]
     })
-    assert.equal(status, 200, 'the route itself must not crash even though one project threw')
-    const byId = Object.fromEntries(body.results.map((r) => [r.projectId, r]))
+    assert.equal(start.status, 202, 'the route itself must not crash even though one project will throw')
+    const operation = await settleHealthRepairOperation(base, start)
     assert.equal(
-      byId[p1].ok,
+      operation.results[p1].ok,
       true,
       'project 1, repaired before the throw, must still report success'
     )
     assert.equal(
-      byId[p2].ok,
+      operation.results[p2].ok,
       false,
       'project 2, which genuinely threw, must report failure honestly'
     )
-    assert.equal(byId[p3].ok, true, 'project 3 must still be attempted after project 2 threw')
+    assert.equal(operation.results[p3].ok, true, 'project 3 must still be attempted after project 2 threw')
 
     // And project 1's real repair was actually persisted, not discarded --
     // refreshedAt genuinely moved forward from its pre-repair value (the
@@ -409,5 +450,51 @@ test('POST /api/health-repair/:projectId/prepare-mission returns a real spec wit
       cause: 'ORCA_NOT_REGISTERED'
     })
     assert.equal(refused.status, 422)
+  })
+})
+
+// BUG-05's own real reproduction, closed: the exact "navigate away mid-
+// operation" incident -- the operator's browser tab/fetch is gone, but the
+// real server-side work is not tied to it.
+test('BUG-05 FRONTEND DISCONNECT: a health repair operation completes server-side even if nothing ever polls it', async () => {
+  await withServer(async (base) => {
+    const { projectId } = await onboardRealProject(base)
+    const start = await post(base, `/api/health-repair/${projectId}/repair`, {
+      cause: 'ORCA_NOT_REGISTERED'
+    })
+    assert.equal(start.status, 202)
+    // Deliberately never poll again -- standing in for the operator
+    // navigating away (or the browser tab/TSF window closing) before the
+    // real work finishes.
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+    const operation = readHealthRepairOperation(start.body.operationId)
+    assert.equal(operation.status, 'COMPLETED')
+    assert.equal(operation.results[projectId].settled, true)
+    assert.equal(operation.results[projectId].phase, 'SUCCEEDED')
+  })
+})
+
+// BUG-05's second real requirement: returning to Health Repair after a
+// server restart must reacquire the SAME operation, not lose it.
+test('BUG-05 RECOVERY: an operation left RUNNING by a dead process instance is reacquired under the same id and reaches a real terminal state', async () => {
+  await withServer(async (base) => {
+    const { projectId } = await onboardRealProject(base)
+    const operationId = 'hr-simulated-crashed-process'
+    await withHealthRepairOperation(operationId, () => ({
+      schemaVersion: 'TSF_HEALTH_REPAIR_OPERATION_V1',
+      operationId,
+      kind: 'REPAIR',
+      projectIds: [projectId],
+      meta: { cause: 'ORCA_NOT_REGISTERED' },
+      status: 'RUNNING',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      results: { [projectId]: { phase: 'QUEUED', settled: false } }
+    }))
+    const reacquired = await recoverInterruptedHealthRepairOperations()
+    assert.deepEqual(reacquired, [operationId])
+    const operation = await pollHealthRepairOperation(base, operationId)
+    assert.equal(operation.results[projectId].settled, true)
+    assert.equal(operation.results[projectId].ok, true)
   })
 })

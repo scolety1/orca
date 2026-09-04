@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import type { KeepGoingActiveRunView } from '@/lib/keep-going-types'
 import { projectLiveWorkFeedState, type LiveWorkFeedState } from '@/lib/live-work-feed'
+import { humanizePhase } from '@/lib/orchestration-terminology'
 
 // M3's Live Work Feed: real, non-fabricated status (Tim should not
 // normally need Orca terminals). Every field here already exists on the
@@ -43,7 +44,7 @@ export function LiveWorkFeed({ run }: { run: KeepGoingActiveRunView }) {
       {showDetail && (
         <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2 text-[11px] text-muted-foreground">
           <div>
-            Phase: <span className="text-foreground">{run.phase}</span>
+            Phase: <span className="text-foreground" title={run.phase}>{humanizePhase(run.phase)}</span>
           </div>
           <div>
             Waves completed: <span className="text-foreground">{run.wavesCompleted}</span>

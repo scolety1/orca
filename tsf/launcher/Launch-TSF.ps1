@@ -345,9 +345,31 @@ try {
         }
         if ($script:tsfEverConnected -and -not $script:onGuidePage) {
             Write-Log 'Backend became unreachable while the real UI was showing -- entering recovery.'
+            # BUG-01 (bug-ledger.json): the operator's real position
+            # ($webView.Source, e.g. /projects/<id>?tab=keep-going) was
+            # never captured before yanking the WebView2 away to this
+            # recovery guide -- once the backend answered again,
+            # first-run-setup.html's own checkReady() had nothing to
+            # return to but the bare origin, landing on Home regardless
+            # of where the operator actually was. Captured here (the one
+            # place that still has the real pre-outage URL) and passed to
+            # the guide page as a query param it reads back once healthy.
+            $returnUrl = $null
+            try {
+                if ($webView.Source -and -not $webView.Source.IsFile) {
+                    $returnUrl = $webView.Source.AbsoluteUri
+                }
+            } catch {
+                Write-Log "could not read the current URL to preserve for recovery: $_"
+            }
             $script:onGuidePage = $true
             try {
-                $webView.CoreWebView2.Navigate((([System.Uri]$FirstRunSetupPath).AbsoluteUri))
+                $guideUrl = ([System.Uri]$FirstRunSetupPath).AbsoluteUri
+                if ($returnUrl) {
+                    $encodedReturnUrl = [System.Uri]::EscapeDataString($returnUrl)
+                    $guideUrl = "$guideUrl?return=$encodedReturnUrl"
+                }
+                $webView.CoreWebView2.Navigate($guideUrl)
             } catch {
                 Write-Log "failed to navigate to the recovery guide: $_"
             }

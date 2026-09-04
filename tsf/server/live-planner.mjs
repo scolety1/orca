@@ -19,6 +19,8 @@ import {
   assertAffinity
 } from '../domain/session-affinity.mjs'
 import { emptyProjectMemory, retrieveExperiencesForCapsule } from '../domain/project-memory.mjs'
+import { describeLiveRunStatus } from '../domain/live-work-feed.mjs'
+import { compareStateToGoal } from '../domain/keep-going.mjs'
 import { resolveAgentEntry } from '../providers/resolve-agent-entry.mjs'
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import launchProfiles from '../providers/launch-profiles.v1.json' with { type: 'json' }
@@ -74,7 +76,21 @@ function ensureNeutralCwd() {
 // Builds a TSF_PROJECT_CONTEXT_CAPSULE_V1-shaped object (see
 // tsf/contracts/project-context-capsule.schema.v1.json) from the same real
 // ProjectDetail the rest of the UI already reads — no separate data source.
-export function buildProjectContextCapsule(project, memory = emptyProjectMemory()) {
+//
+// BUG-13 (bug-ledger.json): `liveRunStatus` (domain/live-work-feed.mjs's
+// describeLiveRunStatus, or null) is optional and, until now, was never
+// even passed in -- this capsule fed every live conversational planner
+// call with zero awareness of a real, currently-running/stalled/needing-
+// a-decision Keep Going run, however the question was phrased (only the
+// 3 narrow deterministic STATUS/NEXT_ACTION/FINISHED intents in
+// chat-responder.mjs ever saw it). invokeLivePlanner below is the real
+// wiring; kept optional here so planner-eval-runner.mjs's existing
+// no-run capsule calls are unaffected.
+export function buildProjectContextCapsule(
+  project,
+  memory = emptyProjectMemory(),
+  liveRunStatus = null
+) {
   const onboarding = project.evidence?.onboarding ?? null
   const blockers = []
   if (project.mission.blockedReason) {
@@ -153,6 +169,7 @@ export function buildProjectContextCapsule(project, memory = emptyProjectMemory(
     artifacts_created: (lastResult?.filesChanged ?? []).slice(0, 20),
     last_worker_role: lastResult?.workerIdentity?.role ?? null,
     last_mission_result: lastResult?.status ?? null,
+    live_run_status: liveRunStatus,
     updated_at: new Date().toISOString()
   }
 }
@@ -424,7 +441,17 @@ export async function invokeLivePlanner({
     mappings: providerRoles,
     profiles: { profiles: launchProfiles.profiles }
   })
-  const capsule = buildProjectContextCapsule(project, opState.projectMemory?.[project.id])
+  // BUG-13: the same real run Work/Keep Going/Flight Recorder/Command's
+  // status intents already read (opState.keepGoingRuns) -- computed the
+  // same way http-server.mjs's own statusWorthy check does, so this
+  // capsule can never disagree with what those surfaces show.
+  const liveRun = opState.keepGoingRuns?.[project.id] ?? null
+  const liveGap = liveRun ? compareStateToGoal(liveRun, { verifiedSatisfied: [] }, () => new Date()) : null
+  const capsule = buildProjectContextCapsule(
+    project,
+    opState.projectMemory?.[project.id],
+    describeLiveRunStatus(liveRun, liveGap)
+  )
   const systemPrompt = buildSystemPrompt({
     project,
     capsule,

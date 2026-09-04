@@ -7,7 +7,8 @@ import {
   recordWave,
   markStalled,
   raiseNeedsYou,
-  completeRun
+  completeRun,
+  checkpointRun
 } from '../domain/keep-going.mjs'
 
 const clock = () => new Date('2026-08-25T00:00:00.000Z')
@@ -42,6 +43,18 @@ test('the exact Started->Work bug: an onboarded project (mission.state ONBOARDED
   assert.equal(summary.blocked.length, 0)
   assert.equal(summary.needsYou.length, 0)
   assert.equal(summary.verifying.length, 0)
+})
+
+// Persistent-visibility feature (bug-ledger.json): the real lastCheckpointAt
+// fleet-work-status.mjs now computes must thread all the way through this
+// bucketing into the item the UI (global-run-status.ts) actually reads --
+// verified at this layer too, not just fleet-work-status.mjs's own.
+test('lastCheckpointAt threads through into the bucketed item', () => {
+  const p = project('tsf-orca')
+  let run = newRun('keep-going-tsf-orca-1', 'tsf-orca')
+  run = checkpointRun(run, { phase: 'RUN_STARTED' }, clock)
+  const summary = summarizeWorkFromRuns([p], { 'tsf-orca': run }, clock)
+  assert.equal(summary.active[0].lastCheckpointAt, run.checkpoints.at(-1).at)
   assert.equal(summary.readyForAdoption.length, 0)
 })
 

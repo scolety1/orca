@@ -21,6 +21,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { api } from '@/lib/api'
+import {
+  ACTIVE_FLEET_EXPLANATION,
+  WORK_SET_EXPLANATION,
+  ACTIVE_FLEET_REMOVAL_CASCADE_NOTE,
+  cascadedFromWorkSet
+} from '@/lib/membership-tier-copy'
 
 type ActionKey =
   | 'analyze'
@@ -43,12 +49,35 @@ const ACTION_LABEL: Record<ActionKey, string> = {
 
 export function BulkActionBar({
   selectedIds,
+  workSetBefore,
+  refreshing,
   onClearSelection,
   onChanged,
   onStartMission,
   onStartOvernightFleet
 }: {
   selectedIds: string[]
+  // BUG-03 (bug-ledger.json): the real Work Set membership BEFORE this
+  // action, so a Remove-from-Active-Fleet action can honestly report the
+  // real cascade (domain/portfolio.mjs's setActiveFleet also drops Work
+  // Set membership for the same projects) instead of leaving it silent.
+  workSetBefore: string[]
+  // Independent-verification finding: onChanged (ProjectsPage's reload())
+  // only bumps a tick and returns immediately -- it does NOT await the
+  // actual portfolio refetch, so a second action started right after a
+  // first one could still read the FIRST action's now-stale workSetBefore
+  // prop, silently under-reporting a real cascade. refreshing is the
+  // parent's real portfolio-loading-or-errored flag: disabling actions
+  // while it's true means the next action can only start once a
+  // SUCCESSFUL reload has actually delivered the fresh workSetBefore.
+  // Cross-cutting-review finding: gating on bare loading alone isn't
+  // enough -- a FAILED background reload also clears loading (use-api.ts's
+  // own .finally()) while leaving portfolio/workSetBefore stale, so
+  // ProjectsPage passes loading || !!error here, keeping actions honestly
+  // disabled (with the existing RefreshFailedBanner's Retry as the real
+  // way out) until data is genuinely current, not just until the request
+  // merely finished.
+  refreshing: boolean
   onClearSelection: () => void
   onChanged: () => void
   onStartMission: () => void
@@ -105,9 +134,24 @@ export function BulkActionBar({
         ? await api.setActiveFleetMembership(selectedIds, add)
         : await api.setWorkSetMembership(selectedIds, add)
     const base = `${result.applied.length}/${selectedIds.length} ${add ? 'added' : 'removed'}.`
-    return result.skipped.length
-      ? `${base} ${result.skipped.length} skipped: ${result.skipped.map((s) => `${s.projectId} (${s.reason})`).join('; ')}`
-      : base
+    const parts = [base]
+    // BUG-03 (bug-ledger.json): report the real cascade honestly -- any
+    // project that was actually removed from Active Fleet AND was in the
+    // Work Set before this action lost Work Set membership too, as a real
+    // side effect of setActiveFleet's own invariant (domain/portfolio.mjs),
+    // not a fabricated warning.
+    if (field === 'activeFleet' && !add) {
+      const cascaded = cascadedFromWorkSet(result.applied, workSetBefore)
+      if (cascaded.length > 0) {
+        parts.push(`Also removed from Work Set: ${cascaded.join(', ')}.`)
+      }
+    }
+    if (result.skipped.length) {
+      parts.push(
+        `${result.skipped.length} skipped: ${result.skipped.map((s) => `${s.projectId} (${s.reason})`).join('; ')}`
+      )
+    }
+    return parts.join(' ')
   }
 
   return (
@@ -120,7 +164,7 @@ export function BulkActionBar({
         <Button
           size="sm"
           variant="secondary"
-          disabled={busy !== null}
+          disabled={busy !== null || refreshing}
           onClick={() => run('analyze', analyzeSelected)}
         >
           {busy === 'analyze' ? <Loader2 className="size-3.5 animate-spin" /> : null}
@@ -129,7 +173,7 @@ export function BulkActionBar({
         <Button
           size="sm"
           variant="secondary"
-          disabled={busy !== null}
+          disabled={busy !== null || refreshing}
           onClick={() => run('scanHealth', scanHealth)}
         >
           {busy === 'scanHealth' ? (
@@ -141,7 +185,7 @@ export function BulkActionBar({
         </Button>
         <Button
           size="sm"
-          disabled={busy !== null}
+          disabled={busy !== null || refreshing}
           onClick={() => run('prepareForWork', prepareForWork)}
         >
           {busy === 'prepareForWork' ? (
@@ -160,8 +204,11 @@ export function BulkActionBar({
         >
           {(close) => (
             <>
+              <p className="px-2 pb-1.5 pt-1 text-[10px] text-muted-foreground">
+                {ACTIVE_FLEET_EXPLANATION}
+              </p>
               <DropdownMenuItem
-                disabled={busy !== null}
+                disabled={busy !== null || refreshing}
                 onClick={() => {
                   close()
                   run('addFleet', () => membership('activeFleet', true))
@@ -170,7 +217,7 @@ export function BulkActionBar({
                 Add to Active Fleet
               </DropdownMenuItem>
               <DropdownMenuItem
-                disabled={busy !== null}
+                disabled={busy !== null || refreshing}
                 onClick={() => {
                   close()
                   run('removeFleet', () => membership('activeFleet', false))
@@ -178,6 +225,9 @@ export function BulkActionBar({
               >
                 Remove from Active Fleet
               </DropdownMenuItem>
+              <p className="px-2 pt-1.5 text-[10px] text-muted-foreground">
+                {ACTIVE_FLEET_REMOVAL_CASCADE_NOTE}
+              </p>
             </>
           )}
         </DropdownMenu>
@@ -190,8 +240,11 @@ export function BulkActionBar({
         >
           {(close) => (
             <>
+              <p className="px-2 pb-1.5 pt-1 text-[10px] text-muted-foreground">
+                {WORK_SET_EXPLANATION}
+              </p>
               <DropdownMenuItem
-                disabled={busy !== null}
+                disabled={busy !== null || refreshing}
                 onClick={() => {
                   close()
                   run('addWorkSet', () => membership('workSet', true))
@@ -200,7 +253,7 @@ export function BulkActionBar({
                 Add to Work Set
               </DropdownMenuItem>
               <DropdownMenuItem
-                disabled={busy !== null}
+                disabled={busy !== null || refreshing}
                 onClick={() => {
                   close()
                   run('removeWorkSet', () => membership('workSet', false))

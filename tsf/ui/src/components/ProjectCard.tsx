@@ -64,6 +64,22 @@ export function ProjectCard({
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <LifecycleBadge project={project} />
               {project.sourceClass === 'FIXTURE' && <Badge variant="fixture">Fixture</Badge>}
+              {/* BUG-03 (bug-ledger.json): activeFleet/workSet were already
+                  on this card's own data (types.ts) but never rendered --
+                  an operator selecting/bulk-acting on projects here had no
+                  way to see current membership without opening each
+                  project's own detail page. Only shown when true, to keep
+                  the common non-member case uncluttered. */}
+              {project.activeFleet && (
+                <Badge variant="neutral" title="TSF actively manages/monitors this project">
+                  Fleet
+                </Badge>
+              )}
+              {project.workSet && (
+                <Badge variant="neutral" title="TSF may dispatch new work for this project">
+                  Work Set
+                </Badge>
+              )}
             </div>
           </div>
         </div>

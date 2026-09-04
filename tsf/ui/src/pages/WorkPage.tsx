@@ -18,6 +18,7 @@ import { StatusChip } from '@/components/StatusChip'
 import { Badge } from '@/components/ui/badge'
 import { StartMissionDialog } from '@/components/missions/StartMissionDialog'
 import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightFleetDialog'
+import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
 
 function Section({
   icon: Icon,
@@ -131,7 +132,18 @@ export function WorkPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {work.active.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`}>
+              // BUG-12: a run-driven card deep-links straight to its Keep
+              // Going tab (the exact run), not generic Overview. work.active
+              // mixes run-driven and legacy (no-run) entries (see
+              // work-feed-summary.mjs) -- a legacy entry keeps the plain
+              // Overview link, unchanged.
+              <Link
+                key={p.id}
+                to={projectDeepLinkTo(p.id, {
+                  tab: p.liveWorkFeed ? 'keep-going' : undefined,
+                  runId: p.runId
+                })}
+              >
                 <Card>
                   <CardHeader>
                     <CardTitle>{p.displayName}</CardTitle>
@@ -152,7 +164,7 @@ export function WorkPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {work.verifying.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`}>
+              <Link key={p.id} to={projectDeepLinkTo(p.id, { tab: 'keep-going', runId: p.runId })}>
                 <Card>
                   <CardHeader>
                     <CardTitle>{p.displayName}</CardTitle>
@@ -180,7 +192,10 @@ export function WorkPage() {
               // for the same project. Prefixed to keep both distinct,
               // informative cards instead of one silently overwriting the
               // other under React's key reconciliation.
-              <Link key={`live-${p.id}`} to={`/projects/${p.id}`}>
+              <Link
+                key={`live-${p.id}`}
+                to={projectDeepLinkTo(p.id, { tab: 'keep-going', runId: p.runId })}
+              >
                 <Card className="border-status-blocked/40">
                   <CardHeader className="flex-row items-center justify-between space-y-0">
                     <CardTitle>{p.displayName}</CardTitle>
@@ -221,7 +236,7 @@ export function WorkPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {work.readyForAdoption.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`}>
+              <Link key={p.id} to={projectDeepLinkTo(p.id, { tab: 'adoption', runId: p.runId })}>
                 <Card className="border-primary/40">
                   <CardHeader>
                     <CardTitle>{p.displayName}</CardTitle>

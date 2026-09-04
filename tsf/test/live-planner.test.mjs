@@ -17,6 +17,7 @@ import {
   addMemoryRecord,
   supersedeMemoryRecord
 } from '../domain/project-memory.mjs'
+import { createOvernightRun } from '../domain/keep-going.mjs'
 
 const HERE = import.meta.dirname
 const STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
@@ -97,6 +98,22 @@ test('buildProjectContextCapsule stays bound to the given project and does not f
   assert.match(capsule.active_blockers.join(' '), /opaque Talent IDs/)
   assert.deepEqual(capsule.hq_escalation_history, [])
   assert.deepEqual(capsule.do_not_repeat_lessons, [])
+})
+
+// BUG-13 (bug-ledger.json): no run supplied -> honestly null, never
+// fabricated -- and unchanged behavior for every existing caller
+// (planner-eval-runner.mjs) that never passes this 3rd argument at all.
+test('buildProjectContextCapsule: no live run status supplied -> live_run_status is null', () => {
+  assert.equal(buildProjectContextCapsule(project()).live_run_status, null)
+})
+
+test('buildProjectContextCapsule: a live run status string reaches the capsule verbatim', () => {
+  const capsule = buildProjectContextCapsule(
+    project(),
+    emptyProjectMemory(),
+    'Keep Going run run-1 is STALLED: run state is STALLED.'
+  )
+  assert.equal(capsule.live_run_status, 'Keep Going run run-1 is STALLED: run state is STALLED.')
 })
 
 test('buildProjectContextCapsule fills do_not_repeat_lessons from real project memory, bounded, when given one', () => {
@@ -189,6 +206,53 @@ test('project context is actually transmitted to the provider process, bound to 
     const systemPromptArg = seen.args[seen.args.indexOf('--system-prompt') + 1]
     assert.match(systemPromptArg, /unique-project-marker-9182/)
     assert.match(systemPromptArg, /opaque Talent IDs/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// BUG-13 real reproduction + fix proof: before this fix, a real, currently
+// STALLED Keep Going run for this exact project never reached the live
+// conversational planner's transmitted context at all (buildProjectContextCapsule
+// had no run/gap-derived field, and invokeLivePlanner never computed one) --
+// asking anything other than the 3 narrow deterministic STATUS/NEXT_ACTION/
+// FINISHED phrasings got an answer grounded only in the stale legacy
+// mission/candidate model, blind to the real run. This proves the fix end to
+// end through the real invokeLivePlanner wiring, not just the pure capsule
+// builder in isolation.
+test('BUG-13: a real Keep Going run for this project reaches the live planner system prompt, not just the 3 narrow deterministic intents', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tsf-planner-liverun-'))
+  const debugFile = path.join(dir, 'argv.json')
+  const projectId = 'unique-project-marker-liverun-1'
+  const clock = () => new Date('2026-09-03T00:00:00.000Z')
+  let run = createOvernightRun(
+    { id: 'run-liverun-1', projectId, originalGoal: 'Fix it.', acceptanceCriteria: ['X'] },
+    clock
+  )
+  try {
+    await withStubEnv(
+      {
+        TSF_PLANNER_CLAUDE_COMMAND: STUB,
+        STUB_MODE: 'success',
+        STUB_SESSION_ID: 's1',
+        STUB_DEBUG_FILE: debugFile
+      },
+      async () => {
+        await invokeLivePlanner({
+          project: project({ id: projectId }),
+          // Deliberately NOT "what is it doing?"/"status"/etc -- an
+          // ordinary question that classifies outside the 3 narrow
+          // deterministic intents chat-responder.mjs already grounds, so
+          // this exercises the live-planner capsule path specifically.
+          message: 'why does this project matter?',
+          opState: opState({ keepGoingRuns: { [projectId]: run } }),
+          recentHistory: []
+        })
+      }
+    )
+    const seen = JSON.parse(readFileSync(debugFile, 'utf8'))
+    const systemPromptArg = seen.args[seen.args.indexOf('--system-prompt') + 1]
+    assert.match(systemPromptArg, /Keep Going run run-liverun-1 is PLANNING/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
@@ -10,7 +10,9 @@ import { LifecycleFilterBar } from '@/components/projects/LifecycleFilterBar'
 import { StartMissionDialog } from '@/components/missions/StartMissionDialog'
 import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightFleetDialog'
 import { classifyProjectLifecycle, type LifecycleBucket } from '@/lib/project-lifecycle'
-import { matchesSearch, sortProjects, type ProjectSort } from '@/lib/project-filtering'
+import { matchesSearch, sortProjects } from '@/lib/project-filtering'
+import { readProjectsListFilters, writeProjectsListFilters } from '@/lib/projects-list-filters'
+import { readLastViewedProject } from '@/lib/last-viewed-project'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -23,11 +25,47 @@ export function ProjectsPage() {
   const navigate = useNavigate()
   const { data: portfolio, loading, error, reload } = useApi(() => api.portfolio(), [])
   const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [filter, setFilter] = useState<LifecycleBucket | 'ALL'>('ALL')
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<ProjectSort>('NEEDS_ATTENTION_FIRST')
+  // BUG-02 (bug-ledger.json): filter/search/sort now live in the URL
+  // (projects-list-filters.ts), not local useState -- clicking into a
+  // project and back (or browser back/forward) restores exactly what was
+  // showing, instead of resetting to defaults on every remount.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { filter, search, sort } = readProjectsListFilters(searchParams)
+  function updateFilters(next: Partial<{ filter: LifecycleBucket | 'ALL'; search: string; sort: typeof sort }>) {
+    setSearchParams(writeProjectsListFilters({ filter, search, sort, ...next }), { replace: true })
+  }
   const [missionDialogOpen, setMissionDialogOpen] = useState(false)
   const [overnightDialogOpen, setOvernightDialogOpen] = useState(false)
+
+  // Real-project validation finding (BUG-02, final review wave): the URL-
+  // filter restoration above only covers a click-in-and-back round trip
+  // within Projects' own history entry -- it does NOT address the bug's
+  // own literal original complaint (leave for an entirely different
+  // section, e.g. Health Repair, then return to Projects and still have
+  // to re-find/re-scroll to the project you were just on), reproduced
+  // live against a real project. Scrolling the last-viewed project into
+  // view closes that gap without changing the default sort or silently
+  // redirecting anywhere -- only fires on a genuinely fresh arrival (no
+  // explicit filter/search/sort in the URL at all); a filtered/sorted
+  // browser-back restoration is left exactly as BUG-02's own fix already
+  // handles it, and never re-triggered by this.
+  const lastViewedId = useMemo(() => readLastViewedProject(), [])
+  const lastViewedCardRef = useRef<HTMLDivElement | null>(null)
+  const hasAutoScrolledRef = useRef(false)
+  useEffect(() => {
+    if (hasAutoScrolledRef.current) {
+      return
+    }
+    if (searchParams.toString() !== '') {
+      hasAutoScrolledRef.current = true
+      return
+    }
+    if (lastViewedCardRef.current) {
+      lastViewedCardRef.current.scrollIntoView({ block: 'center' })
+      hasAutoScrolledRef.current = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portfolio])
 
   const selectedIds = useMemo(() => Object.keys(selected).filter((id) => selected[id]), [selected])
 
@@ -108,6 +146,21 @@ export function ProjectsPage() {
           <div className="py-3">
             <BulkActionBar
               selectedIds={selectedIds}
+              workSetBefore={portfolio.workSet}
+              // Final-review-wave finding (cross-cutting adversarial
+              // review): gating on bare `loading` alone re-enables actions
+              // the instant a FAILED background reload's request settles
+              // (use-api.ts's loading always clears in .finally(), even on
+              // error) -- but on a failed reload, `portfolio`/workSetBefore
+              // is still the STALE pre-mutation snapshot, not fresh. A
+              // second action right after would compute cascadedFromWorkSet
+              // against that stale data, exactly the fabricated-cascade
+              // class BUG-03 exists to prevent. `error` stays truthy until
+              // an explicit, successful retry (the existing
+              // RefreshFailedBanner's own Retry button) actually lands, so
+              // gating on it too keeps actions honestly disabled -- with a
+              // real, visible way out -- until data is genuinely current.
+              refreshing={loading || !!error}
               onClearSelection={() => setSelected({})}
               onChanged={reload}
               onStartMission={() => setMissionDialogOpen(true)}
@@ -117,12 +170,12 @@ export function ProjectsPage() {
         ) : (
           <LifecycleFilterBar
             active={filter}
-            onChange={setFilter}
+            onChange={(next) => updateFilters({ filter: next })}
             counts={counts}
             search={search}
-            onSearchChange={setSearch}
+            onSearchChange={(next) => updateFilters({ search: next })}
             sort={sort}
-            onSortChange={setSort}
+            onSortChange={(next) => updateFilters({ sort: next })}
           />
         )}
       </div>
@@ -136,13 +189,17 @@ export function ProjectsPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {visible.map((project) => (
-              <ProjectCard
+              <div
                 key={project.id}
-                project={project}
-                selectable
-                selected={selected[project.id] ?? false}
-                onToggleSelect={toggleSelect}
-              />
+                ref={project.id === lastViewedId ? lastViewedCardRef : undefined}
+              >
+                <ProjectCard
+                  project={project}
+                  selectable
+                  selected={selected[project.id] ?? false}
+                  onToggleSelect={toggleSelect}
+                />
+              </div>
             ))}
           </div>
         )}

@@ -176,6 +176,9 @@ export type Portfolio = {
 export type WorkItem = ProjectDetail & {
   liveWorkFeed?: { state: string; reason: string }
   runId?: string | null
+  // Persistent global execution visibility (bug-ledger.json): the run's
+  // real last checkpoint timestamp, or null if none recorded yet / no run.
+  lastCheckpointAt?: string | null
 }
 
 export type WorkSummary = {

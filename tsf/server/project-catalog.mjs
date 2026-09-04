@@ -67,10 +67,17 @@ export function projectsById() {
   const onboarded = Object.values(opState.onboardedProjects ?? {})
     .filter((record) => record.acceptedAt) // only committed onboardings appear as real projects; a pure analysis isn't persisted here
     .map((record) =>
-      projectOnboardedProject(record, {
-        activeFleet: opState.portfolio.activeFleet.includes(record.lastAnalysis.projectId),
-        workSet: opState.portfolio.workSet.includes(record.lastAnalysis.projectId)
-      })
+      projectOnboardedProject(
+        record,
+        {
+          activeFleet: opState.portfolio.activeFleet.includes(record.lastAnalysis.projectId),
+          workSet: opState.portfolio.workSet.includes(record.lastAnalysis.projectId)
+        },
+        // BUG-16: the same real Keep Going run Work/Flight Recorder/Command
+        // already read, so Evidence's resultCapsules can no longer drift
+        // from what actually happened.
+        opState.keepGoingRuns?.[record.lastAnalysis.projectId] ?? null
+      )
     )
   const all = [...real, fixture, ...onboarded]
   const map = new Map(all.map((p) => [p.id, p]))

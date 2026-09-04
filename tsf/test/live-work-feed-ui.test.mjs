@@ -41,6 +41,7 @@ function run(overrides = {}) {
     // no type-checking either.
     orchestrationRunId: null,
     dispatchTickActive: false,
+    inFlightWaveStalled: false,
     createdAt: '2026-08-20T05:00:00.000Z',
     updatedAt: '2026-08-20T05:00:00.000Z',
     ...overrides
@@ -167,5 +168,27 @@ test('NEEDS_YOU wins over STALLED/PAUSED/BLOCKED ordering', () => {
   assert.equal(
     projectLiveWorkFeedState(run({ state: 'NEEDS_YOU', phase: 'WAVE_STALLED' })).state,
     'NEEDS_YOU'
+  )
+})
+
+// BUG-14 real drift fix proof: matches domain/live-work-feed.mjs's own
+// "state STALLED regardless of phase" case above, but for the narrower
+// ACTIVE-run-with-an-in-flight-wave case this client mirror previously had
+// no equivalent for at all.
+test('ACTIVE, a wave is in flight and last checkpointed WAVE_STALLED -> STALLED, not a guessed WORKING/VERIFYING', () => {
+  assert.equal(
+    projectLiveWorkFeedState(
+      run({ state: 'ACTIVE', phase: 'WAVE_DISPATCHED', inFlightWaveStalled: true })
+    ).state,
+    'STALLED'
+  )
+})
+
+test('ACTIVE, dispatched phase, inFlightWaveStalled false -> still WORKING (unaffected)', () => {
+  assert.equal(
+    projectLiveWorkFeedState(
+      run({ state: 'ACTIVE', phase: 'WAVE_DISPATCHED', inFlightWaveStalled: false })
+    ).state,
+    'WORKING'
   )
 })

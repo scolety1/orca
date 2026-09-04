@@ -87,6 +87,12 @@
                        "last_mission_result":  {
                                                    "type":  "string"
                                                },
+                       "live_run_status":  {
+                                               "type":  [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                           },
                        "updated_at":  {
                                           "type":  "string"
                                       }

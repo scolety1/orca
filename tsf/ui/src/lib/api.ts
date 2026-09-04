@@ -11,12 +11,12 @@ import type { EvalComparison, EvalPackSummary, EvalRunResult } from './eval-type
 import type { FlightRecorderView } from './flight-recorder-types'
 import type { FleetScheduleError, FleetScheduleResponse } from './fleet-types'
 import type {
-  BaselineCheckResult,
   FleetHealthScanResult,
   HealthRepairApiError,
-  PrepareMissionResult,
-  RepairActionResult,
-  RepairSelectedResult
+  HealthRepairOperationListResponse,
+  HealthRepairOperationResponse,
+  HealthRepairOperationStartResponse,
+  PrepareMissionResult
 } from './health-repair-types'
 import type { CapacitySnapshot } from './capacity-types'
 import type {
@@ -26,6 +26,11 @@ import type {
   PrepareForWorkStartResponse
 } from './prepare-for-work-types'
 import { prepareForWork as prepareForWorkDurable } from './prepare-for-work-polling'
+import {
+  healthRepairBaselineDurable,
+  healthRepairRepairDurable,
+  healthRepairSelectedDurable
+} from './health-repair-polling'
 import {
   normalizeMembershipChange,
   normalizePortfolio,
@@ -231,14 +236,24 @@ export const api = {
       body: JSON.stringify(body)
     }),
   healthRepairScan: () => request<FleetHealthScanResult>('/health-repair/scan'),
+  // BUG-05 (bug-ledger.json): baseline/repair/repair-selected are now
+  // durable operations (health-repair-polling.ts polls to completion) --
+  // the public function names/return shapes below are unchanged, so
+  // ProjectHealthRepairCard.tsx/HealthRepairCenterPage.tsx need no changes
+  // beyond this file. prepare-mission stays a direct request (fast,
+  // synchronous server-side, no I/O -- see health-repair-http-routes.mjs's
+  // own comment on why it's deliberately not wrapped).
   healthRepairBaseline: (projectId: string) =>
-    request<BaselineCheckResult>(`/health-repair/${encodeURIComponent(projectId)}/baseline`, {
-      method: 'POST'
-    }),
+    healthRepairBaselineDurable(
+      projectId,
+      () => api.startHealthRepairBaseline(projectId),
+      api.getHealthRepairOperation
+    ),
   healthRepairRepair: (projectId: string, cause: string) =>
-    requestTolerant<RepairActionResult, HealthRepairApiError>(
-      `/health-repair/${encodeURIComponent(projectId)}/repair`,
-      { method: 'POST', body: JSON.stringify({ cause }) }
+    healthRepairRepairDurable(
+      projectId,
+      () => api.startHealthRepairRepair(projectId, cause),
+      api.getHealthRepairOperation
     ),
   healthRepairPrepareMission: (projectId: string, cause: string) =>
     requestTolerant<PrepareMissionResult, HealthRepairApiError>(
@@ -246,10 +261,29 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ cause }) }
     ),
   healthRepairSelected: (projectIds: string[]) =>
-    request<RepairSelectedResult>('/health-repair/repair-selected', {
+    healthRepairSelectedDurable(
+      () => api.startHealthRepairSelected(projectIds),
+      api.getHealthRepairOperation
+    ),
+  startHealthRepairBaseline: (projectId: string) =>
+    request<HealthRepairOperationStartResponse>(
+      `/health-repair/${encodeURIComponent(projectId)}/baseline`,
+      { method: 'POST' }
+    ),
+  startHealthRepairRepair: (projectId: string, cause: string) =>
+    request<HealthRepairOperationStartResponse>(
+      `/health-repair/${encodeURIComponent(projectId)}/repair`,
+      { method: 'POST', body: JSON.stringify({ cause }) }
+    ),
+  startHealthRepairSelected: (projectIds: string[]) =>
+    request<HealthRepairOperationStartResponse>('/health-repair/repair-selected', {
       method: 'POST',
       body: JSON.stringify({ projectIds })
     }),
+  getHealthRepairOperation: (operationId: string) =>
+    request<HealthRepairOperationResponse>(`/health-repair-operations/${operationId}`),
+  listHealthRepairOperations: () =>
+    request<HealthRepairOperationListResponse>('/health-repair-operations'),
   capacity: () => request<CapacitySnapshot>('/capacity'),
   setActiveFleetMembership: (projectIds: string[], add: boolean) =>
     request<MembershipChangeResponse>('/portfolio/active-fleet', {

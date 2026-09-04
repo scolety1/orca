@@ -40,9 +40,13 @@ import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { projectsById, summarizeWork, summarizeCard } from './project-catalog.mjs'
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { resolveProjectsFromText } from './project-name-resolver.mjs'
+import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
-import { handleHealthRepairRoute } from './health-repair-http-routes.mjs'
+import {
+  handleHealthRepairRoute,
+  recoverInterruptedHealthRepairOperations
+} from './health-repair-http-routes.mjs'
 import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
 import { handleEstimateRoute } from './estimate-http-routes.mjs'
 import { handleEvalRoute } from './eval-http-routes.mjs'
@@ -153,10 +157,20 @@ async function dispatchFromChat({ project, message, placement, selfRepairFromBra
   }
 
   const items = dispatch.tickResult.dispatchRecords ?? []
+  // BUG-06 (bug-ledger.json): the SAME chat phrasing ("go ahead" etc.)
+  // silently either creates a brand new Keep Going run/mission or adds a
+  // work item to whichever run is already ACTIVE for this project,
+  // depending on hidden server-side state the operator cannot see --
+  // freshlyCreated (now threaded through planAndDispatchFromChat, was
+  // previously computed and discarded) is what actually distinguishes
+  // them; said explicitly here rather than identical text either way.
+  const missionPhrase = dispatch.freshlyCreated
+    ? 'Started a new mission'
+    : 'Added to the mission already running'
   const dispatchedText =
     items.length > 0
-      ? `Dispatched **${dispatch.candidateWorkItem.id}** on **${project.displayName}** (task ${items[0].taskId}) -- real Orca worker, no terminal opened by hand.`
-      : `Started work on **${project.displayName}**: ${dispatch.tickResult.action}.`
+      ? `${missionPhrase} for **${project.displayName}**: dispatched **${dispatch.candidateWorkItem.id}** (task ${items[0].taskId}) -- real Orca worker, no terminal opened by hand.`
+      : `${missionPhrase} for **${project.displayName}**: ${dispatch.tickResult.action}.`
   return {
     intent,
     decisionClass,
@@ -449,7 +463,14 @@ export function createRequestHandler(options = {}) {
         // (below) rather than silently entering Command's fleet-wide
         // resolution path.
         if (!project && body.projectId == null) {
-          const resolution = resolveProjectsFromText(message, projects)
+          // Adversarial-review finding: loaded once and passed to both this
+          // call and respondCommand's own internal resolution below --
+          // previously each independently re-read+re-parsed
+          // TSF_PROJECT_ALIASES_JSON for the same request.
+          const commandAliases = loadProjectAliases()
+          const resolution = resolveProjectsFromText(message, projects, {
+            aliases: commandAliases
+          })
           if (resolution.matches.length === 1 && resolution.matches[0].matchedOn !== 'fuzzy') {
             project = resolution.matches[0].project
             matchedOn = resolution.matches[0].matchedOn
@@ -458,7 +479,8 @@ export function createRequestHandler(options = {}) {
               message,
               projects,
               opState,
-              clock: () => new Date()
+              clock: () => new Date(),
+              aliases: commandAliases
             })
             const freshState = loadState()
             const threads = { ...freshState.chatThreads }
@@ -775,6 +797,12 @@ export function startStandaloneServer(port = 4610, options = {}) {
   // block on however long the resumed pipeline(s) take.
   recoverInterruptedPrepareForWorkOperations().catch((error) => {
     console.error('prepare-for-work recovery scan failed:', error)
+  })
+  // BUG-05 (bug-ledger.json): same reacquire-on-startup posture as Prepare
+  // for Work above, now that Health Repair's baseline/repair/repair-
+  // selected actions are durable operations too.
+  recoverInterruptedHealthRepairOperations().catch((error) => {
+    console.error('health-repair recovery scan failed:', error)
   })
   // Safe Update Manager (spec Phase 5): records this real process's own
   // PID/commit/startedAt so a later checker can tell a genuinely-alive

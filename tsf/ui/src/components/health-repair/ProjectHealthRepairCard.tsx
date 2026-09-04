@@ -80,16 +80,25 @@ export function ProjectHealthRepairCard({
     setBusyCause(cause.cause)
     setError(null)
     try {
+      // BUG-05: healthRepairRepair is now a durable operation
+      // (health-repair-polling.ts) -- a validation rejection (TIM_REQUIRED,
+      // not AUTO_REPAIR_SAFE) throws instead of resolving {ok:false,
+      // error}, caught below. result.ok===false here means either the real
+      // repair action ran and failed (repairResult present) OR the
+      // background runner itself threw a genuine exception (independent-
+      // verification finding, real and reproduced: no repairResult at all
+      // in that case, just {ok:false, error}) -- checked in that order so
+      // neither shape ever reaches an unguarded .repairResult access.
       const result = await api.healthRepairRepair(project.projectId, cause.cause)
-      if (!result.ok) {
-        setError('error' in result ? result.error : 'Repair failed.')
+      if (!result.ok || !result.causesAfter) {
+        setError(result.error ?? result.repairResult?.reason ?? result.repairResult?.detail ?? 'Repair failed.')
         return
       }
       onChanged({
         ...project,
         causes: result.causesAfter,
         repairClass: overallRepairClass(result.causesAfter),
-        readyForWork: result.readyForWork
+        readyForWork: result.readyForWork ?? project.readyForWork
       })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Repair failed.')
@@ -127,7 +136,18 @@ export function ProjectHealthRepairCard({
         readyForWork: result.readyForWork
       })
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Baseline check failed.')
+      // Independent-verification finding (BUG-05, second pass): unlike
+      // repair(), healthRepairBaseline (healthRepairBaselineDurable,
+      // health-repair-polling.ts) deliberately THROWS a plain Error --
+      // never ApiError -- for every real settled-failure/version-mismatch/
+      // timeout case (result.error verbatim, or a specific poll-failure
+      // message), so gating only on `instanceof ApiError` discarded every
+      // one of those real, actionable messages behind a generic "Baseline
+      // check failed." -- the exact same masking class already fixed for
+      // repair() below, just missed here on the first pass. Any real
+      // Error's own message is honest and specific; only a genuinely
+      // non-Error throw falls back to the generic string.
+      setError(err instanceof Error ? err.message : 'Baseline check failed.')
     } finally {
       setBaselineBusy(false)
     }

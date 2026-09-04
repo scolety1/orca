@@ -11,12 +11,14 @@ import {
 } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
+import { buildHomeNeedsYouItems, homeNeedsYouItemKey } from '@/lib/home-needs-you-items'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatusChip } from '@/components/StatusChip'
 import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { Button } from '@/components/ui/button'
 import { CapacityIndicator } from '@/components/CapacityIndicator'
+import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
 
 function SectionTitle({
   icon: Icon,
@@ -79,7 +81,16 @@ export function HomePage() {
     return null
   }
 
-  const needsYou = [...work.blocked, ...work.readyForAdoption]
+  // BUG-14 (bug-ledger.json): this previously omitted work.needsYou and
+  // work.stalled -- a project whose Keep Going run was genuinely STALLED
+  // or NEEDS_YOU never appeared here at all (Work's own "Needs you /
+  // blocked" section, WorkPage.tsx, always included them). Same run-driven
+  // buckets Work uses, so Home and Work can never disagree about what
+  // needs the operator. buildHomeNeedsYouItems also tags each entry with
+  // which bucket it came from -- see its own header for why a bare
+  // `key={p.id}` would collide (a project can legitimately appear in both
+  // work.blocked and work.needsYou/stalled at once).
+  const needsYou = buildHomeNeedsYouItems(work)
   const degradedProjects = portfolio.knownProjects.filter(
     (p) => p.healthStatus === 'DEGRADED' || p.healthStatus === 'BLOCKED'
   )
@@ -169,14 +180,33 @@ export function HomePage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {needsYou.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`}>
+              // BUG-12: a run-driven entry deep-links to its exact surface
+              // (Adoption for a ready candidate, Keep Going otherwise); a
+              // legacy blocked project (no liveWorkFeed, no run) has no
+              // exact run to link to and keeps the plain Overview link.
+              <Link
+                key={homeNeedsYouItemKey(p)}
+                to={projectDeepLinkTo(p.id, {
+                  tab: p.liveWorkFeed
+                    ? p.liveWorkFeed.state === 'READY_FOR_ADOPTION'
+                      ? 'adoption'
+                      : 'keep-going'
+                    : undefined,
+                  runId: p.runId
+                })}
+              >
                 <Card className="border-status-degraded/40 bg-status-degraded/5 transition-colors hover:border-status-degraded/70">
                   <CardHeader className="flex-row items-center justify-between space-y-0">
                     <CardTitle>{p.displayName}</CardTitle>
                     <StatusChip status={p.health.status} />
                   </CardHeader>
                   <CardContent className="text-xs text-muted-foreground">
-                    {p.mission.blockedReason ??
+                    {/* BUG-14: a run-driven needsYou/stalled entry's real
+                        reason (liveWorkFeed.reason, e.g. "run state is
+                        STALLED") previously fell through to the generic
+                        mission.state text WorkPage.tsx already avoids. */}
+                    {p.liveWorkFeed?.reason ??
+                      p.mission.blockedReason ??
                       (p.candidate?.state === 'READY_FOR_ADOPTION'
                         ? 'Candidate is ready for your adoption decision.'
                         : p.mission.state)}
@@ -199,12 +229,22 @@ export function HomePage() {
           ) : (
             <div className="flex flex-col gap-2">
               {work.active.map((p) => (
+                // work.active mixes run-driven and legacy (no-run) entries
+                // (see work-feed-summary.mjs) -- only a real run has an
+                // exact Keep Going tab to deep-link to; a legacy entry
+                // keeps the plain Overview link, same as before.
                 <Link
                   key={p.id}
-                  to={`/projects/${p.id}`}
+                  to={projectDeepLinkTo(p.id, {
+                    tab: p.liveWorkFeed ? 'keep-going' : undefined,
+                    runId: p.runId
+                  })}
                   className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
                 >
-                  {p.displayName} — {p.mission.state}
+                  {/* BUG-14: previously always showed the stale legacy
+                      mission.state even for a run-driven item, unlike
+                      WorkPage.tsx's own Active section. */}
+                  {p.displayName} — {p.liveWorkFeed?.reason ?? p.mission.state}
                 </Link>
               ))}
             </div>

@@ -194,6 +194,27 @@ export function projectKeepGoingRun(run, clock) {
       decision: gap.decision
     },
     workers: [],
+    // BUG-15 (bug-ledger.json): the real, already-persisted detail of a
+    // genuinely in-flight (including now-stalled) wave -- ground-truth
+    // investigated before building this: taskId/dispatchId/workItemId/
+    // scope/dispatchedAt are the ONLY facts the real dispatch/settle path
+    // ever records (keep-going-dispatch-loop.mjs); no agent/provider/model
+    // identity is ever persisted onto a dispatch record anywhere in this
+    // codebase, so none is invented here -- see workerIdentityAvailable.
+    // null once inFlightWave clears (settled, abandoned, or never
+    // dispatched) -- this is deliberately NOT a historical log, only what
+    // is genuinely, currently in flight.
+    inFlightWaveDetail: run.inFlightWave
+      ? {
+          dispatchedAt: run.inFlightWave.dispatchedAt,
+          items: run.inFlightWave.dispatchRecords.map(({ workItemId, scope, taskId }) => ({
+            workItemId,
+            scope,
+            taskId
+          })),
+          workerIdentityAvailable: false
+        }
+      : null,
     verifierResults: [],
     openNeedsYou: openNeedsYou.map(({ id, question, options, raisedAt }) => ({
       id,
@@ -219,6 +240,15 @@ export function projectKeepGoingRun(run, clock) {
     // without leaking the lock's own internal shape.
     dispatchTickActive:
       !!run.tickLock && run.tickLock.kind === 'DISPATCH' && isTickLockActive(run, clock),
+    // BUG-14 (bug-ledger.json): same "expose exactly the boolean the
+    // client needs, never the raw domain internal" pattern as
+    // dispatchTickActive above. Without this, the client's Live Work Feed
+    // mapping (tsf/ui/src/lib/live-work-feed.ts) had no way to detect
+    // domain/live-work-feed.mjs's own inFlightWave-still-set-but-last-
+    // checkpointed-WAVE_STALLED case -- it fell through to a guessed
+    // WORKING/VERIFYING/REVISION instead of the real STALLED, a genuine
+    // drift between the two projections of the same run.
+    inFlightWaveStalled: !!(run.inFlightWave && lastCheckpoint?.phase === 'WAVE_STALLED'),
     createdAt: run.createdAt,
     updatedAt: run.updatedAt
   }

@@ -62,11 +62,20 @@ export async function respondCommand({
   projects,
   opState,
   clock = () => new Date(),
-  deps = {}
+  deps = {},
+  // Adversarial-review finding: without this, a Command-scope /api/chat
+  // request that isn't a single confident match re-reads+re-parses
+  // TSF_PROJECT_ALIASES_JSON a second time here, after http-server.mjs's
+  // own resolveProjectsFromText call already did it once for the same
+  // request -- purely redundant per-request cost with a latent risk the
+  // two independently-loaded tables could ever disagree. Optional so every
+  // existing caller (tests included) is unaffected; project-name-resolver.mjs
+  // still loads its own real defaults when omitted.
+  aliases
 }) {
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
-  const resolution = resolveProjectsFromText(message, projects)
+  const resolution = resolveProjectsFromText(message, projects, { aliases })
   const resolvedProjectIds = resolution.matches.map((m) => m.project.id)
   const exactMatches = resolution.matches.filter((m) => m.matchedOn !== 'fuzzy')
   // A function, not a value computed once: adversarial-review finding --
@@ -147,9 +156,13 @@ export async function respondCommand({
     clock,
     deps
   })
+  // BUG-06 (bug-ledger.json): r.detail already states the real outcome
+  // (e.g. "new mission started, task X dispatched" vs. "added to running
+  // mission: WAVE_DISPATCHED") -- a "dispatched:" prefix here read as a
+  // redundant double statement ("dispatched: new mission started...").
   const lines = dispatch.results.map((r) =>
     r.ok
-      ? `- **${r.project.displayName}** — dispatched: ${r.detail}.`
+      ? `- **${r.project.displayName}** — ${r.detail}.`
       : `- **${r.project.displayName}** — skipped: ${r.reason}${r.detail ? ` (${r.detail})` : ''}.`
   )
   return {

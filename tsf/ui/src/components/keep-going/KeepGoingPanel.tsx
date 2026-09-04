@@ -5,22 +5,13 @@ import { LoadingState, ErrorState, RefreshFailedBanner } from '@/components/Stat
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import type { KeepGoingActiveRunView, KeepGoingRunState } from '@/lib/keep-going-types'
+import type { KeepGoingActiveRunView } from '@/lib/keep-going-types'
+import { shouldShowGapDecisionBadge } from '@/lib/keep-going-gap-display'
+import { humanizePhase, humanizeGapDecision } from '@/lib/orchestration-terminology'
+import { KEEP_GOING_RUN_STATE_BADGE } from '@/lib/keep-going-run-state-badge'
 import { KeepGoingStartForm } from './KeepGoingStartForm'
 import { KeepGoingTickForm } from './KeepGoingTickForm'
 import { LiveWorkFeed } from './LiveWorkFeed'
-
-const STATE_BADGE: Record<
-  KeepGoingRunState,
-  'primary' | 'neutral' | 'degraded' | 'healthy' | 'blocked'
-> = {
-  ACTIVE: 'primary',
-  NEEDS_YOU: 'degraded',
-  PAUSED: 'neutral',
-  STALLED: 'degraded',
-  COMPLETE: 'healthy',
-  BLOCKED: 'blocked'
-}
 
 function LiveRun({
   projectId,
@@ -35,6 +26,15 @@ function LiveRun({
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // BUG-15: captured from the real, still-in-flight wave right before
+  // abandoning it (inFlightWaveDetail clears once settled) so the "Run
+  // now" form below can prefill the same real work item once the run
+  // resumes -- see KeepGoingTickForm's own comment for why this is the
+  // safest real recovery this codebase supports (no single-item Retry
+  // primitive exists).
+  const [prefillRetry, setPrefillRetry] = useState<{ workItemId: string; scope: string } | null>(
+    null
+  )
 
   async function pause() {
     setBusy(true)
@@ -70,11 +70,15 @@ function LiveRun({
     setBusy(true)
     setError(null)
     try {
+      const stuckItem = run.inFlightWaveDetail?.items[0]
       await api.abandonStalledKeepGoingWave(
         projectId,
         'OPERATOR_ABANDONED_STALLED_WAVE',
         run.revision
       )
+      if (stuckItem) {
+        setPrefillRetry({ workItemId: stuckItem.workItemId, scope: stuckItem.scope.join('\n') })
+      }
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not abandon the stalled wave.')
@@ -94,7 +98,7 @@ function LiveRun({
             Keep Going / Overnight
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={STATE_BADGE[run.state]}>{run.state}</Badge>
+            <Badge variant={KEEP_GOING_RUN_STATE_BADGE[run.state]}>{run.state}</Badge>
             {run.readyForAdoption && <Badge variant="healthy">Ready for adoption</Badge>}
           </div>
         </div>
@@ -124,7 +128,7 @@ function LiveRun({
           </div>
           <div>
             <div className="text-muted-foreground">Phase</div>
-            <div>{run.phase}</div>
+            <div title={run.phase}>{humanizePhase(run.phase)}</div>
           </div>
           <div>
             <div className="text-muted-foreground">Retries</div>
@@ -147,17 +151,24 @@ function LiveRun({
         <div className="text-[12px]">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-muted-foreground">Gap analysis</span>
-            <Badge
-              variant={
-                run.gap.decision === 'STOP_COMPLETE'
-                  ? 'healthy'
-                  : run.gap.decision === 'STOP_BLOCKED'
-                    ? 'blocked'
-                    : 'neutral'
-              }
-            >
-              {run.gap.decision}
-            </Badge>
+            {/* BUG-11: gap.decision says "CONTINUE" regardless of run.state
+                -- shown only while ACTIVE, where it's real in-progress
+                judgment, never as a non-interactive pill next to a
+                STALLED/PAUSED/NEEDS_YOU/BLOCKED run's actual recovery
+                controls below. */}
+            {shouldShowGapDecisionBadge(run.state) && (
+              <Badge
+                variant={
+                  run.gap.decision === 'STOP_COMPLETE'
+                    ? 'healthy'
+                    : run.gap.decision === 'STOP_BLOCKED'
+                      ? 'blocked'
+                      : 'neutral'
+                }
+              >
+                {humanizeGapDecision(run.gap.decision)}
+              </Badge>
+            )}
           </div>
           {run.gap.remainingGaps.length === 0 ? (
             <div className="text-status-healthy">All criteria independently verified.</div>
@@ -219,7 +230,7 @@ function LiveRun({
 
         {run.lastCheckpoint && (
           <div className="text-[11px] text-muted-foreground">
-            Last checkpoint: {run.lastCheckpoint.phase} ·{' '}
+            Last checkpoint: {humanizePhase(run.lastCheckpoint.phase)} ·{' '}
             {new Date(run.lastCheckpoint.at).toLocaleString()}
             {/* A real, live-confirmed gap: a DISPATCH_FAILED checkpoint's
                 own reason previously only ever appeared in the transient
@@ -229,9 +240,41 @@ function LiveRun({
           </div>
         )}
 
+        {/* BUG-15 (bug-ledger.json): real stalled-wave detail -- ground-
+            truth investigated first (see keep-going-controller.mjs's own
+            comment on inFlightWaveDetail). No fabricated worker/provider
+            identity: this codebase genuinely never persists one. */}
+        {run.state === 'STALLED' && run.inFlightWaveDetail && (
+          <div className="rounded-md border border-status-degraded/40 bg-status-degraded/10 p-3 text-[12px]">
+            <div className="mb-1 font-medium text-status-degraded">Stalled wave</div>
+            <div className="text-muted-foreground">
+              Dispatched {new Date(run.inFlightWaveDetail.dispatchedAt).toLocaleString()} — no
+              terminal outcome yet.
+            </div>
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {run.inFlightWaveDetail.items.map((item) => (
+                <li key={item.workItemId} className="font-mono text-[11px]">
+                  {item.workItemId} · {item.scope.join(', ')}
+                  {item.taskId && <span className="text-muted-foreground"> · task {item.taskId}</span>}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Worker/provider identity: not tracked by TSF for a UI-started run today.
+            </div>
+          </div>
+        )}
+
         {error && <p className="text-xs text-status-blocked">{error}</p>}
 
-        {run.state === 'ACTIVE' && <KeepGoingTickForm projectId={projectId} onTicked={onChanged} />}
+        {run.state === 'ACTIVE' && (
+          <KeepGoingTickForm
+            projectId={projectId}
+            onTicked={onChanged}
+            defaultWorkItemId={prefillRetry?.workItemId}
+            defaultScope={prefillRetry?.scope}
+          />
+        )}
 
         <div className="flex gap-2">
           {canPause && (

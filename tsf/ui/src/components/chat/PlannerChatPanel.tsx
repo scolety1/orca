@@ -9,6 +9,7 @@ import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { scrollTranscriptToBottom } from '@/lib/chat-transcript-scroll'
 import { loadChatDraft, saveChatDraft } from '@/lib/chat-draft-storage'
+import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { extractAttachmentContext } from '@/lib/migration-context-attachments'
 import type { ChatMessage } from '@/lib/types'
 
@@ -47,6 +48,13 @@ export function PlannerChatPanel({
   const [dispatchWorktree, setDispatchWorktree] = useState('')
   const viewportRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  // BUG-04 (bug-ledger.json): grows with real content up to a capped
+  // height instead of staying pinned at one line -- see
+  // use-autosize-textarea.ts. Capped at ~10 lines (200px) so a very long
+  // paste still scrolls inside the box rather than pushing the rest of
+  // the panel (transcript, Send button) off screen.
+  useAutosizeTextarea(composerRef, draft, { minPx: 36, maxPx: 200 })
 
   useEffect(() => {
     setMessages([])
@@ -299,6 +307,7 @@ export function PlannerChatPanel({
             <Paperclip className="size-4" />
           </Button>
           <Textarea
+            ref={composerRef}
             value={draft}
             onChange={(e) => updateDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -312,7 +321,7 @@ export function PlannerChatPanel({
             }
             disabled={!projectId}
             rows={1}
-            className="min-h-9"
+            className="min-h-9 max-h-[200px] overflow-y-auto"
           />
           <Button
             size="icon-sm"

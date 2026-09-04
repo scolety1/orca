@@ -4,7 +4,7 @@
 // answers from real recorded project state instead of inventing an LLM
 // persona. The interface (classify + respond) is what a real PLANNER_DEEP
 // route would sit behind later — the UI never hard-codes a vendor.
-import { projectLiveWorkFeedState } from '../domain/live-work-feed.mjs'
+import { projectLiveWorkFeedState, describeLiveRunStatus } from '../domain/live-work-feed.mjs'
 import { recentCheckpointTrail } from '../domain/keep-going.mjs'
 
 // Command coverage check (spec Phase 12's explicit list: credentials, money,
@@ -43,10 +43,34 @@ const TIM_REQUIRED_PATTERNS = [
 // not, by itself, force TIM_REQUIRED — an unhedged, non-negated directive
 // ("deploy it", "push this now") still does. "tell me whether to deploy"
 // (inquiry) and "deploy it" (directive) must not classify identically.
-const INQUIRY_OPENERS =
-  /^\s*(?:is|are|was|would|will|should|could|can|what|why|when|whether|how)\b|\b(?:tell me|let me know|explain|assess|evaluate|prepare)\b[\s\S]*\bwhether\b/i
+// Split into two: BARE_OPENER alone is ambiguous -- a clause created purely
+// by "and"-splitting a bare, no-punctuation directive ("...and will deploy
+// after that", "...and should merge soon") also starts with an opener word,
+// simply because that's how English states a future-tense action without a
+// subject pronoun. It is gated on a real "?" existing somewhere in the
+// clause's own sentence below (never on the clause alone -- a sibling
+// clause's own directive must never borrow another clause's "?"). TELL_ME_
+// WHETHER's "tell me/explain/assess ... whether" shape is unambiguously
+// interrogative in structure regardless of punctuation, so it stays
+// unconditional.
+const BARE_OPENER = /^\s*(?:is|are|was|would|will|should|could|can|what|why|when|whether|how)\b/i
+const TELL_ME_WHETHER =
+  /\b(?:tell me|let me know|explain|assess|evaluate|prepare)\b[\s\S]*\bwhether\b/i
 const PROHIBITION_MARKERS =
   /\b(?:no|not|never|don['’]t|do not|won['’]t|without|isn['’]t|aren['’]t|shouldn['’]t|wouldn['’]t|couldn['’]t|can['’]t|cannot|none of)\b/i
+// Second-independent-verification-pass finding (real, reproduced, pre-
+// existing -- surfaced while re-checking the "and" clause-split fix,
+// unrelated to it): PROHIBITION_MARKERS matches a bare "not"/"no" anywhere
+// in a clause with no idiom awareness -- "whether ... or not" and "no
+// matter" are standard English idioms that mean "regardless," never a
+// negation of the directive they attach to, but the same clause's own
+// "not"/"no" wrongly suppressed a genuine, unhedged directive: "deploy it
+// whether tim likes it or not" / "push this to production whether you
+// approve or not" / "deploy this no matter what" all classified AUTO_DECIDE
+// instead of TIM_REQUIRED. Stripped before the prohibition test, not added
+// as a separate branch, so a clause whose ONLY negation-looking text is one
+// of these idioms correctly falls through to the real directive check.
+const IDIOMATIC_NON_NEGATION = /\bor not\b|\bno matter\b/gi
 // "Can/could/would/will YOU ...?" is English's own standard polite-request
 // form ("can you push this to production?" means "please push this"), not
 // a genuine inquiry about the action's safety/advisability — independent-
@@ -71,12 +95,22 @@ function splitIntoSentences(message) {
   return message.split(/(?<=[.!?;\n])/)
 }
 
-// Comma/"but"/em-dash normalization happens WITHIN a sentence, one level
-// below the sentence split — kept separate so the polite-request check
-// below can look at the whole sentence a clause came from, not just the
-// clause fragment itself.
+// Comma/"but"/em-dash/"and" normalization happens WITHIN a sentence, one
+// level below the sentence split — kept separate so the polite-request
+// check below can look at the whole sentence a clause came from, not just
+// the clause fragment itself.
+//
+// BUG-08 (bug-ledger.json): real, reproduced gap -- "and" was not a clause
+// boundary here, so a negation and a genuine, separate directive joined by
+// a bare "and" (no comma) stayed one clause, and PROHIBITION_MARKERS
+// matching anywhere in that whole clause silently suppressed the real
+// directive too: "do not deploy this and push it now" classified
+// AUTO_DECIDE; "please do not deploy and go ahead and merge this"
+// classified RECOMMEND_AND_PROCEED. Same class of dangerous-direction
+// regression as the comma/"but"/em-dash fix above, just not extended to
+// "and" — closing it the same way, by the same reasoning.
 function splitIntoClauses(sentence) {
-  return sentence.replace(/,|--|—|\bbut\b/gi, '.').split(/(?<=[.!?;\n])/)
+  return sentence.replace(/,|--|—|\bbut\b|\band\b/gi, '.').split(/(?<=[.!?;\n])/)
 }
 
 // Independent-review finding (dangerous-direction regression, caught before
@@ -97,10 +131,20 @@ function isGenuineDirective(clause, sentence) {
   if (/\?/.test(clause)) {
     return false
   }
-  if (INQUIRY_OPENERS.test(clause.trimStart())) {
+  if (TELL_ME_WHETHER.test(clause)) {
     return false
   }
-  if (PROHIBITION_MARKERS.test(clause)) {
+  // BUG-08 independent-verification finding (real, reproduced): a bare
+  // opener word alone must additionally require the clause's own sentence
+  // to actually contain a "?" -- without this, "and"-splitting a message
+  // like "run the tests and will deploy after that" isolates "will deploy
+  // after that" as its own clause, which starts with "will" and was being
+  // misread as a genuine inquiry even though nothing here is a question at
+  // all, silently waving a real deploy directive through as AUTO_DECIDE.
+  if (BARE_OPENER.test(clause.trimStart()) && /\?/.test(sentence)) {
+    return false
+  }
+  if (PROHIBITION_MARKERS.test(clause.replace(IDIOMATIC_NON_NEGATION, ''))) {
     return false
   }
   return true
@@ -145,8 +189,53 @@ const INTENTS = [
   // correctly distinguished rather than the "next step" substring colliding.
   {
     id: 'DISPATCH_REQUEST',
+    // Command Authority repair: "proceed with (it|that|this)" only matched a
+    // pronoun -- an explicit, named-project confirmation ("yes, proceed with
+    // niners-war-room"), which is exactly the phrasing the TIM_REQUIRED
+    // refusal itself asks for ("name exactly which project(s)"), fell
+    // through to GENERAL and never dispatched, forcing a repeated ask
+    // instead of consuming the explicit authorization once. Broadened to
+    // any following word/id-shaped token, not just the three pronouns.
+    //
+    // Command final hands-on hardening: bare imperatives ("Run Nytheria",
+    // "Start WorldForge", "Run Nytheria overnight") are Command's own stated
+    // main-surface vocabulary but were not recognized at all -- disclosed as
+    // a usability gap, not a regression, but a real one for the surface
+    // meant to be the primary conversational control plane. BARE_IMPERATIVE
+    // is deliberately ANCHORED to the start of its own clause (after
+    // matchesAsGenuineDirective's own per-clause split), not a bare \brun\b/
+    // \bstart\b anywhere -- a clause has to actually OPEN with the verb to
+    // count. That alone is what keeps every non-dispatch "run"/"start"
+    // sentence in ordinary use out of this pattern without needing a second
+    // negation/question check: "what's running right now?" (already its own
+    // earlier-checked STATUS intent), "is the test still running?", "how do
+    // I run the migration?", and "the CI run failed" all have "run" only as
+    // a noun/gerund or mid-sentence, never as the clause's own opening verb,
+    // so the anchor alone excludes them -- reusing isGenuineDirective (via
+    // directiveOnly below) is what then separately rejects a genuine
+    // question ("Run Nytheria?") or negated form ("Don't run Nytheria" does
+    // not even reach isGenuineDirective -- "don't" is the clause's own first
+    // word, so the anchor itself never matches). "run into" (a common
+    // encounter-idiom, "ran into an issue") is the one disclosed, explicitly
+    // reproduced false-positive shape and is excluded here directly; "start
+    // over" (restart-from-scratch idiom) is a narrower, disclosed residual
+    // gap left unhandled rather than guessed at, matching this file's own
+    // stated convention (see PROHIBITION_MARKERS's own header) -- extend
+    // this exclusion, not the anchor shape, if another such idiom is found.
     pattern:
-      /\b(go ahead|go for it|please proceed|proceed with (it|that|this)|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i
+      /\b(go ahead|go for it|please proceed|proceed with [\w-]+|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b|^\s*(?:please\s+)?(?:run(?!\s*into\b)|start)\b/i,
+    // Adversarial-review finding (2nd pass): a first fix here only guarded
+    // the "proceed" alternative, only against negation words immediately
+    // adjacent, and against the WHOLE message rather than per-clause --
+    // "don't go ahead with tsf-orca" (a different alternative), "please do
+    // not just proceed" (word inserted), and "don't proceed with X. go
+    // ahead and proceed with Y instead." (an unrelated LATER genuine
+    // request wrongly suppressed by an EARLIER negation) all still slipped
+    // through or wrongly withheld the wrong one. Replaced with
+    // `directiveOnly`, reusing this file's own proven, adversarial-review-
+    // hardened clause/negation judgment (isGenuineDirective) instead of a
+    // second, narrower, ad hoc regex.
+    directiveOnly: true
   },
   { id: 'NEXT_ACTION', pattern: /\b(what should we do next|next step|what'?s next|what now)\b/i },
   { id: 'RATIONALE', pattern: /\b(why (did you|was)|what'?s the reasoning|why choose)\b/i },
@@ -154,14 +243,47 @@ const INTENTS = [
     id: 'CRITIQUE',
     pattern: /\b(looks like (shit|garbage|crap)|don'?t like|ugly|ugh|ew|hate this|sucks)\b/i
   },
-  { id: 'FIX_REQUEST', pattern: /\b(fix (this|it)|change (this|it)|redo|make it)\b/i },
+  {
+    id: 'FIX_REQUEST',
+    pattern: /\b(fix (this|it)|change (this|it)|redo|make it)\b/i,
+    // Adversarial-review finding (2nd pass): FIX_REQUEST is dispatch-worthy
+    // (command-responder.mjs's DISPATCH_WORTHY_INTENTS) exactly like
+    // DISPATCH_REQUEST, but had no negation awareness of its own -- "don't
+    // fix this" reached the same real dispatch path as an affirmative fix
+    // request. Same `directiveOnly` gate as DISPATCH_REQUEST.
+    directiveOnly: true
+  },
   { id: 'RESEARCH', pattern: /\b(research|look into|compare|investigate|explore options)\b/i },
   { id: 'HEALTH', pattern: /\b(health|is it healthy|any (issues|problems|blockers))\b/i },
   { id: 'ADOPTION', pattern: /\b(adopt|ready for adoption|candidate)\b/i }
 ]
 
+// Command Authority repair: a dispatch-worthy intent (DISPATCH_REQUEST,
+// FIX_REQUEST) must only be recognized from a clause that is a genuine,
+// non-negated, non-inquiry directive -- reuses isGenuineDirective/
+// splitIntoSentences/splitIntoClauses directly rather than a second,
+// independently-maintained negation check, so a fix to the shared
+// vocabulary/rules here (already adversarial-review-hardened for
+// TIM_REQUIRED) applies to both without having to be re-applied by hand.
+function matchesAsGenuineDirective(message, pattern) {
+  for (const sentence of splitIntoSentences(message)) {
+    for (const clause of splitIntoClauses(sentence)) {
+      if (pattern.test(clause) && isGenuineDirective(clause, sentence)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 export function classifyIntent(message) {
-  for (const { id, pattern } of INTENTS) {
+  for (const { id, pattern, directiveOnly } of INTENTS) {
+    if (directiveOnly) {
+      if (matchesAsGenuineDirective(message, pattern)) {
+        return id
+      }
+      continue
+    }
     if (pattern.test(message)) {
       return id
     }
@@ -361,8 +483,39 @@ const RESPONDERS = {
   GENERAL: respondGeneral
 }
 
+// BUG-08 (bug-ledger.json) real, reproduced honesty gap: this previously
+// said "tell me explicitly to proceed and I'll surface exactly what would
+// change ... before anything happens" -- a preview/reconfirm flow that
+// does not exist anywhere in this codebase (checked: no approval-tracking
+// state, no such route). Restating the request just re-triggers this exact
+// same refusal every time (isConsequentialDirective has no notion of a
+// prior turn), so the old wording promised an escape hatch that could
+// never actually open -- a real dead-end loop, not merely unbuilt UI.
+// Chat itself is structurally incapable of this class of action regardless
+// of any confirmation: live-planner.mjs's own system prompt runs it
+// zero-tool (--tools ""), and chat-dispatch-bridge.mjs's generated plans
+// are hard-forbidden from including push/merge/deploy/publish/credentials/
+// money/adoption. So the honest, correct answer is not "tell me again" --
+// it's naming the real surface where that decision is actually made.
 function respondTimRequired(project) {
-  return `That's a **consequential decision** (money, credentials, push/merge/deploy/publish, or adoption authority) — I won't act on it automatically. Tell me explicitly to proceed and I'll surface exactly what would change on **${project?.displayName ?? 'this project'}** before anything happens.`
+  return `That's a **consequential decision** (money, credentials, push/merge/deploy/publish, or adoption authority) — chat has no tools and can't act on it, no matter how you phrase it. Make that call on the real surface for it instead: the Adoption tab for an adopt/reject decision on **${project?.displayName ?? 'this project'}**, or your own terminal/CLI for push/merge/deploy.`
+}
+
+// BUG-13 (bug-ledger.json): only STATUS/NEXT_ACTION/FINISHED ever grounded
+// an answer in the live run (respondStatusOrNextActionFromRun above) --
+// every other intent (HEALTH/ADOPTION/RATIONALE/GENERAL/CRITIQUE/
+// FIX_REQUEST/RESEARCH/DISPATCH_REQUEST) answered purely from the old
+// mission/candidate/release model, blind to a real Keep Going run even
+// while it was actively running/stalled/needing a decision. Appended,
+// never replacing those responders' own text, and only while the run is
+// still the live story (same LIVE_RUN_TERMINAL_STATES rule
+// isLiveRunRelevantFor already applies, so a long-finished run doesn't
+// permanently shadow every future answer).
+function liveRunFooter(run, gap) {
+  if (!run || LIVE_RUN_TERMINAL_STATES.has(run.state)) {
+    return ''
+  }
+  return ` (${describeLiveRunStatus(run, gap)})`
 }
 
 // `run` (a real Keep Going domain run, or null) and `gap` (compareStateToGoal's
@@ -378,7 +531,7 @@ export function respond(project, message, run = null, gap = null) {
       ? respondTimRequired(project)
       : isLiveRunRelevantFor(intent, run)
         ? respondStatusOrNextActionFromRun(intent, project, run, gap)
-        : RESPONDERS[intent](project)
+        : RESPONDERS[intent](project) + liveRunFooter(run, gap)
   return {
     intent,
     decisionClass,

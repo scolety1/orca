@@ -80,3 +80,18 @@ export function projectLiveWorkFeedState(run, gap = null) {
   }
   return { state: 'WORKING', reason: 'run is ACTIVE with settled waves' }
 }
+
+// BUG-13 (bug-ledger.json): a single, real-fact-grounded one-line status
+// description, reused by both Planner Chat's deterministic fallback
+// (chat-responder.mjs) and the live conversational planner's context
+// capsule (live-planner.mjs) -- so however a question about the run is
+// answered, it can never disagree with what Keep Going/Flight Recorder
+// themselves show, and both call sites stop independently reinventing
+// this same sentence.
+export function describeLiveRunStatus(run, gap = null) {
+  if (!run) {
+    return null
+  }
+  const feed = projectLiveWorkFeedState(run, gap)
+  return `Keep Going run ${run.id} is ${feed.state}: ${feed.reason}.`
+}

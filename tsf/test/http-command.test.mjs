@@ -120,7 +120,9 @@ test('Command resolves a message naming one project and dispatches a real Keep G
       assert.equal(status, 200)
       assert.deepEqual(body.resolvedProjectIds, [projectId])
       assert.equal(body.dispatched, true)
-      assert.match(body.text, /Dispatched/)
+      // BUG-06 (bug-ledger.json): text now distinguishes a new mission
+      // from adding to an existing one -- real outcome here is new.
+      assert.match(body.text, /Started a new mission.*dispatched/s)
       assert.ok(
         body.planCapsule.repository.head.match(/^[0-9a-f]{40}$/),
         'a real HEAD was resolved via the auto-provisioned worktree, not fabricated'

@@ -67,6 +67,15 @@ export function projectLiveWorkFeedState(
     }
   }
   // run.state === 'ACTIVE' from here.
+  // BUG-14 (bug-ledger.json): real drift found -- the domain projection
+  // (tsf/domain/live-work-feed.mjs) checks inFlightWave-with-last-
+  // checkpoint-WAVE_STALLED BEFORE its dispatched-phase check; this mirror
+  // had no equivalent at all, so it could fall through to a guessed
+  // WORKING/VERIFYING/REVISION instead of the real STALLED. Checked first,
+  // matching the domain function's own ordering.
+  if (run.inFlightWaveStalled) {
+    return { state: 'STALLED', reason: 'in-flight wave last checkpointed WAVE_STALLED' }
+  }
   if (DISPATCHED_PHASES.has(run.phase)) {
     return { state: 'WORKING', reason: 'a wave is in flight' }
   }
