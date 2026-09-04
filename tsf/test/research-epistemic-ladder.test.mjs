@@ -624,3 +624,45 @@ test('identity resolution state is recorded per node and is independent of claim
   assert.equal(withIdentity.nodes[0].identityResolutionState.status, 'RESOLVED')
   assert.equal(withIdentity.nodes[0].identityResolutionState.resolvedEntityId, 'a')
 })
+
+test('recordIdentityResolutionState rejects an unknown status -- fail closed, no free-text status vocabulary', () => {
+  const mission = missionWithNode()
+  assert.throws(() => recordIdentityResolutionState(mission, mission.nodes[0].id, { candidateEntityRefs: [], resolvedEntityId: null, status: 'MAYBE_FINE_PROBABLY' }, clock, mission.revision))
+})
+
+// "GENERIC V0 ADOPTION READINESS" Phase 11 finding: previously nothing
+// mechanically stopped canonicalization while a node's OWN target-entity
+// identity was still recorded as genuinely ambiguous -- "identity
+// guessing" had no real defense. Proven closed here, and proven it does
+// NOT block a node that never touches identity resolution at all (the
+// overwhelming common case, e.g. every real pilot in this repo).
+test('IDENTITY AMBIGUITY: admitReconciliationDecision refuses to canonicalize while the node\'s identity is recorded AMBIGUOUS', () => {
+  let mission = missionWithNode()
+  const node = mission.nodes[0]
+  mission = recordIdentityResolutionState(mission, node.id, { candidateEntityRefs: [{ id: 'a' }, { id: 'b' }], resolvedEntityId: null, status: 'AMBIGUOUS', rationale: 'two real, equally plausible players share this name and era' }, clock, mission.revision)
+  mission = decideReconciliation(mission, node.id, { fieldName: 'yards', decisionType: 'ACCEPT_DERIVED_VALUE', decidedValue: 100, temporalScope: '2001-regular-season', rationale: 'test setup', decidedBy: 'TEST' }, clock, mission.revision)
+  const decisionId = mission.nodes[0].reconciliationDecisions.at(-1).id
+  assert.throws(
+    () => admitReconciliationDecision(mission, node.id, decisionId, clock, mission.revision),
+    (error) => {
+      assert.equal(error.code, 'TSF_IDENTITY_AMBIGUOUS_CANNOT_CANONICALIZE')
+      return true
+    }
+  )
+  assert.equal(mission.nodes[0].canonicalFacts.length, 0)
+
+  // Resolving identity first, then re-admitting, works normally.
+  const resolved = recordIdentityResolutionState(mission, node.id, { candidateEntityRefs: [{ id: 'a' }, { id: 'b' }], resolvedEntityId: 'a', status: 'RESOLVED', rationale: 'a human confirmed player A' }, clock, mission.revision)
+  const admitted = admitReconciliationDecision(resolved, node.id, decisionId, clock, resolved.revision)
+  assert.equal(admitted.nodes[0].canonicalFacts.length, 1)
+})
+
+test('IDENTITY AMBIGUITY: a node that never records identity resolution state at all can still canonicalize normally -- no new requirement for every existing mission', () => {
+  const mission = missionWithNode()
+  const node = mission.nodes[0]
+  assert.equal(node.identityResolutionState, null, 'precondition: identity was never touched')
+  let next = decideReconciliation(mission, node.id, { fieldName: 'yards', decisionType: 'ACCEPT_DERIVED_VALUE', decidedValue: 100, temporalScope: '2001-regular-season', rationale: 'test setup', decidedBy: 'TEST' }, clock, mission.revision)
+  const decisionId = next.nodes[0].reconciliationDecisions.at(-1).id
+  next = admitReconciliationDecision(next, node.id, decisionId, clock, next.revision)
+  assert.equal(next.nodes[0].canonicalFacts.length, 1, 'unaffected by the new AMBIGUOUS guard -- it never touched identity resolution at all')
+})

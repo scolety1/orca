@@ -51,7 +51,7 @@ const EVALUATION_DIMENSIONS = Object.freeze({
   },
   IDENTITY_AMBIGUITY: {
     files: ['test/research-mission.test.mjs', 'test/research-epistemic-ladder.test.mjs'],
-    pointer: 'AMBIGUOUS_IDENTITY Needs You category; "identity resolution state is recorded per node..."'
+    pointer: 'AMBIGUOUS_IDENTITY Needs You category; "identity resolution state is recorded per node..."; "IDENTITY AMBIGUITY: admitReconciliationDecision refuses to canonicalize while the node\'s identity is recorded AMBIGUOUS" (mechanical enforcement, not just a recorded fact)'
   },
   CONFLICTS: {
     files: ['test/research-epistemic-ladder.test.mjs', 'test/research-mission-driver.test.mjs', 'test/research-e2e-normal-mission.test.mjs'],
@@ -78,8 +78,8 @@ const EVALUATION_DIMENSIONS = Object.freeze({
     pointer: 'gauntlet A-J; driver-level resume tests; e2e step 8'
   },
   COST_GOVERNANCE: {
-    files: ['test/live-bakeoff-governance.test.mjs', 'test/research-mission-driver.test.mjs'],
-    pointer: 'fail-closed unknown-price/no-ceiling gate; "COST GOVERNANCE: gated against real durable cumulative spend..."'
+    files: ['test/live-bakeoff-governance.test.mjs', 'test/research-mission-driver.test.mjs', 'test/research-cost-governance-restart-survival.test.mjs'],
+    pointer: 'fail-closed unknown-price/no-ceiling gate; "COST GOVERNANCE: gated against real durable cumulative spend..."; "COST GOVERNANCE RESTART SURVIVAL: a real second, independent OS process still sees and enforces the first process\'s real durable spend"'
   },
   SECRET_LEAKAGE: {
     files: ['test/research-secret-leakage.test.mjs', 'test/parallel-http-transport.test.mjs', 'test/exa-http-transport.test.mjs'],
@@ -112,6 +112,14 @@ const EVALUATION_DIMENSIONS = Object.freeze({
   TEMPORAL_CLASS_BOUNDARY: {
     files: ['test/research-customer-temporal-boundary.test.mjs'],
     pointer: '"an OUTCOME_DATA claim CANNOT satisfy the CONTEMPORANEOUS_SNAPSHOT-required field, even with strong supporting evidence"'
+  },
+  // Phase 11 security/authority gauntlet: the architecture already
+  // treated provider/source content as inert data and never introduced a
+  // second scheduler, but neither claim had a dedicated regression test
+  // proving it (only architecture comments) until this wave.
+  ADVERSARIAL_CONTENT_HANDLING: {
+    files: ['test/research-adversarial-gauntlet.test.mjs'],
+    pointer: '"PROMPT INJECTION: an instruction-shaped proposedValue is stored as inert, byte-identical data..."; "CODE EXECUTION ATTEMPT: a shell/eval-shaped observation is stored as inert text, never executed"; "SECOND SCHEDULER: research-mission-store.mjs shares the SAME durable state primitives..."'
   }
 })
 
@@ -133,7 +141,9 @@ test('the manifest itself covers every dimension HQ named, with no silent gaps',
     'COST_GOVERNANCE', 'SECRET_LEAKAGE',
     // GENERIC V0 ADOPTION READINESS Phase 10 additions:
     'EVIDENCE_SUPPORT', 'DERIVATION_REPRODUCIBILITY', 'EXPECTED_UNIVERSE_COMPLETENESS', 'FACTUAL_CORRECTNESS',
-    'SOURCE_POLICY_ENFORCEMENT', 'TEMPORAL_CLASS_BOUNDARY'
+    'SOURCE_POLICY_ENFORCEMENT', 'TEMPORAL_CLASS_BOUNDARY',
+    // Phase 11 addition:
+    'ADVERSARIAL_CONTENT_HANDLING'
   ]
   const present = Object.keys(EVALUATION_DIMENSIONS)
   const missing = required.filter((d) => !present.includes(d))

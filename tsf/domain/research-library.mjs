@@ -19,6 +19,7 @@
 // every reuse is its own fully-audited decision, with the cross-mission
 // origin preserved in derivationLineage rather than hidden.
 import { canonicalize, deepClone, isoNow, sha256 } from './canonical.mjs'
+import { assertSourcePolicyAllows } from './research-admission.mjs'
 import { assertNodeTransition, withResearchNode } from './research-mission.mjs'
 import { decideReconciliation } from './research-reconciliation.mjs'
 
@@ -375,14 +376,39 @@ export const SOURCE_LIBRARY_REUSE_DECISIONS = Object.freeze([
   'SOURCE_CACHE_MISS',
   'SOURCE_CACHE_REJECTED_POLICY',
   'SOURCE_CACHE_REJECTED_TEMPORAL',
-  'SOURCE_CACHE_REJECTED_FRESHNESS'
+  'SOURCE_CACHE_REJECTED_FRESHNESS',
+  'SOURCE_CACHE_REJECTED_SOURCE_POLICY'
 ])
+
+function isSourcePolicyViolation(sourcePolicy, url) {
+  try {
+    assertSourcePolicyAllows(sourcePolicy, url)
+    return false
+  } catch (error) {
+    if (error.code === 'TSF_SOURCE_POLICY_VIOLATION') return true
+    throw error
+  }
+}
 
 // Mirrors evaluateResearchLibraryReuse's decision structure/vocabulary
 // (POLICY/TEMPORAL/FRESHNESS gates, same fail-closed reasoning) but for
 // raw source material instead of a reconciled fact -- deliberately kept
 // consistent so a caller already familiar with the fact-reuse gate does
 // not need to learn a second mental model.
+//
+// Independent-verification finding (real, found in THIS module before it
+// was ever exercised against a real disallowedSources mismatch): the
+// original version gated only on allowCrossMissionLibraryReuse/temporal/
+// freshness, never on the REUSING mission's own disallowedSources -- a
+// mission with a stricter sourcePolicy than the one that originally
+// admitted a locator could still reuse it via reuseSourceSnapshotIntoNode,
+// silently bypassing the exact enforcement research-admission.mjs's
+// assertSourcePolicyAllows exists to guarantee. Checked here (candidate
+// filtering, matching this function's existing pure/non-throwing
+// convention) AND defensively re-checked inside reuseSourceSnapshotIntoNode
+// itself (matching admitSourceSnapshot's own defense-in-depth pattern) --
+// never relying on a caller to have checked evaluateSourceLibraryReuse
+// first.
 export function evaluateSourceLibraryReuse(library, { sourcePolicy, canonicalLocator, requiredTemporalClass = undefined }) {
   if (sourcePolicy?.allowCrossMissionLibraryReuse !== true) {
     return { decision: 'SOURCE_CACHE_REJECTED_POLICY', hit: null, reason: 'this mission\'s sourcePolicy does not explicitly permit cross-mission research-library reuse (sourcePolicy.allowCrossMissionLibraryReuse must be true)', candidates: [] }
@@ -391,9 +417,13 @@ export function evaluateSourceLibraryReuse(library, { sourcePolicy, canonicalLoc
   if (candidates.length === 0) {
     return { decision: 'SOURCE_CACHE_MISS', hit: null, reason: 'no prior admitted source snapshot exists in the library for this canonical locator', candidates: [] }
   }
-  const temporallyEligible = requiredTemporalClass === undefined ? candidates : candidates.filter((c) => c.temporalClass === requiredTemporalClass)
+  const policyEligible = candidates.filter((c) => !isSourcePolicyViolation(sourcePolicy, c.url ?? c.canonicalLocator))
+  if (policyEligible.length === 0) {
+    return { decision: 'SOURCE_CACHE_REJECTED_SOURCE_POLICY', hit: null, reason: `every candidate for this locator matches THIS mission's own sourcePolicy.disallowedSources -- a stricter mission never inherits a laxer mission's admitted source`, candidates }
+  }
+  const temporallyEligible = requiredTemporalClass === undefined ? policyEligible : policyEligible.filter((c) => c.temporalClass === requiredTemporalClass)
   if (temporallyEligible.length === 0) {
-    return { decision: 'SOURCE_CACHE_REJECTED_TEMPORAL', hit: null, reason: `library has ${candidates.length} candidate(s) for this locator, but none match the required temporal class ${requiredTemporalClass}`, candidates }
+    return { decision: 'SOURCE_CACHE_REJECTED_TEMPORAL', hit: null, reason: `library has ${policyEligible.length} candidate(s) for this locator, but none match the required temporal class ${requiredTemporalClass}`, candidates: policyEligible }
   }
   const freshEligible = temporallyEligible.filter((c) => c.cachePolicy === 'HISTORICAL_STATIC')
   if (freshEligible.length === 0) {
@@ -415,6 +445,10 @@ export function evaluateSourceLibraryReuse(library, { sourcePolicy, canonicalLoc
 // requires.
 export function reuseSourceSnapshotIntoNode(mission, nodeId, sourceLibraryEntry, clock, expectedRevision) {
   if (!sourceLibraryEntry?.contentHash) throw new Error('a source library entry is required')
+  // Defense in depth, never reliant on the caller having already run
+  // evaluateSourceLibraryReuse -- same reasoning as admitSourceSnapshot's
+  // own check.
+  assertSourcePolicyAllows(mission.specification?.sourcePolicy, sourceLibraryEntry.url ?? sourceLibraryEntry.canonicalLocator)
   return withResearchNode(
     mission,
     nodeId,

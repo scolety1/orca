@@ -159,6 +159,27 @@ export function admitReconciliationDecision(mission, nodeId, reconciliationDecis
         error.code = 'TSF_RECONCILIATION_DECISION_REQUIRED'
         throw error
       }
+      // "GENERIC V0 ADOPTION READINESS" Phase 11 finding: identity
+      // ambiguity ("which real-world entity does this node even refer
+      // to") previously had no mechanical effect on canonicalization --
+      // AMBIGUOUS_IDENTITY existed as a Needs You category and
+      // identityResolutionState.status existed as a recorded fact, but
+      // nothing stopped a field from being canonicalized while the node's
+      // OWN target-entity identity was still genuinely ambiguous. Every
+      // canonical fact on this node describes that one entity, so an
+      // ambiguous identity puts ALL of them in doubt, not just one field.
+      // Fail closed here, at the one real canonicalization boundary --
+      // never at decide time, since a decision may legitimately be the
+      // human's own act of resolving the ambiguity via a fresh
+      // recordIdentityResolutionState call before re-admitting. A node
+      // that never records identity state at all (the overwhelming common
+      // case -- e.g. this codebase's real pilots, which never call
+      // recordIdentityResolutionState) is completely unaffected.
+      if (node.identityResolutionState?.status === 'AMBIGUOUS') {
+        const error = new Error(`cannot canonicalize field ${decision.fieldName} -- node ${nodeId}'s target-entity identity is recorded as AMBIGUOUS (identityResolutionState); resolve identity first (a fresh recordIdentityResolutionState call with status RESOLVED) before any field on this node can become canonical`)
+        error.code = 'TSF_IDENTITY_AMBIGUOUS_CANNOT_CANONICALIZE'
+        throw error
+      }
       if (decision.decisionType === 'ACCEPT_TYPED_MISSING') {
         // Independent-verification finding: re-deriving which record to
         // touch a second time here (by fieldName+temporalScope again) is

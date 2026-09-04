@@ -262,6 +262,16 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
   )
 }
 
+// "GENERIC V0 ADOPTION READINESS" Phase 11 finding: identityResolutionState
+// previously accepted ANY string for `status` (no enum), and nothing in
+// research-reconciliation.mjs ever read it -- an AMBIGUOUS identity
+// (multiple candidateEntityRefs, no confident resolvedEntityId) could not
+// mechanically block canonicalization from proceeding anyway. Formalized
+// the vocabulary here; the actual enforcement lives in
+// admitReconciliationDecision (research-reconciliation.mjs) -- see its
+// own comment.
+export const IDENTITY_RESOLUTION_STATES = Object.freeze(['RESOLVED', 'AMBIGUOUS', 'UNRESOLVED'])
+
 // Node-level identity-resolution record (one entity per node, e.g. "which
 // real player does this alias-prone name refer to"). Distinct from and
 // unrelated to TSF's own repository-identity concept in health.mjs.
@@ -272,6 +282,9 @@ export function recordIdentityResolutionState(
   clock,
   expectedRevision
 ) {
+  if (!IDENTITY_RESOLUTION_STATES.includes(status)) {
+    throw new Error(`unknown identity resolution status: ${status} (must be one of ${IDENTITY_RESOLUTION_STATES.join(', ')})`)
+  }
   return withResearchNode(
     mission,
     nodeId,

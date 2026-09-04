@@ -561,3 +561,46 @@ test('SOURCE POLICY ENFORCEMENT: admitSourceSnapshot refuses a disallowedSources
   )
   assert.equal(mission.nodes[0].sourceSnapshots.length, 0, 'the mission passed in is untouched -- withResearchNode never commits a thrown attempt')
 })
+
+// Independent-verification finding on THIS session's own new Source
+// Library V0 code: evaluateSourceLibraryReuse/reuseSourceSnapshotIntoNode
+// originally gated only on allowCrossMissionLibraryReuse/temporal/
+// freshness -- never on the REUSING mission's own disallowedSources. A
+// mission with a stricter sourcePolicy than the one that originally
+// admitted a locator could silently reuse it, bypassing exactly the
+// enforcement admitSourceSnapshot/admitBoundedResearchResult exist to
+// guarantee. Proven fixed at BOTH the evaluate gate and the defensive
+// reuse-time re-check.
+test('SOURCE POLICY ENFORCEMENT: cross-mission Source Library reuse cannot bypass a stricter mission\'s disallowedSources', () => {
+  // Mission A: a LAX policy, legitimately admits a real source from a
+  // domain that mission B will consider disallowed.
+  const laxSpec = { ...buildNflQb2001Specification() }
+  laxSpec.sourcePolicy = { ...laxSpec.sourcePolicy, disallowedSources: [] }
+  let origin = createResearchMission({ id: 'mission:source-policy-bypass-origin', projectId: 'fixture:proj', specification: laxSpec, expectedUniverse: laxSpec.expectedUniverse }, clock)
+  origin = addResearchNode(origin, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  origin = admitSourceSnapshot(origin, 'node:x', { sourceRef: 'src:questionable-1', url: 'https://questionable-source.example/page', publisher: 'questionable-source.example', retrievedAt: clock().toISOString(), contentHash: 'sha256:questionable' }, clock, origin.revision)
+  let library = createResearchLibrary(clock)
+  library = indexSourceSnapshot(library, origin, 'node:x', origin.nodes[0].sourceSnapshots[0].id, clock, library.revision)
+
+  // Mission B: a STRICTER policy that explicitly disallows that exact domain.
+  const strictSpec = { ...buildNflQb2001Specification() }
+  strictSpec.sourcePolicy = { ...strictSpec.sourcePolicy, allowCrossMissionLibraryReuse: true, disallowedSources: ['questionable-source.example'] }
+  let target = createResearchMission({ id: 'mission:source-policy-bypass-target', projectId: 'fixture:proj', specification: strictSpec, expectedUniverse: strictSpec.expectedUniverse }, laterClock)
+  target = addResearchNode(target, { id: 'node:y', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, laterClock)
+
+  const evaluation = evaluateSourceLibraryReuse(library, { sourcePolicy: strictSpec.sourcePolicy, canonicalLocator: 'src:questionable-1' })
+  assert.equal(evaluation.decision, 'SOURCE_CACHE_REJECTED_SOURCE_POLICY', 'a stricter mission must never inherit a laxer mission\'s admitted source')
+  assert.equal(evaluation.hit, null)
+
+  // Defense in depth: even if a caller ignored the evaluate step entirely
+  // and tried to force the reuse directly, it is still refused.
+  const forcedEntry = queryResearchSourceLibrary(library, { canonicalLocator: 'src:questionable-1' })[0]
+  assert.throws(
+    () => reuseSourceSnapshotIntoNode(target, 'node:y', forcedEntry, laterClock, target.revision),
+    (error) => {
+      assert.equal(error.code, 'TSF_SOURCE_POLICY_VIOLATION')
+      return true
+    }
+  )
+  assert.equal(target.nodes[0].sourceSnapshots.length, 0)
+})
