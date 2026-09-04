@@ -71,6 +71,26 @@ merge attempt.
   the mission-scoped fallback cannot serve). No action needed here until
   then.
 
+### 4a. Addendum — possible second generic gap (evidence only, not yet filed)
+
+Dataset + Deep Research HQ reports (2026-09-04, after this freeze) a
+reclassification data point: authenticated-session UI-provenance capture
+was originally scored `CUSTOMER_SPECIFIC` (tied to one source's own
+settings shape), but a re-verification pass across four independent
+seasons/sources all showed the identical YELLOW `temporallyVerified`
+status for the identical reason — provenance established by owner
+directive, but no independent `source_as_of` chain-of-custody found in
+the artifact itself. That recurrence across unrelated seasons/sources is
+evidence the underlying need (a generic "temporal chain-of-custody
+strength" concept, independent of any one source's settings) may be
+cross-cutting rather than one-off.
+
+**Status here: logged only, not classified, no implementation started.**
+No formal REQ has been filed for this by Dataset Research HQ yet (REQ-002
+above remains the only filed item). Reconciliation on this waits for the
+same thing REQ-002 does — a concrete requirement/evidence packet from the
+owning lane — consistent with §4's stated plan.
+
 ## 5. Pilot launch procedure (kept current)
 
 Reuses the prior pilot's real onboarded TEST projects (temp git repos
