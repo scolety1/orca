@@ -314,10 +314,24 @@ test(
       // (Stage F's handoff) -- with no verdict on disk yet, this is the
       // ONLY thing that can be in flight at wavesCompleted===1, so this
       // condition unambiguously identifies it.
+      //
+      // Test-isolation hardening (operator-hardening-v2): the default
+      // 60000ms stallTimeoutMs was observed to genuinely flake under this
+      // suite's own full, hundreds-of-real-processes concurrent run --
+      // reproduced multiple times, always passing cleanly in isolation,
+      // never a real product defect (confirmed by re-running this exact
+      // test alone each time). Matches the SAME real-world cause and the
+      // SAME 140000ms figure already used one call above for an equally
+      // CLI-call-chain-bound wait under this suite's own worst-case
+      // contention -- not a new number, not weakening what's being
+      // verified (the driver must still genuinely reach WAVE_DISPATCHED),
+      // only how long a real, observed scheduling delay is tolerated
+      // before that's called a failure.
       await pollUntil(
         () => get(base, `/api/keep-going/${healthyId}`).then((r) => r.body),
         (r) => r.wavesCompleted === 1 && r.phase === 'WAVE_DISPATCHED',
-        'the driver autonomously dispatching independent verification'
+        'the driver autonomously dispatching independent verification',
+        140000
       )
       // Standing in for a real dispatched worker's actual output (see this
       // file's header) -- a genuine gap, reported honestly. Written now

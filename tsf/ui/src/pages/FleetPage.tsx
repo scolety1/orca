@@ -10,12 +10,29 @@ import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightF
 import type { FleetSchedule } from '@/lib/fleet-types'
 import { buildLiveWorkFeedLookup, liveWorkFeedBadgeVariant } from '@/lib/work-feed-lookup'
 
-function ProjectScheduleCard({ project }: { project: FleetSchedule['projects'][number] }) {
+function ProjectScheduleCard({
+  project,
+  displayName
+}: {
+  project: FleetSchedule['projects'][number]
+  // Real-project adversarial-hardening finding (tsf-operator-hardening-v2):
+  // this card always rendered the raw internal projectId as its title --
+  // the one place in the app that doesn't reuse project.displayName the
+  // way every other page does. domain/fleet-optimizer.mjs's own schedule
+  // projection never computes a displayName (a real, disclosed domain-
+  // layer gap, not fixed here to keep this a bounded UI-only fix) -- so
+  // FleetPage looks it up from the already-loaded real portfolio and
+  // passes it in. Optional and falls back to the raw id below rather than
+  // fabricating a name for a project the lookup somehow missed.
+  displayName?: string
+}) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-2 p-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{project.projectId}</span>
+          <span className="text-sm font-medium" title={project.projectId}>
+            {displayName ?? project.projectId}
+          </span>
           {project.deadlineMet !== null && (
             <Badge variant={project.deadlineMet ? 'healthy' : 'blocked'}>
               {project.deadlineMet ? 'DEADLINE MET' : 'DEADLINE MISSED'}
@@ -85,6 +102,9 @@ export function FleetPage() {
 
   const selectedIds = Object.keys(selected).filter((id) => selected[id])
   const hasSelection = selectedIds.length > 0
+  // Real displayNames for ProjectScheduleCard -- see its own comment for
+  // why. Built from the already-loaded real portfolio, never fabricated.
+  const displayNameById = new Map(portfolio.knownProjects.map((p) => [p.id, p.displayName]))
 
   async function build() {
     if (selectedIds.length === 0) {
@@ -232,7 +252,11 @@ export function FleetPage() {
                 </CardContent>
               </Card>
               {schedule.projects.map((p) => (
-                <ProjectScheduleCard key={p.projectId} project={p} />
+                <ProjectScheduleCard
+                  key={p.projectId}
+                  project={p}
+                  displayName={displayNameById.get(p.projectId)}
+                />
               ))}
             </>
           )}
