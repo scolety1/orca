@@ -20,7 +20,7 @@
 // AMBIGUOUS_REQUIRES_RECONCILIATION) -- calling the SAME driver function
 // again is the resume action, and it checks that classification FIRST,
 // before ever risking a second real call.
-import { addResearchNode, assertNodeTransition, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, withResearchNode } from '../domain/research-mission.mjs'
+import { addResearchNode, assertNodeTransition, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, readyResearchNodes, withResearchNode } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
 import { classifyDispatchDeliveryGuarantee, recordDispatchAttempt, resolveDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
@@ -28,9 +28,11 @@ import { detectResearchConflicts, verifyResearchClaim } from '../domain/research
 import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
 import { authorizeMeteredExecution } from '../domain/research-cost-governance.mjs'
 import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
-import { decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, evaluateSourceLibraryReuse, markResearchNodeAdmittedViaLibraryReuse, reuseSourceSnapshotIntoNode } from '../domain/research-library.mjs'
+import { createResearchLibrary, decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, evaluateSourceLibraryReuse, markResearchNodeAdmittedViaLibraryReuse, reuseSourceSnapshotIntoNode } from '../domain/research-library.mjs'
+import { activeResearchPaidApproval, grantResearchPaidApproval, requestResearchPaidApproval } from '../domain/research-paid-approval.mjs'
 import { buildResearchProvenancePackage } from '../domain/research-provenance.mjs'
 import { readResearchMission, readResearchMissionIntegrityChecked, withResearchMission } from './research-mission-store.mjs'
+import { readResearchLibrary } from './research-library-store.mjs'
 
 // ---------------------------------------------------------------------
 // CREATE
@@ -397,4 +399,105 @@ export async function reuseSourceSnapshotDurable(missionId, nodeId, library, { c
   }
   const next = await withResearchMission(missionId, (m) => reuseSourceSnapshotIntoNode(m, nodeId, evaluation.hit, clock, m.revision))
   return { ok: true, reused: true, evaluation, mission: next }
+}
+
+// ---------------------------------------------------------------------
+// PAID APPROVAL -- durable wrappers over domain/research-paid-approval.mjs,
+// matching this file's own withResearchMission-per-mutation convention.
+// grantResearchPaidApprovalDurable must only ever be called from a real,
+// explicit owner instruction (Command's bridge parses "use X up to $Y"
+// directly out of the owner's own chat message) -- never from inference.
+// ---------------------------------------------------------------------
+export async function grantResearchPaidApprovalDurable(missionId, approval, clock) {
+  return withResearchMission(missionId, (mission) => {
+    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    return grantResearchPaidApproval(mission, approval, clock, mission.revision)
+  })
+}
+
+export async function requestResearchPaidApprovalDurable(missionId, request, clock) {
+  return withResearchMission(missionId, (mission) => {
+    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    return requestResearchPaidApproval(mission, request, clock, mission.revision)
+  })
+}
+
+// Read-only -- true fail-closed default (null = no dispatch) lives in
+// activeResearchPaidApproval itself; this is just the durable-read wrapper
+// every other read function in this file already has a sibling for.
+export function readActiveResearchPaidApproval(missionId, providerId, clock) {
+  const mission = readResearchMission(missionId)
+  if (!mission) return null
+  return activeResearchPaidApproval(mission, providerId, clock)
+}
+
+// A convenience composite for a paid dispatch attempt gated on a real,
+// scoped grant rather than the blunt global TSF_RESEARCH_LIVE_DISPATCH_ENABLED
+// HTTP gate (that gate still separately applies to the HTTP surface; this
+// is the Command-bridge's OWN, narrower gate for calling
+// dispatchResearchNodeDurable directly, per NWR_HISTORICAL_REDRAFT_
+// DATASET_RESEARCH_HANDOFF.md's own documented "call the driver function
+// directly" path). Refuses with reason:'NO_PAID_APPROVAL' before touching
+// anything else -- including before the existing delivery-guarantee resume
+// check -- whenever no active, unexpired grant names this exact provider on
+// this exact mission.
+export async function dispatchResearchNodeWithApprovalDurable(missionId, nodeId, providerId, worker, clock, { pricingPolicy } = {}) {
+  const mission = readResearchMission(missionId)
+  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  const approval = activeResearchPaidApproval(mission, providerId, clock)
+  if (!approval) {
+    return { ok: false, reason: 'NO_PAID_APPROVAL', providerId }
+  }
+  return dispatchResearchNodeDurable(missionId, nodeId, providerId, worker, clock, {
+    costGovernance: { pricingPolicy, maxApprovedSpendUsd: approval.maxSpendUsd }
+  })
+}
+
+// ---------------------------------------------------------------------
+// FREE-PATH PROGRESS -- the one generic, domain-agnostic "make free
+// progress" step the Command bridge can safely call for an arbitrary
+// mission: Research Library reuse (real, already-verified prior canonical
+// facts) across every ready node's requested fields. Deliberately does NOT
+// attempt bulk source acquisition itself -- discovering/acquiring NEW
+// domain-specific sources is what a real setup/pilot script does (see
+// NWR_HISTORICAL_REDRAFT_DATASET_RESEARCH_HANDOFF.md section 4); a generic
+// chat bridge has no way to safely fabricate that per topic. One bounded
+// pass over the nodes that were ready at call time -- not a fixed-point
+// loop -- so a single chat turn's cost stays predictable.
+// ---------------------------------------------------------------------
+export async function attemptFreeResearchProgressDurable(missionId, clock) {
+  const mission = readResearchMission(missionId)
+  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  // An absent library (never used before, anywhere) is functionally the
+  // same as a real, empty one for this read-only evaluation -- every field
+  // still counts as a genuine, attempted-and-unresolved gap (CACHE_MISS),
+  // never silently skipped as "nothing to attempt". createResearchLibrary
+  // is never persisted here (attemptFreeResearchProgressDurable is
+  // read/evaluate-only against the library; only a real library write
+  // path, e.g. indexCanonicalFact via withResearchLibrary, ever creates it
+  // durably) -- an in-memory stand-in is correct and sufficient.
+  const library = readResearchLibrary() ?? createResearchLibrary(clock)
+  const attempts = []
+  for (const node of readyResearchNodes(mission)) {
+    for (const field of node.requestedFields) {
+      // eslint-disable-next-line no-await-in-loop -- each call is its own
+      // durable, crash-safe commit; sequential by design, not an oversight.
+      const result = await adoptResearchLibraryReuseDurable(
+        missionId,
+        node.id,
+        field.fieldName,
+        library,
+        { valueType: field.valueType, decidedBy: 'COMMAND_FREE_PATH_AUTO' },
+        clock
+      )
+      attempts.push({ nodeId: node.id, fieldName: field.fieldName, adopted: result.adopted })
+    }
+  }
+  return {
+    missionId,
+    nodesConsidered: new Set(attempts.map((a) => a.nodeId)).size,
+    fieldsAttempted: attempts.length,
+    fieldsAdvanced: attempts.filter((a) => a.adopted).length,
+    details: attempts
+  }
 }

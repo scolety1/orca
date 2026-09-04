@@ -296,6 +296,14 @@ export function recentCheckpointTrail(mission, limit = 5) {
 // omit it are unaffected. Only durable, consequential ambiguity should
 // reach here -- ordinary missing values are typed missingness, not a
 // human interrupt.
+// PAID_PROVIDER_APPROVAL_REQUIRED (Phase 3, Command<->Research bridge):
+// dual-purpose, like every other category here -- an OPEN entry in this
+// category is a scoped spend request Command/Planner raised on its own
+// initiative (never auto-granted); a RESOLVED entry with
+// resolution.approved===true is the explicit-owner grant itself, scoped by
+// construction to this one mission + resolution.providerId +
+// resolution.maxSpendUsd (see domain/research-paid-approval.mjs, the only
+// module that ever creates or resolves entries in this category).
 export const RESEARCH_NEEDS_YOU_CATEGORIES = Object.freeze([
   'AMBIGUOUS_IDENTITY',
   'UNRESOLVED_CONFLICT',
@@ -303,7 +311,8 @@ export const RESEARCH_NEEDS_YOU_CATEGORIES = Object.freeze([
   'UNIVERSE_AMBIGUITY',
   'SCHEMA_AMBIGUITY',
   'HIGH_RISK_CLAIM',
-  'SOURCE_UNAVAILABLE'
+  'SOURCE_UNAVAILABLE',
+  'PAID_PROVIDER_APPROVAL_REQUIRED'
 ])
 
 export function raiseResearchNeedsYou(

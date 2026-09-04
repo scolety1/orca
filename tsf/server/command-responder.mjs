@@ -22,6 +22,7 @@ import { resolveProjectsFromText } from './project-name-resolver.mjs'
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
+import { classifyResearchIntent, respondResearchCommand } from './command-research-bridge.mjs'
 
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
 export const DISPATCH_WORTHY_INTENTS = new Set(['DISPATCH_REQUEST', 'FIX_REQUEST'])
@@ -73,6 +74,17 @@ export async function respondCommand({
   // still loads its own real defaults when omitted.
   aliases
 }) {
+  // Phase 3: Dataset Research bridge -- checked FIRST, ahead of every
+  // project-fleet intent/decision classification below, since a research
+  // message is never about a registered TSF project (see
+  // command-research-bridge.mjs's own header for why this layer is
+  // correct). classifyResearchIntent returning null means "not a research
+  // message at all" -- falls straight through to the unchanged logic
+  // below, so no existing fleet-chat behavior is affected.
+  if (classifyResearchIntent(message)) {
+    const researchResult = await respondResearchCommand({ message, opState, clock })
+    if (researchResult) return researchResult
+  }
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
   const resolution = resolveProjectsFromText(message, projects, { aliases })
