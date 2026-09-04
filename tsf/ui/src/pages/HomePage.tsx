@@ -11,7 +11,11 @@ import {
 } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
-import { buildHomeNeedsYouItems, homeNeedsYouItemKey } from '@/lib/home-needs-you-items'
+import {
+  buildHomeNeedsYouItems,
+  countDistinctNeedsYouProjects,
+  homeNeedsYouItemKey
+} from '@/lib/home-needs-you-items'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatusChip } from '@/components/StatusChip'
@@ -123,7 +127,14 @@ export function HomePage() {
         <Card>
           <CardContent className="p-4">
             <div className="text-[11px] text-muted-foreground">Needs you</div>
-            <div className="text-2xl font-semibold">{needsYou.length}</div>
+            {/* Real-project adversarial-hardening finding: a bare
+                needsYou.length counts ATTENTION REASONS, not distinct
+                PROJECTS -- the same project can appear more than once
+                (e.g. legacy-blocked AND run-STALLED at once), inflating
+                this number past what a human reads it as ("how many
+                projects need me"). The detail list below still shows
+                every real reason-card individually, unchanged. */}
+            <div className="text-2xl font-semibold">{countDistinctNeedsYouProjects(needsYou)}</div>
           </CardContent>
         </Card>
         <Card>

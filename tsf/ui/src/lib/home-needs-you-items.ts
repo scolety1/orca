@@ -24,3 +24,18 @@ export function buildHomeNeedsYouItems(work: WorkSummary): HomeNeedsYouItem[] {
 export function homeNeedsYouItemKey(item: HomeNeedsYouItem): string {
   return `${item.keyPrefix}-${item.id}`
 }
+
+// Real-project adversarial-hardening finding (tsf-operator-hardening-v2):
+// the same project can legitimately appear more than once in
+// buildHomeNeedsYouItems' combined list (see its own header) -- a bare
+// `.length` on that list counts ATTENTION REASONS, not distinct PROJECTS,
+// so the Home page's "Needs you: N" number tile could read e.g. 2 for a
+// SINGLE project that's both legacy-blocked and run-STALLED, misleading
+// an operator into expecting two separate problems. The detail list below
+// the tile still shows every real reason-card individually (unchanged,
+// correct); only the summary count is deduplicated to what it visually
+// claims to represent -- how many projects need you, not how many reasons
+// exist across them.
+export function countDistinctNeedsYouProjects(items: HomeNeedsYouItem[]): number {
+  return new Set(items.map((item) => item.id)).size
+}
