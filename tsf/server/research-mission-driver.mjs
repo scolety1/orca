@@ -28,7 +28,7 @@ import { detectResearchConflicts, verifyResearchClaim } from '../domain/research
 import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
 import { authorizeMeteredExecution } from '../domain/research-cost-governance.mjs'
 import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
-import { decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, markResearchNodeAdmittedViaLibraryReuse } from '../domain/research-library.mjs'
+import { decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, evaluateSourceLibraryReuse, markResearchNodeAdmittedViaLibraryReuse, reuseSourceSnapshotIntoNode } from '../domain/research-library.mjs'
 import { buildResearchProvenancePackage } from '../domain/research-provenance.mjs'
 import { readResearchMission, readResearchMissionIntegrityChecked, withResearchMission } from './research-mission-store.mjs'
 
@@ -374,4 +374,27 @@ export async function adoptResearchLibraryReuseDurable(missionId, nodeId, fieldN
     next = await withResearchMission(missionId, (m) => markResearchNodeAdmittedViaLibraryReuse(m, nodeId, clock, m.revision))
   }
   return { ok: true, adopted: true, evaluation, mission: next }
+}
+
+// ---------------------------------------------------------------------
+// RAW SOURCE LIBRARY V0 ("GENERIC V0 ADOPTION READINESS" Phase 3): the
+// durable counterpart to reuseSourceSnapshotIntoNode. Deliberately does
+// NOT touch Observation/Claim/Verification/Reconciliation/CanonicalFact --
+// it only makes a previously-fetched, immutable source's locator/hash
+// locally available on the calling mission's node, exactly as if that
+// mission had just fetched it fresh. The caller performs its own full
+// epistemic-ladder path afterward (normal admitBoundedResearchResult /
+// verifyAndReconcileResearchNodeFieldDurable etc.), same as always.
+// ---------------------------------------------------------------------
+export async function reuseSourceSnapshotDurable(missionId, nodeId, library, { canonicalLocator, requiredTemporalClass = undefined }, clock) {
+  const mission = readResearchMission(missionId)
+  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  const node = findResearchNode(mission, nodeId)
+  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  const evaluation = evaluateSourceLibraryReuse(library, { sourcePolicy: mission.specification.sourcePolicy, canonicalLocator, requiredTemporalClass })
+  if (evaluation.decision !== 'SOURCE_CACHE_HIT') {
+    return { ok: true, reused: false, evaluation, mission }
+  }
+  const next = await withResearchMission(missionId, (m) => reuseSourceSnapshotIntoNode(m, nodeId, evaluation.hit, clock, m.revision))
+  return { ok: true, reused: true, evaluation, mission: next }
 }

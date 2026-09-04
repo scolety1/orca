@@ -30,11 +30,12 @@ const {
   readResearchMissionProviderUsage,
   readResearchMissionReviewItems,
   readResearchMissionStatus,
+  reuseSourceSnapshotDurable,
   verifyAndReconcileResearchNodeFieldDurable
 } = await import('../server/research-mission-driver.mjs')
 const { withResearchMission, readResearchMission } = await import('../server/research-mission-store.mjs')
 const { readResearchLibrary, withResearchLibrary } = await import('../server/research-library-store.mjs')
-const { createResearchLibrary, indexCanonicalFact } = await import('../domain/research-library.mjs')
+const { createResearchLibrary, indexCanonicalFact, indexSourceSnapshot } = await import('../domain/research-library.mjs')
 
 function cleanupStateFile() {
   for (const suffix of ['', '.tmp', '.research.lock', '.research-library.lock']) rmSync(`${STATE_FILE}${suffix}`, { force: true })
@@ -382,6 +383,42 @@ test('research mission driver: the real persisted execution path, durable across
     const replay = await adoptResearchLibraryReuseDurable(TARGET_ID, 'node:library-reuse-target', 'yards', library, { requiredTemporalScope: '2001-regular-season', valueType: 'number', decidedBy: 'DRIVER_TEST' }, clock)
     assert.equal(replay.ok, true)
     assert.equal(readResearchMission(TARGET_ID).nodes.find((n) => n.id === 'node:library-reuse-target').canonicalFacts.length, 1, 'no duplicate fact from a resumed call')
+  })
+
+  // "GENERIC V0 ADOPTION READINESS" Phase 3: the durable counterpart to
+  // library-level CanonicalFact reuse, but for raw immutable SOURCE
+  // material. NODE_ID (MISSION_ID) already has a real admitted source
+  // snapshot from the earlier DISPATCH/POLL-ADMIT tests above -- reuse it
+  // in a brand-new mission WITHOUT refetching, and confirm no
+  // Claim/CanonicalFact is fabricated by the reuse itself.
+  await t.test('SOURCE LIBRARY: reuseSourceSnapshotDurable makes a cached raw source locally available without refetching, and creates no Claim/CanonicalFact by itself', async () => {
+    const originNode = readResearchMission(MISSION_ID).nodes.find((n) => n.id === NODE_ID)
+    const originSnapshotId = originNode.sourceSnapshots[0].id
+    await withResearchLibrary((current) => current ?? createResearchLibrary(clock))
+    await withResearchLibrary((current) => indexSourceSnapshot(current, readResearchMission(MISSION_ID), NODE_ID, originSnapshotId, clock, current.revision))
+
+    const SOURCE_TARGET_ID = 'mission:driver-test-source-reuse-target'
+    const { buildNflQb2001Specification } = await import('../fixtures/nfl-2001-qb-research-fixture.mjs')
+    const baseSpec = buildNflQb2001Specification()
+    const targetSpec = { ...baseSpec, sourcePolicy: { ...baseSpec.sourcePolicy, allowCrossMissionLibraryReuse: true } }
+    await createResearchMissionDurable(SOURCE_TARGET_ID, { projectId: 'fixture:proj', specification: targetSpec, expectedUniverse: targetSpec.expectedUniverse, nodes: [{ id: 'node:source-reuse-target', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'nfl:2001:qb:source-reuse-target' }, requestedFields: [], requestedOutputSchema: {} }] })
+    const library = readResearchLibrary()
+
+    const result = await reuseSourceSnapshotDurable(SOURCE_TARGET_ID, 'node:source-reuse-target', library, { canonicalLocator: 'src:1', requiredTemporalClass: '2001-regular-season' }, clock)
+    assert.equal(result.ok, true)
+    assert.equal(result.reused, true)
+    assert.equal(result.evaluation.decision, 'SOURCE_CACHE_HIT')
+    const node = readResearchMission(SOURCE_TARGET_ID).nodes.find((n) => n.id === 'node:source-reuse-target')
+    assert.equal(node.sourceSnapshots.length, 1, 'the source is now locally available without a real refetch')
+    assert.equal(node.sourceSnapshots[0].contentHash, originNode.sourceSnapshots[0].contentHash)
+    assert.equal(node.sourceSnapshots[0].acquisitionMethod, 'CROSS_MISSION_SOURCE_LIBRARY_REUSE')
+    assert.equal(node.claims.length, 0, 'source reuse != claim verification -- no Claim was fabricated')
+    assert.equal(node.canonicalFacts.length, 0, 'source reuse != claim verification -- no CanonicalFact was fabricated')
+
+    // Idempotent replay through the full driver call.
+    const replay = await reuseSourceSnapshotDurable(SOURCE_TARGET_ID, 'node:source-reuse-target', library, { canonicalLocator: 'src:1', requiredTemporalClass: '2001-regular-season' }, clock)
+    assert.equal(replay.ok, true)
+    assert.equal(readResearchMission(SOURCE_TARGET_ID).nodes.find((n) => n.id === 'node:source-reuse-target').sourceSnapshots.length, 1, 'no duplicate snapshot from a resumed call')
   })
  } finally {
   cleanupStateFile()

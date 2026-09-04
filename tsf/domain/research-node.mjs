@@ -10,6 +10,26 @@ import { canonicalize, deepClone, isoNow, sha256 } from './canonical.mjs'
 import { assertNodeTransition, withResearchNode } from './research-mission.mjs'
 import { validateBoundedResearchRequest, validateBoundedResearchResult } from '../contracts/validate-research-contracts.mjs'
 
+// "GENERIC V0 ADOPTION READINESS" Phase 8 (customer-mission boundary):
+// a claim's temporalScope (a period-string label, e.g. '2001-regular-
+// season') was previously the ONLY temporal signal verification ever
+// checked -- nothing distinguished a value genuinely observed AT that
+// period from a value about that period discovered/derived LATER
+// (retrospectively, or from an outcome that only exists after the fact).
+// A customer specification needing "this must be a point-in-time,
+// pre-decision value, not a later reconstruction or an outcome" (e.g. a
+// historical market snapshot vs. a season's final results) could not
+// express that requirement generically, and outcome evidence could
+// satisfy a pre-decision field merely by matching the period string.
+// Reuses the exact vocabulary already established for real, independent
+// source-discovery work (Historical ADP Source Feasibility V0):
+export const TEMPORAL_CLASSES = Object.freeze([
+  'CONTEMPORANEOUS_SNAPSHOT', // genuinely observed/recorded at or near the stated period
+  'RETROSPECTIVE_RECONSTRUCTION', // assembled/estimated later from period-appropriate material
+  'OUTCOME_DATA', // a result that only exists because the period has already concluded
+  'UNKNOWN_TEMPORAL_STATUS' // honest default -- never fabricated as CONTEMPORANEOUS
+])
+
 // Pre-dispatch dedupe key -- distinct from the post-hoc result-digest
 // idempotency used elsewhere in TSF (recordWave/registerWorkerResult). See
 // CORRECTION WAVE 1's reuse map: TSF had no existing "fingerprint" concept,

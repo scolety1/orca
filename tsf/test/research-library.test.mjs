@@ -10,7 +10,8 @@ import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
 import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
 import { addResearchNode, createResearchMission } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
-import { createResearchLibrary, decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, indexCanonicalFact, markResearchNodeAdmittedViaLibraryReuse, queryResearchLibrary } from '../domain/research-library.mjs'
+import { createResearchLibrary, decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, evaluateSourceLibraryReuse, indexCanonicalFact, indexSourceSnapshot, markResearchNodeAdmittedViaLibraryReuse, queryResearchLibrary, queryResearchSourceLibrary, reuseSourceSnapshotIntoNode } from '../domain/research-library.mjs'
+import { admitSourceSnapshot } from '../domain/research-source-admission.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
 
 const clock = () => new Date('2026-10-10T09:00:00.000Z')
@@ -393,4 +394,151 @@ test('markResearchNodeAdmittedViaLibraryReuse refuses a node with zero canonical
       return true
     }
   )
+})
+
+// ---------------------------------------------------------------------
+// RAW SOURCE LIBRARY V0 ("GENERIC V0 ADOPTION READINESS" Phase 3): a
+// genuinely different concern from everything above -- reusing raw,
+// immutable SOURCE material across missions, not a reconciled fact.
+// ---------------------------------------------------------------------
+
+test('indexSourceSnapshot indexes a real admitted source snapshot and is idempotent', () => {
+  const { mission } = missionWithCanonicalFact()
+  const sourceSnapshotId = mission.nodes[0].sourceSnapshots[0].id
+  let library = createResearchLibrary(clock)
+  library = indexSourceSnapshot(library, mission, 'node:x', sourceSnapshotId, clock, library.revision)
+  assert.equal(library.sourceSnapshots.length, 1)
+  assert.equal(library.revision, 1)
+  assert.equal(library.sourceSnapshots[0].canonicalLocator, 'src:1')
+  assert.equal(library.sourceSnapshots[0].contentHash, 'sha256:x')
+  assert.equal(library.sourceSnapshots[0].missionId, 'mission:origin')
+  assert.equal(library.sourceSnapshots[0].cachePolicy, 'HISTORICAL_STATIC')
+  assert.deepEqual(library.entries, [], 'a source-snapshot index must never also create a CanonicalFact entry')
+
+  const replay = indexSourceSnapshot(library, mission, 'node:x', sourceSnapshotId, clock, library.revision)
+  assert.equal(replay.revision, library.revision, 'a true replay must not bump revision')
+  assert.equal(replay.sourceSnapshots.length, 1)
+})
+
+test('queryResearchSourceLibrary never returns a live reference into the library\'s own stored data', () => {
+  const { mission } = missionWithCanonicalFact()
+  const sourceSnapshotId = mission.nodes[0].sourceSnapshots[0].id
+  let library = createResearchLibrary(clock)
+  library = indexSourceSnapshot(library, mission, 'node:x', sourceSnapshotId, clock, library.revision)
+  const [hit] = queryResearchSourceLibrary(library, { canonicalLocator: 'src:1' })
+  hit.contentHash = 'CORRUPTED'
+  const [fresh] = queryResearchSourceLibrary(library, { canonicalLocator: 'src:1' })
+  assert.equal(fresh.contentHash, 'sha256:x', 'mutating a returned candidate must never corrupt the library\'s own stored data')
+})
+
+test('evaluateSourceLibraryReuse: POLICY/MISS/TEMPORAL/FRESHNESS gates, then a real HIT', () => {
+  const { mission } = missionWithCanonicalFact()
+  const sourceSnapshotId = mission.nodes[0].sourceSnapshots[0].id
+  let library = createResearchLibrary(clock)
+  library = indexSourceSnapshot(library, mission, 'node:x', sourceSnapshotId, clock, library.revision)
+
+  const noPolicy = evaluateSourceLibraryReuse(library, { sourcePolicy: { allowCrossMissionLibraryReuse: false }, canonicalLocator: 'src:1' })
+  assert.equal(noPolicy.decision, 'SOURCE_CACHE_REJECTED_POLICY')
+
+  const allowPolicy = { allowCrossMissionLibraryReuse: true, freshnessPolicy: 'HISTORICAL_STATIC' }
+  const miss = evaluateSourceLibraryReuse(library, { sourcePolicy: allowPolicy, canonicalLocator: 'src:never-indexed' })
+  assert.equal(miss.decision, 'SOURCE_CACHE_MISS')
+
+  const wrongTemporal = evaluateSourceLibraryReuse(library, { sourcePolicy: allowPolicy, canonicalLocator: 'src:1', requiredTemporalClass: 'some-other-era' })
+  assert.equal(wrongTemporal.decision, 'SOURCE_CACHE_REJECTED_TEMPORAL')
+
+  const hit = evaluateSourceLibraryReuse(library, { sourcePolicy: allowPolicy, canonicalLocator: 'src:1', requiredTemporalClass: '2001-regular-season' })
+  assert.equal(hit.decision, 'SOURCE_CACHE_HIT')
+  assert.equal(hit.hit.contentHash, 'sha256:x')
+
+  // Freshness: a non-HISTORICAL_STATIC candidate in a fresh library is
+  // rejected even with an otherwise-eligible locator/temporal match.
+  let liveLibrary = createResearchLibrary(clock)
+  const liveMission = missionWithCanonicalFact({ missionId: 'mission:live-source' }).mission
+  const liveSnapshotId = liveMission.nodes[0].sourceSnapshots[0].id
+  // Force a non-static freshness policy onto a clone of the mission to
+  // prove the gate actually checks it (not just defaulting to pass).
+  const nonStaticMission = { ...liveMission, specification: { ...liveMission.specification, sourcePolicy: { ...liveMission.specification.sourcePolicy, freshnessPolicy: 'LIVE_SNAPSHOT' } } }
+  liveLibrary = indexSourceSnapshot(liveLibrary, nonStaticMission, 'node:x', liveSnapshotId, clock, liveLibrary.revision)
+  const rejectedFreshness = evaluateSourceLibraryReuse(liveLibrary, { sourcePolicy: allowPolicy, canonicalLocator: 'src:1', requiredTemporalClass: '2001-regular-season' })
+  assert.equal(rejectedFreshness.decision, 'SOURCE_CACHE_REJECTED_FRESHNESS')
+})
+
+// The core governance property, mirroring the CanonicalFact-reuse test
+// above: Mission B reuses Mission A's already-fetched, immutable source
+// WITHOUT refetching it, but source reuse != claim verification -- no
+// Observation/Claim/CanonicalFact is created by the reuse itself, and
+// Mission B must still perform its own full epistemic-ladder path to ever
+// reach its own CanonicalFact.
+test('reuseSourceSnapshotIntoNode: cross-mission raw-source reuse never creates a Claim/CanonicalFact by itself; the reusing mission still does its own reconciliation', () => {
+  const origin = missionWithCanonicalFact({ missionId: 'mission:source-reuse-origin' }).mission
+  const originSnapshotId = origin.nodes[0].sourceSnapshots[0].id
+  let library = createResearchLibrary(clock)
+  library = indexSourceSnapshot(library, origin, 'node:x', originSnapshotId, clock, library.revision)
+
+  const specification = buildNflQb2001Specification()
+  const reusePolicy = { ...specification.sourcePolicy, allowCrossMissionLibraryReuse: true }
+  let missionB = createResearchMission({ id: 'mission:source-reuse-target', projectId: 'fixture:proj', specification: { ...specification, sourcePolicy: reusePolicy }, expectedUniverse: specification.expectedUniverse }, laterClock)
+  missionB = addResearchNode(missionB, { id: 'node:y', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'nfl:2001:qb:kurt-warner' }, requestedFields: [{ fieldName: 'yards', valueType: 'number', required: true }], requestedOutputSchema: {} }, laterClock)
+  assert.equal(missionB.nodes[0].sourceSnapshots.length, 0, 'precondition: Mission B has not fetched anything yet')
+
+  const evaluation = evaluateSourceLibraryReuse(library, { sourcePolicy: reusePolicy, canonicalLocator: 'src:1', requiredTemporalClass: '2001-regular-season' })
+  assert.equal(evaluation.decision, 'SOURCE_CACHE_HIT')
+  missionB = reuseSourceSnapshotIntoNode(missionB, 'node:y', evaluation.hit, laterClock, missionB.revision)
+
+  assert.equal(missionB.nodes[0].sourceSnapshots.length, 1, 'Mission B now has the source locally, without refetching')
+  assert.equal(missionB.nodes[0].sourceSnapshots[0].contentHash, 'sha256:x')
+  assert.equal(missionB.nodes[0].sourceSnapshots[0].acquisitionMethod, 'CROSS_MISSION_SOURCE_LIBRARY_REUSE')
+  assert.equal(missionB.nodes[0].sourceSnapshots[0].reusedFrom.missionId, 'mission:source-reuse-origin')
+  assert.equal(missionB.nodes[0].observations.length, 0, 'source reuse != claim verification: no Observation was fabricated')
+  assert.equal(missionB.nodes[0].claims.length, 0, 'source reuse != claim verification: no Claim was fabricated')
+  assert.equal(missionB.nodes[0].canonicalFacts.length, 0, 'source reuse != claim verification: no CanonicalFact was fabricated')
+
+  // Mission B now performs its OWN full epistemic-ladder work -- entirely
+  // its own decision, over its own (different) field/value, citing the
+  // reused source as evidence.
+  missionB = decideReconciliation(missionB, 'node:y', { fieldName: 'yards', decisionType: 'ACCEPT_DERIVED_VALUE', decidedValue: 4830, temporalScope: '2001-regular-season', rationale: 'Mission B\'s own reconciliation over the reused source material', decidedBy: 'TEST' }, laterClock, missionB.revision)
+  const decisionId = missionB.nodes[0].reconciliationDecisions.at(-1).id
+  missionB = admitReconciliationDecision(missionB, 'node:y', decisionId, laterClock, missionB.revision)
+  assert.equal(missionB.nodes[0].canonicalFacts.length, 1)
+  assert.equal(missionB.nodes[0].canonicalFacts[0].value, 4830)
+
+  // Origin mission's own node is completely untouched by any of this.
+  assert.equal(origin.nodes[0].sourceSnapshots.length, 1)
+
+  // Idempotent replay.
+  const before = missionB.revision
+  const replay = reuseSourceSnapshotIntoNode(missionB, 'node:y', evaluation.hit, laterClock, missionB.revision)
+  assert.equal(replay.nodes[0].sourceSnapshots.length, 1, 'no duplicate source snapshot from a resumed reuse call')
+  void before
+})
+
+test('reuseSourceSnapshotIntoNode is idempotent by contentHash even across two separately-evaluated hits', () => {
+  const origin = missionWithCanonicalFact({ missionId: 'mission:source-reuse-idempotent-origin' }).mission
+  const originSnapshotId = origin.nodes[0].sourceSnapshots[0].id
+  let library = createResearchLibrary(clock)
+  library = indexSourceSnapshot(library, origin, 'node:x', originSnapshotId, clock, library.revision)
+  const specification = buildNflQb2001Specification()
+  let missionB = createResearchMission({ id: 'mission:source-reuse-idempotent-target', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, laterClock)
+  missionB = addResearchNode(missionB, { id: 'node:y', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, laterClock)
+  const evaluation = evaluateSourceLibraryReuse(library, { sourcePolicy: { allowCrossMissionLibraryReuse: true, freshnessPolicy: 'HISTORICAL_STATIC' }, canonicalLocator: 'src:1' })
+  missionB = reuseSourceSnapshotIntoNode(missionB, 'node:y', evaluation.hit, laterClock, missionB.revision)
+  missionB = reuseSourceSnapshotIntoNode(missionB, 'node:y', evaluation.hit, laterClock, missionB.revision)
+  assert.equal(missionB.nodes[0].sourceSnapshots.length, 1)
+})
+
+// admitSourceSnapshot is the OTHER real admission path for raw source
+// material (bulk source-first acquisition, no BoundedResearchResult) --
+// confirm indexSourceSnapshot works over its output too, not just
+// admitBoundedResearchResult's.
+test('indexSourceSnapshot also indexes a snapshot admitted via the bulk source-first path (admitSourceSnapshot)', () => {
+  const specification = buildNflQb2001Specification()
+  let mission = createResearchMission({ id: 'mission:bulk-source-first', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  mission = addResearchNode(mission, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = admitSourceSnapshot(mission, 'node:x', { sourceRef: 'src:bulk-1', url: 'https://example.invalid/bulk', publisher: 'pub', retrievedAt: clock().toISOString(), contentHash: 'sha256:bulk' }, clock, mission.revision)
+  const sourceSnapshotId = mission.nodes[0].sourceSnapshots[0].id
+  let library = createResearchLibrary(clock)
+  library = indexSourceSnapshot(library, mission, 'node:x', sourceSnapshotId, clock, library.revision)
+  assert.equal(library.sourceSnapshots.length, 1)
+  assert.equal(library.sourceSnapshots[0].canonicalLocator, 'src:bulk-1')
 })

@@ -32,7 +32,12 @@ function assertLibraryRevision(library, expectedRevision) {
 
 export function createResearchLibrary(clock) {
   const at = isoNow(clock)
-  return { schemaVersion: 'TSF_RESEARCH_LIBRARY_V1', entries: [], revision: 0, createdAt: at, updatedAt: at }
+  // sourceSnapshots: additive field (existing schemaVersion unchanged,
+  // per research-schema-versioning.mjs's guard, which only checks the
+  // schemaVersion string, not an exact key set) -- see indexSourceSnapshot
+  // below for what it holds and why it is a genuinely separate concern
+  // from `entries` (reconciled CanonicalFacts).
+  return { schemaVersion: 'TSF_RESEARCH_LIBRARY_V1', entries: [], sourceSnapshots: [], revision: 0, createdAt: at, updatedAt: at }
 }
 
 // Indexes ONE already-admitted CanonicalFact from `mission`/`nodeId` into
@@ -263,6 +268,186 @@ export function markResearchNodeAdmittedViaLibraryReuse(mission, nodeId, clock, 
       }
       assertNodeTransition(node.status, 'ADMITTED')
       return { next: { ...node, status: 'ADMITTED' }, changed: true }
+    },
+    clock,
+    expectedRevision
+  )
+}
+
+// ---------------------------------------------------------------------
+// RAW SOURCE LIBRARY V0 (HQ "GENERIC V0 ADOPTION READINESS" Phase 3
+// finding): everything above this line reuses already-RECONCILED
+// CanonicalFacts. That is a genuinely different concern from reusing raw,
+// immutable SOURCE material -- until now, admitSourceSnapshot
+// (research-source-admission.mjs) only deduped a fetched source WITHIN one
+// mission/node (its own header comment already disclosed this as
+// "V0's scope is per-node dedup; a shared cross-mission cache is
+// deferred, disclosed future work"). This closes exactly that gap, and
+// only that gap -- deliberately the smallest safe addition, not a
+// document-management product:
+//   - no raw content bytes are ever stored here, only a locator/hash/ref,
+//     mirroring the existing per-node SourceSnapshotReference shape;
+//   - reusing a cached source NEVER creates an Observation, Claim,
+//     Verification, ReconciliationDecision, or CanonicalFact by itself --
+//     source reuse != claim verification. The reusing mission still
+//     performs its own full epistemic-ladder path over this material,
+//     exactly as if it had just fetched it fresh.
+// ---------------------------------------------------------------------
+
+// Indexes ONE already-admitted SourceSnapshotReference from
+// `mission`/`nodeId` into the library. Idempotent by (missionId, nodeId,
+// sourceSnapshotId) for the same reason indexCanonicalFact is: two
+// genuinely different missions/nodes can legitimately admit the exact
+// same contentHash (the same real source fetched independently twice),
+// and this library aggregates across all of them into one flat list.
+export function indexSourceSnapshot(library, mission, nodeId, sourceSnapshotId, clock, expectedRevision) {
+  assertLibraryRevision(library, expectedRevision)
+  const node = mission.nodes.find((n) => n.id === nodeId)
+  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  const snapshot = (node.sourceSnapshots ?? []).find((s) => s.id === sourceSnapshotId)
+  if (!snapshot) throw new Error(`unknown source snapshot: ${sourceSnapshotId}`)
+  const sourceRef = (node.sourceReferences ?? []).find((s) => s.sourceRef === snapshot.sourceRef) ?? null
+  const id = sha256({ kind: 'ResearchSourceLibraryEntry', missionId: mission.id, nodeId, sourceSnapshotId })
+  const existing = (library.sourceSnapshots ?? []).find((e) => e.id === id)
+  const candidate = {
+    schemaVersion: 'TSF_RESEARCH_SOURCE_LIBRARY_ENTRY_V1',
+    id,
+    missionId: mission.id,
+    nodeId,
+    sourceSnapshotId,
+    // Canonical locator + content hash: the two fields this V0 actually
+    // trusts to decide reuse safety below.
+    canonicalLocator: snapshot.sourceRef,
+    url: sourceRef?.url ?? null,
+    publisher: sourceRef?.publisher ?? null,
+    contentHash: snapshot.contentHash,
+    rawContentRef: snapshot.rawContentRef ?? null,
+    retrievedAt: sourceRef?.retrievedAt ?? null,
+    // Honestly unavailable from anything upstream captures today -- never
+    // fabricated. A future source adapter that DOES capture these should
+    // populate them at admission time; this module only forwards what it
+    // is given.
+    publishedAt: snapshot.publishedAt ?? null,
+    dataAsOf: mission.specification?.temporalRequirements?.asOfDate ?? null,
+    sourceVersion: snapshot.sourceVersion ?? null,
+    mediaType: snapshot.mediaType ?? null,
+    // License/cache/redistribution/temporal-class are mission-level policy
+    // today (research-mission.mjs's ResearchSpecification.sourcePolicy),
+    // not per-source fields -- carried forward from the ORIGIN mission's
+    // own policy at index time, deep-cloned so a later policy edit on that
+    // mission (if ever supported) cannot retroactively rewrite history here.
+    licenseNotes: deepClone(mission.specification?.sourcePolicy?.licensingConstraints ?? []),
+    cachePolicy: mission.specification?.sourcePolicy?.freshnessPolicy ?? null,
+    redistributionNotes: null,
+    temporalClass: mission.specification?.temporalRequirements?.periodScope ?? null,
+    // Source-independence metadata, if the origin mission ever recorded it
+    // on this exact sourceRef (recordSourceIndependenceMetadata) -- honest
+    // UNKNOWN default, matching research-source-independence.mjs's own
+    // fail-closed convention, never fabricated as PRIMARY/INDEPENDENT.
+    sourceQualityClass: sourceRef?.sourceQualityClass ?? null,
+    independenceState: sourceRef?.independenceState ?? 'UNKNOWN',
+    upstreamSourceId: sourceRef?.upstreamSourceId ?? null,
+    indexedAt: isoNow(clock)
+  }
+  if (existing) {
+    const contentUnchanged = JSON.stringify(canonicalize({ ...existing, indexedAt: null })) === JSON.stringify(canonicalize({ ...candidate, indexedAt: null }))
+    if (contentUnchanged) return library
+    throw new Error(`research source library entry ${id} already indexed with different content -- an admitted SourceSnapshotReference must never change after admission`)
+  }
+  const next = deepClone(library)
+  next.sourceSnapshots = [...(next.sourceSnapshots ?? []), candidate]
+  next.revision += 1
+  next.updatedAt = isoNow(clock)
+  return next
+}
+
+// Pure, read-only, deep-cloned for the same live-reference-corruption
+// reason queryResearchLibrary is.
+export function queryResearchSourceLibrary(library, { canonicalLocator }) {
+  return (library.sourceSnapshots ?? [])
+    .filter((e) => e.canonicalLocator === canonicalLocator)
+    .map((e) => deepClone(e))
+    .sort((a, b) => (a.indexedAt < b.indexedAt ? 1 : a.indexedAt > b.indexedAt ? -1 : 0))
+}
+
+export const SOURCE_LIBRARY_REUSE_DECISIONS = Object.freeze([
+  'SOURCE_CACHE_HIT',
+  'SOURCE_CACHE_MISS',
+  'SOURCE_CACHE_REJECTED_POLICY',
+  'SOURCE_CACHE_REJECTED_TEMPORAL',
+  'SOURCE_CACHE_REJECTED_FRESHNESS'
+])
+
+// Mirrors evaluateResearchLibraryReuse's decision structure/vocabulary
+// (POLICY/TEMPORAL/FRESHNESS gates, same fail-closed reasoning) but for
+// raw source material instead of a reconciled fact -- deliberately kept
+// consistent so a caller already familiar with the fact-reuse gate does
+// not need to learn a second mental model.
+export function evaluateSourceLibraryReuse(library, { sourcePolicy, canonicalLocator, requiredTemporalClass = undefined }) {
+  if (sourcePolicy?.allowCrossMissionLibraryReuse !== true) {
+    return { decision: 'SOURCE_CACHE_REJECTED_POLICY', hit: null, reason: 'this mission\'s sourcePolicy does not explicitly permit cross-mission research-library reuse (sourcePolicy.allowCrossMissionLibraryReuse must be true)', candidates: [] }
+  }
+  const candidates = queryResearchSourceLibrary(library, { canonicalLocator })
+  if (candidates.length === 0) {
+    return { decision: 'SOURCE_CACHE_MISS', hit: null, reason: 'no prior admitted source snapshot exists in the library for this canonical locator', candidates: [] }
+  }
+  const temporallyEligible = requiredTemporalClass === undefined ? candidates : candidates.filter((c) => c.temporalClass === requiredTemporalClass)
+  if (temporallyEligible.length === 0) {
+    return { decision: 'SOURCE_CACHE_REJECTED_TEMPORAL', hit: null, reason: `library has ${candidates.length} candidate(s) for this locator, but none match the required temporal class ${requiredTemporalClass}`, candidates }
+  }
+  const freshEligible = temporallyEligible.filter((c) => c.cachePolicy === 'HISTORICAL_STATIC')
+  if (freshEligible.length === 0) {
+    return { decision: 'SOURCE_CACHE_REJECTED_FRESHNESS', hit: null, reason: `no eligible candidate's cachePolicy is HISTORICAL_STATIC -- only immutable-by-nature sources are trusted for cross-mission reuse today`, candidates: temporallyEligible }
+  }
+  return { decision: 'SOURCE_CACHE_HIT', hit: freshEligible[0], reason: null, candidates: freshEligible }
+}
+
+// The ONLY sanctioned way to bring a cached raw source into a NEW
+// mission's node: admits the SAME locator/hash/metadata this mission
+// would have gotten from a fresh fetch, stamped with `reusedFrom` so
+// provenance honestly shows this was not independently refetched. This
+// mirrors admitSourceSnapshot's record shape exactly (so downstream code
+// reading node.sourceReferences/sourceSnapshots sees no difference), and,
+// like admitSourceSnapshot, creates NO Observation/Claim/Verification/
+// ReconciliationDecision/CanonicalFact -- the reusing mission performs
+// that entire path itself, over this now-locally-available raw material,
+// exactly as HQ's "source reuse != claim verification" instruction
+// requires.
+export function reuseSourceSnapshotIntoNode(mission, nodeId, sourceLibraryEntry, clock, expectedRevision) {
+  if (!sourceLibraryEntry?.contentHash) throw new Error('a source library entry is required')
+  return withResearchNode(
+    mission,
+    nodeId,
+    (node) => {
+      const alreadyAdmitted = (node.sourceSnapshots ?? []).some((s) => s.contentHash === sourceLibraryEntry.contentHash)
+      if (alreadyAdmitted) return { next: node, changed: false }
+      const admittedAt = isoNow(clock)
+      const next = deepClone(node)
+      const sourceRefId = sha256({ kind: 'SourceReference', sourceRef: sourceLibraryEntry.canonicalLocator })
+      if (!(next.sourceReferences ?? []).some((s) => s.id === sourceRefId)) {
+        next.sourceReferences.push({
+          schemaVersion: 'TSF_SOURCE_REFERENCE_V1',
+          id: sourceRefId,
+          sourceRef: sourceLibraryEntry.canonicalLocator,
+          url: sourceLibraryEntry.url,
+          publisher: sourceLibraryEntry.publisher,
+          retrievedAt: sourceLibraryEntry.retrievedAt,
+          admittedAt
+        })
+      }
+      const snapshotId = sha256({ kind: 'SourceSnapshotReference', contentHash: sourceLibraryEntry.contentHash })
+      next.sourceSnapshots.push({
+        schemaVersion: 'TSF_SOURCE_SNAPSHOT_REFERENCE_V1',
+        id: snapshotId,
+        sourceRef: sourceLibraryEntry.canonicalLocator,
+        contentHash: sourceLibraryEntry.contentHash,
+        rawContentRef: sourceLibraryEntry.rawContentRef ?? null,
+        retrievable: Boolean(sourceLibraryEntry.rawContentRef),
+        acquisitionMethod: 'CROSS_MISSION_SOURCE_LIBRARY_REUSE',
+        reusedFrom: { missionId: sourceLibraryEntry.missionId, nodeId: sourceLibraryEntry.nodeId, sourceLibraryEntryId: sourceLibraryEntry.id },
+        admittedAt
+      })
+      return { next, changed: true }
     },
     clock,
     expectedRevision

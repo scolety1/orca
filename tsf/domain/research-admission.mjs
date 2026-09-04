@@ -130,6 +130,10 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
               // can be told apart from missingness with no period context
               // at all -- required for temporal-aware completeness below.
               temporalScope: pc.temporalScope ?? null,
+              // "GENERIC V0 ADOPTION READINESS" Phase 8: honest default,
+              // never fabricated as CONTEMPORANEOUS -- see
+              // research-node.mjs's TEMPORAL_CLASSES.
+              temporalClass: pc.temporalClass ?? 'UNKNOWN_TEMPORAL_STATUS',
               missingnessType: 'NOT_PUBLICLY_AVAILABLE',
               reason: pc.providerReasoning ?? 'no value found by provider',
               admittedAt
@@ -147,6 +151,10 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
             fieldName: pc.fieldName,
             proposedValue: pc.proposedValue,
             temporalScope: pc.temporalScope ?? null,
+            // "GENERIC V0 ADOPTION READINESS" Phase 8: see
+            // research-node.mjs's TEMPORAL_CLASSES -- honest default,
+            // never fabricated as CONTEMPORANEOUS.
+            temporalClass: pc.temporalClass ?? 'UNKNOWN_TEMPORAL_STATUS',
             provider: result.provider,
             providerConfidence: pc.providerConfidence ?? null,
             providerReasoning: pc.providerReasoning ?? null,

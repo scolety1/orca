@@ -11,16 +11,22 @@ import { scoreCase } from './evaluation-pack.mjs'
 import { withResearchNode } from './research-mission.mjs'
 import { computeIndependentEvidenceLineage } from './research-source-independence.mjs'
 
-function buildVerificationCase(claimId) {
-  return {
-    id: `verify:${claimId}`,
-    assertions: [
-      { type: 'GTE', path: 'supportingEvidenceCount', value: 1 },
-      { type: 'GTE', path: 'independentLineageCount', value: 1 },
-      { type: 'EQUALS', path: 'hasContradictingEvidence', value: false },
-      { type: 'EQUALS', path: 'temporalMatches', value: true }
-    ]
+function buildVerificationCase(claimId, { requireTemporalClassAssertion = false } = {}) {
+  const assertions = [
+    { type: 'GTE', path: 'supportingEvidenceCount', value: 1 },
+    { type: 'GTE', path: 'independentLineageCount', value: 1 },
+    { type: 'EQUALS', path: 'hasContradictingEvidence', value: false },
+    { type: 'EQUALS', path: 'temporalMatches', value: true }
+  ]
+  // "GENERIC V0 ADOPTION READINESS" Phase 8: only added when the field
+  // actually declares a requiredTemporalClass -- a mission/field that
+  // never opts in is completely unaffected (existing behavior, existing
+  // tests/pilots), matching every other opt-in temporal field
+  // (requiredTemporalScopes) already in this codebase.
+  if (requireTemporalClassAssertion) {
+    assertions.push({ type: 'EQUALS', path: 'temporalClassMatches', value: true })
   }
+  return { id: `verify:${claimId}`, assertions }
 }
 
 // Trust + Scale Hardening finding: verification previously only counted
@@ -47,15 +53,27 @@ export function verifyResearchClaim(mission, nodeId, claimId, clock, expectedRev
       if (!claim) throw new Error(`unknown claim: ${claimId}`)
       const linkedEvidence = node.evidence.filter((e) => e.claimId === claimId)
       const lineage = computeIndependentEvidenceLineage(node, claimId)
+      // "GENERIC V0 ADOPTION READINESS" Phase 8: this field's own
+      // requiredTemporalClass, if the customer specification declared one
+      // (e.g. "this must be a point-in-time snapshot, not a later
+      // reconstruction or an outcome"). Undeclared -> untouched, existing
+      // behavior. A claim with no temporalClass defaults to
+      // UNKNOWN_TEMPORAL_STATUS at admission (research-admission.mjs),
+      // which never satisfies a specific requirement -- unknown provenance
+      // is never silently treated as satisfying it, matching every other
+      // fail-closed default in this codebase.
+      const requestedField = node.requestedFields.find((f) => f.fieldName === claim.fieldName)
+      const requiredTemporalClass = requestedField?.requiredTemporalClass ?? null
       const actualOutput = {
         supportingEvidenceCount: linkedEvidence.filter((e) => e.supportsClaim).length,
         independentLineageCount: lineage.independentLineageCount,
         hasContradictingEvidence: linkedEvidence.some((e) => !e.supportsClaim),
-        temporalMatches: claim.temporalScope == null || claim.temporalScope === periodScope
+        temporalMatches: claim.temporalScope == null || claim.temporalScope === periodScope,
+        temporalClassMatches: requiredTemporalClass == null ? true : claim.temporalClass === requiredTemporalClass
       }
       const id = sha256({ kind: 'Verification', claimId, actualOutput, lineage })
       if (node.verifications.some((v) => v.id === id)) return { next: node, changed: false }
-      const scored = scoreCase(actualOutput, buildVerificationCase(claimId))
+      const scored = scoreCase(actualOutput, buildVerificationCase(claimId, { requireTemporalClassAssertion: requiredTemporalClass != null }))
       const verdict = linkedEvidence.length === 0 ? 'INCONCLUSIVE' : scored.passed ? 'PASS' : 'FAIL'
       const next = deepClone(node)
       next.verifications.push({
