@@ -503,7 +503,16 @@ export function createRequestHandler(options = {}) {
                 content: commandResult.text,
                 at: new Date().toISOString(),
                 decisionClass: commandResult.decisionClass,
-                intent: commandResult.intent
+                intent: commandResult.intent,
+                // Bounded follow-up conversational context: the ONLY thing
+                // a later turn's back-reference resolution ("what about
+                // it?") is allowed to read -- see
+                // command-responder.mjs's lastReferencedProjectId. Persisted
+                // here (not recomputed from `content` text later) so it's
+                // exactly what THIS turn actually resolved to, never a
+                // re-guess from prose.
+                resolvedProjectIds: commandResult.resolvedProjectIds ?? [],
+                scope: commandResult.scope ?? null
               }
             ].slice(-200)
             saveState({ ...freshState, chatThreads: threads })

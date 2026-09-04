@@ -123,3 +123,79 @@ test('a fleet-wide status question may still use a fuzzy match informationally -
   assert.deepEqual(result.resolvedProjectIds, ['totally-different-id'])
   assert.match(result.text, /running right now/i)
 })
+
+// Phase 2: bounded follow-up conversational context. Deliberately narrow --
+// covered here rather than a separate file since it's a small addition to
+// this exact resolution-confidence gate the rest of this file already
+// exercises.
+function opStateWithLastTurn(resolvedProjectIds) {
+  return {
+    keepGoingRuns: {},
+    chatThreads: {
+      __command__: [
+        { role: 'user', content: 'run alpha widgets', at: clock().toISOString() },
+        { role: 'assistant', content: 'ok', at: clock().toISOString(), decisionClass: 'AUTO_DECIDE', intent: 'STATUS', resolvedProjectIds, scope: resolvedProjectIds.length === 1 ? 'PROJECT' : 'FLEET' }
+      ]
+    }
+  }
+}
+
+test('a bounded back-reference ("what about that project?") resolves to the prior turn\'s single resolved project', async () => {
+  const result = await respondCommand({
+    message: 'what about that project?',
+    projects: [project('alpha-widgets', 'Alpha Widgets')],
+    opState: opStateWithLastTurn(['alpha-widgets']),
+    clock
+  })
+  assert.deepEqual(result.resolvedProjectIds, ['alpha-widgets'])
+  assert.equal(result.scope, 'PROJECT')
+  assert.match(result.text, /Alpha Widgets/)
+})
+
+test('a back-reference never resolves to a project that has since been removed from the catalog', async () => {
+  const result = await respondCommand({
+    message: 'how is that one doing?',
+    projects: [project('someone-else', 'Someone Else')],
+    opState: opStateWithLastTurn(['alpha-widgets']), // no longer in `projects`
+    clock
+  })
+  assert.match(result.text, /couldn't tell which project/i)
+  assert.deepEqual(result.resolvedProjectIds, [])
+})
+
+test('a back-reference never resolves when the prior turn itself resolved to more than one project (ambiguous history is not silently narrowed)', async () => {
+  const result = await respondCommand({
+    message: 'what about that project?',
+    projects: [project('alpha-widgets', 'Alpha Widgets'), project('alpha-gadgets', 'Alpha Gadgets')],
+    opState: opStateWithLastTurn(['alpha-widgets', 'alpha-gadgets']),
+    clock
+  })
+  assert.match(result.text, /couldn't tell which project/i)
+})
+
+test('a bare pronoun ("it") is NOT treated as a back-reference -- too common a word to trust alone', async () => {
+  // GENERAL intent (not one of the fleet-wide-fallback STATUS_LIKE_INTENTS)
+  // so a resolved "Alpha Widgets" answer could only come from the new
+  // back-reference path, never HEALTH/STATUS's own pre-existing
+  // no-project-named fleet-wide fallback -- isolates what this test means
+  // to prove.
+  const result = await respondCommand({
+    message: 'tell me about it',
+    projects: [project('alpha-widgets', 'Alpha Widgets')],
+    opState: opStateWithLastTurn(['alpha-widgets']),
+    clock
+  })
+  assert.equal(result.intent, 'GENERAL')
+  assert.match(result.text, /couldn't tell which project/i)
+})
+
+test('a back-reference is never honored for a dispatch-worthy message -- real action still requires naming the project again', async () => {
+  const result = await respondCommand({
+    message: 'go ahead and fix that project',
+    projects: [project('alpha-widgets', 'Alpha Widgets')],
+    opState: opStateWithLastTurn(['alpha-widgets']),
+    clock
+  })
+  assert.equal(result.dispatchResults, undefined, 'no dispatch was ever attempted from a back-reference alone')
+  assert.match(result.text, /couldn't tell which project|not confident/i)
+})

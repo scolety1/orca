@@ -40,6 +40,7 @@ process.env.TSF_ORCA_CLI_COMMAND = ORCA_STUB
 process.env.STUB_ORCA_MODE = 'success'
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
+const { loadState, saveState } = await import('../server/data-store.mjs')
 
 function git(cwd, args) {
   execFileSync('git', args, { cwd, stdio: 'ignore' })
@@ -183,5 +184,42 @@ test('negation excludes the named project end to end while the other named proje
       delete process.env.STUB_ORCA_REPOS
       delete process.env.STUB_ORCA_WORKTREE_PATH
     }
+  })
+})
+
+// Phase 2: bounded follow-up conversational context, proved over the REAL
+// running HTTP server -- the risky wiring this file's own unit-level
+// sibling (command-responder.test.mjs) cannot reach, since that constructs
+// opState by hand. Seeds chatThreads.__command__ through the exact same
+// data-store.mjs module the real server itself reads/writes (never a
+// parallel/faked state shape), then proves a real GET/POST round trip
+// reads it back correctly through the unmodified production route.
+test('a follow-up question resolves the prior turn\'s project through the real HTTP route, reading real persisted state', async () => {
+  await withServer(async (base) => {
+    const target = await onboardTestProject(base, 'followup-target')
+    const state = loadState()
+    saveState({
+      ...state,
+      chatThreads: {
+        ...state.chatThreads,
+        __command__: [
+          { role: 'user', content: `status of ${target.projectId}`, at: new Date().toISOString() },
+          {
+            role: 'assistant',
+            content: 'ok',
+            at: new Date().toISOString(),
+            decisionClass: 'AUTO_DECIDE',
+            intent: 'STATUS',
+            resolvedProjectIds: [target.projectId],
+            scope: 'PROJECT'
+          }
+        ]
+      }
+    })
+    const { status, body } = await chat(base, { projectId: null, message: 'what about that project?' })
+    assert.equal(status, 200)
+    assert.deepEqual(body.resolvedProjectIds, [target.projectId])
+    assert.equal(body.scope, 'PROJECT')
+    assert.doesNotMatch(body.text, /couldn't tell which project/i)
   })
 })

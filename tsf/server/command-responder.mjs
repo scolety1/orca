@@ -27,6 +27,36 @@ import { classifyResearchIntent, respondResearchCommand } from './command-resear
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
 export const DISPATCH_WORTHY_INTENTS = new Set(['DISPATCH_REQUEST', 'FIX_REQUEST'])
 
+// Bounded follow-up conversational context (Phase 2): deliberately narrow --
+// only these explicit back-reference shapes, only for READ-ONLY questions
+// (this file's own DISPATCH_WORTHY_INTENTS branch never reaches this; a
+// real dispatch still requires naming the project again, matching the
+// existing "only an EXACT match is ever trusted enough to act on"
+// philosophy this file's own header already documents). A bare "it"/"that"
+// is deliberately excluded -- too common a word in ordinary prose to trust
+// as a real back-reference on its own; every included phrase is
+// project-shaped, not a generic pronoun.
+const BACK_REFERENCE_PATTERN = /\b(that project|this project|that one|the same (project|one))\b/i
+
+// Reads ONLY resolvedProjectIds this file itself persisted on a prior turn
+// (http-server.mjs's chat-save, threaded straight from this file's own
+// return value) -- never re-derived by guessing from old message text, and
+// never a match against a project id/name that has since stopped existing
+// in the real catalog (a project removed since the last turn is not
+// silently re-resolved).
+function lastReferencedProjectId(opState, projects) {
+  const thread = opState.chatThreads?.__command__ ?? []
+  const known = new Set(projects.map((p) => p.id))
+  for (let i = thread.length - 1; i >= 0; i -= 1) {
+    const entry = thread[i]
+    if (entry.role === 'assistant' && entry.resolvedProjectIds?.length === 1) {
+      const id = entry.resolvedProjectIds[0]
+      if (known.has(id)) return id
+    }
+  }
+  return null
+}
+
 export function formatFleetStatusText(statuses) {
   if (statuses.length === 0) {
     return 'No known projects yet -- add one from the Projects page.'
@@ -116,6 +146,22 @@ export async function respondCommand({
   if (!DISPATCH_WORTHY_INTENTS.has(intent)) {
     // Read-only: every resolved match (exact or fuzzy) is safe to use for
     // an informational answer -- no action is ever taken here.
+    if (resolution.matches.length === 0 && BACK_REFERENCE_PATTERN.test(message)) {
+      const backReferenceId = lastReferencedProjectId(opState, projects)
+      const backReferenceProject = backReferenceId ? projects.find((p) => p.id === backReferenceId) : null
+      if (backReferenceProject) {
+        return {
+          intent,
+          decisionClass,
+          text: formatFleetStatusText(fleetWorkStatus([backReferenceProject], opState.keepGoingRuns, clock)),
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel: 'PLANNER_DEEP · grounded in real state (resolved from the prior turn), no live call made',
+          live: false,
+          resolvedProjectIds: [backReferenceProject.id],
+          scope: 'PROJECT'
+        }
+      }
+    }
     return {
       intent,
       decisionClass,
