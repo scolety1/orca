@@ -84,6 +84,34 @@ const EVALUATION_DIMENSIONS = Object.freeze({
   SECRET_LEAKAGE: {
     files: ['test/research-secret-leakage.test.mjs', 'test/parallel-http-transport.test.mjs', 'test/exa-http-transport.test.mjs'],
     pointer: 'repo-wide credential-literal scan; "the api key must never appear in an error message"'
+  },
+  // "GENERIC V0 ADOPTION READINESS" Phase 10 additions -- capabilities
+  // that already had real behavior/tests but were not yet their own
+  // tracked manifest row, plus two genuinely new capabilities closed
+  // this same wave (SOURCE_POLICY_ENFORCEMENT, TEMPORAL_CLASS_BOUNDARY).
+  EVIDENCE_SUPPORT: {
+    files: ['test/research-epistemic-ladder.test.mjs'],
+    pointer: '"contradicting evidence -> FAIL -> claim REJECTED"; "no evidence at all is INCONCLUSIVE, never silently PASS"'
+  },
+  DERIVATION_REPRODUCIBILITY: {
+    files: ['test/research-epistemic-ladder.test.mjs', 'test/research-completeness.test.mjs'],
+    pointer: 'decideDerivedFieldReconciliation\'s 3 temporalScope-disambiguation tests; "a derived, temporally-scoped field is reproducibility-checked against the scope-matched fact only"'
+  },
+  EXPECTED_UNIVERSE_COMPLETENESS: {
+    files: ['test/research-completeness.test.mjs', 'test/research-customer-temporal-boundary.test.mjs'],
+    pointer: '"an empty mission (no nodes yet) reports honest nulls/zeros..."; "worker execution completion is never read as dataset completeness..."; the customer-boundary fixture\'s expectedEntityCoverage assertion; the real 2001 pilot\'s expected-universe-report.json (33/33 RESOLVED, a real independent oracle)'
+  },
+  FACTUAL_CORRECTNESS: {
+    files: ['test/research-e2e-normal-mission.test.mjs'],
+    pointer: 'the 13-step canonical persisted E2E regression; the real 2001 pilot\'s independently cross-validated Brady stat line (matched a value established in a separate, earlier session wave)'
+  },
+  SOURCE_POLICY_ENFORCEMENT: {
+    files: ['test/research-epistemic-ladder.test.mjs', 'test/research-library.test.mjs'],
+    pointer: '"SOURCE POLICY ENFORCEMENT: admitBoundedResearchResult refuses a result citing a disallowedSources domain..."; the bulk source-first equivalent in research-library.test.mjs'
+  },
+  TEMPORAL_CLASS_BOUNDARY: {
+    files: ['test/research-customer-temporal-boundary.test.mjs'],
+    pointer: '"an OUTCOME_DATA claim CANNOT satisfy the CONTEMPORANEOUS_SNAPSHOT-required field, even with strong supporting evidence"'
   }
 })
 
@@ -102,7 +130,10 @@ test('the manifest itself covers every dimension HQ named, with no silent gaps',
     'CANONICALIZATION_AUTHORITY', 'SOURCE_INDEPENDENCE', 'UPSTREAM_CHAIN_HANDLING', 'TEMPORAL_LEAKAGE',
     'TEMPORAL_COMPLETENESS', 'TYPED_MISSINGNESS', 'PARTIAL_NEEDS_INPUT', 'IDENTITY_AMBIGUITY', 'CONFLICTS',
     'CROSS_MISSION_REUSE', 'SCHEMA_GUARDS', 'PROVIDER_NORMALIZATION', 'DISPATCH_AMBIGUITY', 'CRASH_RESUME',
-    'COST_GOVERNANCE', 'SECRET_LEAKAGE'
+    'COST_GOVERNANCE', 'SECRET_LEAKAGE',
+    // GENERIC V0 ADOPTION READINESS Phase 10 additions:
+    'EVIDENCE_SUPPORT', 'DERIVATION_REPRODUCIBILITY', 'EXPECTED_UNIVERSE_COMPLETENESS', 'FACTUAL_CORRECTNESS',
+    'SOURCE_POLICY_ENFORCEMENT', 'TEMPORAL_CLASS_BOUNDARY'
   ]
   const present = Object.keys(EVALUATION_DIMENSIONS)
   const missing = required.filter((d) => !present.includes(d))
