@@ -86,10 +86,7 @@ function isExcludedNear(clause, literalText) {
 // safely proximity-anchored to X). A disclosed, narrower residual: any bare
 // cue word here could in principle collide with a hyphenated compound the
 // same way; "without" is the one demonstrated in practice.
-const FUZZY_EXCLUSION_CUES = new RegExp(
-  `\\b${EXCLUSION_PREFIX.replace("without|", '')}\\b`,
-  'i'
-)
+const FUZZY_EXCLUSION_CUES = new RegExp(`\\b${EXCLUSION_PREFIX.replace('without|', '')}\\b`, 'i')
 
 // Judged per-clause (comma/"but"/em-dash/sentence-boundary separated) rather
 // than whole-message, for the same reason chat-responder.mjs's own directive
@@ -122,6 +119,71 @@ function splitClauses(message) {
 const INFRA_MENTION_PATTERN =
   /\b(?:use|using|via|through|with|run(?:ning)?(?: it| this)?(?: in| on| through)?)\s+(?:the\s+)?tsf\W{0,3}(?:and\s+|\+\s*)?orca\b/i
 const INFRA_SENSITIVE_PROJECT_IDS = new Set(['tsf-orca'])
+
+// Command target-resolution blocker (live hands-on finding): "whats the
+// current state of nytheria/worldforge" fuzzy-matched a real, unrelated
+// project literally named "whats-the-func" -- two of that project's three
+// name tokens ("whats", "the") are generic conversational scaffolding, not
+// an actual mention of it, and cleared FUZZY_CONFIDENCE_FLOOR (2/3 = 0.667)
+// purely because the operator's own QUESTION happened to contain those
+// common words. These tokens must never be allowed to CONTRIBUTE to any
+// project's fuzzy overlap score, on the message side -- stripped here, not
+// from a project's own real nameTokens (a project's own name is never
+// scaffolding, whatever words it happens to contain). A curated, disclosed
+// list rather than real NLP/stopword-library dependency (this file's own
+// stated convention, see FUZZY_CONFIDENCE_FLOOR's comment) -- deliberately
+// broader than the minimum named set (what/whats/current/state/status/
+// running/going/project/run/use/using/with/of/the) to cover the same class
+// of conversational-question scaffolding word this bug's own phrasing used
+// ("is"/"are"/"this"/"it"/etc.) without claiming to be exhaustive; extend
+// this set, not the scoring logic, when a new generic-word collision is
+// found. 's' alone is a tokenizer artifact of stripping the apostrophe from
+// a contraction ("what's" -> "what","s") -- never a real distinguishing
+// word on its own.
+const CONVERSATIONAL_STOPWORDS = new Set([
+  'what',
+  'whats',
+  's',
+  'current',
+  'state',
+  'status',
+  'running',
+  'going',
+  'project',
+  'run',
+  'use',
+  'using',
+  'with',
+  'of',
+  'the',
+  'is',
+  'are',
+  'was',
+  'were',
+  'it',
+  'this',
+  'that',
+  'right',
+  'now',
+  'please',
+  'can',
+  'could',
+  'you',
+  'tell',
+  'me',
+  'about',
+  'doing',
+  'done',
+  'up',
+  'on',
+  'at',
+  'to',
+  'a',
+  'an',
+  'and',
+  'or',
+  'for'
+])
 
 export function resolveProjectsFromText(message, projects, options = {}) {
   const aliases = options.aliases ?? loadProjectAliases()
@@ -160,15 +222,19 @@ export function resolveProjectsFromText(message, projects, options = {}) {
       let excluded = false
 
       if (idPattern.test(lowerClause)) {
-        clauseMatch = { matchedOn: 'id', confidence: 1 }
+        clauseMatch = { matchedOn: 'id', confidence: 1, matchedPhrase: project.id }
         excluded = isExcludedNear(clause, project.id)
       } else if (namePattern.test(lowerClause)) {
-        clauseMatch = { matchedOn: 'displayName', confidence: 0.95 }
+        clauseMatch = {
+          matchedOn: 'displayName',
+          confidence: 0.95,
+          matchedPhrase: project.displayName
+        }
         excluded = isExcludedNear(clause, project.displayName)
       } else {
         const aliasHit = aliasEntries.find((a) => a.pattern.test(clause))
         if (aliasHit) {
-          clauseMatch = { matchedOn: 'alias', confidence: 1 }
+          clauseMatch = { matchedOn: 'alias', confidence: 1, matchedPhrase: aliasHit.alias }
           excluded = isExcludedNear(clause, aliasHit.alias)
         }
       }
@@ -218,20 +284,55 @@ export function resolveProjectsFromText(message, projects, options = {}) {
         continue
       }
       for (const token of tokenize(clause)) {
+        // Generic conversational/status scaffolding (see
+        // CONVERSATIONAL_STOPWORDS above) never counts toward ANY project's
+        // fuzzy overlap -- only tokens that actually distinguish one
+        // project's real name from ordinary question phrasing can.
+        if (CONVERSATIONAL_STOPWORDS.has(token)) {
+          continue
+        }
         contributingTokens.add(token)
       }
     }
-    const overlap = nameTokens.filter((t) => contributingTokens.has(t)).length
-    const ratio = overlap / nameTokens.length
-    if (overlap > 0 && ratio >= FUZZY_CONFIDENCE_FLOOR) {
-      fuzzy.push({ project, matchedOn: 'fuzzy', confidence: ratio })
+    const overlappingTokens = nameTokens.filter((t) => contributingTokens.has(t))
+    const ratio = overlappingTokens.length / nameTokens.length
+    if (overlappingTokens.length > 0 && ratio >= FUZZY_CONFIDENCE_FLOOR) {
+      fuzzy.push({
+        project,
+        matchedOn: 'fuzzy',
+        confidence: ratio,
+        matchedPhrase: overlappingTokens.join(' ')
+      })
     }
   }
 
-  // Ambiguous only when there's no exact signal at all and more than one
-  // fuzzy candidate -- an exact id/displayName/alias match is always
-  // trusted, however much unrelated fuzzy noise exists alongside it.
+  // Resolution contract: exact/alias always outranks fuzzy. Ambiguous only
+  // when there's no exact signal at all and more than one fuzzy candidate.
   const ambiguous = exact.length === 0 && fuzzy.length > 1
 
-  return { matches: [...exact, ...fuzzy], ambiguous }
+  // Command target-resolution blocker fix: previously ANY fuzzy match rode
+  // along in `matches` alongside a confident exact/alias match (only the
+  // `ambiguous` flag above ever treated exact as authoritative) -- an
+  // informational Command reply then reported status for the unrelated
+  // fuzzy project too (the reproduced "whats-the-func" leak), and a caller
+  // building `resolvedProjectIds` from the raw match list rendered it as a
+  // real "Targeting" chip. Once ANY exact/alias signal exists anywhere in
+  // the message, fuzzy is dropped entirely from what's returned as a real
+  // match -- "only a tightly bounded fallback," never an unverified add-on
+  // alongside a confident target. Preserved for diagnostics rather than
+  // silently discarded, so a mis-resolution stays provable in tests/dev
+  // tooling without cluttering the operator-facing response.
+  const droppedFuzzy = exact.length > 0 ? fuzzy : []
+  const matches = exact.length > 0 ? exact : [...exact, ...fuzzy]
+
+  return {
+    matches,
+    ambiguous,
+    candidateAlternatives: droppedFuzzy.map((m) => ({
+      projectId: m.project.id,
+      matchedOn: m.matchedOn,
+      confidence: m.confidence,
+      matchedPhrase: m.matchedPhrase
+    }))
+  }
 }
