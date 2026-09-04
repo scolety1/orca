@@ -1,0 +1,11 @@
+{
+  "missionId": "mission:github-repos-genericity-proof",
+  "state": "ACTIVE",
+  "revision": 150,
+  "nodeCount": 6,
+  "nodesByStatus": {
+    "ADMITTED": 6
+  },
+  "openNeedsYouCount": 0,
+  "updatedAt": "2026-09-04T00:33:08.734Z"
+}

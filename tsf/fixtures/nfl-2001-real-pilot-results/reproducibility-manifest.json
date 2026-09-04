@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-09-04T00:17:17.807Z",
+  "scripts": [
+    "run-nfl-2001-real-pilot.mjs",
+    "run-nfl-2001-second-mission-library-proof.mjs",
+    "backfill-nfl-2001-source-independence.mjs",
+    "resnapshot-nfl-2001-real-pilot.mjs",
+    "finalize-nfl-2001-real-pilot-package.mjs"
+  ],
+  "sourceDataModule": "fixtures/nfl-2001-real-pilot-data.mjs",
+  "missionId": "mission:nfl-2001-real-pilot",
+  "missionRevision": 841,
+  "realProviderCallsMade": 2,
+  "realProvider": "PARALLEL (core processor)",
+  "deterministicAcquisitionSource": "Wikipedia (en.wikipedia.org), CC-BY-SA, fetched via real WebFetch tool calls this session",
+  "integrityCheck": {
+    "schemaVersion": "TSF_RESEARCH_INTEGRITY_REPORT_V1",
+    "status": "CLEAN",
+    "findings": [],
+    "authority": "ADVISORY_ONLY",
+    "checkedAt": "2026-09-04T00:17:17.801Z"
+  },
+  "note": "Re-running run-nfl-2001-real-pilot.mjs against the same fixtures/nfl-2001-real-pilot-data.mjs will re-admit the SAME 31 deterministic results byte-for-byte (idempotent, content-hash-keyed) and will re-dispatch the 2 real Parallel gaps again (a genuinely new real network call each time, not idempotent -- the pilot script itself does not cache across runs; only the durable store own digest-based idempotency prevents duplicate admission of a result already recorded in the SAME mission)."
+}

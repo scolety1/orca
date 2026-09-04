@@ -1,0 +1,50 @@
+[
+  {
+    "entityId": "nfl:2001:wr:marvin-harrison",
+    "nodeId": "node:marvin-harrison",
+    "fieldName": "receivingYards",
+    "decision": "CACHE_HIT",
+    "reused": true,
+    "value": 1524,
+    "nodeStatus": "ADMITTED",
+    "crossMissionOrigin": {
+      "libraryEntryId": "6d3fbf63483affcb945e7137230245a371ecf66a57d12f9fb7c9ff43ebd3698c",
+      "missionId": "mission:nfl-2001-real-pilot",
+      "nodeId": "node:wr:marvin-harrison",
+      "canonicalFactId": "781bdb7e5beff409216fab6c1e739b526a2ebeb007f5bca685ef93ea12571bbb",
+      "canonicalizedAt": "2026-09-03T23:51:24.149Z"
+    }
+  },
+  {
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "nodeId": "node:kurt-warner",
+    "fieldName": "passingYards",
+    "decision": "CACHE_HIT",
+    "reused": true,
+    "value": 4830,
+    "nodeStatus": "ADMITTED",
+    "crossMissionOrigin": {
+      "libraryEntryId": "44484a97ad71e78c44f89c47ca2c2407f08e956036885a12c7b2364953361c0d",
+      "missionId": "mission:nfl-2001-real-pilot",
+      "nodeId": "node:qb:kurt-warner",
+      "canonicalFactId": "f62d03179d46087860c1ad4075e4d01d00fba0d7a805a564e4ea573823b1ed07",
+      "canonicalizedAt": "2026-09-03T23:51:20.177Z"
+    }
+  },
+  {
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "nodeId": "node:marshall-faulk",
+    "fieldName": "rushingYards",
+    "decision": "CACHE_HIT",
+    "reused": true,
+    "value": 1382,
+    "nodeStatus": "ADMITTED",
+    "crossMissionOrigin": {
+      "libraryEntryId": "f4d0c002d81580b7c89614818f4567a09b1bf02b54a53e6aa4897089dd399924",
+      "missionId": "mission:nfl-2001-real-pilot",
+      "nodeId": "node:rb:marshall-faulk",
+      "canonicalFactId": "cfd3903c8a52cce4890ed63797ead345308ac784c91a311758a91d25e29e4029",
+      "canonicalizedAt": "2026-09-03T23:51:23.022Z"
+    }
+  }
+]

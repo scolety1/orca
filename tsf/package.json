@@ -6,6 +6,7 @@
   "description": "Provider-neutral TSF governance and orchestration overlay for Orca.",
   "scripts": {
     "test": "node --test test/*.test.mjs",
+    "test:scale": "node --test test/scale/*.test.mjs",
     "health": "node health/foundation-health.mjs",
     "dogfood": "node fixtures/run-dogfood.mjs"
   },

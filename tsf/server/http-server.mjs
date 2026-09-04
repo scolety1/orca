@@ -42,6 +42,7 @@ import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { resolveProjectsFromText } from './project-name-resolver.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import { handleKeepGoingRoute } from './keep-going-http-routes.mjs'
+import { handleResearchRoute } from './research-http-routes.mjs'
 import { handleOnboardingRoute } from './onboarding-http-routes.mjs'
 import {
   handleHealthRepairRoute,
@@ -417,6 +418,16 @@ export function createRequestHandler(options = {}) {
           { json, notFound, readBody, saveState }
         )
       ) {
+        return
+      }
+
+      // GET/POST /api/research/:missionId[/review-items|completeness|artifacts|
+      // usage|nodes/:nodeId/{cancel,dispatch,poll}] -- see research-http-
+      // routes.mjs. dispatch/poll are governed (server-side provider
+      // allowlist, credential check, fixed pricing, the same durable cost
+      // gate the driver enforces internally), never a bare endpoint -- see
+      // that file's own header comment for the full rationale.
+      if (await handleResearchRoute(parts, req, res, {}, { json, notFound, readBody })) {
         return
       }
 

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "TSF_COMPLETENESS_METRICS_V1",
+  "expectedEntityCoverage": 1,
+  "presentEntityCoverage": 1,
+  "fieldCoverage": 1,
+  "evidenceCoverage": 1,
+  "verifiedCoverage": 1,
+  "conflictCount": 0,
+  "unresolvedConflictCount": 0,
+  "typedMissingnessCount": 0,
+  "identityReviewCount": 0,
+  "derivedFieldReproducibilityCoverage": null,
+  "computedAt": "2026-09-04T00:33:08.737Z"
+}

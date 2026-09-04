@@ -1,0 +1,20 @@
+{
+  "mission": "NFL Historical Base Data, 2001 season, QB/RB/WR/TE (2002 Pro Bowl selections)",
+  "expectedEntities": 33,
+  "presentEntities": 33,
+  "canonicalFactsCreated": 192,
+  "typedMissingnessCount": 8,
+  "conflictsDiscovered": 0,
+  "needsYouRaised": 0,
+  "fieldCoverage": 1,
+  "verifiedCoverage": 1,
+  "realPaidProviderCalls": 2,
+  "deterministicAcquisitionCalls": 31,
+  "integrityStatus": "CLEAN",
+  "genuineDefectsFoundAndFixedDuringThisRealPilot": [
+    "Parallel API real-schema validation requires output_schema.properties -- a bare {type:\"object\"} placeholder (only ever exercised against the deterministic fake worker previously) was rejected with HTTP 422. Fixed in fixtures/nfl-2001-real-pilot-data.mjs (requestedOutputSchemaForPosition).",
+    "ES module import hoisting: a script-level process.env.TSF_UI_STATE_FILE assignment placed textually before static imports did NOT actually run before those imports (all top-level imports are hoisted ahead of any other top-level statement), silently writing pilot mission/library data to the real default operator-state.json for two run attempts instead of an isolated file. Caught via Test-Path plus inspecting the real files actual content (confirmed it held nothing but this pilots own accidental writes plus untouched framework defaults -- no real data lost), reset to pristine, and fixed by switching to the dynamic await import() pattern already used by every test file in this codebase.",
+    "Independent-verification finding: a node resolved entirely via cross-mission Research Library reuse (zero real dispatch) stayed stuck at PENDING/READY forever despite having a genuine CanonicalFact, under-reporting presentEntityCoverage/evidenceCoverage/verifiedCoverage for a reuse-only mission. Fixed with a new, narrowly-guarded ADMITTED transition (markResearchNodeAdmittedViaLibraryReuse, reachable only for a node with zero real dispatch/result history) plus a new durable driver function (adoptResearchLibraryReuseDurable) combining evaluate-decide-admit-mark as one complete sequence. Regression-tested (2 new domain tests, 1 new driver test) and the second-mission library-reuse proof was regenerated end to end (mission:nfl-2001-second-reuse-proof-v2): all 3 reused nodes now correctly show status ADMITTED with presentEntityCoverage/fieldCoverage of 1.",
+    "Independent-verification finding: the pilots source-independence classification loop matched only the exact publisher string \"Wikipedia\" (what the synthetic deterministic-acquisition worker sets), missing the two REAL Parallel-dispatched sources (Brady, Favre) whose real citation extraction returns the page title instead (e.g. \"Tom Brady - Wikipedia\"). Both are genuinely the same source type (en.wikipedia.org). Fixed by matching on URL domain instead of an exact publisher string, and backfilled onto the already-completed real mission with zero new network calls/spend (backfill-nfl-2001-source-independence.mjs) -- all 34 real source references are now classified (0 remaining unset)."
+  ]
+}

@@ -1,0 +1,134 @@
+[
+  {
+    "providerId": "PARALLEL",
+    "nodeId": "node:tom-brady",
+    "taskFingerprint": "43167bde53b63434356cc61d9c4561c1d6cfd4a0b4c3d2f07cb6e934661e8f77",
+    "workerRunRef": {
+      "provider": "PARALLEL",
+      "providerRunId": "trun_a705c9dfe22e48319a6c152ba6546ac2",
+      "dispatchedAt": "2026-09-03T09:57:03.240Z"
+    },
+    "ok": true,
+    "status": "SUCCEEDED",
+    "failureReason": null,
+    "pollCount": 3,
+    "latencyMs": 26511,
+    "isRetry": false,
+    "listPriceCostUsd": 0.025,
+    "providerReportedCostUsd": null,
+    "at": "2026-09-03T09:57:27.201Z"
+  },
+  {
+    "providerId": "EXA",
+    "nodeId": "node:tom-brady",
+    "taskFingerprint": "2aa255185dc5fac97449b58c176298e5b817f46e4efc4e9cc481323541a94c3e",
+    "workerRunRef": {
+      "provider": "EXA",
+      "providerRunId": "agent_run_7b1d1add72a941d39c225ab846a6add0",
+      "dispatchedAt": "2026-09-03T09:57:27.477Z"
+    },
+    "ok": true,
+    "status": "SUCCEEDED",
+    "failureReason": null,
+    "pollCount": 9,
+    "latencyMs": 22124,
+    "isRetry": false,
+    "listPriceCostUsd": 0.1,
+    "providerReportedCostUsd": {
+      "total": 0.1,
+      "agentCompute": 0.04,
+      "search": 0.06,
+      "emails": 0,
+      "phoneNumbers": 0
+    },
+    "at": "2026-09-03T09:57:49.327Z"
+  },
+  {
+    "providerId": "PARALLEL",
+    "nodeId": "node:kurt-warner",
+    "taskFingerprint": "e93bd7f4e61960d38b5fdd49f4331df8c800b3f3642b61a45b4fa25c75d3e93d",
+    "workerRunRef": {
+      "provider": "PARALLEL",
+      "providerRunId": "trun_eb56ed0578354da5a3639b4c372eee57",
+      "dispatchedAt": "2026-09-03T09:57:50.622Z"
+    },
+    "ok": true,
+    "status": "SUCCEEDED",
+    "failureReason": null,
+    "pollCount": 6,
+    "latencyMs": 45731,
+    "isRetry": false,
+    "listPriceCostUsd": 0.025,
+    "providerReportedCostUsd": null,
+    "at": "2026-09-03T09:58:35.059Z"
+  },
+  {
+    "providerId": "EXA",
+    "nodeId": "node:kurt-warner",
+    "taskFingerprint": "81b67d3687de9b297b49ed339bbdeb72567b435e7419f4538f9529a9414f25c9",
+    "workerRunRef": {
+      "provider": "EXA",
+      "providerRunId": "agent_run_d3dfcbda2daf46c8bf50778cd469af91",
+      "dispatchedAt": "2026-09-03T09:58:35.230Z"
+    },
+    "ok": true,
+    "status": "SUCCEEDED",
+    "failureReason": null,
+    "pollCount": 8,
+    "latencyMs": 17023,
+    "isRetry": false,
+    "listPriceCostUsd": 0.1,
+    "providerReportedCostUsd": {
+      "total": 0.1,
+      "agentCompute": 0.04,
+      "search": 0.06,
+      "emails": 0,
+      "phoneNumbers": 0
+    },
+    "at": "2026-09-03T09:58:52.084Z"
+  },
+  {
+    "providerId": "PARALLEL",
+    "nodeId": "node:jim-miller",
+    "taskFingerprint": "82f6f769501aec6d9eb2d105c644aba351bb2601a9fc4e2e631e54e8ae75eab5",
+    "workerRunRef": {
+      "provider": "PARALLEL",
+      "providerRunId": "trun_fa7ad1cc68e24490842c309fc49b6ff9",
+      "dispatchedAt": "2026-09-03T09:58:52.449Z"
+    },
+    "ok": true,
+    "status": "SUCCEEDED",
+    "failureReason": null,
+    "pollCount": 12,
+    "latencyMs": 86970,
+    "isRetry": false,
+    "listPriceCostUsd": 0.025,
+    "providerReportedCostUsd": null,
+    "at": "2026-09-03T10:00:19.055Z"
+  },
+  {
+    "providerId": "EXA",
+    "nodeId": "node:jim-miller",
+    "taskFingerprint": "d4cd8b7e1f73ed314eeaaebb1d9e656ecb64834ed38047451515f5ad92aaee4d",
+    "workerRunRef": {
+      "provider": "EXA",
+      "providerRunId": "agent_run_25114ab577a9470d87f49e80f81afeea",
+      "dispatchedAt": "2026-09-03T10:00:19.272Z"
+    },
+    "ok": true,
+    "status": "SUCCEEDED",
+    "failureReason": null,
+    "pollCount": 9,
+    "latencyMs": 19900,
+    "isRetry": false,
+    "listPriceCostUsd": 0.1,
+    "providerReportedCostUsd": {
+      "total": 0.1,
+      "agentCompute": 0.04,
+      "search": 0.06,
+      "emails": 0,
+      "phoneNumbers": 0
+    },
+    "at": "2026-09-03T10:00:38.958Z"
+  }
+]

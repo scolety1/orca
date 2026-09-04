@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tsf.local/contracts/research-specification.schema.v1.json",
+  "title": "TSF Research Specification V1",
+  "$defs": {
+    "RequestedField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fieldName", "valueType", "required"],
+      "properties": {
+        "fieldName": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "valueType": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "derivationRule": {
+          "description": "Present only for a derived field: how it is computed from other requested fields, never independently sourced.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "SourcePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preferredSources", "disallowedSources", "licensingConstraints", "freshnessPolicy", "requireIndependentSources", "minSourceCount"],
+      "properties": {
+        "preferredSources": { "type": "array", "items": { "type": "string" } },
+        "disallowedSources": { "type": "array", "items": { "type": "string" } },
+        "licensingConstraints": { "type": "array", "items": { "type": "string" } },
+        "freshnessPolicy": { "type": "string" },
+        "requireIndependentSources": { "type": "boolean" },
+        "minSourceCount": { "type": "integer", "minimum": 0 },
+        "allowCrossMissionLibraryReuse": { "description": "Trust + Scale Hardening Continuation 2 Priority Block 4: explicit opt-in for research-library.mjs's evaluateResearchLibraryReuse. Absent/false means reuse is NOT permitted (fail-closed default) -- an operator sets this only after reviewing that reuse is appropriate (including licensing/terms).", "type": "boolean" }
+      }
+    },
+    "TemporalRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asOfDate", "periodScope"],
+      "properties": {
+        "asOfDate": { "type": "string" },
+        "periodScope": { "type": "string" }
+      }
+    },
+    "Budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxCostUsd", "maxLatencyMs", "maxToolCallsPerNode"],
+      "properties": {
+        "maxCostUsd": { "type": ["number", "null"] },
+        "maxLatencyMs": { "type": ["number", "null"] },
+        "maxToolCallsPerNode": { "type": ["number", "null"] }
+      }
+    },
+    "ExpectedUniverse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "entityType", "expectedCount", "expectedEntities"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_EXPECTED_UNIVERSE_V1" },
+        "entityType": { "type": "string", "minLength": 1 },
+        "expectedCount": { "type": "integer", "minimum": 0 },
+        "expectedEntities": {
+          "description": "Optional enumerated members of the universe, known in advance -- used to measure expected-entity coverage. May be an empty array when only expectedCount is known.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["entityId", "identityHints"],
+            "properties": {
+              "entityId": { "type": "string", "minLength": 1 },
+              "identityHints": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "id", "researchQuestion", "entityType", "requestedFields",
+    "sourcePolicy", "temporalRequirements", "budget", "toolPermissions", "expectedUniverse"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "TSF_RESEARCH_SPECIFICATION_V1" },
+    "id": { "type": "string", "minLength": 1 },
+    "researchQuestion": { "type": "string", "minLength": 1 },
+    "entityType": { "type": "string", "minLength": 1 },
+    "requestedFields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/RequestedField" } },
+    "sourcePolicy": { "$ref": "#/$defs/SourcePolicy" },
+    "temporalRequirements": { "$ref": "#/$defs/TemporalRequirements" },
+    "budget": { "$ref": "#/$defs/Budget" },
+    "toolPermissions": {
+      "description": "Fixed allowlist of tools/sources a worker may use for this specification. Never expandable by worker/research content.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "expectedUniverse": { "$ref": "#/$defs/ExpectedUniverse" }
+  }
+}

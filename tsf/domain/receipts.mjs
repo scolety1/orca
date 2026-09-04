@@ -7,7 +7,13 @@ export const TSF_RECEIPT_KINDS = Object.freeze([
   'ADOPTION_DECISION',
   'RELEASE_PROMOTION',
   'HUMAN_CONSEQUENTIAL_APPROVAL',
-  'PROJECT_ONBOARDED'
+  'PROJECT_ONBOARDED',
+  // TSF DATASET + DEEP RESEARCH V0 Implementation Wave 1: wraps a research
+  // mission's provenance/reproducibility export package in the same
+  // hash-chained receipt mechanism used for every other TSF audit artifact
+  // (research-provenance.mjs), rather than a second, parallel hash-chain
+  // implementation.
+  'RESEARCH_PROVENANCE_EXPORT'
 ])
 
 export function createReceipt(input, { previousReceiptHash = null, clock } = {}) {

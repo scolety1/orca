@@ -1,0 +1,200 @@
+[
+  {
+    "nodeId": "node:qb:rich-gannon",
+    "entityId": "nfl:2001:qb:rich-gannon",
+    "entityName": "Rich Gannon",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:qb:tom-brady",
+    "entityId": "nfl:2001:qb:tom-brady",
+    "entityName": "Tom Brady",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:qb:kordell-stewart",
+    "entityId": "nfl:2001:qb:kordell-stewart",
+    "entityName": "Kordell Stewart",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:qb:kurt-warner",
+    "entityId": "nfl:2001:qb:kurt-warner",
+    "entityName": "Kurt Warner",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:qb:jeff-garcia",
+    "entityId": "nfl:2001:qb:jeff-garcia",
+    "entityName": "Jeff Garcia",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:qb:donovan-mcnabb",
+    "entityId": "nfl:2001:qb:donovan-mcnabb",
+    "entityName": "Donovan McNabb",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:qb:brett-favre",
+    "entityId": "nfl:2001:qb:brett-favre",
+    "entityName": "Brett Favre",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:rb:curtis-martin",
+    "entityId": "nfl:2001:rb:curtis-martin",
+    "entityName": "Curtis Martin",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:rb:priest-holmes",
+    "entityId": "nfl:2001:rb:priest-holmes",
+    "entityName": "Priest Holmes",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:rb:jerome-bettis",
+    "entityId": "nfl:2001:rb:jerome-bettis",
+    "entityName": "Jerome Bettis",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:rb:corey-dillon",
+    "entityId": "nfl:2001:rb:corey-dillon",
+    "entityName": "Corey Dillon",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:rb:marshall-faulk",
+    "entityId": "nfl:2001:rb:marshall-faulk",
+    "entityName": "Marshall Faulk",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:rb:ahman-green",
+    "entityId": "nfl:2001:rb:ahman-green",
+    "entityName": "Ahman Green",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:rb:garrison-hearst",
+    "entityId": "nfl:2001:rb:garrison-hearst",
+    "entityName": "Garrison Hearst",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:marvin-harrison",
+    "entityId": "nfl:2001:wr:marvin-harrison",
+    "entityName": "Marvin Harrison",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:rod-smith",
+    "entityId": "nfl:2001:wr:rod-smith",
+    "entityName": "Rod Smith",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:tim-brown",
+    "entityId": "nfl:2001:wr:tim-brown",
+    "entityName": "Tim Brown",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:jimmy-smith",
+    "entityId": "nfl:2001:wr:jimmy-smith",
+    "entityName": "Jimmy Smith",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:troy-brown",
+    "entityId": "nfl:2001:wr:troy-brown",
+    "entityName": "Troy Brown",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:hines-ward",
+    "entityId": "nfl:2001:wr:hines-ward",
+    "entityName": "Hines Ward",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:david-boston",
+    "entityId": "nfl:2001:wr:david-boston",
+    "entityName": "David Boston",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:terrell-owens",
+    "entityId": "nfl:2001:wr:terrell-owens",
+    "entityName": "Terrell Owens",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:keyshawn-johnson",
+    "entityId": "nfl:2001:wr:keyshawn-johnson",
+    "entityName": "Keyshawn Johnson",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:isaac-bruce",
+    "entityId": "nfl:2001:wr:isaac-bruce",
+    "entityName": "Isaac Bruce",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:joe-horn",
+    "entityId": "nfl:2001:wr:joe-horn",
+    "entityName": "Joe Horn",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:wr:torry-holt",
+    "entityId": "nfl:2001:wr:torry-holt",
+    "entityName": "Torry Holt",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:te:tony-gonzalez",
+    "entityId": "nfl:2001:te:tony-gonzalez",
+    "entityName": "Tony Gonzalez",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:te:shannon-sharpe",
+    "entityId": "nfl:2001:te:shannon-sharpe",
+    "entityName": "Shannon Sharpe",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:te:ken-dilger",
+    "entityId": "nfl:2001:te:ken-dilger",
+    "entityName": "Ken Dilger",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:te:dwayne-carswell",
+    "entityId": "nfl:2001:te:dwayne-carswell",
+    "entityName": "Dwayne Carswell",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:te:bubba-franks",
+    "entityId": "nfl:2001:te:bubba-franks",
+    "entityName": "Bubba Franks",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:te:byron-chamberlain",
+    "entityId": "nfl:2001:te:byron-chamberlain",
+    "entityName": "Byron Chamberlain",
+    "identityResolutionState": null
+  },
+  {
+    "nodeId": "node:te:wesley-walls",
+    "entityId": "nfl:2001:te:wesley-walls",
+    "entityName": "Wesley Walls",
+    "identityResolutionState": null
+  }
+]

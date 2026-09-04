@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tsf.local/contracts/bounded-research-worker-protocol.schema.v1.json",
+  "title": "TSF Bounded Research Worker Protocol V1",
+  "description": "Provider-independent request/result seam. No Parallel/Exa/Tavily/GPT-Researcher-specific field belongs here -- provider identity is confined to BoundedResearchResult.provider and .providerRunRef only, which are opaque worker_run_ref values, never canonical ResearchMission/ResearchNode identity.",
+  "$defs": {
+    "BoundedResearchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "nodeId", "taskFingerprint", "nodeRole", "researchQuestion",
+        "scope", "requestedOutputSchema", "temporalRequirements", "sourcePolicy",
+        "preferredSources", "disallowedSources", "licensingConstraints", "freshnessPolicy",
+        "budget", "toolPermissions"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "TSF_BOUNDED_RESEARCH_REQUEST_V1" },
+        "nodeId": { "type": "string", "minLength": 1 },
+        "taskFingerprint": {
+          "description": "sha256(canonicalize({nodeId, researchQuestion, requestedOutputSchema, provider})) -- pre-dispatch dedupe key, distinct from post-hoc result-digest idempotency.",
+          "type": "string", "pattern": "^[0-9a-f]{64}$"
+        },
+        "nodeRole": { "type": "string", "minLength": 1 },
+        "researchQuestion": { "type": "string", "minLength": 1 },
+        "scope": { "type": "array", "items": { "type": "string" } },
+        "requestedOutputSchema": { "type": "object" },
+        "temporalRequirements": {
+          "type": "object", "additionalProperties": false, "required": ["asOfDate", "periodScope"],
+          "properties": { "asOfDate": { "type": "string" }, "periodScope": { "type": "string" } }
+        },
+        "sourcePolicy": { "type": "object" },
+        "preferredSources": { "type": "array", "items": { "type": "string" } },
+        "disallowedSources": { "type": "array", "items": { "type": "string" } },
+        "licensingConstraints": { "type": "array", "items": { "type": "string" } },
+        "freshnessPolicy": { "type": "string" },
+        "budget": { "type": "object" },
+        "toolPermissions": {
+          "description": "Fixed allowlist copied verbatim from the owning ResearchSpecification. A worker/adapter may never widen this.",
+          "type": "array", "items": { "type": "string" }
+        }
+      }
+    },
+    "Observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rawContent", "extractedAt", "providerConfidence", "providerReasoning"],
+      "properties": {
+        "rawContent": {},
+        "extractedAt": { "type": "string" },
+        "providerConfidence": { "type": ["number", "null"] },
+        "providerReasoning": { "type": ["string", "null"] }
+      }
+    },
+    "ProposedClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fieldName", "proposedValue", "providerConfidence", "providerReasoning"],
+      "properties": {
+        "fieldName": { "type": "string", "minLength": 1 },
+        "proposedValue": {},
+        "temporalScope": { "type": ["string", "null"] },
+        "providerConfidence": {
+          "description": "Provider-proposed confidence only. Never written into a Claim/CanonicalFact field directly -- external confidence != TSF-verified confidence.",
+          "type": ["number", "null"]
+        },
+        "providerReasoning": { "type": ["string", "null"] }
+      }
+    },
+    "ResultEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimFieldName", "sourceRef", "snippet", "supportsClaim"],
+      "properties": {
+        "claimFieldName": { "type": "string", "minLength": 1 },
+        "sourceRef": { "type": "string", "minLength": 1 },
+        "snippet": { "type": "string" },
+        "supportsClaim": { "type": "boolean" }
+      }
+    },
+    "SourceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRef", "url", "publisher", "retrievedAt"],
+      "properties": {
+        "sourceRef": { "type": "string", "minLength": 1 },
+        "url": { "type": ["string", "null"] },
+        "publisher": { "type": ["string", "null"] },
+        "retrievedAt": { "type": "string" }
+      }
+    },
+    "SourceSnapshotReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRef", "contentHash"],
+      "properties": {
+        "sourceRef": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string" },
+        "rawContentRef": { "type": ["string", "null"] },
+        "inlineSnapshot": {}
+      }
+    },
+    "GapProposal": {
+      "description": "A worker-surfaced suggestion only. TSF admission decides whether durable additional work is created -- a worker cannot admit child work directly.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fieldName", "reason"],
+      "properties": {
+        "fieldName": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string" }
+      }
+    },
+    "Usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestCount", "tokensOrUnits", "providerReportedCostUsd"],
+      "properties": {
+        "requestCount": { "type": ["integer", "null"] },
+        "tokensOrUnits": { "type": ["number", "null"] },
+        "providerReportedCostUsd": {
+          "description": "Unknown cost MUST be represented as null, never coerced to 0.",
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "FailureDetails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "detail"],
+      "properties": {
+        "reason": { "type": "string", "minLength": 1 },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
+    "BoundedResearchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "nodeId", "taskFingerprint", "provider", "providerRunRef", "status",
+        "observations", "proposedClaims", "evidence", "sourceReferences",
+        "sourceSnapshotsOrSnapshotRefs", "newGapProposals", "warnings", "unresolvedQuestions",
+        "usage", "failureDetails"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "TSF_BOUNDED_RESEARCH_RESULT_V1" },
+        "nodeId": { "type": "string", "minLength": 1 },
+        "taskFingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "provider": { "type": "string", "minLength": 1 },
+        "providerRunRef": {
+          "description": "Opaque worker_run_ref. Never becomes canonical ResearchMission/ResearchNode identity.",
+          "type": "object", "additionalProperties": false, "required": ["provider", "providerRunId", "dispatchedAt"],
+          "properties": {
+            "provider": { "type": "string", "minLength": 1 },
+            "providerRunId": { "type": "string", "minLength": 1 },
+            "dispatchedAt": { "type": "string" }
+          }
+        },
+        "status": { "enum": ["SUCCEEDED", "FAILED", "PARTIAL", "NEEDS_INPUT"] },
+        "observations": { "type": "array", "items": { "$ref": "#/$defs/Observation" } },
+        "proposedClaims": { "type": "array", "items": { "$ref": "#/$defs/ProposedClaim" } },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/ResultEvidence" } },
+        "sourceReferences": { "type": "array", "items": { "$ref": "#/$defs/SourceReference" } },
+        "sourceSnapshotsOrSnapshotRefs": { "type": "array", "items": { "$ref": "#/$defs/SourceSnapshotReference" } },
+        "newGapProposals": { "type": "array", "items": { "$ref": "#/$defs/GapProposal" } },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "unresolvedQuestions": { "type": "array", "items": { "type": "string" } },
+        "usage": { "$ref": "#/$defs/Usage" },
+        "failureDetails": { "type": ["object", "null"], "$ref": "#/$defs/FailureDetails" }
+      }
+    }
+  }
+}

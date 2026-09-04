@@ -1,0 +1,3524 @@
+{
+  "schemaVersion": "TSF_RESEARCH_MISSION_V1",
+  "id": "mission:nfl-2001-qb-v0",
+  "projectId": "fixture:nfl-2001-qb",
+  "specification": {
+    "schemaVersion": "TSF_RESEARCH_SPECIFICATION_V1",
+    "id": "spec:nfl-2001-qb-v0",
+    "researchQuestion": "What were the 2001 regular-season QB statistics and biographical facts for the fixture players?",
+    "entityType": "NFL_QB_SEASON",
+    "requestedFields": [
+      {
+        "fieldName": "team",
+        "valueType": "string",
+        "required": true,
+        "derivationRule": null
+      },
+      {
+        "fieldName": "passingYards",
+        "valueType": "number",
+        "required": true,
+        "derivationRule": null
+      },
+      {
+        "fieldName": "passingTouchdowns",
+        "valueType": "number",
+        "required": true,
+        "derivationRule": null
+      },
+      {
+        "fieldName": "interceptions",
+        "valueType": "number",
+        "required": true,
+        "derivationRule": null
+      },
+      {
+        "fieldName": "completions",
+        "valueType": "number",
+        "required": true,
+        "derivationRule": null
+      },
+      {
+        "fieldName": "attempts",
+        "valueType": "number",
+        "required": true,
+        "derivationRule": null
+      },
+      {
+        "fieldName": "passerRating",
+        "valueType": "number",
+        "required": true,
+        "derivationRule": "NFL_PASSER_RATING_FORMULA"
+      },
+      {
+        "fieldName": "mvpVotingNote",
+        "valueType": "string",
+        "required": false,
+        "derivationRule": null
+      },
+      {
+        "fieldName": "signingBonusUsd",
+        "valueType": "number",
+        "required": false,
+        "derivationRule": null
+      }
+    ],
+    "sourcePolicy": {
+      "preferredSources": [
+        "pro-football-reference.com",
+        "nfl.com"
+      ],
+      "disallowedSources": [],
+      "licensingConstraints": [],
+      "freshnessPolicy": "HISTORICAL_STATIC",
+      "requireIndependentSources": true,
+      "minSourceCount": 1
+    },
+    "temporalRequirements": {
+      "asOfDate": "2002-02-01",
+      "periodScope": "2001-regular-season"
+    },
+    "budget": {
+      "maxCostUsd": null,
+      "maxLatencyMs": 60000,
+      "maxToolCallsPerNode": 5
+    },
+    "toolPermissions": [
+      "fake-research-worker"
+    ],
+    "expectedUniverse": {
+      "schemaVersion": "TSF_EXPECTED_UNIVERSE_V1",
+      "entityType": "NFL_QB_SEASON",
+      "expectedCount": 3,
+      "expectedEntities": [
+        {
+          "entityId": "nfl:2001:qb:tom-brady",
+          "identityHints": {
+            "team": "NE",
+            "position": "QB"
+          }
+        },
+        {
+          "entityId": "nfl:2001:qb:kurt-warner",
+          "identityHints": {
+            "team": "STL",
+            "position": "QB"
+          }
+        },
+        {
+          "entityId": "nfl:2001:qb:jim-miller",
+          "identityHints": {
+            "team": "CHI",
+            "position": "QB"
+          }
+        }
+      ]
+    }
+  },
+  "expectedUniverse": {
+    "schemaVersion": "TSF_EXPECTED_UNIVERSE_V1",
+    "entityType": "NFL_QB_SEASON",
+    "expectedCount": 3,
+    "expectedEntities": [
+      {
+        "entityId": "nfl:2001:qb:tom-brady",
+        "identityHints": {
+          "team": "NE",
+          "position": "QB"
+        }
+      },
+      {
+        "entityId": "nfl:2001:qb:kurt-warner",
+        "identityHints": {
+          "team": "STL",
+          "position": "QB"
+        }
+      },
+      {
+        "entityId": "nfl:2001:qb:jim-miller",
+        "identityHints": {
+          "team": "CHI",
+          "position": "QB"
+        }
+      }
+    ]
+  },
+  "state": "NEEDS_YOU",
+  "revision": 72,
+  "nodes": [
+    {
+      "id": "node:tom-brady",
+      "parentId": null,
+      "dependencies": [],
+      "conflictsWith": [],
+      "nodeRole": "PRIMARY_RESEARCH",
+      "targetEntity": {
+        "entityId": "nfl:2001:qb:tom-brady",
+        "name": "Tom Brady"
+      },
+      "requestedFields": [
+        {
+          "fieldName": "team",
+          "valueType": "string",
+          "required": true,
+          "derivationRule": null
+        },
+        {
+          "fieldName": "passingYards",
+          "valueType": "number",
+          "required": true,
+          "derivationRule": null
+        },
+        {
+          "fieldName": "passingTouchdowns",
+          "valueType": "number",
+          "required": true,
+          "derivationRule": null
+        },
+        {
+          "fieldName": "interceptions",
+          "valueType": "number",
+          "required": true,
+          "derivationRule": null
+        },
+        {
+          "fieldName": "completions",
+          "valueType": "number",
+          "required": true,
+          "derivationRule": null
+        },
+        {
+          "fieldName": "attempts",
+          "valueType": "number",
+          "required": true,
+          "derivationRule": null
+        },
+        {
+          "fieldName": "passerRating",
+          "valueType": "number",
+          "required": true,
+          "derivationRule": "NFL_PASSER_RATING_FORMULA"
+        }
+      ],
+      "requestedOutputSchema": {
+        "type": "object",
+        "properties": {
+          "team": {
+            "type": "string"
+          },
+          "passingYards": {
+            "type": "number"
+          },
+          "passingTouchdowns": {
+            "type": "number"
+          },
+          "interceptions": {
+            "type": "number"
+          },
+          "completions": {
+            "type": "number"
+          },
+          "attempts": {
+            "type": "number"
+          }
+        }
+      },
+      "priority": 0,
+      "status": "ADMITTED",
+      "attempts": [],
+      "retryCount": 0,
+      "dispatchRecords": [
+        {
+          "taskFingerprint": "43167bde53b63434356cc61d9c4561c1d6cfd4a0b4c3d2f07cb6e934661e8f77",
+          "workerRunRef": {
+            "provider": "PARALLEL",
+            "providerRunId": "trun_a705c9dfe22e48319a6c152ba6546ac2",
+            "dispatchedAt": "2026-09-03T09:57:03.240Z"
+          },
+          "dispatchedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "taskFingerprint": "2aa255185dc5fac97449b58c176298e5b817f46e4efc4e9cc481323541a94c3e",
+          "workerRunRef": {
+            "provider": "EXA",
+            "providerRunId": "agent_run_7b1d1add72a941d39c225ab846a6add0",
+            "dispatchedAt": "2026-09-03T09:57:27.477Z"
+          },
+          "dispatchedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "rawResults": [
+        {
+          "digest": "cda2510380e47ca389ac0989f39f1b0eadee76f962d53da64a4c6d42d74833df",
+          "result": {
+            "schemaVersion": "TSF_BOUNDED_RESEARCH_RESULT_V1",
+            "nodeId": "node:tom-brady",
+            "taskFingerprint": "43167bde53b63434356cc61d9c4561c1d6cfd4a0b4c3d2f07cb6e934661e8f77",
+            "provider": "PARALLEL",
+            "providerRunRef": {
+              "provider": "PARALLEL",
+              "providerRunId": "trun_a705c9dfe22e48319a6c152ba6546ac2",
+              "dispatchedAt": "2026-09-03T09:57:03.240Z"
+            },
+            "status": "SUCCEEDED",
+            "observations": [
+              {
+                "rawContent": {
+                  "basis": [
+                    {
+                      "field": "team",
+                      "citations": [
+                        {
+                          "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                          "excerpts": [
+                            "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                          ]
+                        }
+                      ],
+                      "reasoning": "The 2001 row lists Tom Brady's team as NWE.",
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "completions",
+                      "citations": [
+                        {
+                          "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                          "excerpts": [
+                            "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                          ]
+                        }
+                      ],
+                      "reasoning": "The 2001 row reports 264 completions.",
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "passingTouchdowns",
+                      "citations": [
+                        {
+                          "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                          "excerpts": [
+                            "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                          ]
+                        }
+                      ],
+                      "reasoning": "The 2001 row reports 18 passing touchdowns.",
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "attempts",
+                      "citations": [
+                        {
+                          "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                          "excerpts": [
+                            "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                          ]
+                        }
+                      ],
+                      "reasoning": "The 2001 row reports 413 pass attempts.",
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "interceptions",
+                      "citations": [
+                        {
+                          "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                          "excerpts": [
+                            "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                          ]
+                        }
+                      ],
+                      "reasoning": "The 2001 row reports 12 interceptions.",
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "passingYards",
+                      "citations": [
+                        {
+                          "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                          "excerpts": [
+                            "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                          ]
+                        }
+                      ],
+                      "reasoning": "The 2001 row reports 2,843 passing yards.",
+                      "confidence": "high"
+                    }
+                  ],
+                  "type": "json",
+                  "content": {
+                    "team": "NWE",
+                    "completions": 264,
+                    "passingTouchdowns": 18,
+                    "attempts": 413,
+                    "interceptions": 12,
+                    "passingYards": 2843
+                  }
+                },
+                "extractedAt": "2026-09-03T09:57:27.201Z",
+                "providerConfidence": null,
+                "providerReasoning": null
+              }
+            ],
+            "proposedClaims": [
+              {
+                "fieldName": "team",
+                "proposedValue": "NWE",
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "The 2001 row lists Tom Brady's team as NWE."
+              },
+              {
+                "fieldName": "passingYards",
+                "proposedValue": 2843,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "The 2001 row reports 2,843 passing yards."
+              },
+              {
+                "fieldName": "passingTouchdowns",
+                "proposedValue": 18,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "The 2001 row reports 18 passing touchdowns."
+              },
+              {
+                "fieldName": "interceptions",
+                "proposedValue": 12,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "The 2001 row reports 12 interceptions."
+              },
+              {
+                "fieldName": "completions",
+                "proposedValue": 264,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "The 2001 row reports 264 completions."
+              },
+              {
+                "fieldName": "attempts",
+                "proposedValue": 413,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "The 2001 row reports 413 pass attempts."
+              }
+            ],
+            "evidence": [
+              {
+                "claimFieldName": "team",
+                "sourceRef": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "passingYards",
+                "sourceRef": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "passingTouchdowns",
+                "sourceRef": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "interceptions",
+                "sourceRef": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "completions",
+                "sourceRef": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "attempts",
+                "sourceRef": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+                "supportsClaim": true
+              }
+            ],
+            "sourceReferences": [
+              {
+                "sourceRef": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                "publisher": null,
+                "retrievedAt": "2026-09-03T09:57:27.201Z"
+              }
+            ],
+            "sourceSnapshotsOrSnapshotRefs": [],
+            "newGapProposals": [],
+            "warnings": [],
+            "unresolvedQuestions": [],
+            "usage": {
+              "requestCount": null,
+              "tokensOrUnits": null,
+              "providerReportedCostUsd": null
+            },
+            "failureDetails": null
+          },
+          "receivedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "digest": "bdad5a63812823a32a93b5d115920f795976e8bdeef43af062c16f70b45a7a3b",
+          "result": {
+            "schemaVersion": "TSF_BOUNDED_RESEARCH_RESULT_V1",
+            "nodeId": "node:tom-brady",
+            "taskFingerprint": "2aa255185dc5fac97449b58c176298e5b817f46e4efc4e9cc481323541a94c3e",
+            "provider": "EXA",
+            "providerRunRef": {
+              "provider": "EXA",
+              "providerRunId": "agent_run_7b1d1add72a941d39c225ab846a6add0",
+              "dispatchedAt": "2026-09-03T10:04:58.819Z"
+            },
+            "status": "SUCCEEDED",
+            "observations": [
+              {
+                "rawContent": {
+                  "text": "Tom Brady’s 2001 regular-season line for the New England Patriots was 264 completions on 413 attempts for 2,843 yards, 18 touchdowns, and 12 interceptions. Biographical facts: Thomas Edward Patrick Brady, born August 3, 1977, in San Mateo, California; 6'4\", 225 lb, quarterback, Michigan; drafted by New England in the sixth round (199th overall) of the 2000 NFL Draft. [Pro Football Reference] [NFL.com] [New England Patriots]",
+                  "structured": {
+                    "team": "New England Patriots",
+                    "attempts": 413,
+                    "completions": 264,
+                    "passingYards": 2843,
+                    "interceptions": 12,
+                    "passingTouchdowns": 18
+                  },
+                  "grounding": [
+                    {
+                      "field": "structured.team",
+                      "citations": [
+                        {
+                          "url": "https://www.nfl.com/players/tom-brady/stats/",
+                          "title": "Tom Brady Stats Summary | NFL.com"
+                        },
+                        {
+                          "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                          "title": "Tom Brady"
+                        }
+                      ],
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "structured.passingYards",
+                      "citations": [
+                        {
+                          "url": "https://www.nfl.com/players/tom-brady/stats/",
+                          "title": "Tom Brady Stats Summary | NFL.com"
+                        },
+                        {
+                          "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                          "title": "Tom Brady"
+                        }
+                      ],
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "structured.passingTouchdowns",
+                      "citations": [
+                        {
+                          "url": "https://www.nfl.com/players/tom-brady/stats/",
+                          "title": "Tom Brady Stats Summary | NFL.com"
+                        },
+                        {
+                          "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                          "title": "Tom Brady"
+                        }
+                      ],
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "structured.interceptions",
+                      "citations": [
+                        {
+                          "url": "https://www.nfl.com/players/tom-brady/stats/",
+                          "title": "Tom Brady Stats Summary | NFL.com"
+                        },
+                        {
+                          "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                          "title": "Tom Brady"
+                        }
+                      ],
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "structured.completions",
+                      "citations": [
+                        {
+                          "url": "https://www.nfl.com/players/tom-brady/stats/",
+                          "title": "Tom Brady Stats Summary | NFL.com"
+                        },
+                        {
+                          "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                          "title": "Tom Brady"
+                        }
+                      ],
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "structured.attempts",
+                      "citations": [
+                        {
+                          "url": "https://www.nfl.com/players/tom-brady/stats/",
+                          "title": "Tom Brady Stats Summary | NFL.com"
+                        },
+                        {
+                          "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                          "title": "Tom Brady"
+                        }
+                      ],
+                      "confidence": "high"
+                    }
+                  ]
+                },
+                "extractedAt": "2026-09-03T10:04:58.819Z",
+                "providerConfidence": null,
+                "providerReasoning": null
+              }
+            ],
+            "proposedClaims": [
+              {
+                "fieldName": "team",
+                "proposedValue": "New England Patriots",
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              },
+              {
+                "fieldName": "passingYards",
+                "proposedValue": 2843,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              },
+              {
+                "fieldName": "passingTouchdowns",
+                "proposedValue": 18,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              },
+              {
+                "fieldName": "interceptions",
+                "proposedValue": 12,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              },
+              {
+                "fieldName": "completions",
+                "proposedValue": 264,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              },
+              {
+                "fieldName": "attempts",
+                "proposedValue": 413,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              }
+            ],
+            "evidence": [
+              {
+                "claimFieldName": "team",
+                "sourceRef": "https://www.nfl.com/players/tom-brady/stats/",
+                "snippet": "Tom Brady Stats Summary | NFL.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "team",
+                "sourceRef": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "Tom Brady",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "passingYards",
+                "sourceRef": "https://www.nfl.com/players/tom-brady/stats/",
+                "snippet": "Tom Brady Stats Summary | NFL.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "passingYards",
+                "sourceRef": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "Tom Brady",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "passingTouchdowns",
+                "sourceRef": "https://www.nfl.com/players/tom-brady/stats/",
+                "snippet": "Tom Brady Stats Summary | NFL.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "passingTouchdowns",
+                "sourceRef": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "Tom Brady",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "interceptions",
+                "sourceRef": "https://www.nfl.com/players/tom-brady/stats/",
+                "snippet": "Tom Brady Stats Summary | NFL.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "interceptions",
+                "sourceRef": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "Tom Brady",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "completions",
+                "sourceRef": "https://www.nfl.com/players/tom-brady/stats/",
+                "snippet": "Tom Brady Stats Summary | NFL.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "completions",
+                "sourceRef": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "Tom Brady",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "attempts",
+                "sourceRef": "https://www.nfl.com/players/tom-brady/stats/",
+                "snippet": "Tom Brady Stats Summary | NFL.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "attempts",
+                "sourceRef": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                "snippet": "Tom Brady",
+                "supportsClaim": true
+              }
+            ],
+            "sourceReferences": [
+              {
+                "sourceRef": "https://www.nfl.com/players/tom-brady/stats/",
+                "url": "https://www.nfl.com/players/tom-brady/stats/",
+                "publisher": "Tom Brady Stats Summary | NFL.com",
+                "retrievedAt": "2026-09-03T10:04:58.819Z"
+              },
+              {
+                "sourceRef": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                "publisher": "Tom Brady",
+                "retrievedAt": "2026-09-03T10:04:58.819Z"
+              }
+            ],
+            "sourceSnapshotsOrSnapshotRefs": [],
+            "newGapProposals": [],
+            "warnings": [],
+            "unresolvedQuestions": [],
+            "usage": {
+              "requestCount": null,
+              "tokensOrUnits": 0.4,
+              "providerReportedCostUsd": 0.1
+            },
+            "failureDetails": null
+          },
+          "receivedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "admittedResultDigests": [
+        "cda2510380e47ca389ac0989f39f1b0eadee76f962d53da64a4c6d42d74833df",
+        "bdad5a63812823a32a93b5d115920f795976e8bdeef43af062c16f70b45a7a3b"
+      ],
+      "observations": [
+        {
+          "schemaVersion": "TSF_OBSERVATION_V1",
+          "id": "c2a05c93da9ffc1ab13f0fa33f81848b392c10fdde4dce1b74dd97ed367b77ca",
+          "digest": "c2a05c93da9ffc1ab13f0fa33f81848b392c10fdde4dce1b74dd97ed367b77ca",
+          "provider": "PARALLEL",
+          "providerRunRef": {
+            "provider": "PARALLEL",
+            "providerRunId": "trun_a705c9dfe22e48319a6c152ba6546ac2",
+            "dispatchedAt": "2026-09-03T09:57:03.240Z"
+          },
+          "rawContent": {
+            "basis": [
+              {
+                "field": "team",
+                "citations": [
+                  {
+                    "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                    "excerpts": [
+                      "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                    ]
+                  }
+                ],
+                "reasoning": "The 2001 row lists Tom Brady's team as NWE.",
+                "confidence": "high"
+              },
+              {
+                "field": "completions",
+                "citations": [
+                  {
+                    "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                    "excerpts": [
+                      "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                    ]
+                  }
+                ],
+                "reasoning": "The 2001 row reports 264 completions.",
+                "confidence": "high"
+              },
+              {
+                "field": "passingTouchdowns",
+                "citations": [
+                  {
+                    "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                    "excerpts": [
+                      "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                    ]
+                  }
+                ],
+                "reasoning": "The 2001 row reports 18 passing touchdowns.",
+                "confidence": "high"
+              },
+              {
+                "field": "attempts",
+                "citations": [
+                  {
+                    "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                    "excerpts": [
+                      "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                    ]
+                  }
+                ],
+                "reasoning": "The 2001 row reports 413 pass attempts.",
+                "confidence": "high"
+              },
+              {
+                "field": "interceptions",
+                "citations": [
+                  {
+                    "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                    "excerpts": [
+                      "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                    ]
+                  }
+                ],
+                "reasoning": "The 2001 row reports 12 interceptions.",
+                "confidence": "high"
+              },
+              {
+                "field": "passingYards",
+                "citations": [
+                  {
+                    "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+                    "excerpts": [
+                      "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB"
+                    ]
+                  }
+                ],
+                "reasoning": "The 2001 row reports 2,843 passing yards.",
+                "confidence": "high"
+              }
+            ],
+            "type": "json",
+            "content": {
+              "team": "NWE",
+              "completions": 264,
+              "passingTouchdowns": 18,
+              "attempts": 413,
+              "interceptions": 12,
+              "passingYards": 2843
+            }
+          },
+          "providerConfidence": null,
+          "providerReasoning": null,
+          "extractedAt": "2026-09-03T09:57:27.201Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_OBSERVATION_V1",
+          "id": "035d83789bc497a00950bbf73f84b9e7559a6e1edb19f9ccfd93569bd95aa60f",
+          "digest": "035d83789bc497a00950bbf73f84b9e7559a6e1edb19f9ccfd93569bd95aa60f",
+          "provider": "EXA",
+          "providerRunRef": {
+            "provider": "EXA",
+            "providerRunId": "agent_run_7b1d1add72a941d39c225ab846a6add0",
+            "dispatchedAt": "2026-09-03T10:04:58.819Z"
+          },
+          "rawContent": {
+            "text": "Tom Brady’s 2001 regular-season line for the New England Patriots was 264 completions on 413 attempts for 2,843 yards, 18 touchdowns, and 12 interceptions. Biographical facts: Thomas Edward Patrick Brady, born August 3, 1977, in San Mateo, California; 6'4\", 225 lb, quarterback, Michigan; drafted by New England in the sixth round (199th overall) of the 2000 NFL Draft. [Pro Football Reference] [NFL.com] [New England Patriots]",
+            "structured": {
+              "team": "New England Patriots",
+              "attempts": 413,
+              "completions": 264,
+              "passingYards": 2843,
+              "interceptions": 12,
+              "passingTouchdowns": 18
+            },
+            "grounding": [
+              {
+                "field": "structured.team",
+                "citations": [
+                  {
+                    "url": "https://www.nfl.com/players/tom-brady/stats/",
+                    "title": "Tom Brady Stats Summary | NFL.com"
+                  },
+                  {
+                    "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                    "title": "Tom Brady"
+                  }
+                ],
+                "confidence": "high"
+              },
+              {
+                "field": "structured.passingYards",
+                "citations": [
+                  {
+                    "url": "https://www.nfl.com/players/tom-brady/stats/",
+                    "title": "Tom Brady Stats Summary | NFL.com"
+                  },
+                  {
+                    "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                    "title": "Tom Brady"
+                  }
+                ],
+                "confidence": "high"
+              },
+              {
+                "field": "structured.passingTouchdowns",
+                "citations": [
+                  {
+                    "url": "https://www.nfl.com/players/tom-brady/stats/",
+                    "title": "Tom Brady Stats Summary | NFL.com"
+                  },
+                  {
+                    "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                    "title": "Tom Brady"
+                  }
+                ],
+                "confidence": "high"
+              },
+              {
+                "field": "structured.interceptions",
+                "citations": [
+                  {
+                    "url": "https://www.nfl.com/players/tom-brady/stats/",
+                    "title": "Tom Brady Stats Summary | NFL.com"
+                  },
+                  {
+                    "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                    "title": "Tom Brady"
+                  }
+                ],
+                "confidence": "high"
+              },
+              {
+                "field": "structured.completions",
+                "citations": [
+                  {
+                    "url": "https://www.nfl.com/players/tom-brady/stats/",
+                    "title": "Tom Brady Stats Summary | NFL.com"
+                  },
+                  {
+                    "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                    "title": "Tom Brady"
+                  }
+                ],
+                "confidence": "high"
+              },
+              {
+                "field": "structured.attempts",
+                "citations": [
+                  {
+                    "url": "https://www.nfl.com/players/tom-brady/stats/",
+                    "title": "Tom Brady Stats Summary | NFL.com"
+                  },
+                  {
+                    "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+                    "title": "Tom Brady"
+                  }
+                ],
+                "confidence": "high"
+              }
+            ]
+          },
+          "providerConfidence": null,
+          "providerReasoning": null,
+          "extractedAt": "2026-09-03T10:04:58.819Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "claims": [
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "86c8ab114303aca1c690d6c7eb1d8f30c7c0bf40f80979ab88062c48f454f1df",
+          "digest": "86c8ab114303aca1c690d6c7eb1d8f30c7c0bf40f80979ab88062c48f454f1df",
+          "fieldName": "team",
+          "proposedValue": "NWE",
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "The 2001 row lists Tom Brady's team as NWE.",
+          "observationIds": [
+            "c2a05c93da9ffc1ab13f0fa33f81848b392c10fdde4dce1b74dd97ed367b77ca"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "584aca4c49387c5b10f4294c215ae4129dc1603bc90a197c2c12c53c4f675985",
+          "digest": "584aca4c49387c5b10f4294c215ae4129dc1603bc90a197c2c12c53c4f675985",
+          "fieldName": "passingYards",
+          "proposedValue": 2843,
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "The 2001 row reports 2,843 passing yards.",
+          "observationIds": [
+            "c2a05c93da9ffc1ab13f0fa33f81848b392c10fdde4dce1b74dd97ed367b77ca"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "f27d51705b6f6080a4aa48c99308d257bca551d04c921fb507a9e7201339938a",
+          "digest": "f27d51705b6f6080a4aa48c99308d257bca551d04c921fb507a9e7201339938a",
+          "fieldName": "passingTouchdowns",
+          "proposedValue": 18,
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "The 2001 row reports 18 passing touchdowns.",
+          "observationIds": [
+            "c2a05c93da9ffc1ab13f0fa33f81848b392c10fdde4dce1b74dd97ed367b77ca"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "76ac39a1fcfb24e531011255f50fb2b30e53335ceb87fccd61e3dba091bb4982",
+          "digest": "76ac39a1fcfb24e531011255f50fb2b30e53335ceb87fccd61e3dba091bb4982",
+          "fieldName": "interceptions",
+          "proposedValue": 12,
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "The 2001 row reports 12 interceptions.",
+          "observationIds": [
+            "c2a05c93da9ffc1ab13f0fa33f81848b392c10fdde4dce1b74dd97ed367b77ca"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "0aed9338eb68da955773c3285debb5858bd44a47568998d0bef62ed6f2e7a121",
+          "digest": "0aed9338eb68da955773c3285debb5858bd44a47568998d0bef62ed6f2e7a121",
+          "fieldName": "completions",
+          "proposedValue": 264,
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "The 2001 row reports 264 completions.",
+          "observationIds": [
+            "c2a05c93da9ffc1ab13f0fa33f81848b392c10fdde4dce1b74dd97ed367b77ca"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "c84abaa202bdc44f32bf1842b0c4168a925126c999957132a804ea31b42c25b2",
+          "digest": "c84abaa202bdc44f32bf1842b0c4168a925126c999957132a804ea31b42c25b2",
+          "fieldName": "attempts",
+          "proposedValue": 413,
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "The 2001 row reports 413 pass attempts.",
+          "observationIds": [
+            "c2a05c93da9ffc1ab13f0fa33f81848b392c10fdde4dce1b74dd97ed367b77ca"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "677c2986261098dcc6ed711361a50a09c754c414de6c05b73265a44a5678864e",
+          "digest": "677c2986261098dcc6ed711361a50a09c754c414de6c05b73265a44a5678864e",
+          "fieldName": "team",
+          "proposedValue": "New England Patriots",
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "035d83789bc497a00950bbf73f84b9e7559a6e1edb19f9ccfd93569bd95aa60f"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "ed498f367cf1dfee56f27096335fab79a76744fb9bfc019e8a438bd029f8d946",
+          "digest": "ed498f367cf1dfee56f27096335fab79a76744fb9bfc019e8a438bd029f8d946",
+          "fieldName": "passingYards",
+          "proposedValue": 2843,
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "035d83789bc497a00950bbf73f84b9e7559a6e1edb19f9ccfd93569bd95aa60f"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "6428c0390361657c6373d8e974e6e5177d199f9df2345d700a34922ae12054c0",
+          "digest": "6428c0390361657c6373d8e974e6e5177d199f9df2345d700a34922ae12054c0",
+          "fieldName": "passingTouchdowns",
+          "proposedValue": 18,
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "035d83789bc497a00950bbf73f84b9e7559a6e1edb19f9ccfd93569bd95aa60f"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "3d08474bc605714f098e3982f2ae1594e741cf2946293bd6700153570c3a5f66",
+          "digest": "3d08474bc605714f098e3982f2ae1594e741cf2946293bd6700153570c3a5f66",
+          "fieldName": "interceptions",
+          "proposedValue": 12,
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "035d83789bc497a00950bbf73f84b9e7559a6e1edb19f9ccfd93569bd95aa60f"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "af0a389b6aeefcbfe24d3e09cbbbba2d9d4e8a8ea65a95f87de934d4a9f0e803",
+          "digest": "af0a389b6aeefcbfe24d3e09cbbbba2d9d4e8a8ea65a95f87de934d4a9f0e803",
+          "fieldName": "completions",
+          "proposedValue": 264,
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "035d83789bc497a00950bbf73f84b9e7559a6e1edb19f9ccfd93569bd95aa60f"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "a5a7a9d5ba11bebd79e9c8e03921f30f5a8dbbee8543787435fc6fb930042a60",
+          "digest": "a5a7a9d5ba11bebd79e9c8e03921f30f5a8dbbee8543787435fc6fb930042a60",
+          "fieldName": "attempts",
+          "proposedValue": 413,
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "035d83789bc497a00950bbf73f84b9e7559a6e1edb19f9ccfd93569bd95aa60f"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "evidence": [
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "77fca31813ed27f62cb5daa0f9d9bec22cb98f3872745aa24feeb018fee828ac",
+          "digest": "77fca31813ed27f62cb5daa0f9d9bec22cb98f3872745aa24feeb018fee828ac",
+          "claimId": "86c8ab114303aca1c690d6c7eb1d8f30c7c0bf40f80979ab88062c48f454f1df",
+          "sourceReferenceId": "caefb020356b63078db0e37b797c362c4eb236d919c877a9b78cb40f5ff02cdc",
+          "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "3c358e4c609f8754e65714634f03bb18bef7c9a8dc59877739b6a8c7e5f22c0a",
+          "digest": "3c358e4c609f8754e65714634f03bb18bef7c9a8dc59877739b6a8c7e5f22c0a",
+          "claimId": "584aca4c49387c5b10f4294c215ae4129dc1603bc90a197c2c12c53c4f675985",
+          "sourceReferenceId": "caefb020356b63078db0e37b797c362c4eb236d919c877a9b78cb40f5ff02cdc",
+          "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "e85ed1e0f03e010d1f08a16e99037881eac49c285b7aa40a76b7dd095197a7b1",
+          "digest": "e85ed1e0f03e010d1f08a16e99037881eac49c285b7aa40a76b7dd095197a7b1",
+          "claimId": "f27d51705b6f6080a4aa48c99308d257bca551d04c921fb507a9e7201339938a",
+          "sourceReferenceId": "caefb020356b63078db0e37b797c362c4eb236d919c877a9b78cb40f5ff02cdc",
+          "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "a817d8bfb391c46d898edd22d195279659b2dd08664590f835a0a6c0052c2916",
+          "digest": "a817d8bfb391c46d898edd22d195279659b2dd08664590f835a0a6c0052c2916",
+          "claimId": "76ac39a1fcfb24e531011255f50fb2b30e53335ceb87fccd61e3dba091bb4982",
+          "sourceReferenceId": "caefb020356b63078db0e37b797c362c4eb236d919c877a9b78cb40f5ff02cdc",
+          "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "eae5d06d0a5daafc1122bec8f6e28c86259256fab54e800064a9ef3d6d3cabb3",
+          "digest": "eae5d06d0a5daafc1122bec8f6e28c86259256fab54e800064a9ef3d6d3cabb3",
+          "claimId": "0aed9338eb68da955773c3285debb5858bd44a47568998d0bef62ed6f2e7a121",
+          "sourceReferenceId": "caefb020356b63078db0e37b797c362c4eb236d919c877a9b78cb40f5ff02cdc",
+          "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "2cf0c548b5e1bd062d1a0d0f0a6948a9a626090bf70b678ff878b3214962f291",
+          "digest": "2cf0c548b5e1bd062d1a0d0f0a6948a9a626090bf70b678ff878b3214962f291",
+          "claimId": "c84abaa202bdc44f32bf1842b0c4168a925126c999957132a804ea31b42c25b2",
+          "sourceReferenceId": "caefb020356b63078db0e37b797c362c4eb236d919c877a9b78cb40f5ff02cdc",
+          "snippet": "2001 | 24 | NWE | NFL | QB | 15 | 14 | 11-3-0 | 264 | 413 | 63.9 | 2843 | 18 | 4.4 | 12 | 2.9 | 145 | 45.6 | 91 | 6.9 | 6.4 | 10.8 | 189.5 | 86.5 | | 41 | 216 | 9.03 | 5.8 | 5.4 | 3 | 3 | 12 | PB",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "e7bb485dc8f8d3749e9b1c5c56432f423da315c094f0ddaf458a845c211d9c1a",
+          "digest": "e7bb485dc8f8d3749e9b1c5c56432f423da315c094f0ddaf458a845c211d9c1a",
+          "claimId": "677c2986261098dcc6ed711361a50a09c754c414de6c05b73265a44a5678864e",
+          "sourceReferenceId": "4f514c4b881fad83314a5c6b4459fc214ba629c03ef4f2ab733817896d10d228",
+          "snippet": "Tom Brady Stats Summary | NFL.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "c9a9504fdfe6e442295e095fc7076113cece0c7d5c7464842378174b3af63812",
+          "digest": "c9a9504fdfe6e442295e095fc7076113cece0c7d5c7464842378174b3af63812",
+          "claimId": "677c2986261098dcc6ed711361a50a09c754c414de6c05b73265a44a5678864e",
+          "sourceReferenceId": "f1b84d1880725dc0d7321db413761e5c9e01a2f6009c3646fb3c634e351baa71",
+          "snippet": "Tom Brady",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "09181696c0308357d594f6f7c448283f61e3269b435c41eb3a9f005ae99a309d",
+          "digest": "09181696c0308357d594f6f7c448283f61e3269b435c41eb3a9f005ae99a309d",
+          "claimId": "ed498f367cf1dfee56f27096335fab79a76744fb9bfc019e8a438bd029f8d946",
+          "sourceReferenceId": "4f514c4b881fad83314a5c6b4459fc214ba629c03ef4f2ab733817896d10d228",
+          "snippet": "Tom Brady Stats Summary | NFL.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "60122ea9de94d9fd468fd2a9b6af63e48c4260b39a9f8a1c1e25d49eb1a8710b",
+          "digest": "60122ea9de94d9fd468fd2a9b6af63e48c4260b39a9f8a1c1e25d49eb1a8710b",
+          "claimId": "ed498f367cf1dfee56f27096335fab79a76744fb9bfc019e8a438bd029f8d946",
+          "sourceReferenceId": "f1b84d1880725dc0d7321db413761e5c9e01a2f6009c3646fb3c634e351baa71",
+          "snippet": "Tom Brady",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "d0f1184543f33363dfda96e52eb9b226791ece734a72ddc26ddb0da6a714d982",
+          "digest": "d0f1184543f33363dfda96e52eb9b226791ece734a72ddc26ddb0da6a714d982",
+          "claimId": "6428c0390361657c6373d8e974e6e5177d199f9df2345d700a34922ae12054c0",
+          "sourceReferenceId": "4f514c4b881fad83314a5c6b4459fc214ba629c03ef4f2ab733817896d10d228",
+          "snippet": "Tom Brady Stats Summary | NFL.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "7e46e6fbab033c996e1cc4ac8725c25fe1ed24f9e644bc14898d3a383dc8829a",
+          "digest": "7e46e6fbab033c996e1cc4ac8725c25fe1ed24f9e644bc14898d3a383dc8829a",
+          "claimId": "6428c0390361657c6373d8e974e6e5177d199f9df2345d700a34922ae12054c0",
+          "sourceReferenceId": "f1b84d1880725dc0d7321db413761e5c9e01a2f6009c3646fb3c634e351baa71",
+          "snippet": "Tom Brady",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "6b75af6cf213d4ba18d31fe8ad28044053274b292293d94d003e187915852275",
+          "digest": "6b75af6cf213d4ba18d31fe8ad28044053274b292293d94d003e187915852275",
+          "claimId": "3d08474bc605714f098e3982f2ae1594e741cf2946293bd6700153570c3a5f66",
+          "sourceReferenceId": "4f514c4b881fad83314a5c6b4459fc214ba629c03ef4f2ab733817896d10d228",
+          "snippet": "Tom Brady Stats Summary | NFL.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "c32e4da9d11d8f7659b4e139e8ce4b1b1c549ea95e994a119fc6b436a392418d",
+          "digest": "c32e4da9d11d8f7659b4e139e8ce4b1b1c549ea95e994a119fc6b436a392418d",
+          "claimId": "3d08474bc605714f098e3982f2ae1594e741cf2946293bd6700153570c3a5f66",
+          "sourceReferenceId": "f1b84d1880725dc0d7321db413761e5c9e01a2f6009c3646fb3c634e351baa71",
+          "snippet": "Tom Brady",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "6a4756bb40f8f5c7fe390ce1081ba80e528af28469f1b7603f0311914a75d25d",
+          "digest": "6a4756bb40f8f5c7fe390ce1081ba80e528af28469f1b7603f0311914a75d25d",
+          "claimId": "af0a389b6aeefcbfe24d3e09cbbbba2d9d4e8a8ea65a95f87de934d4a9f0e803",
+          "sourceReferenceId": "4f514c4b881fad83314a5c6b4459fc214ba629c03ef4f2ab733817896d10d228",
+          "snippet": "Tom Brady Stats Summary | NFL.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "773c643054e88d486033a24c7dc17c1013804ae250561e5ffedd73b75c969989",
+          "digest": "773c643054e88d486033a24c7dc17c1013804ae250561e5ffedd73b75c969989",
+          "claimId": "af0a389b6aeefcbfe24d3e09cbbbba2d9d4e8a8ea65a95f87de934d4a9f0e803",
+          "sourceReferenceId": "f1b84d1880725dc0d7321db413761e5c9e01a2f6009c3646fb3c634e351baa71",
+          "snippet": "Tom Brady",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "c971b5adf1310a4566aeff7be90d1ed085f2202368a6aa8ae94dbc0c24e0bdad",
+          "digest": "c971b5adf1310a4566aeff7be90d1ed085f2202368a6aa8ae94dbc0c24e0bdad",
+          "claimId": "a5a7a9d5ba11bebd79e9c8e03921f30f5a8dbbee8543787435fc6fb930042a60",
+          "sourceReferenceId": "4f514c4b881fad83314a5c6b4459fc214ba629c03ef4f2ab733817896d10d228",
+          "snippet": "Tom Brady Stats Summary | NFL.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "7a6ad7ee826c62a3e4e82cf1882d570001a9ffb52abd25e444745791bceb3843",
+          "digest": "7a6ad7ee826c62a3e4e82cf1882d570001a9ffb52abd25e444745791bceb3843",
+          "claimId": "a5a7a9d5ba11bebd79e9c8e03921f30f5a8dbbee8543787435fc6fb930042a60",
+          "sourceReferenceId": "f1b84d1880725dc0d7321db413761e5c9e01a2f6009c3646fb3c634e351baa71",
+          "snippet": "Tom Brady",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "sourceReferences": [
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "caefb020356b63078db0e37b797c362c4eb236d919c877a9b78cb40f5ff02cdc",
+          "sourceRef": "http://pro-football-reference.com/players/B/BradTo00.htm",
+          "url": "http://pro-football-reference.com/players/B/BradTo00.htm",
+          "publisher": null,
+          "retrievedAt": "2026-09-03T09:57:27.201Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "4f514c4b881fad83314a5c6b4459fc214ba629c03ef4f2ab733817896d10d228",
+          "sourceRef": "https://www.nfl.com/players/tom-brady/stats/",
+          "url": "https://www.nfl.com/players/tom-brady/stats/",
+          "publisher": "Tom Brady Stats Summary | NFL.com",
+          "retrievedAt": "2026-09-03T10:04:58.819Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "f1b84d1880725dc0d7321db413761e5c9e01a2f6009c3646fb3c634e351baa71",
+          "sourceRef": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+          "url": "https://www.pro-football-reference.com/players/B/BradTo00.htm",
+          "publisher": "Tom Brady",
+          "retrievedAt": "2026-09-03T10:04:58.819Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "cec0da6955b25c264781f2c60c88d6ade86a322edf00dd2a9fcaab9f14d1220d",
+          "sourceRef": "https://en.wikipedia.org/api/rest_v1/page/summary/Tom_Brady",
+          "url": "https://en.wikipedia.org/api/rest_v1/page/summary/Tom_Brady",
+          "publisher": null,
+          "retrievedAt": "2026-09-03T10:09:00.243Z",
+          "admittedAt": "2026-09-03T10:09:00.244Z"
+        }
+      ],
+      "sourceSnapshots": [
+        {
+          "schemaVersion": "TSF_SOURCE_SNAPSHOT_REFERENCE_V1",
+          "id": "659a3084e22f35870a8ff3a3ade2698074024b056246e8b2bba5e0151bce25c1",
+          "sourceRef": "https://en.wikipedia.org/api/rest_v1/page/summary/Tom_Brady",
+          "contentHash": "sha256:160f278814a873edb4667d62fc7d813472a2118d1b286ddd1c86810aa5c451d2",
+          "rawContentRef": null,
+          "retrievable": true,
+          "acquisitionMethod": "BULK_SOURCE_FIRST_HTTP",
+          "admittedAt": "2026-09-03T10:09:00.244Z"
+        }
+      ],
+      "typedMissingness": [],
+      "identityResolutionState": null,
+      "verifications": [
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "8c30dece8a0f6d818933da53a59e7cc9daa6da1ab8a2ab06504ab0ad2278f4ad",
+          "claimId": "86c8ab114303aca1c690d6c7eb1d8f30c7c0bf40f80979ab88062c48f454f1df",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "42720cc9cb1b4d0557599ee269949fc5666cfa46bf95a7449364e66ea15bdd0e",
+          "claimId": "584aca4c49387c5b10f4294c215ae4129dc1603bc90a197c2c12c53c4f675985",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "f039a5b750b36e2dbdce0010282b6c5ac96ff1ccdbf3ba3bec83e5990830ed9f",
+          "claimId": "f27d51705b6f6080a4aa48c99308d257bca551d04c921fb507a9e7201339938a",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "d884ef8176db8b37fdd06306f065a5fb78433c1ea0614a8fd423608456be7c04",
+          "claimId": "76ac39a1fcfb24e531011255f50fb2b30e53335ceb87fccd61e3dba091bb4982",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "6d2598832b15ab9b6cba0789c680ee1d1685e6e16b35b7157470aa1f30c84578",
+          "claimId": "0aed9338eb68da955773c3285debb5858bd44a47568998d0bef62ed6f2e7a121",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "b91afd4cd06a68975ef56928920daed906bec7fbb38dd75f80fbb604777e85db",
+          "claimId": "c84abaa202bdc44f32bf1842b0c4168a925126c999957132a804ea31b42c25b2",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "e558f22e4492315eefa06a9f0bcb43d9686220a288d105c51b3be88252e89e00",
+          "claimId": "677c2986261098dcc6ed711361a50a09c754c414de6c05b73265a44a5678864e",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "73213eebbf17b530a61afa6f4a62d3f05b5ec4c7b156673a5645fde390e4dc7c",
+          "claimId": "ed498f367cf1dfee56f27096335fab79a76744fb9bfc019e8a438bd029f8d946",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "87ad0abdbc47dee828bbd516ab9ffafb2b113a30d51821209233191e258bec15",
+          "claimId": "6428c0390361657c6373d8e974e6e5177d199f9df2345d700a34922ae12054c0",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "8e4577af4d3574cac4799040387551a85508fa7cef28290086f613125e00097c",
+          "claimId": "3d08474bc605714f098e3982f2ae1594e741cf2946293bd6700153570c3a5f66",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "9f83a4c0759b43f50a3ae3b96316500c1896ac0ca89f0da851182080f2ac07fd",
+          "claimId": "af0a389b6aeefcbfe24d3e09cbbbba2d9d4e8a8ea65a95f87de934d4a9f0e803",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "3a1c1634a98bcea5111bc4d83180537123703793368498ecd107f25050731871",
+          "claimId": "a5a7a9d5ba11bebd79e9c8e03921f30f5a8dbbee8543787435fc6fb930042a60",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "conflicts": [
+        {
+          "schemaVersion": "TSF_CONFLICT_V1",
+          "id": "cb655d73af7c788010c90b285aa8f309610631e152f6bce119a921376adea51d",
+          "fieldName": "team",
+          "conflictingClaimIds": [
+            "677c2986261098dcc6ed711361a50a09c754c414de6c05b73265a44a5678864e",
+            "86c8ab114303aca1c690d6c7eb1d8f30c7c0bf40f80979ab88062c48f454f1df"
+          ],
+          "status": "RECONCILED",
+          "raisedAt": "2026-09-03T10:00:00.000Z",
+          "resolvedAt": "2026-09-03T10:20:00.000Z"
+        }
+      ],
+      "reconciliationDecisions": [
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "d57ec0c221f2d14b8596075f88b2b0dbaf3ac804a709ee7cb0deba2cd51b9dca",
+          "fieldName": "passingYards",
+          "decidedValue": 2843,
+          "decisionType": "ACCEPT_SINGLE_VERIFIED_CLAIM",
+          "selectedClaimId": "584aca4c49387c5b10f4294c215ae4129dc1603bc90a197c2c12c53c4f675985",
+          "consideredClaimIds": [
+            "584aca4c49387c5b10f4294c215ae4129dc1603bc90a197c2c12c53c4f675985",
+            "ed498f367cf1dfee56f27096335fab79a76744fb9bfc019e8a438bd029f8d946"
+          ],
+          "verificationIds": [],
+          "conflictId": null,
+          "rationale": "Both PARALLEL and EXA independently reported the identical value (2843), each with real linked evidence that passed verification. PARALLEL's claim selected for its directly-quotable citation excerpts.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "d57ec0c221f2d14b8596075f88b2b0dbaf3ac804a709ee7cb0deba2cd51b9dca",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "9104d89ac6d13b3e8bd9168fbb35876a3225056aa1c24691b50610d6cb8aa513",
+          "fieldName": "passingTouchdowns",
+          "decidedValue": 18,
+          "decisionType": "ACCEPT_SINGLE_VERIFIED_CLAIM",
+          "selectedClaimId": "f27d51705b6f6080a4aa48c99308d257bca551d04c921fb507a9e7201339938a",
+          "consideredClaimIds": [
+            "f27d51705b6f6080a4aa48c99308d257bca551d04c921fb507a9e7201339938a",
+            "6428c0390361657c6373d8e974e6e5177d199f9df2345d700a34922ae12054c0"
+          ],
+          "verificationIds": [],
+          "conflictId": null,
+          "rationale": "Both PARALLEL and EXA independently reported the identical value (18), each with real linked evidence that passed verification. PARALLEL's claim selected for its directly-quotable citation excerpts.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "9104d89ac6d13b3e8bd9168fbb35876a3225056aa1c24691b50610d6cb8aa513",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "7873f6e97a0f663ccad7c751f4b7556876ec9b798829f754bafcde9d94feba9b",
+          "fieldName": "interceptions",
+          "decidedValue": 12,
+          "decisionType": "ACCEPT_SINGLE_VERIFIED_CLAIM",
+          "selectedClaimId": "76ac39a1fcfb24e531011255f50fb2b30e53335ceb87fccd61e3dba091bb4982",
+          "consideredClaimIds": [
+            "76ac39a1fcfb24e531011255f50fb2b30e53335ceb87fccd61e3dba091bb4982",
+            "3d08474bc605714f098e3982f2ae1594e741cf2946293bd6700153570c3a5f66"
+          ],
+          "verificationIds": [],
+          "conflictId": null,
+          "rationale": "Both PARALLEL and EXA independently reported the identical value (12), each with real linked evidence that passed verification. PARALLEL's claim selected for its directly-quotable citation excerpts.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "7873f6e97a0f663ccad7c751f4b7556876ec9b798829f754bafcde9d94feba9b",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "93df5acef87a294ed7c4c49bd52ff01f4c8b0ffdf85089b273db0351c5b1d967",
+          "fieldName": "completions",
+          "decidedValue": 264,
+          "decisionType": "ACCEPT_SINGLE_VERIFIED_CLAIM",
+          "selectedClaimId": "0aed9338eb68da955773c3285debb5858bd44a47568998d0bef62ed6f2e7a121",
+          "consideredClaimIds": [
+            "0aed9338eb68da955773c3285debb5858bd44a47568998d0bef62ed6f2e7a121",
+            "af0a389b6aeefcbfe24d3e09cbbbba2d9d4e8a8ea65a95f87de934d4a9f0e803"
+          ],
+          "verificationIds": [],
+          "conflictId": null,
+          "rationale": "Both PARALLEL and EXA independently reported the identical value (264), each with real linked evidence that passed verification. PARALLEL's claim selected for its directly-quotable citation excerpts.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "93df5acef87a294ed7c4c49bd52ff01f4c8b0ffdf85089b273db0351c5b1d967",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "35371dc18f49028d4f3577d765b6bba1105ea7b1ef0e4b49a9e3c27722194ebc",
+          "fieldName": "attempts",
+          "decidedValue": 413,
+          "decisionType": "ACCEPT_SINGLE_VERIFIED_CLAIM",
+          "selectedClaimId": "c84abaa202bdc44f32bf1842b0c4168a925126c999957132a804ea31b42c25b2",
+          "consideredClaimIds": [
+            "c84abaa202bdc44f32bf1842b0c4168a925126c999957132a804ea31b42c25b2",
+            "a5a7a9d5ba11bebd79e9c8e03921f30f5a8dbbee8543787435fc6fb930042a60"
+          ],
+          "verificationIds": [],
+          "conflictId": null,
+          "rationale": "Both PARALLEL and EXA independently reported the identical value (413), each with real linked evidence that passed verification. PARALLEL's claim selected for its directly-quotable citation excerpts.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "35371dc18f49028d4f3577d765b6bba1105ea7b1ef0e4b49a9e3c27722194ebc",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "0a9c8861ef5233b69436b7ab83ffc03c6ffa82a0b0db3f153ac36861a39a4d64",
+          "fieldName": "team",
+          "decidedValue": "NWE",
+          "decisionType": "RESOLVE_CONFLICT",
+          "selectedClaimId": "86c8ab114303aca1c690d6c7eb1d8f30c7c0bf40f80979ab88062c48f454f1df",
+          "consideredClaimIds": [
+            "86c8ab114303aca1c690d6c7eb1d8f30c7c0bf40f80979ab88062c48f454f1df",
+            "677c2986261098dcc6ed711361a50a09c754c414de6c05b73265a44a5678864e"
+          ],
+          "verificationIds": [],
+          "conflictId": "cb655d73af7c788010c90b285aa8f309610631e152f6bce119a921376adea51d",
+          "rationale": "Both providers agree on the underlying fact (New England Patriots) but used different formats (\"NWE\" vs \"New England Patriots\") -- not a genuine factual disagreement. PARALLEL's abbreviation selected as canonical; EXA's full name preserved in the considered-claims lineage for audit.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "0a9c8861ef5233b69436b7ab83ffc03c6ffa82a0b0db3f153ac36861a39a4d64",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        }
+      ],
+      "canonicalFacts": [
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "dbdf1b508274a0b7ecabdbdaead66cdcfac926a8f21b9ba08a972986ab8dd2fc",
+          "fieldName": "passingYards",
+          "value": 2843,
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "d57ec0c221f2d14b8596075f88b2b0dbaf3ac804a709ee7cb0deba2cd51b9dca",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "6042d218e82920ac2e3002512668640d32dc3303a831f7d9fab88fde9eb5a190",
+          "fieldName": "passingTouchdowns",
+          "value": 18,
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "9104d89ac6d13b3e8bd9168fbb35876a3225056aa1c24691b50610d6cb8aa513",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "1cb15236d8d09326f3d7262223e91605b3247c4f41c8336c738ff73b649ba8ed",
+          "fieldName": "interceptions",
+          "value": 12,
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "7873f6e97a0f663ccad7c751f4b7556876ec9b798829f754bafcde9d94feba9b",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "9ddfb2e5ad8dc1eb5b72fb904040fe4a210e8d2b8d35ce1693b3f4bbab565e2c",
+          "fieldName": "completions",
+          "value": 264,
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "93df5acef87a294ed7c4c49bd52ff01f4c8b0ffdf85089b273db0351c5b1d967",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "0a79c4927f6a8075e28ad50ba51f1a0eba4112a6c7b001f2ec37d921b143657d",
+          "fieldName": "attempts",
+          "value": 413,
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "35371dc18f49028d4f3577d765b6bba1105ea7b1ef0e4b49a9e3c27722194ebc",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "a9d9f805d06d8ab866c7b5f198aceae585aba163c4a71635b267c025dbe4f1bf",
+          "fieldName": "team",
+          "value": "NWE",
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "0a9c8861ef5233b69436b7ab83ffc03c6ffa82a0b0db3f153ac36861a39a4d64",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        }
+      ],
+      "gapProposals": []
+    },
+    {
+      "id": "node:kurt-warner",
+      "parentId": null,
+      "dependencies": [],
+      "conflictsWith": [],
+      "nodeRole": "PRIMARY_RESEARCH",
+      "targetEntity": {
+        "entityId": "nfl:2001:qb:kurt-warner",
+        "name": "Kurt Warner"
+      },
+      "requestedFields": [
+        {
+          "fieldName": "passingYards",
+          "valueType": "number",
+          "required": true,
+          "derivationRule": null
+        },
+        {
+          "fieldName": "mvpVotingNote",
+          "valueType": "string",
+          "required": false,
+          "derivationRule": null
+        }
+      ],
+      "requestedOutputSchema": {
+        "type": "object",
+        "properties": {
+          "passingYards": {
+            "type": "number"
+          },
+          "mvpVotingNote": {
+            "type": "string"
+          }
+        }
+      },
+      "priority": 0,
+      "status": "ADMITTED",
+      "attempts": [],
+      "retryCount": 0,
+      "dispatchRecords": [
+        {
+          "taskFingerprint": "e93bd7f4e61960d38b5fdd49f4331df8c800b3f3642b61a45b4fa25c75d3e93d",
+          "workerRunRef": {
+            "provider": "PARALLEL",
+            "providerRunId": "trun_eb56ed0578354da5a3639b4c372eee57",
+            "dispatchedAt": "2026-09-03T09:57:50.622Z"
+          },
+          "dispatchedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "taskFingerprint": "81b67d3687de9b297b49ed339bbdeb72567b435e7419f4538f9529a9414f25c9",
+          "workerRunRef": {
+            "provider": "EXA",
+            "providerRunId": "agent_run_d3dfcbda2daf46c8bf50778cd469af91",
+            "dispatchedAt": "2026-09-03T09:58:35.230Z"
+          },
+          "dispatchedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "rawResults": [
+        {
+          "digest": "d12f94969056610238a222a0f59bed4eabd75f7ae3ebc65401bada9465bd3864",
+          "result": {
+            "schemaVersion": "TSF_BOUNDED_RESEARCH_RESULT_V1",
+            "nodeId": "node:kurt-warner",
+            "taskFingerprint": "e93bd7f4e61960d38b5fdd49f4331df8c800b3f3642b61a45b4fa25c75d3e93d",
+            "provider": "PARALLEL",
+            "providerRunRef": {
+              "provider": "PARALLEL",
+              "providerRunId": "trun_eb56ed0578354da5a3639b4c372eee57",
+              "dispatchedAt": "2026-09-03T09:57:50.622Z"
+            },
+            "status": "SUCCEEDED",
+            "observations": [
+              {
+                "rawContent": {
+                  "basis": [
+                    {
+                      "field": "mvpVotingNote",
+                      "citations": [
+                        {
+                          "url": "http://pro-football-reference.com/awards/awards_2001.htm",
+                          "excerpts": [
+                            "(last verified: 2026-09-03) 2001 Awards Voting NFL AP MVP Voting | |Games |Passing |Rushing |Receiving | | | | |Rk |Pos |Player |Tm |Votes |Share |G |GS |Cmp |Att |Yds |TD |Int |Att |Yds |TD |Rec |Yds |TD |Solo |Sk |Int | |1 |QB |Kurt Warner |St. Louis Rams |21.5 |43% |16 |16 |375 |546 |4830 |36 |22 |28 |60 |0 |0 |0 |0 |0 |0.0 |0 | |2 |RB |Marshall Faulk |St. Louis Rams |17.5 |35% |14 |14 |0 |1 |0 |0 |0 |260 |1382 |12 |83 |765 |9 |0 |0.0 |0 | |3 |QB |Brett Favre |Green Bay Packers |5.0 |10% |16 |16 |314 |510 |3921 |32 |15 |38 |56 |1 |0 |0 |0 | |0.0 |0 | |4 |QB |Kordell Stewart |Pittsburgh Steelers |4.0 |8% |16 |16 |266 |442 |3109 |14 |11 |96 |537 |5 |0 |0 |0 |0 |0.0 |0 | |5 |MLB |Brian Urlacher |Chicago Bears |2.0 |4% |16 |16 |0 |0 |0 |0 |0 |0 |0 |0 |1 |27 |1 |91 |6.0 |3 | ..."
+                          ]
+                        }
+                      ],
+                      "reasoning": "The 2001 AP MVP voting table lists Kurt Warner first, with 21.5 votes and a 43% share.",
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "passingYards",
+                      "citations": [
+                        {
+                          "url": "http://pro-football-reference.com/players/W/WarnKu00.htm",
+                          "excerpts": [
+                            "(last verified: 2026-09-03) Kurt Warner Passing | Season | Age | Team | Lg | Pos | G | GS | QBrec | Cmp | Att | Cmp% | Yds | TD | TD% | Int | Int% | 1D | Succ% | Lng | Y/A | AY/A | Y/C | Y/G | Rate | QBR | Sk | Yds | Sk% | NY/A | ANY/A | 4QC | GWD | AV | Awards | ... | 2001 | 30 | STL | NFL | QB | 16 | 16 | 14-2-0 | **375** | 546 | **68.7** | **4830** | **36** | **6.6** | 22 | 4.0 | 233 | **53.8** | 65 | **8.8** | **8.4** | **12.9** | **301.9** | **101.4** | | 38 | 233 | 6.51 | **7.9** | **7.4** | 1 | 2 | 20 | PB , **AP-1** , **AP MVP-1** , AP OPoY-2"
+                          ]
+                        }
+                      ],
+                      "reasoning": "Kurt Warner's 2001 season row records 4,830 passing yards.",
+                      "confidence": "high"
+                    }
+                  ],
+                  "type": "json",
+                  "content": {
+                    "mvpVotingNote": "AP MVP: Kurt Warner finished 1st with 21.5 votes (43% share).",
+                    "passingYards": 4830
+                  }
+                },
+                "extractedAt": "2026-09-03T09:58:35.059Z",
+                "providerConfidence": null,
+                "providerReasoning": null
+              }
+            ],
+            "proposedClaims": [
+              {
+                "fieldName": "passingYards",
+                "proposedValue": 4830,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "Kurt Warner's 2001 season row records 4,830 passing yards."
+              },
+              {
+                "fieldName": "mvpVotingNote",
+                "proposedValue": "AP MVP: Kurt Warner finished 1st with 21.5 votes (43% share).",
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "The 2001 AP MVP voting table lists Kurt Warner first, with 21.5 votes and a 43% share."
+              }
+            ],
+            "evidence": [
+              {
+                "claimFieldName": "passingYards",
+                "sourceRef": "http://pro-football-reference.com/players/W/WarnKu00.htm",
+                "snippet": "(last verified: 2026-09-03) Kurt Warner Passing | Season | Age | Team | Lg | Pos | G | GS | QBrec | Cmp | Att | Cmp% | Yds | TD | TD% | Int | Int% | 1D | Succ% | Lng | Y/A | AY/A | Y/C | Y/G | Rate | QBR | Sk | Yds | Sk% | NY/A | ANY/A | 4QC | GWD | AV | Awards | ... | 2001 | 30 | STL | NFL | QB | 16 | 16 | 14-2-0 | **375** | 546 | **68.7** | **4830** | **36** | **6.6** | 22 | 4.0 | 233 | **53.8** | 65 | **8.8** | **8.4** | **12.9** | **301.9** | **101.4** | | 38 | 233 | 6.51 | **7.9** | **7.4** | 1 | 2 | 20 | PB , **AP-1** , **AP MVP-1** , AP OPoY-2",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "mvpVotingNote",
+                "sourceRef": "http://pro-football-reference.com/awards/awards_2001.htm",
+                "snippet": "(last verified: 2026-09-03) 2001 Awards Voting NFL AP MVP Voting | |Games |Passing |Rushing |Receiving | | | | |Rk |Pos |Player |Tm |Votes |Share |G |GS |Cmp |Att |Yds |TD |Int |Att |Yds |TD |Rec |Yds |TD |Solo |Sk |Int | |1 |QB |Kurt Warner |St. Louis Rams |21.5 |43% |16 |16 |375 |546 |4830 |36 |22 |28 |60 |0 |0 |0 |0 |0 |0.0 |0 | |2 |RB |Marshall Faulk |St. Louis Rams |17.5 |35% |14 |14 |0 |1 |0 |0 |0 |260 |1382 |12 |83 |765 |9 |0 |0.0 |0 | |3 |QB |Brett Favre |Green Bay Packers |5.0 |10% |16 |16 |314 |510 |3921 |32 |15 |38 |56 |1 |0 |0 |0 | |0.0 |0 | |4 |QB |Kordell Stewart |Pittsburgh Steelers |4.0 |8% |16 |16 |266 |442 |3109 |14 |11 |96 |537 |5 |0 |0 |0 |0 |0.0 |0 | |5 |MLB |Brian Urlacher |Chicago Bears |2.0 |4% |16 |16 |0 |0 |0 |0 |0 |0 |0 |0 |1 |27 |1 |91 |6.0 |3 | ...",
+                "supportsClaim": true
+              }
+            ],
+            "sourceReferences": [
+              {
+                "sourceRef": "http://pro-football-reference.com/players/W/WarnKu00.htm",
+                "url": "http://pro-football-reference.com/players/W/WarnKu00.htm",
+                "publisher": null,
+                "retrievedAt": "2026-09-03T09:58:35.059Z"
+              },
+              {
+                "sourceRef": "http://pro-football-reference.com/awards/awards_2001.htm",
+                "url": "http://pro-football-reference.com/awards/awards_2001.htm",
+                "publisher": null,
+                "retrievedAt": "2026-09-03T09:58:35.059Z"
+              }
+            ],
+            "sourceSnapshotsOrSnapshotRefs": [],
+            "newGapProposals": [],
+            "warnings": [],
+            "unresolvedQuestions": [],
+            "usage": {
+              "requestCount": null,
+              "tokensOrUnits": null,
+              "providerReportedCostUsd": null
+            },
+            "failureDetails": null
+          },
+          "receivedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "digest": "c6c95e018558189cc915a9507f70e96a2de95d06e0260e1e45731ccf08e67a05",
+          "result": {
+            "schemaVersion": "TSF_BOUNDED_RESEARCH_RESULT_V1",
+            "nodeId": "node:kurt-warner",
+            "taskFingerprint": "81b67d3687de9b297b49ed339bbdeb72567b435e7419f4538f9529a9414f25c9",
+            "provider": "EXA",
+            "providerRunRef": {
+              "provider": "EXA",
+              "providerRunId": "agent_run_d3dfcbda2daf46c8bf50778cd469af91",
+              "dispatchedAt": "2026-09-03T10:04:58.931Z"
+            },
+            "status": "SUCCEEDED",
+            "observations": [
+              {
+                "rawContent": {
+                  "text": "Kurt Warner’s 2001 regular-season passing yardage and AP MVP voting result are provided, along with the requested biographical and season context.",
+                  "structured": {
+                    "passingYards": 4830,
+                    "mvpVotingNote": "Kurtis Eugene Warner (born June 22, 1971, Burlington, Iowa) was a right-handed quarterback, 6'2\", 214 lb, who attended Northern Iowa and entered the NFL undrafted. In the 2001 regular season for the St. Louis Rams, he started all 16 games, went 14–2, completed 375 of 546 passes (68.7%) for 4,830 yards, 36 touchdowns, and 22 interceptions, with a 101.4 passer rating. He won the AP NFL MVP award with 21.5 of 50 votes (43%), ahead of Marshall Faulk's 17.5 votes; he was also a Pro Bowler and first-team All-Pro."
+                  },
+                  "grounding": [
+                    {
+                      "field": "structured.passingYards",
+                      "citations": [
+                        {
+                          "url": "https://www.pro-football-reference.com/years/2001/passing.htm",
+                          "title": "2001 NFL Passing — Pro-Football-Reference.com"
+                        },
+                        {
+                          "url": "https://www.profootballhof.com/players/kurt-warner",
+                          "title": "Kurt Warner — Pro Football Hall of Fame"
+                        }
+                      ],
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "structured.mvpVotingNote",
+                      "citations": [
+                        {
+                          "url": "https://www.pro-football-reference.com/players/W/WarnKu00.htm",
+                          "title": "Kurt Warner — Pro-Football-Reference.com"
+                        },
+                        {
+                          "url": "https://www.pro-football-reference.com/awards/awards_2001.htm",
+                          "title": "2001 Awards Voting — Pro-Football-Reference.com"
+                        },
+                        {
+                          "url": "https://www.profootballhof.com/players/kurt-warner",
+                          "title": "Kurt Warner — Pro Football Hall of Fame"
+                        },
+                        {
+                          "url": "https://www.nfl.com/players/kurt-warner/",
+                          "title": "Kurt Warner Stats, News and Video — NFL.com"
+                        }
+                      ],
+                      "confidence": "high"
+                    }
+                  ]
+                },
+                "extractedAt": "2026-09-03T10:04:58.931Z",
+                "providerConfidence": null,
+                "providerReasoning": null
+              }
+            ],
+            "proposedClaims": [
+              {
+                "fieldName": "passingYards",
+                "proposedValue": 4830,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              },
+              {
+                "fieldName": "mvpVotingNote",
+                "proposedValue": "Kurtis Eugene Warner (born June 22, 1971, Burlington, Iowa) was a right-handed quarterback, 6'2\", 214 lb, who attended Northern Iowa and entered the NFL undrafted. In the 2001 regular season for the St. Louis Rams, he started all 16 games, went 14–2, completed 375 of 546 passes (68.7%) for 4,830 yards, 36 touchdowns, and 22 interceptions, with a 101.4 passer rating. He won the AP NFL MVP award with 21.5 of 50 votes (43%), ahead of Marshall Faulk's 17.5 votes; he was also a Pro Bowler and first-team All-Pro.",
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              }
+            ],
+            "evidence": [
+              {
+                "claimFieldName": "passingYards",
+                "sourceRef": "https://www.pro-football-reference.com/years/2001/passing.htm",
+                "snippet": "2001 NFL Passing — Pro-Football-Reference.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "passingYards",
+                "sourceRef": "https://www.profootballhof.com/players/kurt-warner",
+                "snippet": "Kurt Warner — Pro Football Hall of Fame",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "mvpVotingNote",
+                "sourceRef": "https://www.pro-football-reference.com/players/W/WarnKu00.htm",
+                "snippet": "Kurt Warner — Pro-Football-Reference.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "mvpVotingNote",
+                "sourceRef": "https://www.pro-football-reference.com/awards/awards_2001.htm",
+                "snippet": "2001 Awards Voting — Pro-Football-Reference.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "mvpVotingNote",
+                "sourceRef": "https://www.profootballhof.com/players/kurt-warner",
+                "snippet": "Kurt Warner — Pro Football Hall of Fame",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "mvpVotingNote",
+                "sourceRef": "https://www.nfl.com/players/kurt-warner/",
+                "snippet": "Kurt Warner Stats, News and Video — NFL.com",
+                "supportsClaim": true
+              }
+            ],
+            "sourceReferences": [
+              {
+                "sourceRef": "https://www.pro-football-reference.com/years/2001/passing.htm",
+                "url": "https://www.pro-football-reference.com/years/2001/passing.htm",
+                "publisher": "2001 NFL Passing — Pro-Football-Reference.com",
+                "retrievedAt": "2026-09-03T10:04:58.931Z"
+              },
+              {
+                "sourceRef": "https://www.profootballhof.com/players/kurt-warner",
+                "url": "https://www.profootballhof.com/players/kurt-warner",
+                "publisher": "Kurt Warner — Pro Football Hall of Fame",
+                "retrievedAt": "2026-09-03T10:04:58.931Z"
+              },
+              {
+                "sourceRef": "https://www.pro-football-reference.com/players/W/WarnKu00.htm",
+                "url": "https://www.pro-football-reference.com/players/W/WarnKu00.htm",
+                "publisher": "Kurt Warner — Pro-Football-Reference.com",
+                "retrievedAt": "2026-09-03T10:04:58.931Z"
+              },
+              {
+                "sourceRef": "https://www.pro-football-reference.com/awards/awards_2001.htm",
+                "url": "https://www.pro-football-reference.com/awards/awards_2001.htm",
+                "publisher": "2001 Awards Voting — Pro-Football-Reference.com",
+                "retrievedAt": "2026-09-03T10:04:58.931Z"
+              },
+              {
+                "sourceRef": "https://www.nfl.com/players/kurt-warner/",
+                "url": "https://www.nfl.com/players/kurt-warner/",
+                "publisher": "Kurt Warner Stats, News and Video — NFL.com",
+                "retrievedAt": "2026-09-03T10:04:58.931Z"
+              }
+            ],
+            "sourceSnapshotsOrSnapshotRefs": [],
+            "newGapProposals": [],
+            "warnings": [],
+            "unresolvedQuestions": [],
+            "usage": {
+              "requestCount": null,
+              "tokensOrUnits": 0.4,
+              "providerReportedCostUsd": 0.1
+            },
+            "failureDetails": null
+          },
+          "receivedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "admittedResultDigests": [
+        "d12f94969056610238a222a0f59bed4eabd75f7ae3ebc65401bada9465bd3864",
+        "c6c95e018558189cc915a9507f70e96a2de95d06e0260e1e45731ccf08e67a05"
+      ],
+      "observations": [
+        {
+          "schemaVersion": "TSF_OBSERVATION_V1",
+          "id": "17ed89959e7540344b3a38c9146fd596d38ee8248b84e0fe8288f7f2ccf34112",
+          "digest": "17ed89959e7540344b3a38c9146fd596d38ee8248b84e0fe8288f7f2ccf34112",
+          "provider": "PARALLEL",
+          "providerRunRef": {
+            "provider": "PARALLEL",
+            "providerRunId": "trun_eb56ed0578354da5a3639b4c372eee57",
+            "dispatchedAt": "2026-09-03T09:57:50.622Z"
+          },
+          "rawContent": {
+            "basis": [
+              {
+                "field": "mvpVotingNote",
+                "citations": [
+                  {
+                    "url": "http://pro-football-reference.com/awards/awards_2001.htm",
+                    "excerpts": [
+                      "(last verified: 2026-09-03) 2001 Awards Voting NFL AP MVP Voting | |Games |Passing |Rushing |Receiving | | | | |Rk |Pos |Player |Tm |Votes |Share |G |GS |Cmp |Att |Yds |TD |Int |Att |Yds |TD |Rec |Yds |TD |Solo |Sk |Int | |1 |QB |Kurt Warner |St. Louis Rams |21.5 |43% |16 |16 |375 |546 |4830 |36 |22 |28 |60 |0 |0 |0 |0 |0 |0.0 |0 | |2 |RB |Marshall Faulk |St. Louis Rams |17.5 |35% |14 |14 |0 |1 |0 |0 |0 |260 |1382 |12 |83 |765 |9 |0 |0.0 |0 | |3 |QB |Brett Favre |Green Bay Packers |5.0 |10% |16 |16 |314 |510 |3921 |32 |15 |38 |56 |1 |0 |0 |0 | |0.0 |0 | |4 |QB |Kordell Stewart |Pittsburgh Steelers |4.0 |8% |16 |16 |266 |442 |3109 |14 |11 |96 |537 |5 |0 |0 |0 |0 |0.0 |0 | |5 |MLB |Brian Urlacher |Chicago Bears |2.0 |4% |16 |16 |0 |0 |0 |0 |0 |0 |0 |0 |1 |27 |1 |91 |6.0 |3 | ..."
+                    ]
+                  }
+                ],
+                "reasoning": "The 2001 AP MVP voting table lists Kurt Warner first, with 21.5 votes and a 43% share.",
+                "confidence": "high"
+              },
+              {
+                "field": "passingYards",
+                "citations": [
+                  {
+                    "url": "http://pro-football-reference.com/players/W/WarnKu00.htm",
+                    "excerpts": [
+                      "(last verified: 2026-09-03) Kurt Warner Passing | Season | Age | Team | Lg | Pos | G | GS | QBrec | Cmp | Att | Cmp% | Yds | TD | TD% | Int | Int% | 1D | Succ% | Lng | Y/A | AY/A | Y/C | Y/G | Rate | QBR | Sk | Yds | Sk% | NY/A | ANY/A | 4QC | GWD | AV | Awards | ... | 2001 | 30 | STL | NFL | QB | 16 | 16 | 14-2-0 | **375** | 546 | **68.7** | **4830** | **36** | **6.6** | 22 | 4.0 | 233 | **53.8** | 65 | **8.8** | **8.4** | **12.9** | **301.9** | **101.4** | | 38 | 233 | 6.51 | **7.9** | **7.4** | 1 | 2 | 20 | PB , **AP-1** , **AP MVP-1** , AP OPoY-2"
+                    ]
+                  }
+                ],
+                "reasoning": "Kurt Warner's 2001 season row records 4,830 passing yards.",
+                "confidence": "high"
+              }
+            ],
+            "type": "json",
+            "content": {
+              "mvpVotingNote": "AP MVP: Kurt Warner finished 1st with 21.5 votes (43% share).",
+              "passingYards": 4830
+            }
+          },
+          "providerConfidence": null,
+          "providerReasoning": null,
+          "extractedAt": "2026-09-03T09:58:35.059Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_OBSERVATION_V1",
+          "id": "677dfc40bb5d0c420b6758a65ef398f9f8d045671c61d15c4739570c86273a59",
+          "digest": "677dfc40bb5d0c420b6758a65ef398f9f8d045671c61d15c4739570c86273a59",
+          "provider": "EXA",
+          "providerRunRef": {
+            "provider": "EXA",
+            "providerRunId": "agent_run_d3dfcbda2daf46c8bf50778cd469af91",
+            "dispatchedAt": "2026-09-03T10:04:58.931Z"
+          },
+          "rawContent": {
+            "text": "Kurt Warner’s 2001 regular-season passing yardage and AP MVP voting result are provided, along with the requested biographical and season context.",
+            "structured": {
+              "passingYards": 4830,
+              "mvpVotingNote": "Kurtis Eugene Warner (born June 22, 1971, Burlington, Iowa) was a right-handed quarterback, 6'2\", 214 lb, who attended Northern Iowa and entered the NFL undrafted. In the 2001 regular season for the St. Louis Rams, he started all 16 games, went 14–2, completed 375 of 546 passes (68.7%) for 4,830 yards, 36 touchdowns, and 22 interceptions, with a 101.4 passer rating. He won the AP NFL MVP award with 21.5 of 50 votes (43%), ahead of Marshall Faulk's 17.5 votes; he was also a Pro Bowler and first-team All-Pro."
+            },
+            "grounding": [
+              {
+                "field": "structured.passingYards",
+                "citations": [
+                  {
+                    "url": "https://www.pro-football-reference.com/years/2001/passing.htm",
+                    "title": "2001 NFL Passing — Pro-Football-Reference.com"
+                  },
+                  {
+                    "url": "https://www.profootballhof.com/players/kurt-warner",
+                    "title": "Kurt Warner — Pro Football Hall of Fame"
+                  }
+                ],
+                "confidence": "high"
+              },
+              {
+                "field": "structured.mvpVotingNote",
+                "citations": [
+                  {
+                    "url": "https://www.pro-football-reference.com/players/W/WarnKu00.htm",
+                    "title": "Kurt Warner — Pro-Football-Reference.com"
+                  },
+                  {
+                    "url": "https://www.pro-football-reference.com/awards/awards_2001.htm",
+                    "title": "2001 Awards Voting — Pro-Football-Reference.com"
+                  },
+                  {
+                    "url": "https://www.profootballhof.com/players/kurt-warner",
+                    "title": "Kurt Warner — Pro Football Hall of Fame"
+                  },
+                  {
+                    "url": "https://www.nfl.com/players/kurt-warner/",
+                    "title": "Kurt Warner Stats, News and Video — NFL.com"
+                  }
+                ],
+                "confidence": "high"
+              }
+            ]
+          },
+          "providerConfidence": null,
+          "providerReasoning": null,
+          "extractedAt": "2026-09-03T10:04:58.931Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "claims": [
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "7844a39d93cd030770f5ca34622f57dbd14bf32cbbcf3d279691a3676ce76bfe",
+          "digest": "7844a39d93cd030770f5ca34622f57dbd14bf32cbbcf3d279691a3676ce76bfe",
+          "fieldName": "passingYards",
+          "proposedValue": 4830,
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "Kurt Warner's 2001 season row records 4,830 passing yards.",
+          "observationIds": [
+            "17ed89959e7540344b3a38c9146fd596d38ee8248b84e0fe8288f7f2ccf34112"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "03a3de836bd816f9c3df77480a71fb71f831087443e3dd9eba2958af33b55684",
+          "digest": "03a3de836bd816f9c3df77480a71fb71f831087443e3dd9eba2958af33b55684",
+          "fieldName": "mvpVotingNote",
+          "proposedValue": "AP MVP: Kurt Warner finished 1st with 21.5 votes (43% share).",
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "The 2001 AP MVP voting table lists Kurt Warner first, with 21.5 votes and a 43% share.",
+          "observationIds": [
+            "17ed89959e7540344b3a38c9146fd596d38ee8248b84e0fe8288f7f2ccf34112"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "b93ce532612da38d01943baaf2c3ba9475e40d5b5f16e0b31df40cce2a353625",
+          "digest": "b93ce532612da38d01943baaf2c3ba9475e40d5b5f16e0b31df40cce2a353625",
+          "fieldName": "passingYards",
+          "proposedValue": 4830,
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "677dfc40bb5d0c420b6758a65ef398f9f8d045671c61d15c4739570c86273a59"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851",
+          "digest": "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851",
+          "fieldName": "mvpVotingNote",
+          "proposedValue": "Kurtis Eugene Warner (born June 22, 1971, Burlington, Iowa) was a right-handed quarterback, 6'2\", 214 lb, who attended Northern Iowa and entered the NFL undrafted. In the 2001 regular season for the St. Louis Rams, he started all 16 games, went 14–2, completed 375 of 546 passes (68.7%) for 4,830 yards, 36 touchdowns, and 22 interceptions, with a 101.4 passer rating. He won the AP NFL MVP award with 21.5 of 50 votes (43%), ahead of Marshall Faulk's 17.5 votes; he was also a Pro Bowler and first-team All-Pro.",
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "677dfc40bb5d0c420b6758a65ef398f9f8d045671c61d15c4739570c86273a59"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "evidence": [
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "3cb8313811fd5deac7f1a9fddf462d12bb6e3a84291cd88dfc22c9d7d1699d5b",
+          "digest": "3cb8313811fd5deac7f1a9fddf462d12bb6e3a84291cd88dfc22c9d7d1699d5b",
+          "claimId": "7844a39d93cd030770f5ca34622f57dbd14bf32cbbcf3d279691a3676ce76bfe",
+          "sourceReferenceId": "000b5609307bd891297050393130257809226c6b0539193d527ec1a91ce42a67",
+          "snippet": "(last verified: 2026-09-03) Kurt Warner Passing | Season | Age | Team | Lg | Pos | G | GS | QBrec | Cmp | Att | Cmp% | Yds | TD | TD% | Int | Int% | 1D | Succ% | Lng | Y/A | AY/A | Y/C | Y/G | Rate | QBR | Sk | Yds | Sk% | NY/A | ANY/A | 4QC | GWD | AV | Awards | ... | 2001 | 30 | STL | NFL | QB | 16 | 16 | 14-2-0 | **375** | 546 | **68.7** | **4830** | **36** | **6.6** | 22 | 4.0 | 233 | **53.8** | 65 | **8.8** | **8.4** | **12.9** | **301.9** | **101.4** | | 38 | 233 | 6.51 | **7.9** | **7.4** | 1 | 2 | 20 | PB , **AP-1** , **AP MVP-1** , AP OPoY-2",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "0de32c528e27a08a0f32252f43a6e5a03a0d3b06e958bfe3f01dabef28809dd3",
+          "digest": "0de32c528e27a08a0f32252f43a6e5a03a0d3b06e958bfe3f01dabef28809dd3",
+          "claimId": "03a3de836bd816f9c3df77480a71fb71f831087443e3dd9eba2958af33b55684",
+          "sourceReferenceId": "186615402a5d837f016acf6992d558a82f858869458ec354ee1076ceb43e7d5e",
+          "snippet": "(last verified: 2026-09-03) 2001 Awards Voting NFL AP MVP Voting | |Games |Passing |Rushing |Receiving | | | | |Rk |Pos |Player |Tm |Votes |Share |G |GS |Cmp |Att |Yds |TD |Int |Att |Yds |TD |Rec |Yds |TD |Solo |Sk |Int | |1 |QB |Kurt Warner |St. Louis Rams |21.5 |43% |16 |16 |375 |546 |4830 |36 |22 |28 |60 |0 |0 |0 |0 |0 |0.0 |0 | |2 |RB |Marshall Faulk |St. Louis Rams |17.5 |35% |14 |14 |0 |1 |0 |0 |0 |260 |1382 |12 |83 |765 |9 |0 |0.0 |0 | |3 |QB |Brett Favre |Green Bay Packers |5.0 |10% |16 |16 |314 |510 |3921 |32 |15 |38 |56 |1 |0 |0 |0 | |0.0 |0 | |4 |QB |Kordell Stewart |Pittsburgh Steelers |4.0 |8% |16 |16 |266 |442 |3109 |14 |11 |96 |537 |5 |0 |0 |0 |0 |0.0 |0 | |5 |MLB |Brian Urlacher |Chicago Bears |2.0 |4% |16 |16 |0 |0 |0 |0 |0 |0 |0 |0 |1 |27 |1 |91 |6.0 |3 | ...",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "3e73653f18c11753559cb5ab50932d8b33c020e69a6d6a7772033c0f89e2c85d",
+          "digest": "3e73653f18c11753559cb5ab50932d8b33c020e69a6d6a7772033c0f89e2c85d",
+          "claimId": "b93ce532612da38d01943baaf2c3ba9475e40d5b5f16e0b31df40cce2a353625",
+          "sourceReferenceId": "46d94579c265e7d0080428bfd98a95068c4cb2d9d4806fbad0d45e193d0b7c46",
+          "snippet": "2001 NFL Passing — Pro-Football-Reference.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "8753f107c64d4077b057c457d78673944b2c11c296a97175ec18b4ae5451e2ea",
+          "digest": "8753f107c64d4077b057c457d78673944b2c11c296a97175ec18b4ae5451e2ea",
+          "claimId": "b93ce532612da38d01943baaf2c3ba9475e40d5b5f16e0b31df40cce2a353625",
+          "sourceReferenceId": "f8c31a92d1c8371807b0060723c871909175077dd5a64171ee1c04dbd40a4203",
+          "snippet": "Kurt Warner — Pro Football Hall of Fame",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "8aa1af1aec4d4d0ea2a28045c7977466c1975fe7fa40fb75310ebcf2c5dedfd6",
+          "digest": "8aa1af1aec4d4d0ea2a28045c7977466c1975fe7fa40fb75310ebcf2c5dedfd6",
+          "claimId": "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851",
+          "sourceReferenceId": "3a3c902b3bef342d5534ca665dfd7727bd637a85a722e5471097fe569e33510b",
+          "snippet": "Kurt Warner — Pro-Football-Reference.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "cbd2a975d43ec670f830afd728cd7a9130d6bc18f8e5e521be895c26a474c35c",
+          "digest": "cbd2a975d43ec670f830afd728cd7a9130d6bc18f8e5e521be895c26a474c35c",
+          "claimId": "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851",
+          "sourceReferenceId": "e2910f3f9edace591666ec653fd872cb910bf6190a82a06a303f75c56870946f",
+          "snippet": "2001 Awards Voting — Pro-Football-Reference.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "aaf4ce01db551240cc68d06e4de4b332304014492b64cb590360df0ba78b9aa8",
+          "digest": "aaf4ce01db551240cc68d06e4de4b332304014492b64cb590360df0ba78b9aa8",
+          "claimId": "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851",
+          "sourceReferenceId": "f8c31a92d1c8371807b0060723c871909175077dd5a64171ee1c04dbd40a4203",
+          "snippet": "Kurt Warner — Pro Football Hall of Fame",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "a6f151f6fb1a9a59d8deb56f9aa0ce0b297503ee9b7a47e0533ca81d854e67d9",
+          "digest": "a6f151f6fb1a9a59d8deb56f9aa0ce0b297503ee9b7a47e0533ca81d854e67d9",
+          "claimId": "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851",
+          "sourceReferenceId": "2f17444daeefbb552234b2fd1c2a9e955441c8fd0b90c9dd7a9c503c0ba3f404",
+          "snippet": "Kurt Warner Stats, News and Video — NFL.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "sourceReferences": [
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "000b5609307bd891297050393130257809226c6b0539193d527ec1a91ce42a67",
+          "sourceRef": "http://pro-football-reference.com/players/W/WarnKu00.htm",
+          "url": "http://pro-football-reference.com/players/W/WarnKu00.htm",
+          "publisher": null,
+          "retrievedAt": "2026-09-03T09:58:35.059Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "186615402a5d837f016acf6992d558a82f858869458ec354ee1076ceb43e7d5e",
+          "sourceRef": "http://pro-football-reference.com/awards/awards_2001.htm",
+          "url": "http://pro-football-reference.com/awards/awards_2001.htm",
+          "publisher": null,
+          "retrievedAt": "2026-09-03T09:58:35.059Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "46d94579c265e7d0080428bfd98a95068c4cb2d9d4806fbad0d45e193d0b7c46",
+          "sourceRef": "https://www.pro-football-reference.com/years/2001/passing.htm",
+          "url": "https://www.pro-football-reference.com/years/2001/passing.htm",
+          "publisher": "2001 NFL Passing — Pro-Football-Reference.com",
+          "retrievedAt": "2026-09-03T10:04:58.931Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "f8c31a92d1c8371807b0060723c871909175077dd5a64171ee1c04dbd40a4203",
+          "sourceRef": "https://www.profootballhof.com/players/kurt-warner",
+          "url": "https://www.profootballhof.com/players/kurt-warner",
+          "publisher": "Kurt Warner — Pro Football Hall of Fame",
+          "retrievedAt": "2026-09-03T10:04:58.931Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "3a3c902b3bef342d5534ca665dfd7727bd637a85a722e5471097fe569e33510b",
+          "sourceRef": "https://www.pro-football-reference.com/players/W/WarnKu00.htm",
+          "url": "https://www.pro-football-reference.com/players/W/WarnKu00.htm",
+          "publisher": "Kurt Warner — Pro-Football-Reference.com",
+          "retrievedAt": "2026-09-03T10:04:58.931Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "e2910f3f9edace591666ec653fd872cb910bf6190a82a06a303f75c56870946f",
+          "sourceRef": "https://www.pro-football-reference.com/awards/awards_2001.htm",
+          "url": "https://www.pro-football-reference.com/awards/awards_2001.htm",
+          "publisher": "2001 Awards Voting — Pro-Football-Reference.com",
+          "retrievedAt": "2026-09-03T10:04:58.931Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "2f17444daeefbb552234b2fd1c2a9e955441c8fd0b90c9dd7a9c503c0ba3f404",
+          "sourceRef": "https://www.nfl.com/players/kurt-warner/",
+          "url": "https://www.nfl.com/players/kurt-warner/",
+          "publisher": "Kurt Warner Stats, News and Video — NFL.com",
+          "retrievedAt": "2026-09-03T10:04:58.931Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "db0dcc7d5cf990c1344c87f5060ea4640a8485c9a4e78b013852eb9a8f969574",
+          "sourceRef": "https://en.wikipedia.org/api/rest_v1/page/summary/Kurt_Warner",
+          "url": "https://en.wikipedia.org/api/rest_v1/page/summary/Kurt_Warner",
+          "publisher": null,
+          "retrievedAt": "2026-09-03T10:09:00.437Z",
+          "admittedAt": "2026-09-03T10:09:00.437Z"
+        }
+      ],
+      "sourceSnapshots": [
+        {
+          "schemaVersion": "TSF_SOURCE_SNAPSHOT_REFERENCE_V1",
+          "id": "cf049ee1531d1b2f8eab5f93532834ab2fb7fbe4f212c56c7fb89c8fbd23e12a",
+          "sourceRef": "https://en.wikipedia.org/api/rest_v1/page/summary/Kurt_Warner",
+          "contentHash": "sha256:2bf81e1f072fc9908cda62a3b3d54c9557c7841060e8f66e9de6a831f56582fe",
+          "rawContentRef": null,
+          "retrievable": true,
+          "acquisitionMethod": "BULK_SOURCE_FIRST_HTTP",
+          "admittedAt": "2026-09-03T10:09:00.437Z"
+        }
+      ],
+      "typedMissingness": [],
+      "identityResolutionState": null,
+      "verifications": [
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "6360f08807ed0608f1e3516b8427ff588e7d305d968ce0d10d3d0fb077c46735",
+          "claimId": "7844a39d93cd030770f5ca34622f57dbd14bf32cbbcf3d279691a3676ce76bfe",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "747a15266967fb18f9867ad28f738e92e5c67db9d3abee274188b0ee8a193f2e",
+          "claimId": "03a3de836bd816f9c3df77480a71fb71f831087443e3dd9eba2958af33b55684",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "207f8ff8d2be92b010684e69e50777a3d791746ad858fea8e8736554ca741b88",
+          "claimId": "b93ce532612da38d01943baaf2c3ba9475e40d5b5f16e0b31df40cce2a353625",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "2aa29537c14d705cdbb4a5173891755c6a046d92aabfe02bdce4af0d4ca58d24",
+          "claimId": "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "conflicts": [
+        {
+          "schemaVersion": "TSF_CONFLICT_V1",
+          "id": "a7e4f4b4f5678b1fe904746ba9a014505bee07dafda435c58d969fd862262c6f",
+          "fieldName": "mvpVotingNote",
+          "conflictingClaimIds": [
+            "03a3de836bd816f9c3df77480a71fb71f831087443e3dd9eba2958af33b55684",
+            "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851"
+          ],
+          "status": "RECONCILED",
+          "raisedAt": "2026-09-03T10:00:00.000Z",
+          "resolvedAt": "2026-09-03T10:20:00.000Z"
+        }
+      ],
+      "reconciliationDecisions": [
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "8f60b4f61808a114ce5ffea4576f9a8c8ed814372bcb328d429d76c666610268",
+          "fieldName": "passingYards",
+          "decidedValue": 4830,
+          "decisionType": "ACCEPT_SINGLE_VERIFIED_CLAIM",
+          "selectedClaimId": "7844a39d93cd030770f5ca34622f57dbd14bf32cbbcf3d279691a3676ce76bfe",
+          "consideredClaimIds": [
+            "7844a39d93cd030770f5ca34622f57dbd14bf32cbbcf3d279691a3676ce76bfe",
+            "b93ce532612da38d01943baaf2c3ba9475e40d5b5f16e0b31df40cce2a353625"
+          ],
+          "verificationIds": [],
+          "conflictId": null,
+          "rationale": "Both providers independently reported 4,830 yards with real linked evidence.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "8f60b4f61808a114ce5ffea4576f9a8c8ed814372bcb328d429d76c666610268",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "4bcb8411ae0b6327073d99eb2bd287a628ea80bb530fa7896848e3addaaac344",
+          "fieldName": "mvpVotingNote",
+          "decidedValue": "AP MVP: Kurt Warner finished 1st with 21.5 votes (43% share).",
+          "decisionType": "RESOLVE_CONFLICT",
+          "selectedClaimId": "03a3de836bd816f9c3df77480a71fb71f831087443e3dd9eba2958af33b55684",
+          "consideredClaimIds": [
+            "03a3de836bd816f9c3df77480a71fb71f831087443e3dd9eba2958af33b55684",
+            "15b870d738705ea158a735637801933634fdc6c42ecddecb2270a77196acb851"
+          ],
+          "verificationIds": [],
+          "conflictId": "a7e4f4b4f5678b1fe904746ba9a014505bee07dafda435c58d969fd862262c6f",
+          "rationale": "PARALLEL returned a concise, schema-scoped MVP-voting note. EXA returned a full biographical paragraph that exceeds the requested field scope (a real, disclosed structured-output-discipline gap) -- factually consistent with PARALLEL where it overlaps, but not itself the more usable machine-readable value. PARALLEL selected as canonical.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "4bcb8411ae0b6327073d99eb2bd287a628ea80bb530fa7896848e3addaaac344",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        }
+      ],
+      "canonicalFacts": [
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "20f3178367e7f3862333d24466474fc7e41298f47d8429ea0ac964a0d0612459",
+          "fieldName": "passingYards",
+          "value": 4830,
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "8f60b4f61808a114ce5ffea4576f9a8c8ed814372bcb328d429d76c666610268",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "4a63bc54274021203b816cf618858197c6d96a7dcc8b31344ebdee6da4e11406",
+          "fieldName": "mvpVotingNote",
+          "value": "AP MVP: Kurt Warner finished 1st with 21.5 votes (43% share).",
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "4bcb8411ae0b6327073d99eb2bd287a628ea80bb530fa7896848e3addaaac344",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        }
+      ],
+      "gapProposals": []
+    },
+    {
+      "id": "node:jim-miller",
+      "parentId": null,
+      "dependencies": [],
+      "conflictsWith": [],
+      "nodeRole": "PRIMARY_RESEARCH",
+      "targetEntity": {
+        "entityId": "nfl:2001:qb:jim-miller",
+        "name": "Jim Miller"
+      },
+      "requestedFields": [
+        {
+          "fieldName": "team",
+          "valueType": "string",
+          "required": true,
+          "derivationRule": null
+        },
+        {
+          "fieldName": "signingBonusUsd",
+          "valueType": "number",
+          "required": false,
+          "derivationRule": null
+        }
+      ],
+      "requestedOutputSchema": {
+        "type": "object",
+        "properties": {
+          "team": {
+            "type": "string"
+          },
+          "signingBonusUsd": {
+            "type": "number"
+          }
+        }
+      },
+      "priority": 0,
+      "status": "ADMITTED",
+      "attempts": [],
+      "retryCount": 0,
+      "dispatchRecords": [
+        {
+          "taskFingerprint": "82f6f769501aec6d9eb2d105c644aba351bb2601a9fc4e2e631e54e8ae75eab5",
+          "workerRunRef": {
+            "provider": "PARALLEL",
+            "providerRunId": "trun_fa7ad1cc68e24490842c309fc49b6ff9",
+            "dispatchedAt": "2026-09-03T09:58:52.449Z"
+          },
+          "dispatchedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "taskFingerprint": "d4cd8b7e1f73ed314eeaaebb1d9e656ecb64834ed38047451515f5ad92aaee4d",
+          "workerRunRef": {
+            "provider": "EXA",
+            "providerRunId": "agent_run_25114ab577a9470d87f49e80f81afeea",
+            "dispatchedAt": "2026-09-03T10:00:19.272Z"
+          },
+          "dispatchedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "rawResults": [
+        {
+          "digest": "214c27c74661e2d9403e75e5cdba6db3b7be195be3b69485286c8e29938dc7a7",
+          "result": {
+            "schemaVersion": "TSF_BOUNDED_RESEARCH_RESULT_V1",
+            "nodeId": "node:jim-miller",
+            "taskFingerprint": "82f6f769501aec6d9eb2d105c644aba351bb2601a9fc4e2e631e54e8ae75eab5",
+            "provider": "PARALLEL",
+            "providerRunRef": {
+              "provider": "PARALLEL",
+              "providerRunId": "trun_fa7ad1cc68e24490842c309fc49b6ff9",
+              "dispatchedAt": "2026-09-03T09:58:52.449Z"
+            },
+            "status": "SUCCEEDED",
+            "observations": [
+              {
+                "rawContent": {
+                  "basis": [
+                    {
+                      "field": "signingBonusUsd",
+                      "citations": [
+                        {
+                          "title": "Jim Miller Stats, Height, Weight, Position, Draft, College | Pro-Football-Reference.com",
+                          "url": "http://pro-football-reference.com/players/M/MillJi00.htm",
+                          "excerpts": [
+                            "**March 9, 2005:** The New York Giants signed QB Jim Miller ."
+                          ]
+                        }
+                      ],
+                      "reasoning": "The cited player record lists Jim Miller's transactions but does not report a signing-bonus amount. Because this field requires a number, the unreported bonus is represented as 0.",
+                      "confidence": "low"
+                    },
+                    {
+                      "field": "team",
+                      "citations": [
+                        {
+                          "title": "2001 Chicago Bears Roster & Players | Pro-Football-Reference.com",
+                          "url": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                          "excerpts": [
+                            "2001 Chicago Bears Roster & Players Starters | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | TE | Fred Baxter | 30 | 8 | 14 | 22 catches for 148 yards, 2 td |  | | LT | Blake Brockermeyer | 28 | 6 | 16 | 2 fumbles recovered |  | | LG | Rex Tucker | 25 | 2 | 16 |  |  | | C | Olin Kreutz * | 24 | 3 | 16 |  |  | | RG | Chris Villarrial | 28 | 5 | 16 |  |  | | RT | James Williams * | 33 | 10 | 16 |  |  | |  | **Defensive Starters** |  |  |  |  |  | | LDE | Bryan Robinson | 27 | 4 | 16 | 4.5 sacks, 0 interceptions, 1 fumble recovered |  | ... | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | LCB | Walt Harris | 27 | 5 | 14 | 0.0 sacks, 1 interception, 2 fumbles recovered |  | ... | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | FS | Mike Brown + | 23 | 1 | 16 | 3.0 sacks, 5 interceptions, 1 fumble recovered |  | ... Roster | 15 | Jim Miller | 30 | QB | 14 | 13 | 226 | 6-2 | [Michigan St.](https://www.pro-football-reference.com/schools/michiganst/) | 2/9/1971 | 6 | 7 | Pittsburgh Steelers / 6th / 178th pick / [1994](https://www.pro-football-reference.com/years/1994/draft.htm) | | No."
+                          ]
+                        }
+                      ],
+                      "reasoning": "The 2001 roster is explicitly identified as the Chicago Bears roster, and its quarterback entry identifies Jim Miller as the 2001 starter. The team code CHI in the season statistics corresponds to the Chicago Bears.",
+                      "confidence": "high"
+                    }
+                  ],
+                  "type": "json",
+                  "content": {
+                    "signingBonusUsd": 0,
+                    "team": "Chicago Bears"
+                  }
+                },
+                "extractedAt": "2026-09-03T10:00:19.055Z",
+                "providerConfidence": null,
+                "providerReasoning": null
+              }
+            ],
+            "proposedClaims": [
+              {
+                "fieldName": "team",
+                "proposedValue": "Chicago Bears",
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": "The 2001 roster is explicitly identified as the Chicago Bears roster, and its quarterback entry identifies Jim Miller as the 2001 starter. The team code CHI in the season statistics corresponds to the Chicago Bears."
+              },
+              {
+                "fieldName": "signingBonusUsd",
+                "proposedValue": 0,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.25,
+                "providerReasoning": "The cited player record lists Jim Miller's transactions but does not report a signing-bonus amount. Because this field requires a number, the unreported bonus is represented as 0."
+              }
+            ],
+            "evidence": [
+              {
+                "claimFieldName": "team",
+                "sourceRef": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                "snippet": "2001 Chicago Bears Roster & Players Starters | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | TE | Fred Baxter | 30 | 8 | 14 | 22 catches for 148 yards, 2 td |  | | LT | Blake Brockermeyer | 28 | 6 | 16 | 2 fumbles recovered |  | | LG | Rex Tucker | 25 | 2 | 16 |  |  | | C | Olin Kreutz * | 24 | 3 | 16 |  |  | | RG | Chris Villarrial | 28 | 5 | 16 |  |  | | RT | James Williams * | 33 | 10 | 16 |  |  | |  | **Defensive Starters** |  |  |  |  |  | | LDE | Bryan Robinson | 27 | 4 | 16 | 4.5 sacks, 0 interceptions, 1 fumble recovered |  | ... | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | LCB | Walt Harris | 27 | 5 | 14 | 0.0 sacks, 1 interception, 2 fumbles recovered |  | ... | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | FS | Mike Brown + | 23 | 1 | 16 | 3.0 sacks, 5 interceptions, 1 fumble recovered |  | ... Roster | 15 | Jim Miller | 30 | QB | 14 | 13 | 226 | 6-2 | [Michigan St.](https://www.pro-football-reference.com/schools/michiganst/) | 2/9/1971 | 6 | 7 | Pittsburgh Steelers / 6th / 178th pick / [1994](https://www.pro-football-reference.com/years/1994/draft.htm) | | No.",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "signingBonusUsd",
+                "sourceRef": "http://pro-football-reference.com/players/M/MillJi00.htm",
+                "snippet": "**March 9, 2005:** The New York Giants signed QB Jim Miller .",
+                "supportsClaim": true
+              }
+            ],
+            "sourceReferences": [
+              {
+                "sourceRef": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                "url": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                "publisher": "2001 Chicago Bears Roster & Players | Pro-Football-Reference.com",
+                "retrievedAt": "2026-09-03T10:00:19.055Z"
+              },
+              {
+                "sourceRef": "http://pro-football-reference.com/players/M/MillJi00.htm",
+                "url": "http://pro-football-reference.com/players/M/MillJi00.htm",
+                "publisher": "Jim Miller Stats, Height, Weight, Position, Draft, College | Pro-Football-Reference.com",
+                "retrievedAt": "2026-09-03T10:00:19.055Z"
+              }
+            ],
+            "sourceSnapshotsOrSnapshotRefs": [],
+            "newGapProposals": [],
+            "warnings": [],
+            "unresolvedQuestions": [],
+            "usage": {
+              "requestCount": null,
+              "tokensOrUnits": null,
+              "providerReportedCostUsd": null
+            },
+            "failureDetails": null
+          },
+          "receivedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "digest": "0ae1c98f19665d29b9276d208c397958a2fa87f6f52cd348bbc39fa046ce52c9",
+          "result": {
+            "schemaVersion": "TSF_BOUNDED_RESEARCH_RESULT_V1",
+            "nodeId": "node:jim-miller",
+            "taskFingerprint": "d4cd8b7e1f73ed314eeaaebb1d9e656ecb64834ed38047451515f5ad92aaee4d",
+            "provider": "EXA",
+            "providerRunRef": {
+              "provider": "EXA",
+              "providerRunId": "agent_run_25114ab577a9470d87f49e80f81afeea",
+              "dispatchedAt": "2026-09-03T10:04:59.042Z"
+            },
+            "status": "SUCCEEDED",
+            "observations": [
+              {
+                "rawContent": {
+                  "text": "Jim Miller was the Chicago Bears’ quarterback in 2001. His regular-season line was 14 games, 13 starts, 228 completions on 395 attempts (57.7%), 2,299 passing yards, 5.8 yards per attempt, 13 touchdowns, 10 interceptions, a 74.9 passer rating, 11 sacks for 72 yards, and 29 rushing attempts for −19 yards and 0 rushing touchdowns. Biographical facts: James Donald Miller was born February 9, 1971, in Grosse Pointe, Michigan; he was 6 ft 2 in and about 225–226 lb; attended Michigan State; and was selected by Pittsburgh in the sixth round (178th overall) of the 1994 NFL Draft. The $2,000,000 signing bonus was reported for his subsequent five-year Bears contract agreed in March 2002, not as a 2001-season signing bonus. Sources: [Pro-Football-Reference](https://www.pro-football-reference.com/players/M/MillJi00.htm), [NFL.com](https://www.nfl.com/players/jim-miller/stats/), [ESPN](https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html).",
+                  "structured": {
+                    "team": "Chicago Bears",
+                    "signingBonusUsd": 2000000
+                  },
+                  "grounding": [
+                    {
+                      "field": "structured.team",
+                      "citations": [
+                        {
+                          "url": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                          "title": "2001 Chicago Bears Roster & Players — Pro-Football-Reference"
+                        },
+                        {
+                          "url": "https://www.nfl.com/players/jim-miller/stats/",
+                          "title": "Jim Miller Stats Summary — NFL.com"
+                        }
+                      ],
+                      "confidence": "high"
+                    },
+                    {
+                      "field": "structured.signingBonusUsd",
+                      "citations": [
+                        {
+                          "url": "https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html",
+                          "title": "NFL — Quarterback signs five-year, incentive-laced deal to stay — ESPN"
+                        }
+                      ],
+                      "confidence": "high"
+                    }
+                  ]
+                },
+                "extractedAt": "2026-09-03T10:04:59.042Z",
+                "providerConfidence": null,
+                "providerReasoning": null
+              }
+            ],
+            "proposedClaims": [
+              {
+                "fieldName": "team",
+                "proposedValue": "Chicago Bears",
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              },
+              {
+                "fieldName": "signingBonusUsd",
+                "proposedValue": 2000000,
+                "temporalScope": "2001-regular-season",
+                "providerConfidence": 0.9,
+                "providerReasoning": null
+              }
+            ],
+            "evidence": [
+              {
+                "claimFieldName": "team",
+                "sourceRef": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                "snippet": "2001 Chicago Bears Roster & Players — Pro-Football-Reference",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "team",
+                "sourceRef": "https://www.nfl.com/players/jim-miller/stats/",
+                "snippet": "Jim Miller Stats Summary — NFL.com",
+                "supportsClaim": true
+              },
+              {
+                "claimFieldName": "signingBonusUsd",
+                "sourceRef": "https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html",
+                "snippet": "NFL — Quarterback signs five-year, incentive-laced deal to stay — ESPN",
+                "supportsClaim": true
+              }
+            ],
+            "sourceReferences": [
+              {
+                "sourceRef": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                "url": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                "publisher": "2001 Chicago Bears Roster & Players — Pro-Football-Reference",
+                "retrievedAt": "2026-09-03T10:04:59.042Z"
+              },
+              {
+                "sourceRef": "https://www.nfl.com/players/jim-miller/stats/",
+                "url": "https://www.nfl.com/players/jim-miller/stats/",
+                "publisher": "Jim Miller Stats Summary — NFL.com",
+                "retrievedAt": "2026-09-03T10:04:59.042Z"
+              },
+              {
+                "sourceRef": "https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html",
+                "url": "https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html",
+                "publisher": "NFL — Quarterback signs five-year, incentive-laced deal to stay — ESPN",
+                "retrievedAt": "2026-09-03T10:04:59.042Z"
+              }
+            ],
+            "sourceSnapshotsOrSnapshotRefs": [],
+            "newGapProposals": [],
+            "warnings": [],
+            "unresolvedQuestions": [],
+            "usage": {
+              "requestCount": null,
+              "tokensOrUnits": 0.4,
+              "providerReportedCostUsd": 0.1
+            },
+            "failureDetails": null
+          },
+          "receivedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "admittedResultDigests": [
+        "214c27c74661e2d9403e75e5cdba6db3b7be195be3b69485286c8e29938dc7a7",
+        "0ae1c98f19665d29b9276d208c397958a2fa87f6f52cd348bbc39fa046ce52c9"
+      ],
+      "observations": [
+        {
+          "schemaVersion": "TSF_OBSERVATION_V1",
+          "id": "f7e653a84aad1b768f96549b1b06b30a8585df3890ad1ed46de0148d5d52b25d",
+          "digest": "f7e653a84aad1b768f96549b1b06b30a8585df3890ad1ed46de0148d5d52b25d",
+          "provider": "PARALLEL",
+          "providerRunRef": {
+            "provider": "PARALLEL",
+            "providerRunId": "trun_fa7ad1cc68e24490842c309fc49b6ff9",
+            "dispatchedAt": "2026-09-03T09:58:52.449Z"
+          },
+          "rawContent": {
+            "basis": [
+              {
+                "field": "signingBonusUsd",
+                "citations": [
+                  {
+                    "title": "Jim Miller Stats, Height, Weight, Position, Draft, College | Pro-Football-Reference.com",
+                    "url": "http://pro-football-reference.com/players/M/MillJi00.htm",
+                    "excerpts": [
+                      "**March 9, 2005:** The New York Giants signed QB Jim Miller ."
+                    ]
+                  }
+                ],
+                "reasoning": "The cited player record lists Jim Miller's transactions but does not report a signing-bonus amount. Because this field requires a number, the unreported bonus is represented as 0.",
+                "confidence": "low"
+              },
+              {
+                "field": "team",
+                "citations": [
+                  {
+                    "title": "2001 Chicago Bears Roster & Players | Pro-Football-Reference.com",
+                    "url": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                    "excerpts": [
+                      "2001 Chicago Bears Roster & Players Starters | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | TE | Fred Baxter | 30 | 8 | 14 | 22 catches for 148 yards, 2 td |  | | LT | Blake Brockermeyer | 28 | 6 | 16 | 2 fumbles recovered |  | | LG | Rex Tucker | 25 | 2 | 16 |  |  | | C | Olin Kreutz * | 24 | 3 | 16 |  |  | | RG | Chris Villarrial | 28 | 5 | 16 |  |  | | RT | James Williams * | 33 | 10 | 16 |  |  | |  | **Defensive Starters** |  |  |  |  |  | | LDE | Bryan Robinson | 27 | 4 | 16 | 4.5 sacks, 0 interceptions, 1 fumble recovered |  | ... | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | LCB | Walt Harris | 27 | 5 | 14 | 0.0 sacks, 1 interception, 2 fumbles recovered |  | ... | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | FS | Mike Brown + | 23 | 1 | 16 | 3.0 sacks, 5 interceptions, 1 fumble recovered |  | ... Roster | 15 | Jim Miller | 30 | QB | 14 | 13 | 226 | 6-2 | [Michigan St.](https://www.pro-football-reference.com/schools/michiganst/) | 2/9/1971 | 6 | 7 | Pittsburgh Steelers / 6th / 178th pick / [1994](https://www.pro-football-reference.com/years/1994/draft.htm) | | No."
+                    ]
+                  }
+                ],
+                "reasoning": "The 2001 roster is explicitly identified as the Chicago Bears roster, and its quarterback entry identifies Jim Miller as the 2001 starter. The team code CHI in the season statistics corresponds to the Chicago Bears.",
+                "confidence": "high"
+              }
+            ],
+            "type": "json",
+            "content": {
+              "signingBonusUsd": 0,
+              "team": "Chicago Bears"
+            }
+          },
+          "providerConfidence": null,
+          "providerReasoning": null,
+          "extractedAt": "2026-09-03T10:00:19.055Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_OBSERVATION_V1",
+          "id": "2898ae7f54d5bf8eb60b5a59726422b459d9f5cef8ae118108b5eb14cb12c7e5",
+          "digest": "2898ae7f54d5bf8eb60b5a59726422b459d9f5cef8ae118108b5eb14cb12c7e5",
+          "provider": "EXA",
+          "providerRunRef": {
+            "provider": "EXA",
+            "providerRunId": "agent_run_25114ab577a9470d87f49e80f81afeea",
+            "dispatchedAt": "2026-09-03T10:04:59.042Z"
+          },
+          "rawContent": {
+            "text": "Jim Miller was the Chicago Bears’ quarterback in 2001. His regular-season line was 14 games, 13 starts, 228 completions on 395 attempts (57.7%), 2,299 passing yards, 5.8 yards per attempt, 13 touchdowns, 10 interceptions, a 74.9 passer rating, 11 sacks for 72 yards, and 29 rushing attempts for −19 yards and 0 rushing touchdowns. Biographical facts: James Donald Miller was born February 9, 1971, in Grosse Pointe, Michigan; he was 6 ft 2 in and about 225–226 lb; attended Michigan State; and was selected by Pittsburgh in the sixth round (178th overall) of the 1994 NFL Draft. The $2,000,000 signing bonus was reported for his subsequent five-year Bears contract agreed in March 2002, not as a 2001-season signing bonus. Sources: [Pro-Football-Reference](https://www.pro-football-reference.com/players/M/MillJi00.htm), [NFL.com](https://www.nfl.com/players/jim-miller/stats/), [ESPN](https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html).",
+            "structured": {
+              "team": "Chicago Bears",
+              "signingBonusUsd": 2000000
+            },
+            "grounding": [
+              {
+                "field": "structured.team",
+                "citations": [
+                  {
+                    "url": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+                    "title": "2001 Chicago Bears Roster & Players — Pro-Football-Reference"
+                  },
+                  {
+                    "url": "https://www.nfl.com/players/jim-miller/stats/",
+                    "title": "Jim Miller Stats Summary — NFL.com"
+                  }
+                ],
+                "confidence": "high"
+              },
+              {
+                "field": "structured.signingBonusUsd",
+                "citations": [
+                  {
+                    "url": "https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html",
+                    "title": "NFL — Quarterback signs five-year, incentive-laced deal to stay — ESPN"
+                  }
+                ],
+                "confidence": "high"
+              }
+            ]
+          },
+          "providerConfidence": null,
+          "providerReasoning": null,
+          "extractedAt": "2026-09-03T10:04:59.042Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "claims": [
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "796d6f840dd77c439643656dc7d3a34978986528854859420eaeb5d7a6ceba9c",
+          "digest": "796d6f840dd77c439643656dc7d3a34978986528854859420eaeb5d7a6ceba9c",
+          "fieldName": "team",
+          "proposedValue": "Chicago Bears",
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.9,
+          "providerReasoning": "The 2001 roster is explicitly identified as the Chicago Bears roster, and its quarterback entry identifies Jim Miller as the 2001 starter. The team code CHI in the season statistics corresponds to the Chicago Bears.",
+          "observationIds": [
+            "f7e653a84aad1b768f96549b1b06b30a8585df3890ad1ed46de0148d5d52b25d"
+          ],
+          "status": "RECONCILED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "ccc660619e38164a3dfe22be15f985ea22843acfa2b32cce4f1b0c8b1571f737",
+          "digest": "ccc660619e38164a3dfe22be15f985ea22843acfa2b32cce4f1b0c8b1571f737",
+          "fieldName": "signingBonusUsd",
+          "proposedValue": 0,
+          "temporalScope": "2001-regular-season",
+          "provider": "PARALLEL",
+          "providerConfidence": 0.25,
+          "providerReasoning": "The cited player record lists Jim Miller's transactions but does not report a signing-bonus amount. Because this field requires a number, the unreported bonus is represented as 0.",
+          "observationIds": [
+            "f7e653a84aad1b768f96549b1b06b30a8585df3890ad1ed46de0148d5d52b25d"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "83d087e7161e88187430c00a7e968451e9a2acd0731931e20a6810f3943dad81",
+          "digest": "83d087e7161e88187430c00a7e968451e9a2acd0731931e20a6810f3943dad81",
+          "fieldName": "team",
+          "proposedValue": "Chicago Bears",
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "2898ae7f54d5bf8eb60b5a59726422b459d9f5cef8ae118108b5eb14cb12c7e5"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_CLAIM_V1",
+          "id": "d28e660f4e8c55ac9ee425ffd701e0188d4f33cf53938e7d4584a964619def16",
+          "digest": "d28e660f4e8c55ac9ee425ffd701e0188d4f33cf53938e7d4584a964619def16",
+          "fieldName": "signingBonusUsd",
+          "proposedValue": 2000000,
+          "temporalScope": "2001-regular-season",
+          "provider": "EXA",
+          "providerConfidence": 0.9,
+          "providerReasoning": null,
+          "observationIds": [
+            "2898ae7f54d5bf8eb60b5a59726422b459d9f5cef8ae118108b5eb14cb12c7e5"
+          ],
+          "status": "VERIFIED",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "evidence": [
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "15dad796bd731f6bfb05dc7243a52191666fbed5f11f978ce68bd85bcdf84211",
+          "digest": "15dad796bd731f6bfb05dc7243a52191666fbed5f11f978ce68bd85bcdf84211",
+          "claimId": "796d6f840dd77c439643656dc7d3a34978986528854859420eaeb5d7a6ceba9c",
+          "sourceReferenceId": "038edd9a5d3d6244618237decc9450c75775bec296df92f4c3a1c944c2f0eed4",
+          "snippet": "2001 Chicago Bears Roster & Players Starters | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | TE | Fred Baxter | 30 | 8 | 14 | 22 catches for 148 yards, 2 td |  | | LT | Blake Brockermeyer | 28 | 6 | 16 | 2 fumbles recovered |  | | LG | Rex Tucker | 25 | 2 | 16 |  |  | | C | Olin Kreutz * | 24 | 3 | 16 |  |  | | RG | Chris Villarrial | 28 | 5 | 16 |  |  | | RT | James Williams * | 33 | 10 | 16 |  |  | |  | **Defensive Starters** |  |  |  |  |  | | LDE | Bryan Robinson | 27 | 4 | 16 | 4.5 sacks, 0 interceptions, 1 fumble recovered |  | ... | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | LCB | Walt Harris | 27 | 5 | 14 | 0.0 sacks, 1 interception, 2 fumbles recovered |  | ... | Pos | Player | Age | Yrs | GS | Summary of Player Stats | Drafted (tm/rnd/yr) | |  | **Offensive Starters** |  |  |  |  |  | | QB | Jim Miller | 30 | 6 | 13 | 228 for 395, 2,299 yards, 13 td, 10 int, & 29 rushes for -19 yards and 0 td |  | | FS | Mike Brown + | 23 | 1 | 16 | 3.0 sacks, 5 interceptions, 1 fumble recovered |  | ... Roster | 15 | Jim Miller | 30 | QB | 14 | 13 | 226 | 6-2 | [Michigan St.](https://www.pro-football-reference.com/schools/michiganst/) | 2/9/1971 | 6 | 7 | Pittsburgh Steelers / 6th / 178th pick / [1994](https://www.pro-football-reference.com/years/1994/draft.htm) | | No.",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "c3b384d8349a58645c885e1afb9a95978cc05761fa121bd0d8a64d45e536fcf8",
+          "digest": "c3b384d8349a58645c885e1afb9a95978cc05761fa121bd0d8a64d45e536fcf8",
+          "claimId": "ccc660619e38164a3dfe22be15f985ea22843acfa2b32cce4f1b0c8b1571f737",
+          "sourceReferenceId": "7d00ff01e3de68406a151ba2b35b9a3cfdf63c24a5955a866d4140d8ab730040",
+          "snippet": "**March 9, 2005:** The New York Giants signed QB Jim Miller .",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "9c3343ab13ad2f870961c1538a41538e9bed396513454bb46c1fd7b7b4869bb7",
+          "digest": "9c3343ab13ad2f870961c1538a41538e9bed396513454bb46c1fd7b7b4869bb7",
+          "claimId": "83d087e7161e88187430c00a7e968451e9a2acd0731931e20a6810f3943dad81",
+          "sourceReferenceId": "23d17935686afd10bd9d3ed5834cbab347bc07e1c5ec18a008e1ffbb26a7c666",
+          "snippet": "2001 Chicago Bears Roster & Players — Pro-Football-Reference",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "eeebab9303857fe1e5ffa81e28e012211263beb2692a0c4574d4b73701949e78",
+          "digest": "eeebab9303857fe1e5ffa81e28e012211263beb2692a0c4574d4b73701949e78",
+          "claimId": "83d087e7161e88187430c00a7e968451e9a2acd0731931e20a6810f3943dad81",
+          "sourceReferenceId": "8f448a197a17b0bfc1bf38b4df546e315b1606c266da901ae0d357dd05be3c06",
+          "snippet": "Jim Miller Stats Summary — NFL.com",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_EVIDENCE_V1",
+          "id": "8cad1b3a87f060cbe6ad8204ab491d27c8d9685cf84715e8510ee5e75c5dd838",
+          "digest": "8cad1b3a87f060cbe6ad8204ab491d27c8d9685cf84715e8510ee5e75c5dd838",
+          "claimId": "d28e660f4e8c55ac9ee425ffd701e0188d4f33cf53938e7d4584a964619def16",
+          "sourceReferenceId": "a12a2b20c5dd29a9a38237efdee4a31f9d43d0333ebf5267f124afa14c785b0d",
+          "snippet": "NFL — Quarterback signs five-year, incentive-laced deal to stay — ESPN",
+          "supportsClaim": true,
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "sourceReferences": [
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "038edd9a5d3d6244618237decc9450c75775bec296df92f4c3a1c944c2f0eed4",
+          "sourceRef": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+          "url": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+          "publisher": "2001 Chicago Bears Roster & Players | Pro-Football-Reference.com",
+          "retrievedAt": "2026-09-03T10:00:19.055Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "7d00ff01e3de68406a151ba2b35b9a3cfdf63c24a5955a866d4140d8ab730040",
+          "sourceRef": "http://pro-football-reference.com/players/M/MillJi00.htm",
+          "url": "http://pro-football-reference.com/players/M/MillJi00.htm",
+          "publisher": "Jim Miller Stats, Height, Weight, Position, Draft, College | Pro-Football-Reference.com",
+          "retrievedAt": "2026-09-03T10:00:19.055Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "23d17935686afd10bd9d3ed5834cbab347bc07e1c5ec18a008e1ffbb26a7c666",
+          "sourceRef": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+          "url": "https://www.pro-football-reference.com/teams/chi/2001_roster.htm",
+          "publisher": "2001 Chicago Bears Roster & Players — Pro-Football-Reference",
+          "retrievedAt": "2026-09-03T10:04:59.042Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "8f448a197a17b0bfc1bf38b4df546e315b1606c266da901ae0d357dd05be3c06",
+          "sourceRef": "https://www.nfl.com/players/jim-miller/stats/",
+          "url": "https://www.nfl.com/players/jim-miller/stats/",
+          "publisher": "Jim Miller Stats Summary — NFL.com",
+          "retrievedAt": "2026-09-03T10:04:59.042Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "a12a2b20c5dd29a9a38237efdee4a31f9d43d0333ebf5267f124afa14c785b0d",
+          "sourceRef": "https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html",
+          "url": "https://www.espn.com/nfl/columns/pasquarelli_len/1343738.html",
+          "publisher": "NFL — Quarterback signs five-year, incentive-laced deal to stay — ESPN",
+          "retrievedAt": "2026-09-03T10:04:59.042Z",
+          "admittedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_SOURCE_REFERENCE_V1",
+          "id": "64c59f2fcf80ecbadf1a2c17e8f7a92491135612e9edcdf158e2b6a2adb55f75",
+          "sourceRef": "https://en.wikipedia.org/api/rest_v1/page/summary/Jim_Miller_(American_football)",
+          "url": "https://en.wikipedia.org/api/rest_v1/page/summary/Jim_Miller_(American_football)",
+          "publisher": null,
+          "retrievedAt": "2026-09-03T10:09:01.159Z",
+          "admittedAt": "2026-09-03T10:09:01.159Z"
+        }
+      ],
+      "sourceSnapshots": [
+        {
+          "schemaVersion": "TSF_SOURCE_SNAPSHOT_REFERENCE_V1",
+          "id": "36b1a7906e6cdabd22f26c5190eb1c0a6a3c81ae8a6859d64c2237ba977346b1",
+          "sourceRef": "https://en.wikipedia.org/api/rest_v1/page/summary/Jim_Miller_(American_football)",
+          "contentHash": "sha256:4f37f15f052ce827d674bf542f8c0d0c9d5a88b64f48c14660ec70f785d310b1",
+          "rawContentRef": null,
+          "retrievable": true,
+          "acquisitionMethod": "BULK_SOURCE_FIRST_HTTP",
+          "admittedAt": "2026-09-03T10:09:01.159Z"
+        }
+      ],
+      "typedMissingness": [],
+      "identityResolutionState": null,
+      "verifications": [
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "dec89c639529a90530a7742253d0015d375d837dc7f7f763a3b6fa5707e7b078",
+          "claimId": "796d6f840dd77c439643656dc7d3a34978986528854859420eaeb5d7a6ceba9c",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "cfb481802fa29bfb2b243cc5077926462e87943932c15c53ea181d44e8464687",
+          "claimId": "ccc660619e38164a3dfe22be15f985ea22843acfa2b32cce4f1b0c8b1571f737",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "7d7d4a833cb3971008f2a34412c659df00936c15ec4035dda9a42693b6fca484",
+          "claimId": "83d087e7161e88187430c00a7e968451e9a2acd0731931e20a6810f3943dad81",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        },
+        {
+          "schemaVersion": "TSF_VERIFICATION_V1",
+          "id": "23832bf2a6a59f5305975e7725dcf0121244871db96227ed49963f2a8674965d",
+          "claimId": "d28e660f4e8c55ac9ee425ffd701e0188d4f33cf53938e7d4584a964619def16",
+          "verdict": "PASS",
+          "assertionResults": [
+            {
+              "type": "GTE",
+              "path": "supportingEvidenceCount",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "hasContradictingEvidence",
+              "passed": true
+            },
+            {
+              "type": "EQUALS",
+              "path": "temporalMatches",
+              "passed": true
+            }
+          ],
+          "verifiedBy": "TSF_EVALUATION_PACK_ENGINE",
+          "verifiedAt": "2026-09-03T10:00:00.000Z"
+        }
+      ],
+      "conflicts": [
+        {
+          "schemaVersion": "TSF_CONFLICT_V1",
+          "id": "1b06012a50b95ed89894f008d5486cddf60a528b43fa34816a665a19a6eb8bf8",
+          "fieldName": "signingBonusUsd",
+          "conflictingClaimIds": [
+            "ccc660619e38164a3dfe22be15f985ea22843acfa2b32cce4f1b0c8b1571f737",
+            "d28e660f4e8c55ac9ee425ffd701e0188d4f33cf53938e7d4584a964619def16"
+          ],
+          "status": "OPEN",
+          "raisedAt": "2026-09-03T10:00:00.000Z",
+          "resolvedAt": null
+        }
+      ],
+      "reconciliationDecisions": [
+        {
+          "schemaVersion": "TSF_RECONCILIATION_DECISION_V1",
+          "id": "98b711e29daeee7dc369752cb6e6222398833c10e98ce9e1cea997fdc99096c3",
+          "fieldName": "team",
+          "decidedValue": "Chicago Bears",
+          "decisionType": "ACCEPT_SINGLE_VERIFIED_CLAIM",
+          "selectedClaimId": "796d6f840dd77c439643656dc7d3a34978986528854859420eaeb5d7a6ceba9c",
+          "consideredClaimIds": [
+            "796d6f840dd77c439643656dc7d3a34978986528854859420eaeb5d7a6ceba9c",
+            "83d087e7161e88187430c00a7e968451e9a2acd0731931e20a6810f3943dad81"
+          ],
+          "verificationIds": [],
+          "conflictId": null,
+          "rationale": "Both providers independently and correctly resolved the \"Jim Miller\" name ambiguity to the Chicago Bears QB, with real linked evidence.",
+          "decidedBy": "smcolety@gmail.com",
+          "binding": "98b711e29daeee7dc369752cb6e6222398833c10e98ce9e1cea997fdc99096c3",
+          "derivationLineage": null,
+          "decidedAt": "2026-09-03T10:20:00.000Z"
+        }
+      ],
+      "canonicalFacts": [
+        {
+          "schemaVersion": "TSF_CANONICAL_FACT_V1",
+          "id": "775622e729146b97b906717b7561e4cdc2e4a2fc4f8b0d5c673a177e1fc749d2",
+          "fieldName": "team",
+          "value": "Chicago Bears",
+          "temporalScope": "2001-regular-season",
+          "reconciliationDecisionId": "98b711e29daeee7dc369752cb6e6222398833c10e98ce9e1cea997fdc99096c3",
+          "derivationLineage": null,
+          "canonicalizedAt": "2026-09-03T10:20:00.000Z"
+        }
+      ],
+      "gapProposals": []
+    }
+  ],
+  "checkpoints": [],
+  "needsYou": [
+    {
+      "id": "ebc0fb26a746818d266e8fb413547e506119e842fd6a66e9c1a357fed315eb03",
+      "question": "Jim Miller (Chicago Bears, 2001) signingBonusUsd: PARALLEL proposed $0 at LOW confidence (0.25) -- a real risk this is a defaulted/unfound value rather than a genuine $0 bonus. EXA proposed $2,000,000 with no confidence signal at all. Neither is independently trustworthy. Which value (if either) should become canonical, or should this remain typed-missing?",
+      "options": [
+        "ACCEPT_PARALLEL_0",
+        "ACCEPT_EXA_2000000",
+        "MARK_TYPED_MISSING",
+        "REQUEST_FURTHER_RESEARCH"
+      ],
+      "nodeId": "node:jim-miller",
+      "raisedAt": "2026-09-03T10:20:00.000Z",
+      "resolvedAt": null,
+      "resolution": null
+    }
+  ],
+  "transitions": [
+    {
+      "from": null,
+      "to": "ACTIVE",
+      "reason": "RESEARCH_MISSION_CREATED",
+      "at": "2026-09-03T10:00:00.000Z"
+    },
+    {
+      "from": "ACTIVE",
+      "to": "NEEDS_YOU",
+      "reason": "HUMAN_DECISION_REQUIRED",
+      "evidence": [
+        "node:jim-miller"
+      ],
+      "at": "2026-09-03T10:20:00.000Z"
+    }
+  ],
+  "createdAt": "2026-09-03T10:00:00.000Z",
+  "updatedAt": "2026-09-03T10:20:00.000Z"
+}

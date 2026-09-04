@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tsf.local/contracts/research-epistemic-record.schema.v1.json",
+  "title": "TSF Research Epistemic Ladder V1",
+  "description": "Durable, TSF-admitted records forming the promotion ladder: Observation -> Claim -> Evidence -> Verification -> Conflict -> ReconciliationDecision -> CanonicalFact. A worker's completed execution produces Observations/proposed Claims only. CanonicalFact is reachable only through a persisted ReconciliationDecision -- there is no Observation->CanonicalFact or Claim->CanonicalFact shortcut in this schema or in the domain code that admits it.",
+  "$defs": {
+    "SourceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "sourceRef", "url", "publisher", "retrievedAt", "admittedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_SOURCE_REFERENCE_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "sourceRef": { "type": "string", "minLength": 1 },
+        "url": { "type": ["string", "null"] },
+        "publisher": { "type": ["string", "null"] },
+        "retrievedAt": { "type": "string" },
+        "admittedAt": { "type": "string" }
+      }
+    },
+    "SourceSnapshotReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "sourceRef", "contentHash", "admittedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_SOURCE_SNAPSHOT_REFERENCE_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "sourceRef": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string" },
+        "rawContentRef": { "type": ["string", "null"] },
+        "retrievable": { "type": "boolean" },
+        "admittedAt": { "type": "string" }
+      }
+    },
+    "Observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "digest", "provider", "providerRunRef", "rawContent", "extractedAt", "providerConfidence", "providerReasoning", "admittedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_OBSERVATION_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string" },
+        "provider": { "type": "string", "minLength": 1 },
+        "providerRunRef": { "type": "object" },
+        "rawContent": {},
+        "extractedAt": { "type": "string" },
+        "providerConfidence": { "type": ["number", "null"] },
+        "providerReasoning": { "type": ["string", "null"] },
+        "admittedAt": { "type": "string" }
+      }
+    },
+    "Claim": {
+      "description": "A specific extracted factual assertion. Still unverified. status is epistemic state, never execution state.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "digest", "fieldName", "proposedValue", "temporalScope", "provider", "providerConfidence", "providerReasoning", "observationIds", "status", "admittedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_CLAIM_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string" },
+        "fieldName": { "type": "string", "minLength": 1 },
+        "proposedValue": {},
+        "temporalScope": { "type": ["string", "null"] },
+        "provider": { "type": "string", "minLength": 1 },
+        "providerConfidence": { "type": ["number", "null"] },
+        "providerReasoning": { "type": ["string", "null"] },
+        "observationIds": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["UNVERIFIED", "VERIFIED", "CONFLICTED", "REJECTED", "RECONCILED"] },
+        "admittedAt": { "type": "string" }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "digest", "claimId", "sourceReferenceId", "snippet", "supportsClaim", "admittedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_EVIDENCE_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string" },
+        "claimId": { "type": "string", "minLength": 1 },
+        "sourceReferenceId": { "type": "string", "minLength": 1 },
+        "snippet": { "type": "string" },
+        "supportsClaim": { "type": "boolean" },
+        "admittedAt": { "type": "string" }
+      }
+    },
+    "TypedMissingness": {
+      "description": "A field's canonical missingness status. Reconciled via ReconciliationDecision(decisionType: ACCEPT_TYPED_MISSING) + admitReconciliationDecision, which stamps reconciliationDecisionId/reconciledAt on THIS record rather than synthesizing a value-bearing CanonicalFact -- 'definitively absent' is never collapsed into a canonical null value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "fieldName", "temporalScope", "missingnessType", "reason", "admittedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_TYPED_MISSINGNESS_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "fieldName": { "type": "string", "minLength": 1 },
+        "temporalScope": { "description": "Trust + Scale Hardening Continuation 2 Priority Block 3: carried through from the ProposedClaim exactly like Claim.temporalScope, so temporal-aware completeness can tell 'honestly missing for THIS period' apart from missingness with no period context.", "type": ["string", "null"] },
+        "missingnessType": { "enum": ["NOT_PUBLICLY_AVAILABLE", "NOT_APPLICABLE", "NOT_YET_RESEARCHED", "SOURCE_EXHAUSTED"] },
+        "reason": { "type": "string" },
+        "admittedAt": { "type": "string" },
+        "reconciliationDecisionId": { "type": ["string", "null"] },
+        "reconciledAt": { "type": ["string", "null"] }
+      }
+    },
+    "Verification": {
+      "description": "A scored check of a Claim against its Evidence. Reuses evaluation-pack.mjs's assertion-scoring mechanism. Still not canonical.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "claimId", "verdict", "assertionResults", "verifiedBy", "verifiedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_VERIFICATION_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "verdict": { "enum": ["PASS", "FAIL", "INCONCLUSIVE"] },
+        "assertionResults": { "type": "array", "items": { "type": "object" } },
+        "verifiedBy": { "type": "string", "minLength": 1 },
+        "verifiedAt": { "type": "string" }
+      }
+    },
+    "Conflict": {
+      "description": "Raised when >=2 verified/proposed Claims for the same fieldName disagree. Distinct from competing-commitments.mjs's project-resource conflict concept -- this is a field-value conflict.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "fieldName", "temporalScope", "conflictingClaimIds", "status", "raisedAt", "resolvedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_CONFLICT_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "fieldName": { "type": "string", "minLength": 1 },
+        "temporalScope": { "description": "Trust + Scale Hardening: claims are only grouped as conflicting within the SAME temporalScope -- two claims about the same fieldName but genuinely different time periods are not a real conflict.", "type": ["string", "null"] },
+        "conflictingClaimIds": { "type": "array", "minItems": 2, "items": { "type": "string" } },
+        "status": { "enum": ["OPEN", "RECONCILED"] },
+        "raisedAt": { "type": "string" },
+        "resolvedAt": { "type": ["string", "null"] }
+      }
+    },
+    "IdentityResolutionState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "candidateEntityRefs", "resolvedEntityId", "status", "rationale", "admittedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_IDENTITY_RESOLUTION_STATE_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "candidateEntityRefs": { "type": "array", "items": { "type": "object" } },
+        "resolvedEntityId": { "type": ["string", "null"] },
+        "status": { "enum": ["AMBIGUOUS", "RESOLVED", "NEEDS_REVIEW"] },
+        "rationale": { "type": ["string", "null"] },
+        "admittedAt": { "type": "string" }
+      }
+    },
+    "ReconciliationDecision": {
+      "description": "The sole gate that may promote a Claim (or a TSF-computed derived value) to a CanonicalFact. Must preserve enough rationale/input references to answer why the selected value became canonical.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "fieldName", "decidedValue", "decisionType", "selectedClaimId", "consideredClaimIds", "verificationIds", "conflictId", "rationale", "decidedBy", "binding", "temporalScope", "resolvedTypedMissingnessId", "decidedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_RECONCILIATION_DECISION_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "fieldName": { "type": "string", "minLength": 1 },
+        "decidedValue": {},
+        "decisionType": { "enum": ["ACCEPT_SINGLE_VERIFIED_CLAIM", "RESOLVE_CONFLICT", "ACCEPT_TYPED_MISSING", "ACCEPT_DERIVED_VALUE"] },
+        "selectedClaimId": { "type": ["string", "null"] },
+        "consideredClaimIds": { "type": "array", "items": { "type": "string" } },
+        "verificationIds": { "type": "array", "items": { "type": "string" } },
+        "conflictId": { "type": ["string", "null"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "decidedBy": { "type": "string", "minLength": 1 },
+        "binding": { "type": "string", "description": "sha256 staleness-detection hash, mirrors adoption.mjs's candidateBinding. Includes temporalScope so two decisions differing only by period never collide." },
+        "derivationLineage": { "anyOf": [{ "$ref": "#/$defs/DerivationLineage" }, { "type": "null" }] },
+        "temporalScope": { "description": "Trust + Scale Hardening: explicit for ACCEPT_DERIVED_VALUE (never guessed from a single input); for other decision types defaults to the selected claim's own temporalScope at admission time.", "type": ["string", "null"] },
+        "resolvedTypedMissingnessId": { "description": "Trust + Scale Hardening Continuation 2 (independent-verification follow-up): for ACCEPT_TYPED_MISSING only, the exact TypedMissingness id resolved at decide time, so admission uses it directly instead of re-deriving (and possibly diverging) from fieldName+temporalScope a second time. Null for every other decisionType.", "type": ["string", "null"] },
+        "decidedAt": { "type": "string" }
+      }
+    },
+    "DerivationLineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "derivationRule", "inputFieldNames", "inputCanonicalFactIds"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_DERIVATION_LINEAGE_V1" },
+        "derivationRule": { "type": "string", "minLength": 1 },
+        "inputFieldNames": { "type": "array", "items": { "type": "string" } },
+        "inputCanonicalFactIds": { "type": "array", "items": { "type": "string" } },
+        "crossMissionOrigin": {
+          "description": "Trust + Scale Hardening Phase 7: present only for derivationRule CROSS_MISSION_LIBRARY_REFERENCE -- preserves exactly which OTHER mission's CanonicalFact a research-library hit was adopted from, so cross-mission reuse is always traceable back to its real origin, never hidden inside an opaque derived value.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "libraryEntryId": { "type": "string" },
+            "missionId": { "type": "string" },
+            "nodeId": { "type": "string" },
+            "canonicalFactId": { "type": "string" },
+            "canonicalizedAt": { "type": "string" }
+          }
+        }
+      }
+    },
+    "CanonicalFact": {
+      "description": "Created ONLY by admitting a ReconciliationDecision. No other code path may construct this record.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "fieldName", "value", "temporalScope", "reconciliationDecisionId", "derivationLineage", "canonicalizedAt"],
+      "properties": {
+        "schemaVersion": { "const": "TSF_CANONICAL_FACT_V1" },
+        "id": { "type": "string", "minLength": 1 },
+        "fieldName": { "type": "string", "minLength": 1 },
+        "value": {},
+        "temporalScope": { "type": ["string", "null"] },
+        "reconciliationDecisionId": { "type": "string", "minLength": 1 },
+        "derivationLineage": { "anyOf": [{ "$ref": "#/$defs/DerivationLineage" }, { "type": "null" }] },
+        "canonicalizedAt": { "type": "string" }
+      }
+    },
+    "CompletenessMetrics": {
+      "description": "Multidimensional, machine-readable. Never collapsed into one opaque score. Worker completion percentage is never reported as dataset completeness.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "expectedEntityCoverage", "presentEntityCoverage", "fieldCoverage",
+        "evidenceCoverage", "verifiedCoverage", "conflictCount", "unresolvedConflictCount",
+        "typedMissingnessCount", "identityReviewCount", "derivedFieldReproducibilityCoverage",
+        "computedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "TSF_COMPLETENESS_METRICS_V1" },
+        "expectedEntityCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "presentEntityCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "fieldCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "evidenceCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "verifiedCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "conflictCount": { "type": "integer", "minimum": 0 },
+        "unresolvedConflictCount": { "type": "integer", "minimum": 0 },
+        "typedMissingnessCount": { "type": "integer", "minimum": 0 },
+        "identityReviewCount": { "type": "integer", "minimum": 0 },
+        "derivedFieldReproducibilityCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "computedAt": { "type": "string" }
+      }
+    }
+  }
+}
