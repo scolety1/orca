@@ -124,6 +124,27 @@ recording the connection for whoever reconciles REQ-003.
 — available for a future Main TSF integration mission, not built as part
 of this freeze.
 
+**Update, commit `32b175fa9b`** ("unattended hardening + adoption" pass),
+received while this session was under active resource pressure (see the
+paused `ORCA_RESOURCE_AUDITOR_V0` integration mission) — logged as
+**received, not independently re-verified this time**, unlike the first
+packet above:
+- A second independent adversarial verifier reportedly found 2 more real
+  bugs in `identity-collision-resolver.mjs` (an uncaught `TypeError` on
+  `undefined` evidence; a too-broad contradiction-key scan), both claimed
+  fixed with regression tests.
+- Two new filings: `REQ-004` (`research-completeness.mjs`'s
+  `computeCompletenessMetrics` is one-directional, expected→present only,
+  no typed missingness) and `REQ-005` (all three acquisition modes already
+  converge on one generic driver path; no typed `acquisitionMode` field
+  yet) — both schema-shape decisions, explicitly not implemented.
+- Claimed full canonical suite: 1334 tests, 1331 pass, 1 skipped, same
+  single pre-existing flake as every prior run.
+- Confirm/verify this update's specific claims (the 2 new bug fixes, the
+  benchmark numbers, the 1334-test full-suite result) before relying on
+  them for any adoption decision — this entry is a faithful record of what
+  was reported, not an independent check like the entry above it.
+
 ## 5. Pilot launch procedure (kept current)
 
 Reuses the prior pilot's real onboarded TEST projects (temp git repos
