@@ -34,6 +34,7 @@ import { CliInstaller } from '../cli/cli-installer'
 import { installLinuxBareOrcaDispatcher } from '../cli/linux-bare-orca-dispatcher'
 import { scheduleAllPendingHistoryTreeRemovals } from '../terminal-history-deletion'
 import { triggerStartupNotificationRegistration } from '../ipc/startup-notification-registration'
+import { startDesktopPushService } from './main-process-push-startup'
 import { mainProcessState as state } from './main-process-state'
 import { logStartupMilestone } from './startup-diagnostics'
 
@@ -154,6 +155,9 @@ async function launchServeMode(
     console.error('[runtime] Failed to start headless RPC transport:', error)
     throw error
   })
+  // Why: a phone paired to a headless host still registers and unregisters its token;
+  // it simply never receives a push, because nothing dispatches notifications here.
+  startDesktopPushService(runtime, runtimeRpc)
   settleDesktopActivation()
   // Why: every attempt must reach app.quit(); a page beforeunload can veto an earlier signal.
   registerServeSignalHandlers(process, () => app.quit())
@@ -202,6 +206,7 @@ async function launchServeMode(
 }
 
 async function launchDesktopMode(
+  runtime: RuntimeService,
   runtimeRpc: OrcaRuntimeRpcServer,
   shellPathReady: Promise<void>,
   desktopWindow: BrowserWindow | null,
@@ -228,6 +233,7 @@ async function launchDesktopMode(
   if (!runtimeRpcStartResult.ok) {
     void showRuntimeRpcStartupFailureDialog(win, runtimeRpcStartResult.error)
   }
+  startDesktopPushService(runtime, runtimeRpc)
   const cloudAuth = getOrcaCloudAuthConfig()
   if (cloudAuth.configured) {
     try {
@@ -310,5 +316,11 @@ export async function initializeMainProcessRuntimeLaunch(
     await launchServeMode(runtime, runtimeRpc, serveOptions)
     return
   }
-  await launchDesktopMode(runtimeRpc, shellPathReady, desktopWindow, options.openMainWindow)
+  await launchDesktopMode(
+    runtime,
+    runtimeRpc,
+    shellPathReady,
+    desktopWindow,
+    options.openMainWindow
+  )
 }
