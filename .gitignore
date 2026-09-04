@@ -146,7 +146,3 @@ tests/tools/benchmarks/results/terminal-pipeline-*.json
 
 # Old release trees the cross-version wire harness extracts on demand
 tests/e2e/.cross-version-checkouts/
-
-# TSF operator UI: local-only operator state (Usage Mode, fixture adoption decision)
-tsf/server/.local-state/
-tsf/ui/*.tsbuildinfo

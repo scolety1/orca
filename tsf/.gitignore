@@ -1,0 +1,3 @@
+# TSF operator UI: local-only operator state (Usage Mode, fixture adoption decision)
+server/.local-state/
+ui/*.tsbuildinfo
