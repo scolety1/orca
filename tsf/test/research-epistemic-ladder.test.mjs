@@ -277,6 +277,44 @@ test('SECURITY BOUNDARY: extra worker-supplied fields (scope/toolPermissions/can
   assert.deepEqual(next.specification.sourcePolicy, mission.specification.sourcePolicy, 'mission-level sourcePolicy must be unaffected by worker input')
 })
 
+// "GENERIC V0 ADOPTION READINESS" Phase 10/11 finding: sourcePolicy.
+// disallowedSources was already forwarded to real providers as a polite
+// REQUEST (BoundedResearchRequest.disallowedSources -> provider-adapter-
+// conformance.test.mjs confirms it reaches Parallel/Exa's real payload as
+// exclude_domains), but nothing downstream ever verified a provider
+// actually honored it -- a non-compliant result citing a disallowed
+// domain would have been silently admitted. Defense in depth, tested at
+// the real admission boundary.
+test('SOURCE POLICY ENFORCEMENT: admitBoundedResearchResult refuses a result citing a disallowedSources domain, even though the provider was already asked to exclude it', () => {
+  const specification = { ...buildNflQb2001Specification() }
+  specification.sourcePolicy = { ...specification.sourcePolicy, disallowedSources: ['banned-source.example'] }
+  let mission = createResearchMission({ id: 'mission:source-policy-ladder', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  mission = addResearchNode(mission, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'entity:x' }, requestedFields: [{ fieldName: 'yards', valueType: 'number', required: true }], requestedOutputSchema: { type: 'object' } }, clock)
+  const node = mission.nodes[0]
+  const request = buildBoundedResearchRequest(mission, node, 'FAKE', clock)
+  const workerRunRef = { provider: 'FAKE', providerRunId: 'run-1', dispatchedAt: '2026-09-10T12:00:00.000Z' }
+  let next = markResearchNodeReady(mission, node.id, clock, mission.revision)
+  next = recordResearchNodeDispatch(next, node.id, { taskFingerprint: request.taskFingerprint, workerRunRef }, clock, next.revision)
+  const nonCompliantResult = successResult(request, {
+    sourceReferences: [{ sourceRef: 'src:noncompliant', url: 'https://banned-source.example/page', publisher: 'banned-source.example', retrievedAt: '2026-09-10T12:00:00.000Z' }]
+  })
+  next = recordResearchNodeResult(next, node.id, nonCompliantResult, clock, next.revision)
+  const digest = next.nodes[0].rawResults.at(-1).digest
+  assert.throws(
+    () => admitBoundedResearchResult(next, node.id, digest, clock, next.revision),
+    (error) => {
+      assert.equal(error.code, 'TSF_SOURCE_POLICY_VIOLATION')
+      return true
+    }
+  )
+  assert.equal(next.nodes[0].claims.length, 0, 'nothing from the non-compliant result was admitted -- fail closed, not partially admitted')
+  // Non-regression, a completely fresh cycle: a compliant source admits
+  // exactly as every other test in this file already proves.
+  const freshMission = missionWithNode()
+  const { mission: compliant } = dispatchAndAdmit(freshMission, freshMission.nodes[0])
+  assert.equal(compliant.nodes[0].claims.length, 1)
+})
+
 test('verifyResearchClaim: supporting evidence + matching temporal scope -> PASS -> claim VERIFIED', () => {
   let mission = missionWithNode()
   const node = mission.nodes[0]

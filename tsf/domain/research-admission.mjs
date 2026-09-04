@@ -26,6 +26,31 @@ function hasId(list, id) {
   return list.some((item) => item.id === id)
 }
 
+// "GENERIC V0 ADOPTION READINESS" Phase 10/11 finding: sourcePolicy.
+// disallowedSources was already forwarded to real providers as a
+// polite REQUEST (research-node.mjs's BoundedResearchRequest,
+// confirmed reaching Parallel/Exa's real payload as source_policy.
+// exclude_domains in provider-adapter-conformance.test.mjs) -- but
+// nothing downstream ever VERIFIED a provider actually honored it.
+// A non-compliant provider result citing a disallowed domain would have
+// been silently admitted anyway. This closes that specific gap: defense
+// in depth at the one real admission boundary, not a trust-the-provider
+// assumption. Deliberately a simple, real, checkable substring match
+// (mirrors how disallowedSources entries are already written throughout
+// this codebase, e.g. 'pro-football-reference.com') -- no speculative
+// URL-parsing/domain-matching engine invented for a case that has not
+// occurred yet.
+export function assertSourcePolicyAllows(sourcePolicy, url) {
+  const disallowed = sourcePolicy?.disallowedSources ?? []
+  if (disallowed.length === 0 || !url) return
+  const violated = disallowed.find((host) => url.includes(host))
+  if (violated) {
+    const error = new Error(`source ${url} matches a disallowedSources entry (${violated}) -- refusing to admit, even though sourcePolicy already asked the provider to exclude it (defense in depth against a non-compliant provider)`)
+    error.code = 'TSF_SOURCE_POLICY_VIOLATION'
+    throw error
+  }
+}
+
 export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock, expectedRevision) {
   return withResearchNode(
     mission,
@@ -55,6 +80,7 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
 
       const sourceRefIdByRef = new Map(next.sourceReferences.map((s) => [s.sourceRef, s.id]))
       for (const sr of result.sourceReferences) {
+        assertSourcePolicyAllows(mission.specification?.sourcePolicy, sr.url ?? sr.sourceRef)
         const id = sha256({ resultDigest, kind: 'SourceReference', sourceRef: sr.sourceRef })
         if (!hasId(next.sourceReferences, id)) {
           next.sourceReferences.push({

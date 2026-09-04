@@ -542,3 +542,22 @@ test('indexSourceSnapshot also indexes a snapshot admitted via the bulk source-f
   assert.equal(library.sourceSnapshots.length, 1)
   assert.equal(library.sourceSnapshots[0].canonicalLocator, 'src:bulk-1')
 })
+
+// "GENERIC V0 ADOPTION READINESS" Phase 10/11: the bulk source-first path
+// is a second, equally real way a disallowed source could otherwise slip
+// in uncaught -- same defense-in-depth check as the BoundedResearchWorker
+// admission path (research-epistemic-ladder.test.mjs's equivalent test).
+test('SOURCE POLICY ENFORCEMENT: admitSourceSnapshot refuses a disallowedSources domain in the bulk source-first path', () => {
+  const specification = { ...buildNflQb2001Specification() }
+  specification.sourcePolicy = { ...specification.sourcePolicy, disallowedSources: ['banned-source.example'] }
+  let mission = createResearchMission({ id: 'mission:bulk-source-policy', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  mission = addResearchNode(mission, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  assert.throws(
+    () => admitSourceSnapshot(mission, 'node:x', { sourceRef: 'src:banned-1', url: 'https://banned-source.example/bulk', publisher: 'banned-source.example', retrievedAt: clock().toISOString(), contentHash: 'sha256:banned' }, clock, mission.revision),
+    (error) => {
+      assert.equal(error.code, 'TSF_SOURCE_POLICY_VIOLATION')
+      return true
+    }
+  )
+  assert.equal(mission.nodes[0].sourceSnapshots.length, 0, 'the mission passed in is untouched -- withResearchNode never commits a thrown attempt')
+})

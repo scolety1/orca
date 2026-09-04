@@ -12,6 +12,7 @@
 // per-node dedup; a shared cross-mission cache is deferred, disclosed
 // future work).
 import { deepClone, isoNow, sha256 } from './canonical.mjs'
+import { assertSourcePolicyAllows } from './research-admission.mjs'
 import { withResearchNode } from './research-mission.mjs'
 
 export function admitSourceSnapshot(mission, nodeId, snapshot, clock, expectedRevision) {
@@ -21,6 +22,11 @@ export function admitSourceSnapshot(mission, nodeId, snapshot, clock, expectedRe
     (node) => {
       const alreadyAdmitted = node.sourceSnapshots.some((s) => s.contentHash === snapshot.contentHash)
       if (alreadyAdmitted) return { next: node, changed: false }
+      // Same defense-in-depth check as the BoundedResearchWorker admission
+      // path (research-admission.mjs) -- the bulk source-first path is a
+      // second, equally real way a disallowed source could otherwise slip
+      // in uncaught.
+      assertSourcePolicyAllows(mission.specification?.sourcePolicy, snapshot.url ?? snapshot.sourceRef)
       const admittedAt = isoNow(clock)
       const next = deepClone(node)
       const sourceRefId = sha256({ kind: 'SourceReference', sourceRef: snapshot.sourceRef })
