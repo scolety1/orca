@@ -71,25 +71,30 @@ merge attempt.
   the mission-scoped fallback cannot serve). No action needed here until
   then.
 
-### 4a. Addendum — possible second generic gap (evidence only, not yet filed)
+### 4a. REQ-003 — temporal chain-of-custody strength
 
-Dataset + Deep Research HQ reports (2026-09-04, after this freeze) a
-reclassification data point: authenticated-session UI-provenance capture
-was originally scored `CUSTOMER_SPECIFIC` (tied to one source's own
-settings shape), but a re-verification pass across four independent
-seasons/sources all showed the identical YELLOW `temporallyVerified`
-status for the identical reason — provenance established by owner
-directive, but no independent `source_as_of` chain-of-custody found in
-the artifact itself. That recurrence across unrelated seasons/sources is
-evidence the underlying need (a generic "temporal chain-of-custody
-strength" concept, independent of any one source's settings) may be
-cross-cutting rather than one-off.
-
-**Status here: logged only, not classified, no implementation started.**
-No formal REQ has been filed for this by Dataset Research HQ yet (REQ-002
-above remains the only filed item). Reconciliation on this waits for the
-same thing REQ-002 does — a concrete requirement/evidence packet from the
-owning lane — consistent with §4's stated plan.
+- **Classification**: `GENERIC_GAP` (evidence-based, per Dataset Research
+  HQ's own filing)
+- **Filed by**: Dataset + Deep Research HQ (`dataset-research-engine-v0`,
+  commit `7b8caa2062`, `DATASET_RESEARCH_PLATFORM_REQUIREMENTS_BACKLOG.md`,
+  same format as REQ-001/002)
+- **Evidence**: four independently-verified seasons (2016–2019) each
+  landed on an identical `temporallyVerified: YELLOW` result for an
+  identical stated reason — provenance established by owner directive,
+  no independent `source_as_of` chain-of-custody found in the artifact
+  itself — unprompted, unconnected except by the underlying platform gap.
+  Originally scored `CUSTOMER_SPECIFIC`; the recurrence across unrelated
+  seasons/sources is what moved it to a real cross-cutting candidate.
+- **Current state**: filed with a concrete requirement/evidence packet
+  (what exists today, the real evidence, the real-world need, the
+  workaround this mission used, an explicit "don't implement without
+  your own design decision" line) — no implementation started here, no
+  competing implementation built in Unified Platform.
+- **Reconciliation plan**: same as REQ-002 (§4) — Main TSF designs the
+  generic "temporal chain-of-custody strength" concept on its own
+  schedule, not as part of this freeze. Not designed or scoped in this
+  document; recording the filing is the extent of what's appropriate
+  while frozen and awaiting Tim's pilot.
 
 ## 5. Pilot launch procedure (kept current)
 
