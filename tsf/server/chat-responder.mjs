@@ -188,8 +188,27 @@ const INTENTS = [
   // correctly distinguished rather than the "next step" substring colliding.
   {
     id: 'DISPATCH_REQUEST',
+    // Command Authority repair: "proceed with (it|that|this)" only matched a
+    // pronoun -- an explicit, named-project confirmation ("yes, proceed with
+    // niners-war-room"), which is exactly the phrasing the TIM_REQUIRED
+    // refusal itself asks for ("name exactly which project(s)"), fell
+    // through to GENERAL and never dispatched, forcing a repeated ask
+    // instead of consuming the explicit authorization once. Broadened to
+    // any following word/id-shaped token, not just the three pronouns.
     pattern:
-      /\b(go ahead|go for it|please proceed|proceed with (it|that|this)|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i
+      /\b(go ahead|go for it|please proceed|proceed with [\w-]+|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i,
+    // Adversarial-review finding (2nd pass): a first fix here only guarded
+    // the "proceed" alternative, only against negation words immediately
+    // adjacent, and against the WHOLE message rather than per-clause --
+    // "don't go ahead with tsf-orca" (a different alternative), "please do
+    // not just proceed" (word inserted), and "don't proceed with X. go
+    // ahead and proceed with Y instead." (an unrelated LATER genuine
+    // request wrongly suppressed by an EARLIER negation) all still slipped
+    // through or wrongly withheld the wrong one. Replaced with
+    // `directiveOnly`, reusing this file's own proven, adversarial-review-
+    // hardened clause/negation judgment (isGenuineDirective) instead of a
+    // second, narrower, ad hoc regex.
+    directiveOnly: true
   },
   { id: 'NEXT_ACTION', pattern: /\b(what should we do next|next step|what'?s next|what now)\b/i },
   { id: 'RATIONALE', pattern: /\b(why (did you|was)|what'?s the reasoning|why choose)\b/i },
@@ -197,14 +216,47 @@ const INTENTS = [
     id: 'CRITIQUE',
     pattern: /\b(looks like (shit|garbage|crap)|don'?t like|ugly|ugh|ew|hate this|sucks)\b/i
   },
-  { id: 'FIX_REQUEST', pattern: /\b(fix (this|it)|change (this|it)|redo|make it)\b/i },
+  {
+    id: 'FIX_REQUEST',
+    pattern: /\b(fix (this|it)|change (this|it)|redo|make it)\b/i,
+    // Adversarial-review finding (2nd pass): FIX_REQUEST is dispatch-worthy
+    // (command-responder.mjs's DISPATCH_WORTHY_INTENTS) exactly like
+    // DISPATCH_REQUEST, but had no negation awareness of its own -- "don't
+    // fix this" reached the same real dispatch path as an affirmative fix
+    // request. Same `directiveOnly` gate as DISPATCH_REQUEST.
+    directiveOnly: true
+  },
   { id: 'RESEARCH', pattern: /\b(research|look into|compare|investigate|explore options)\b/i },
   { id: 'HEALTH', pattern: /\b(health|is it healthy|any (issues|problems|blockers))\b/i },
   { id: 'ADOPTION', pattern: /\b(adopt|ready for adoption|candidate)\b/i }
 ]
 
+// Command Authority repair: a dispatch-worthy intent (DISPATCH_REQUEST,
+// FIX_REQUEST) must only be recognized from a clause that is a genuine,
+// non-negated, non-inquiry directive -- reuses isGenuineDirective/
+// splitIntoSentences/splitIntoClauses directly rather than a second,
+// independently-maintained negation check, so a fix to the shared
+// vocabulary/rules here (already adversarial-review-hardened for
+// TIM_REQUIRED) applies to both without having to be re-applied by hand.
+function matchesAsGenuineDirective(message, pattern) {
+  for (const sentence of splitIntoSentences(message)) {
+    for (const clause of splitIntoClauses(sentence)) {
+      if (pattern.test(clause) && isGenuineDirective(clause, sentence)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 export function classifyIntent(message) {
-  for (const { id, pattern } of INTENTS) {
+  for (const { id, pattern, directiveOnly } of INTENTS) {
+    if (directiveOnly) {
+      if (matchesAsGenuineDirective(message, pattern)) {
+        return id
+      }
+      continue
+    }
     if (pattern.test(message)) {
       return id
     }
