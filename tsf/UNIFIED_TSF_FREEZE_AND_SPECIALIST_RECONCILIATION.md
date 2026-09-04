@@ -96,6 +96,34 @@ merge attempt.
   document; recording the filing is the extent of what's appropriate
   while frozen and awaiting Tim's pilot.
 
+### 4b. GENERIC_DATASET_RESEARCH_ASSET_ADOPTION_PACKET — candidate platform assets, review only
+
+Dataset + Deep Research HQ (`dataset-research-engine-v0`, commit
+`0ee9c757c4`) offered 7 small, dependency-free, synthetic-fixture-only
+modules built while stress-testing the research engine, as **candidate**
+reusable platform assets — explicitly not adopted, framed as "review
+request only... adoption/merge decision is entirely yours."
+
+**Independently verified** (not just accepted): still zero shared-engine-
+code footprint since the last-checked tip (`61e6f99d75`); the highest-
+severity claimed fix (`evidence-gated-confidence-upgrade.mjs`'s
+`indexOf(-1)` evidence-gate bypass) read directly in source and confirmed
+genuinely fixed, with its own regression test; the 7 modules' real test
+files independently re-run — **62/62 pass**, exact match; fixture data
+spot-checked and confirmed fictional (`Jordan Rivergate`, `FICTIONAL_HAWKS`,
+etc.), no real names.
+
+**Notable**: `evidence-gated-confidence-upgrade.mjs` and
+`chain-of-custody-status.mjs` are directly relevant building blocks for
+REQ-003 (§4a above) — a real, tested "confidence never silently upgrades
+without evidence" engine primitive already exists as a candidate, not yet
+connected to REQ-003's own reconciliation. Not adopted or wired up here —
+recording the connection for whoever reconciles REQ-003.
+
+**Status**: reviewed and verified, not adopted. Same posture as REQ-002/003
+— available for a future Main TSF integration mission, not built as part
+of this freeze.
+
 ## 5. Pilot launch procedure (kept current)
 
 Reuses the prior pilot's real onboarded TEST projects (temp git repos
