@@ -5,14 +5,26 @@
 // engineering against a real repo's derived displayName.
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import path from 'node:path'
+// This machine has a real, working planner CLI available -- a GENERAL-
+// intent, zero-match message now reaches command-scope-classifier.mjs's
+// live-planner call (Command architecture fix, hands-on pilot round 2).
+// Every test in this file must refuse it explicitly, or an ordinary test
+// run would make a real, billable live call. See
+// command-scope-classifier.test.mjs for the dedicated live-planner-path
+// coverage (via the stub CLI).
+const NONEXISTENT = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
+process.env.TSF_PLANNER_CLAUDE_COMMAND = NONEXISTENT
+process.env.TSF_PLANNER_CODEX_COMMAND = NONEXISTENT
 import { respondCommand } from '../server/command-responder.mjs'
 
 const clock = () => new Date('2026-08-25T00:00:00.000Z')
 
-function project(id, displayName) {
+function project(id, displayName, sourceClass = 'REAL') {
   return {
     id,
     displayName,
+    sourceClass,
     mission: { state: 'ONBOARDED', id: null, blockedReason: null },
     candidate: null,
     receipts: { chain: [] }
@@ -198,4 +210,77 @@ test('a back-reference is never honored for a dispatch-worthy message -- real ac
   })
   assert.equal(result.dispatchResults, undefined, 'no dispatch was ever attempted from a back-reference alone')
   assert.match(result.text, /couldn't tell which project|not confident/i)
+})
+
+// Hands-on pilot round 2, Finding 1: a message naming no project that asks
+// about the fleet in the abstract must not be treated as a failed project
+// lookup. Covered here through the REAL respondCommand entry point (the
+// dedicated classifier unit tests live in command-scope-classifier.test.mjs);
+// this file's own top-of-file env vars keep this on the deterministic
+// fallback path, deliberately -- proves the fix holds even with no live
+// planner available, the worst case.
+test('GLOBAL_ADVISORY: "are there any projects here that are safe to mess around with?" no longer says "I couldn\'t tell which project"', async () => {
+  const result = await respondCommand({
+    message: 'are there any projects here that are safe to mess around with?',
+    projects: [project('tsf-ui-capability-check', 'TSF UI Capability Check', 'FIXTURE')],
+    opState,
+    clock
+  })
+  assert.doesNotMatch(result.text, /couldn't tell which project/i)
+  assert.match(result.text, /TSF UI Capability Check/)
+  assert.equal(result.resolvedProjectIds.length, 0, 'advisory is informational -- it never resolves/targets a project for action')
+})
+
+test('GLOBAL_ADVISORY natural variants all avoid the generic failure, without one exact-phrase regex', async () => {
+  const variants = [
+    'is there anything safe we can test on?',
+    "which projects here don't matter?",
+    'give me a disposable project to mess with',
+    'what can we safely run tests against?'
+  ]
+  for (const message of variants) {
+    const result = await respondCommand({ message, projects: [project('fixture-one', 'Fixture One', 'FIXTURE')], opState, clock })
+    assert.doesNotMatch(result.text, /couldn't tell which project/i, `"${message}" still hit the generic failure`)
+  }
+})
+
+// Finding 4: a registered alias whose canonical target isn't in THIS
+// catalog gets a distinct, honest answer -- never the generic failure a
+// truly-unrecognized name gets.
+test('alias UX: a known alias resolving to a project absent from the catalog says so explicitly, both for a read-only question and a dispatch attempt', async () => {
+  const readOnly = await respondCommand({ message: 'what is the current state of nytheria', projects: [project('some-other-project', 'Some Other Project')], opState, clock })
+  assert.match(readOnly.text, /nytheria.*resolves to.*worldforge-sablewake-live-runtime-repair-v3.*isn'?t available/is)
+  assert.doesNotMatch(readOnly.text, /^I couldn't tell which project this is about/i)
+
+  const dispatchAttempt = await respondCommand({ message: 'run nytheria', projects: [project('some-other-project', 'Some Other Project')], opState, clock })
+  assert.match(dispatchAttempt.text, /nytheria.*resolves to.*worldforge-sablewake-live-runtime-repair-v3.*isn'?t available/is)
+  assert.equal(dispatchAttempt.dispatchResults, undefined, 'no dispatch was ever attempted')
+})
+
+test('alias UX: an alias whose target IS in the catalog is completely unaffected -- normal resolution still wins', async () => {
+  const result = await respondCommand({
+    message: 'what is the current state of nytheria',
+    projects: [project('worldforge-sablewake-live-runtime-repair-v3', 'WorldForge')],
+    opState,
+    clock
+  })
+  assert.deepEqual(result.resolvedProjectIds, ['worldforge-sablewake-live-runtime-repair-v3'])
+  assert.doesNotMatch(result.text, /isn'?t available/i)
+})
+
+test('alias UX: a genuinely unrecognized name still gets the honest generic failure, not a fabricated alias claim', async () => {
+  const result = await respondCommand({ message: 'what is the state of zzz-totally-unknown-zzz', projects: [project('alpha-widgets', 'Alpha Widgets')], opState, clock })
+  assert.match(result.text, /couldn't tell which project/i)
+})
+
+test('NEEDS_YOU_QUERY: "what needs me?" surfaces real outstanding Needs You across the fleet, honest empty state otherwise', async () => {
+  const empty = await respondCommand({ message: 'what needs me?', projects: [], opState, clock })
+  assert.match(empty.text, /nothing needs you/i)
+
+  const withOpenItem = {
+    keepGoingRuns: { 'alpha-widgets': { needsYou: [{ id: 'q1', question: 'A real decision is pending', resolvedAt: null }] } }
+  }
+  const result = await respondCommand({ message: 'what needs me?', projects: [project('alpha-widgets', 'Alpha Widgets')], opState: withOpenItem, clock })
+  assert.match(result.text, /Alpha Widgets/)
+  assert.match(result.text, /A real decision is pending/)
 })

@@ -35,6 +35,12 @@
 // this file verifies.
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import path from 'node:path'
+// Defensive, even though this file's own real message never reaches it
+// (see the note above): refused explicitly so this file's respondCommand
+// call can never make a real, billable live-planner request.
+process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
+process.env.TSF_PLANNER_CODEX_COMMAND = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
 import { resolveProjectsFromText } from '../server/project-name-resolver.mjs'
 import { respondCommand } from '../server/command-responder.mjs'
 

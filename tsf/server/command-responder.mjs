@@ -18,11 +18,12 @@
 // guessing which project(s) to act on. Status/question answers (read-only,
 // no action taken) may still use fuzzy matches informationally.
 import { classifyIntent, classifyDecision } from './chat-responder.mjs'
-import { resolveProjectsFromText } from './project-name-resolver.mjs'
-import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
+import { findAliasForAbsentProject, resolveProjectsFromText } from './project-name-resolver.mjs'
+import { fleetNeedsYouStatus, fleetResearchStatus, fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { classifyResearchIntent, respondResearchCommand } from './command-research-bridge.mjs'
+import { buildGlobalAdvisoryText, classifyGlobalScope } from './command-scope-classifier.mjs'
 
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
 export const DISPATCH_WORTHY_INTENTS = new Set(['DISPATCH_REQUEST', 'FIX_REQUEST'])
@@ -57,21 +58,41 @@ function lastReferencedProjectId(opState, projects) {
   return null
 }
 
-export function formatFleetStatusText(statuses) {
-  if (statuses.length === 0) {
+// researchStatuses (optional): fleetResearchStatus's own output --
+// domain/fleet-work-status.mjs's real "is any research currently active"
+// computation. "Command, Work/Home/global indicator and Research status
+// must agree" (hands-on pilot Finding 3) -- a mission in the EXECUTING or
+// WAITING_NEEDS_INPUT phase now appears in fleet-wide status exactly like
+// a Keep Going run does, never silently absent from "what's running right
+// now" just because it isn't project-scoped coding work.
+export function formatFleetStatusText(statuses, researchStatuses = []) {
+  const projectLines =
+    statuses.length === 0
+      ? []
+      : statuses.map((s) =>
+          s.hasRun
+            ? `- **${s.displayName}** — ${s.feed.state} (run \`${s.runId}\`) — ${s.feed.reason}.`
+            : `- **${s.displayName}** — no Keep Going run.`
+        )
+  const researchLines = researchStatuses.map(
+    (r) => `- **Research ${r.missionId}** — ${r.phase}${r.phase === 'WAITING_NEEDS_INPUT' ? ' (needs a decision)' : ''}.`
+  )
+  if (projectLines.length === 0 && researchLines.length === 0) {
     return 'No known projects yet -- add one from the Projects page.'
   }
-  const lines = statuses.map((s) =>
-    s.hasRun
-      ? `- **${s.displayName}** — ${s.feed.state} (run \`${s.runId}\`) — ${s.feed.reason}.`
-      : `- **${s.displayName}** — no Keep Going run.`
-  )
-  return `Here's what's really running right now:\n${lines.join('\n')}`
+  const sections = []
+  if (projectLines.length > 0) sections.push(projectLines.join('\n'))
+  if (researchLines.length > 0) sections.push(researchLines.join('\n'))
+  return `Here's what's really running right now:\n${sections.join('\n')}`
 }
 
-function respondNoProjectResolved(intent, projects, keepGoingRuns, clock) {
+function respondNoProjectResolved(message, intent, projects, keepGoingRuns, researchMissions, clock, aliases) {
+  const aliasHint = findAliasForAbsentProject(message, projects, aliases)
+  if (aliasHint) {
+    return `"${aliasHint.alias}" resolves to \`${aliasHint.canonicalProjectId}\`, but that project isn't available in this catalog.`
+  }
   if (STATUS_LIKE_INTENTS.has(intent)) {
-    return formatFleetStatusText(fleetWorkStatus(projects, keepGoingRuns, clock))
+    return formatFleetStatusText(fleetWorkStatus(projects, keepGoingRuns, clock), fleetResearchStatus(researchMissions))
   }
   return 'I couldn\'t tell which project this is about -- name a project (by id or display name), or ask "what\'s running right now?" for a fleet-wide status.'
 }
@@ -80,8 +101,15 @@ function respondTimRequiredMultiScope() {
   return "That's a **consequential decision** (money, credentials, push/merge/deploy/publish, or adoption authority) -- I won't act on it automatically across any project. Tell me explicitly to proceed and name exactly which project(s)."
 }
 
-function respondNoConfidentMatch(candidates) {
+// aliasHint (hands-on pilot Finding 4): { alias, canonicalProjectId } from
+// findAliasForAbsentProject -- a known alias really did match, its target
+// just isn't in THIS catalog. A distinct, honest answer, never the same
+// generic "couldn't tell" a genuinely unrecognized name gets.
+function respondNoConfidentMatch(candidates, aliasHint = null) {
   if (candidates.length === 0) {
+    if (aliasHint) {
+      return `"${aliasHint.alias}" resolves to \`${aliasHint.canonicalProjectId}\`, but that project isn't available in this catalog -- nothing to act on here.`
+    }
     return "I couldn't tell which project this is about -- name a project (by id or display name) before I act on anything."
   }
   const names = candidates.map((p) => p.displayName).join(' or ')
@@ -162,12 +190,89 @@ export async function respondCommand({
         }
       }
     }
+    // Command architecture fix (hands-on pilot round 2, Finding 1): a
+    // message that matched none of chat-responder.mjs's own deterministic
+    // patterns (GENERAL, its catch-all) AND named no project at all is no
+    // longer assumed to be a failed project lookup -- it might genuinely
+    // need no project (GLOBAL_STATUS/GLOBAL_ADVISORY/RESEARCH_REQUEST).
+    // Deliberately scoped to intent === 'GENERAL' only: every OTHER
+    // read-only intent (STATUS/HEALTH/etc.) already has its own real,
+    // tested, deterministic pattern and fast fleet-wide fallback below --
+    // this never adds live-planner latency to an already-working path.
+    if (intent === 'GENERAL' && resolution.matches.length === 0) {
+      const classification = await classifyGlobalScope({ message })
+      if (classification.scope === 'GLOBAL_STATUS') {
+        return {
+          intent: 'GLOBAL_STATUS',
+          decisionClass,
+          text: formatFleetStatusText(fleetWorkStatus(projects, opState.keepGoingRuns, clock), fleetResearchStatus(opState.researchMissions)),
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel:
+            classification.source === 'LIVE_PLANNER'
+              ? 'PLANNER_DEEP · real scope classification, grounded fleet-wide answer, no dispatch'
+              : 'PLANNER_DEEP · deterministic fallback scope classification (live planner unavailable), grounded fleet-wide answer',
+          live: false,
+          resolvedProjectIds: [],
+          scope: 'FLEET'
+        }
+      }
+      if (classification.scope === 'GLOBAL_ADVISORY') {
+        return {
+          intent: 'GLOBAL_ADVISORY',
+          decisionClass,
+          text: buildGlobalAdvisoryText(projects),
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel:
+            classification.source === 'LIVE_PLANNER'
+              ? 'PLANNER_DEEP · real scope classification, grounded in the real catalog, no dispatch, no action taken'
+              : 'PLANNER_DEEP · deterministic fallback scope classification (live planner unavailable), grounded in the real catalog',
+          live: false,
+          resolvedProjectIds: [],
+          scope: 'FLEET'
+        }
+      }
+      if (classification.scope === 'NEEDS_YOU_QUERY') {
+        const items = fleetNeedsYouStatus(projects, opState.keepGoingRuns, opState.researchMissions)
+        const text =
+          items.length === 0
+            ? 'Nothing needs you right now -- no open decisions across any project or research mission.'
+            : `${items.length} thing(s) need you:\n${items.map((i) => `- **${i.label}** -- ${i.question}`).join('\n')}`
+        return {
+          intent: 'NEEDS_YOU_QUERY',
+          decisionClass,
+          text,
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel:
+            classification.source === 'LIVE_PLANNER'
+              ? 'PLANNER_DEEP · real scope classification, grounded in real outstanding Needs You state, no dispatch'
+              : 'PLANNER_DEEP · deterministic fallback scope classification (live planner unavailable), grounded in real outstanding Needs You state',
+          live: false,
+          resolvedProjectIds: [],
+          scope: 'FLEET'
+        }
+      }
+      if (classification.scope === 'RESEARCH_REQUEST') {
+        // Delegates to the SAME research bridge entry point
+        // command-research-bridge.mjs's own deterministic patterns use --
+        // never a second, parallel mission-creation path. Its own patterns
+        // already catch the common "research X"/"build a dataset" phrasing
+        // directly (checked above, before this classifier ever runs); this
+        // is the belt-and-suspenders path for a genuine research ask
+        // phrased without those exact words.
+        const researchResult = await respondResearchCommand({ message, opState, clock })
+        if (researchResult) return researchResult
+      }
+      // PROJECT_REQUIRED / UNCLEAR / a RESEARCH_REQUEST the bridge itself
+      // still couldn't make a real topic out of -- falls through to the
+      // existing, honest "couldn't tell" fallback below rather than
+      // guessing further.
+    }
     return {
       intent,
       decisionClass,
       text:
         resolution.matches.length === 0
-          ? respondNoProjectResolved(intent, projects, opState.keepGoingRuns, clock)
+          ? respondNoProjectResolved(message, intent, projects, opState.keepGoingRuns, opState.researchMissions, clock, aliases)
           : formatFleetStatusText(
               fleetWorkStatus(
                 resolution.matches.map((m) => m.project),
@@ -192,7 +297,10 @@ export async function respondCommand({
     return {
       intent,
       decisionClass,
-      text: respondNoConfidentMatch(resolution.matches.map((m) => m.project)),
+      text: respondNoConfidentMatch(
+        resolution.matches.map((m) => m.project),
+        resolution.matches.length === 0 ? findAliasForAbsentProject(message, projects, aliases) : null
+      ),
       plannerRole: 'PLANNER_DEEP',
       providerLabel: 'PLANNER_DEEP · dispatch withheld -- no confidently-identified project',
       live: false,

@@ -232,6 +232,38 @@ export function readyResearchNodes(mission) {
   )
 }
 
+// Hands-on pilot finding ("STARTED must mean something real"): a durable
+// ResearchMission record existing is not the same claim as real executable
+// work being under way -- Command's chat reply previously said "Started a
+// real research mission" for a bare, zero-node scaffold while fleet-wide
+// status simultaneously said "No Active runs", visibly disagreeing with
+// itself. This is the ONE place that phase is computed, so Command's chat
+// text, fleet-wide status, and Work all read the exact same answer -- never
+// three independently-worded guesses.
+export const RESEARCH_MISSION_PHASES = Object.freeze([
+  'DRAFT',
+  'CREATED',
+  'EXECUTING',
+  'WAITING_NEEDS_INPUT',
+  'COMPLETE',
+  'BLOCKED'
+])
+
+export function computeResearchMissionPhase(mission) {
+  if (mission.state === 'COMPLETE') return 'COMPLETE'
+  if (mission.state === 'BLOCKED') return 'BLOCKED'
+  if (mission.state === 'NEEDS_YOU') return 'WAITING_NEEDS_INPUT'
+  if (mission.nodes.length === 0) return 'DRAFT'
+  // "Real progress" is a node that has actually been dispatched (a real
+  // network/worker call was attempted) or has real epistemic content
+  // (ADMITTED/COMPLETED) -- never node COUNT alone, which a DRAFT-with-
+  // declared-scope mission can also have without a single real dispatch.
+  const hasRealProgress = mission.nodes.some(
+    (n) => n.dispatchRecords?.length > 0 || n.status === 'ADMITTED' || n.status === 'COMPLETED'
+  )
+  return hasRealProgress ? 'EXECUTING' : 'CREATED'
+}
+
 // The single mutation primitive every other research-*.mjs module builds
 // on: computeFn(node) returns { next, changed }. changed:false is a true
 // idempotent no-op (returns the mission unchanged, no revision check, no

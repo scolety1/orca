@@ -16,6 +16,14 @@ import path from 'node:path'
 const HERE = import.meta.dirname
 const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-state.test-command-research-bridge-${process.pid}.json`)
 process.env.TSF_UI_STATE_FILE = STATE_FILE
+// This machine has a real, working planner CLI available -- every test in
+// this file that reaches mission-creation must explicitly refuse it (an
+// unset/nonexistent override), or an ordinary test run would make a real,
+// billable live-planner call. Tests that specifically want the live-planner
+// path override these locally with the stub CLI (see
+// command-research-spec-synthesis.test.mjs's own withPlannerEnv pattern).
+process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
+process.env.TSF_PLANNER_CODEX_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 
 const { classifyResearchIntent, respondResearchCommand } = await import('../server/command-research-bridge.mjs')
 const { respondCommand } = await import('../server/command-responder.mjs')
@@ -305,4 +313,45 @@ test('integration: an ordinary fleet message is completely unaffected by the res
   const result = await respondCommand({ message: "what's running right now?", projects: [], opState: freshOpState(), clock })
   assert.equal(result.scope, 'FLEET')
   assert.equal(result.researchMissionId, undefined)
+})
+
+// Hands-on pilot round 2, Finding 2/3: a reasonably-scoped request must
+// produce a REAL specification (not an empty scaffold), and the reply must
+// say "Created", never "Started", since nothing has been dispatched yet.
+// Uses the stub CLI (real subprocess wiring, deterministic content) --
+// this file's own top-of-file env vars block the real planner by default.
+const PLANNER_STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
+
+test('bridge: a reasonably-scoped research request synthesizes a real specification and says "Created", never "Started"', async () => {
+  const saved = { claude: process.env.TSF_PLANNER_CLAUDE_COMMAND }
+  process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
+  try {
+    const reply = await respondCommand({ message: 'research something reasonably scoped for the bridge synthesis test', projects: [], opState: freshOpState(), clock })
+    assert.match(reply.text, /^Created a real research mission/)
+    assert.doesNotMatch(reply.text, /Started/)
+    assert.doesNotMatch(reply.text, /provisional scaffold/)
+    const status = readResearchMissionStatus(reply.researchMissionId)
+    assert.equal(status.phase, 'CREATED')
+    assert.ok(status.nodeCount > 0, 'a real synthesized specification must produce real nodes, not an empty scaffold')
+  } finally {
+    if (saved.claude === undefined) delete process.env.TSF_PLANNER_CLAUDE_COMMAND
+    else process.env.TSF_PLANNER_CLAUDE_COMMAND = saved.claude
+  }
+})
+
+test('bridge: a genuinely under-specified research request asks ONE bounded clarification and creates nothing -- never claims anything started', async () => {
+  const saved = { claude: process.env.TSF_PLANNER_CLAUDE_COMMAND, insufficient: process.env.STUB_RESEARCH_SPEC_INSUFFICIENT }
+  process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
+  process.env.STUB_RESEARCH_SPEC_INSUFFICIENT = '1'
+  try {
+    const reply = await respondCommand({ message: 'research something genuinely too vague to synthesize', projects: [], opState: freshOpState(), clock })
+    assert.doesNotMatch(reply.text, /Created|Started/)
+    assert.match(reply.text, /stub: which specific years and fields/)
+    assert.equal(reply.researchMissionId, null, 'no mission may exist yet -- Tim must not be made to restate a request the system should have understood')
+  } finally {
+    if (saved.claude === undefined) delete process.env.TSF_PLANNER_CLAUDE_COMMAND
+    else process.env.TSF_PLANNER_CLAUDE_COMMAND = saved.claude
+    if (saved.insufficient === undefined) delete process.env.STUB_RESEARCH_SPEC_INSUFFICIENT
+    else process.env.STUB_RESEARCH_SPEC_INSUFFICIENT = saved.insufficient
+  }
 })

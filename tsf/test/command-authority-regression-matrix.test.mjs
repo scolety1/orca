@@ -7,6 +7,13 @@
 // never leak scope to another project or a more consequential action class).
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import path from 'node:path'
+// This machine has a real, working planner CLI available -- respondCommand's
+// GENERAL-intent, zero-match path now reaches a real live-planner call
+// (command-scope-classifier.mjs). Refused explicitly so this file's own
+// respondCommand calls never make a real, billable request.
+process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
+process.env.TSF_PLANNER_CODEX_COMMAND = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
 import { resolveProjectsFromText } from '../server/project-name-resolver.mjs'
 import { respondCommand } from '../server/command-responder.mjs'
 import { classifyIntent, classifyDecision } from '../server/chat-responder.mjs'

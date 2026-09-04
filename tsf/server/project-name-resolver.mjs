@@ -336,3 +336,31 @@ export function resolveProjectsFromText(message, projects, options = {}) {
     }))
   }
 }
+
+// Hands-on pilot Finding 4: resolveProjectsFromText above only ever checks
+// an alias against a project that IS in the current `projects` catalog (its
+// aliasEntries are filtered by `id === project.id` for a project already
+// being iterated) -- an alias whose canonical target simply isn't present
+// in THIS catalog (a real, common shape for an isolated test/pilot catalog
+// that doesn't carry every real project) is indistinguishable from no alias
+// existing at all, and the operator gets a generic "I couldn't tell which
+// project" for a name the system actually recognizes. This is the
+// dedicated check for that one distinct case -- called only after the
+// normal resolution above has already found nothing, so a real present-
+// project match is never shadowed by this.
+export function findAliasForAbsentProject(message, projects, aliases = loadProjectAliases()) {
+  const known = new Set(projects.map((p) => p.id))
+  const lower = message.toLowerCase()
+  let best = null
+  for (const [alias, canonicalProjectId] of Object.entries(aliases)) {
+    if (known.has(canonicalProjectId)) continue // present in this catalog -- normal resolution already covers it
+    if (!new RegExp(`\\b${escapeRegExp(alias)}\\b`, 'i').test(lower)) continue
+    // Longest literal alias match wins when more than one happens to
+    // appear (e.g. both "nwr" and "niners war room" for the same target) --
+    // the more specific phrase is the more informative one to name back.
+    if (!best || alias.length > best.alias.length) {
+      best = { alias, canonicalProjectId }
+    }
+  }
+  return best
+}

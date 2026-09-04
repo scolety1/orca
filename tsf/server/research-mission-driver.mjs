@@ -20,7 +20,7 @@
 // AMBIGUOUS_REQUIRES_RECONCILIATION) -- calling the SAME driver function
 // again is the resume action, and it checks that classification FIRST,
 // before ever risking a second real call.
-import { addResearchNode, assertNodeTransition, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, readyResearchNodes, withResearchNode } from '../domain/research-mission.mjs'
+import { addResearchNode, assertNodeTransition, computeResearchMissionPhase, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, readyResearchNodes, withResearchNode } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
 import { classifyDispatchDeliveryGuarantee, recordDispatchAttempt, resolveDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
@@ -60,6 +60,11 @@ export function readResearchMissionStatus(missionId) {
   return {
     missionId,
     state: mission.state,
+    // See computeResearchMissionPhase's own comment: the one real answer to
+    // "did this mission actually start doing anything" -- every surface
+    // that claims a mission is active/started reads this, never its own
+    // independent guess.
+    phase: computeResearchMissionPhase(mission),
     revision: mission.revision,
     nodeCount: mission.nodes.length,
     nodesByStatus,

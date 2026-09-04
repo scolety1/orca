@@ -31,6 +31,7 @@ import {
   readResearchMissionStatus,
   requestResearchPaidApprovalDurable
 } from './research-mission-driver.mjs'
+import { synthesizeResearchSpecification } from './command-research-spec-synthesis.mjs'
 
 const PROVIDER_NAME_TO_ID = Object.freeze({ exa: EXA_PROVIDER_ID, parallel: PARALLEL_PROVIDER_ID })
 
@@ -195,7 +196,7 @@ export async function respondResearchCommand({ message, opState, clock = () => n
       return result({
         intent,
         decisionClass: 'AUTO_DECIDE',
-        text: `**${missionId}** is ${status.state} (revision ${status.revision}) -- ${status.nodeCount} node(s): ${byStatus}. ${status.openNeedsYouCount} open Needs You item(s).`,
+        text: `**${missionId}** is ${status.phase} (mission state ${status.state}, revision ${status.revision}) -- ${status.nodeCount} node(s): ${byStatus}. ${status.openNeedsYouCount} open Needs You item(s).`,
         live: false,
         researchMissionId: missionId
       })
@@ -250,10 +251,48 @@ export async function respondResearchCommand({ message, opState, clock = () => n
       // to continue -- ask, never fabricate a topic.
       return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
     }
-    // Honest, explicitly-labeled provisional scaffold -- never fabricates
-    // real requestedFields/sourcePolicy content chat alone cannot know.
-    // Real missions (like a real customer mission) should be created with
-    // a real specification via the driver directly, not through this path.
+    // Hands-on pilot Finding 2: the request itself may already carry
+    // enough real scope for PLANNER_DEEP to propose a real specification
+    // -- attempted FIRST, before ever falling back to an empty scaffold.
+    // synthesizeResearchSpecification never fabricates domain content
+    // (see its own header); it only asks a real live-planner call to
+    // propose structure, independently re-validated before use.
+    const synthesis = await synthesizeResearchSpecification({ message, missionId, freeOnly })
+
+    if (synthesis.ok) {
+      await createResearchMissionDurable(missionId, { projectId: 'COMMAND_CHAT', specification: synthesis.specification, expectedUniverse: synthesis.expectedUniverse, nodes: synthesis.nodes }, clock)
+      // "Started" must mean something real (Finding 3): real nodes with a
+      // real requested-fields shape now exist, so this mission's phase is
+      // CREATED, not DRAFT -- "Created", never "Started", since no node
+      // has actually been dispatched yet (see computeResearchMissionPhase).
+      const strategyNote = synthesis.sourceStrategy ? ` Strategy: ${synthesis.sourceStrategy}.` : ''
+      return result({
+        intent,
+        decisionClass: 'RECOMMEND_AND_PROCEED',
+        text: `Created a real research mission **${missionId}** for "${topic}" -- ${synthesis.expectedUniverse.expectedCount} expected item(s), ${synthesis.specification.requestedFields.length} field(s) per item${freeOnly ? ', free-path only' : ''}.${strategyNote} Nothing has actually been dispatched yet -- ask me to continue it, or ask its status any time.`,
+        live: true,
+        researchMissionId: missionId
+      })
+    }
+
+    if (synthesis.reason === 'NEEDS_INPUT') {
+      // Never claims anything started -- exactly the "do not make Tim
+      // restate a request he already made" contract, applied to the ONE
+      // genuine case it's meant for: real information really is missing,
+      // not a provider outage.
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: `Before I start a research mission for "${topic}": ${synthesis.clarification}`,
+        live: false,
+        researchMissionId: null
+      })
+    }
+
+    // PLANNER_UNAVAILABLE -- an honest infrastructure gap, not a claim
+    // about the request's own quality. Still creates real, durable,
+    // explicitly-labeled DRAFT state (never an unrecorded dead end), but
+    // never says "Started".
     await createResearchMissionDurable(
       missionId,
       {
@@ -282,7 +321,7 @@ export async function respondResearchCommand({ message, opState, clock = () => n
           entityType: 'UNSPECIFIED_CHAT_TOPIC',
           expectedCount: 0,
           expectedEntities: [],
-          source: 'PROVISIONAL_CHAT_SCAFFOLD -- no real oracle yet; a real ExpectedUniverse must be added before completeness is meaningful'
+          source: 'DRAFT_SCAFFOLD -- live specification synthesis was unavailable; no real oracle yet'
         }
       },
       clock
@@ -290,7 +329,7 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     return result({
       intent,
       decisionClass: 'RECOMMEND_AND_PROCEED',
-      text: `Started a real research mission **${missionId}** for "${topic}". It's a provisional scaffold (no fields/sources defined yet) -- give it real scope, or ask me its status any time.`,
+      text: `Created a draft research mission **${missionId}** for "${topic}" -- I couldn't reach the live planner to propose real scope right now (${synthesis.detail ?? synthesis.reason}), so it's a bare draft with no fields/sources yet, not started. Try again shortly, or give me the fields/sources yourself.`,
       live: true,
       researchMissionId: missionId
     })

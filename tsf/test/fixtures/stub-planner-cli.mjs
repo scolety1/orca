@@ -182,6 +182,56 @@ function structuredResponseFor(schemaJson, prompt) {
       ]
     }
   }
+  if (schemaVersion === 'TSF_COMMAND_SCOPE_CLASSIFICATION_V1') {
+    // STUB_SCOPE_OVERRIDE picks the classified scope directly (tests
+    // proving each branch); default is a reasonable GLOBAL_ADVISORY guess
+    // so an unconfigured call still exercises the real wiring end to end.
+    return {
+      schemaVersion: 'TSF_COMMAND_SCOPE_CLASSIFICATION_V1',
+      scope: process.env.STUB_SCOPE_OVERRIDE || 'GLOBAL_ADVISORY',
+      reasoning: `stub-reasoning-for::${prompt}`.slice(0, 500)
+    }
+  }
+  if (schemaVersion === 'TSF_RESEARCH_SPEC_SYNTHESIS_V1') {
+    // STUB_RESEARCH_SPEC_INSUFFICIENT=1 simulates a genuinely under-
+    // specified request -- the NEEDS_INPUT path, not the happy path.
+    if (process.env.STUB_RESEARCH_SPEC_INSUFFICIENT === '1') {
+      return {
+        schemaVersion: 'TSF_RESEARCH_SPEC_SYNTHESIS_V1',
+        sufficientlySpecified: false,
+        clarificationNeeded: 'stub: which specific years and fields do you want?',
+        researchQuestion: null,
+        entityType: null,
+        expectedEntities: [],
+        expectedUniverseSource: null,
+        requestedFields: [],
+        temporalPeriodScope: null,
+        sourceStrategy: null,
+        verificationRequirement: null,
+        completenessRequirement: null
+      }
+    }
+    return {
+      schemaVersion: 'TSF_RESEARCH_SPEC_SYNTHESIS_V1',
+      sufficientlySpecified: true,
+      clarificationNeeded: null,
+      researchQuestion: `stub-research-question-for::${prompt}`.slice(0, 500),
+      entityType: 'STUB_ENTITY',
+      expectedEntities: [
+        { entityId: 'stub-entity-1', label: 'stub entity 1' },
+        { entityId: 'stub-entity-2', label: 'stub entity 2' }
+      ],
+      expectedUniverseSource: 'stub: inferred from the request\'s own explicit scope',
+      requestedFields: [
+        { fieldName: 'stubValue', valueType: 'number', required: true },
+        { fieldName: 'stubSource', valueType: 'string', required: true }
+      ],
+      temporalPeriodScope: 'stub-period',
+      sourceStrategy: 'stub: official/deterministic/public acquisition before AI research',
+      verificationRequirement: 'stub: independent source cross-check where available',
+      completenessRequirement: 'stub: every expected entity has a value and a source'
+    }
+  }
   // Falls back to the onboarding direction-analysis shape (the only other
   // structured caller today).
   return {

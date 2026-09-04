@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   addResearchNode,
   checkpointResearchMission,
+  computeResearchMissionPhase,
   createResearchMission,
   escalateResearchNodeToNeedsYou,
   pauseResearchMission,
@@ -146,4 +147,42 @@ test('escalateResearchNodeToNeedsYou rejects a node that has never actually fail
   let mission = baseMission()
   mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
   assert.throws(() => escalateResearchNodeToNeedsYou(mission, 'node:a', { question: 'x' }, clock, mission.revision), /invalid research node transition/)
+})
+
+// Hands-on pilot Finding 3: "Started" must mean something real. Every
+// phase transition here is proven from the REAL state that produces it,
+// not asserted in isolation.
+test('computeResearchMissionPhase: DRAFT for a zero-node mission', () => {
+  const mission = baseMission()
+  assert.equal(computeResearchMissionPhase(mission), 'DRAFT')
+})
+
+test('computeResearchMissionPhase: CREATED once real nodes exist but none has ever been dispatched', () => {
+  let mission = baseMission()
+  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  assert.equal(computeResearchMissionPhase(mission), 'CREATED')
+})
+
+test('computeResearchMissionPhase: EXECUTING once a node has real dispatch history, even before any result comes back', () => {
+  let mission = baseMission()
+  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = markResearchNodeReady(mission, 'node:a', clock, mission.revision)
+  mission = recordResearchNodeDispatch(mission, 'node:a', { taskFingerprint: 'a'.repeat(64), workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() } }, clock, mission.revision)
+  assert.equal(computeResearchMissionPhase(mission), 'EXECUTING')
+})
+
+test('computeResearchMissionPhase: WAITING_NEEDS_INPUT mirrors mission.state NEEDS_YOU exactly -- never a second, independently-derived answer', () => {
+  let mission = baseMission()
+  mission = raiseResearchNeedsYou(mission, { question: 'x' }, clock, mission.revision)
+  assert.equal(mission.state, 'NEEDS_YOU')
+  assert.equal(computeResearchMissionPhase(mission), 'WAITING_NEEDS_INPUT')
+})
+
+test('computeResearchMissionPhase: COMPLETE/BLOCKED mirror mission.state exactly', () => {
+  let mission = baseMission()
+  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  const complete = transitionResearchMission(mission, 'COMPLETE', { reason: 'x' }, clock)
+  assert.equal(computeResearchMissionPhase(complete), 'COMPLETE')
+  const blocked = transitionResearchMission(mission, 'BLOCKED', { reason: 'x' }, clock)
+  assert.equal(computeResearchMissionPhase(blocked), 'BLOCKED')
 })
