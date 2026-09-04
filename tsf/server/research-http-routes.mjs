@@ -71,6 +71,24 @@ const PROVIDER_ALLOWLIST = Object.freeze({
 })
 const DEFAULT_MAX_APPROVED_SPEND_USD = 5.0
 
+// HQ FINAL ADOPTION EVIDENCE RECONCILIATION §3: before formal merge,
+// externally billable dispatch must have an explicit operator-controlled
+// enablement gate, DEFAULT DISABLED. Reuses this codebase's own existing
+// convention exactly (server/keep-going-fleet-driver-bootstrap.mjs's
+// `TSF_KEEP_GOING_FLEET_DRIVER !== '1'` no-op-unless-enabled gate) --
+// no new config system invented. Applies ONLY to /dispatch: /poll is
+// structurally incapable of creating a new billable provider run --
+// pollAndAdmitResearchNodeDurable only ever calls worker.fetchResult()
+// against an ALREADY-recorded dispatch (requires node.dispatchRecords to
+// be non-empty, returns NOT_YET_DISPATCHED otherwise; it never calls
+// worker.dispatch()) -- so it may safely remain available for recovery
+// (checking whether an already-authorized call completed) even while new
+// dispatch is disabled. CREATE/READ/ARTIFACT/STATUS/CANCEL are pure state
+// operations, never billable, and are completely unaffected either way.
+function liveDispatchEnabled() {
+  return process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED === '1'
+}
+
 function respondError(res, json, error) {
   json(res, CONFLICT_CODES.has(error.code) ? 409 : 422, {
     ok: false,
@@ -164,6 +182,14 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
   }
 
   if (parts.length === 6 && req.method === 'POST' && parts[3] === 'nodes' && parts[5] === 'dispatch') {
+    // Checked FIRST, before provider allowlist/credential checks, so a
+    // disabled system reveals nothing about what providers/credentials
+    // might otherwise be checked -- fails closed with a clear, machine-
+    // readable reason, never a bare 404/silent no-op.
+    if (!liveDispatchEnabled()) {
+      json(res, 403, { ok: false, error: 'live research dispatch is disabled by operator configuration (set TSF_RESEARCH_LIVE_DISPATCH_ENABLED=1 to enable) -- no billable request can be initiated while disabled', code: 'TSF_RESEARCH_LIVE_DISPATCH_DISABLED' })
+      return true
+    }
     const nodeId = parts[4]
     const body = await readBody(req)
     const providerId = body?.providerId
@@ -200,6 +226,12 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
   }
 
   if (parts.length === 6 && req.method === 'POST' && parts[3] === 'nodes' && parts[5] === 'poll') {
+    // Deliberately NOT gated by liveDispatchEnabled() -- structurally
+    // incapable of creating a new billable provider run (see the
+    // liveDispatchEnabled comment above pollAndAdmitResearchNodeDurable's
+    // own contract). Safe to keep available for recovery even while new
+    // dispatch is disabled: an operator can still learn whether an
+    // already-authorized call (made before disabling) completed.
     const nodeId = parts[4]
     const body = await readBody(req)
     const providerId = body?.providerId

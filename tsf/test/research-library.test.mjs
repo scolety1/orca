@@ -486,7 +486,8 @@ test('reuseSourceSnapshotIntoNode: cross-mission raw-source reuse never creates 
   assert.equal(evaluation.decision, 'SOURCE_CACHE_HIT')
   missionB = reuseSourceSnapshotIntoNode(missionB, 'node:y', evaluation.hit, laterClock, missionB.revision)
 
-  assert.equal(missionB.nodes[0].sourceSnapshots.length, 1, 'Mission B now has the source locally, without refetching')
+  assert.equal(missionB.nodes[0].sourceSnapshots.length, 1, 'Mission B now has the source\'s locator/hash/policy metadata locally, without a real network call to re-admit it')
+  assert.equal(evaluation.hit.contentReusableWithoutRefetch, true, 'this fixture happens to carry a caller-supplied rawContentRef -- see the honest, no-rawContentRef test below for the actually-real case')
   assert.equal(missionB.nodes[0].sourceSnapshots[0].contentHash, 'sha256:x')
   assert.equal(missionB.nodes[0].sourceSnapshots[0].acquisitionMethod, 'CROSS_MISSION_SOURCE_LIBRARY_REUSE')
   assert.equal(missionB.nodes[0].sourceSnapshots[0].reusedFrom.missionId, 'mission:source-reuse-origin')
@@ -511,6 +512,36 @@ test('reuseSourceSnapshotIntoNode: cross-mission raw-source reuse never creates 
   const replay = reuseSourceSnapshotIntoNode(missionB, 'node:y', evaluation.hit, laterClock, missionB.revision)
   assert.equal(replay.nodes[0].sourceSnapshots.length, 1, 'no duplicate source snapshot from a resumed reuse call')
   void before
+})
+
+// HQ FINAL ADOPTION EVIDENCE RECONCILIATION: the REAL, only-ever-
+// exercised case in this codebase -- no caller has ever supplied a
+// rawContentRef (admitSourceSnapshot's bulk source-first path hardcodes
+// it null always; the real NFL pilot's deterministic Wikipedia
+// acquisition never populated it either). This proves the HONEST
+// classification: a SOURCE_CACHE_HIT here reuses the source's locator/
+// hash/policy-validation metadata (a real network call to re-admit/
+// re-validate it is genuinely avoided), but content is NOT reusable
+// without a real refetch -- correctly surfaced as
+// contentReusableWithoutRefetch: false, not silently claimed as full
+// content reuse.
+test('Source Library HONEST SCOPE: without a real content-store (the only case that exists in this codebase today), a hit correctly reports contentReusableWithoutRefetch: false -- metadata/locator/hash reuse only, content still requires a real refetch', () => {
+  const specification = buildNflQb2001Specification()
+  let origin = createResearchMission({ id: 'mission:source-reuse-honest-origin', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  origin = addResearchNode(origin, { id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  // The REAL bulk source-first admission path -- rawContentRef is never
+  // accepted as an input here at all (admitSourceSnapshot's snapshot
+  // param has no such field), matching every real script in this repo.
+  origin = admitSourceSnapshot(origin, 'node:x', { sourceRef: 'src:honest-1', url: 'https://example.invalid/honest', publisher: 'pub', retrievedAt: clock().toISOString(), contentHash: 'sha256:honest' }, clock, origin.revision)
+  assert.equal(origin.nodes[0].sourceSnapshots[0].rawContentRef, null, 'precondition: the real admission path never populates a content reference')
+
+  let library = createResearchLibrary(clock)
+  library = indexSourceSnapshot(library, origin, 'node:x', origin.nodes[0].sourceSnapshots[0].id, clock, library.revision)
+  assert.equal(library.sourceSnapshots[0].contentReusableWithoutRefetch, false, 'honest: this hit cannot skip a real refetch for content extraction')
+
+  const evaluation = evaluateSourceLibraryReuse(library, { sourcePolicy: { allowCrossMissionLibraryReuse: true, freshnessPolicy: 'HISTORICAL_STATIC' }, canonicalLocator: 'src:honest-1' })
+  assert.equal(evaluation.decision, 'SOURCE_CACHE_HIT', 'the metadata/locator/hash/policy-validation reuse is still real and still avoids a redundant re-admission')
+  assert.equal(evaluation.hit.contentReusableWithoutRefetch, false)
 })
 
 test('reuseSourceSnapshotIntoNode is idempotent by contentHash even across two separately-evaluated hits', () => {

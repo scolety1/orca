@@ -86,16 +86,106 @@ test('research HTTP routes: a real mission is created, read, and cancelled throu
   }
 })
 
+// HQ FINAL ADOPTION EVIDENCE RECONCILIATION §3: the default-disabled
+// live-dispatch gate, tested in complete isolation from the "enabled"
+// scenario below (its own server/mission, explicit env var manipulation).
+test('research HTTP routes: live dispatch is DISABLED by default -- fails closed with a clear reason, before any provider/credential check; poll remains available for recovery', async (t) => {
+  const distDir = mkdtempSync(path.join(tmpdir(), 'tsf-research-http-gate-'))
+  const server = startStandaloneServer(0, { uiDistDir: distDir })
+  const savedGate = process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED
+  try {
+    delete process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED
+    await new Promise((resolve) => server.once('listening', resolve))
+    const { port } = server.address()
+    const base = `http://127.0.0.1:${port}`
+    const specification = buildNflQb2001Specification()
+    await fetch(`${base}/api/research/mission:http-gate-test`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: 'fixture:proj',
+        specification,
+        expectedUniverse: specification.expectedUniverse,
+        nodes: [{ id: 'node:x', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'nfl:2001:qb:tom-brady' }, requestedFields: [{ fieldName: 'yards', valueType: 'number', required: true }], requestedOutputSchema: { type: 'object' } }]
+      })
+    })
+
+    await t.test('default (unset) is disabled', async () => {
+      const res = await fetch(`${base}/api/research/mission:http-gate-test/nodes/node:x/dispatch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ providerId: 'PARALLEL' })
+      })
+      assert.equal(res.status, 403)
+      const body = await res.json()
+      assert.equal(body.code, 'TSF_RESEARCH_LIVE_DISPATCH_DISABLED')
+    })
+
+    await t.test('explicitly disabled (not just "1") behaves identically', async () => {
+      process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED = '0'
+      const res = await fetch(`${base}/api/research/mission:http-gate-test/nodes/node:x/dispatch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ providerId: 'PARALLEL' })
+      })
+      assert.equal(res.status, 403)
+      assert.equal((await res.json()).code, 'TSF_RESEARCH_LIVE_DISPATCH_DISABLED')
+    })
+
+    await t.test('the gate check happens BEFORE provider-allowlist/credential checks -- disabled reveals nothing else', async () => {
+      delete process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED
+      const res = await fetch(`${base}/api/research/mission:http-gate-test/nodes/node:x/dispatch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ providerId: 'NOT_A_REAL_PROVIDER' }) // would otherwise be TSF_UNKNOWN_PROVIDER
+      })
+      assert.equal(res.status, 403)
+      assert.equal((await res.json()).code, 'TSF_RESEARCH_LIVE_DISPATCH_DISABLED', 'the disabled gate is checked first, regardless of what the request body contains')
+    })
+
+    await t.test('CREATE/READ/STATUS/ARTIFACT/CANCEL remain completely available while dispatch is disabled', async () => {
+      const statusRes = await fetch(`${base}/api/research/mission:http-gate-test`)
+      assert.equal(statusRes.status, 200)
+      const completenessRes = await fetch(`${base}/api/research/mission:http-gate-test/completeness`)
+      assert.equal(completenessRes.status, 200)
+      const artifactsRes = await fetch(`${base}/api/research/mission:http-gate-test/artifacts`)
+      assert.equal(artifactsRes.status, 200)
+    })
+
+    await t.test('poll on a node with no dispatch yet returns a real, structural NOT_YET_DISPATCHED-shaped failure, never a fabricated success -- and is never gated by the disabled dispatch flag', async () => {
+      const res = await fetch(`${base}/api/research/mission:http-gate-test/nodes/node:x/poll`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ providerId: 'NOT_A_REAL_PROVIDER' })
+      })
+      // Poll still runs its OWN provider-allowlist check (unaffected by
+      // the dispatch gate) -- proves poll is a genuinely separate code
+      // path, not silently disabled alongside dispatch.
+      assert.equal(res.status, 422)
+      assert.equal((await res.json()).code, 'TSF_UNKNOWN_PROVIDER')
+    })
+  } finally {
+    if (savedGate === undefined) delete process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED
+    else process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED = savedGate
+    await new Promise((resolve) => server.close(resolve))
+    rmSync(distDir, { recursive: true, force: true })
+  }
+})
+
 // "GENERIC V0 ADOPTION READINESS" Phase 2: the governed dispatch/poll
-// routes. Every case here MUST perform zero real network calls -- the
-// provider allowlist, credential check, and cost gate all refuse BEFORE
+// routes with the operator gate EXPLICITLY ENABLED (HQ FINAL ADOPTION
+// EVIDENCE RECONCILIATION §3's "enabled dispatch" scenario) -- every case
+// here MUST STILL perform zero real network calls -- the provider
+// allowlist, credential check, and cost gate all refuse BEFORE
 // worker.dispatch() is ever reached, so this is safe to run with no real
 // credentials configured, in CI, with no risk of real spend.
 test('research HTTP routes: governed dispatch is a real provider allowlist + credential check + cost gate, never a bare endpoint', async (t) => {
   const distDir = mkdtempSync(path.join(tmpdir(), 'tsf-research-http-dispatch-'))
   const server = startStandaloneServer(0, { uiDistDir: distDir })
   const savedParallelKey = process.env.PARALLEL_API_KEY
+  const savedGate = process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED
   try {
+    process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED = '1'
     await new Promise((resolve) => server.once('listening', resolve))
     const { port } = server.address()
     const base = `http://127.0.0.1:${port}`
@@ -170,6 +260,8 @@ test('research HTTP routes: governed dispatch is a real provider allowlist + cre
   } finally {
     if (savedParallelKey === undefined) delete process.env.PARALLEL_API_KEY
     else process.env.PARALLEL_API_KEY = savedParallelKey
+    if (savedGate === undefined) delete process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED
+    else process.env.TSF_RESEARCH_LIVE_DISPATCH_ENABLED = savedGate
     await new Promise((resolve) => server.close(resolve))
     rmSync(distDir, { recursive: true, force: true })
     cleanupStateFile()

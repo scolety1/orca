@@ -293,6 +293,25 @@ export function markResearchNodeAdmittedViaLibraryReuse(mission, nodeId, clock, 
 //     source reuse != claim verification. The reusing mission still
 //     performs its own full epistemic-ladder path over this material,
 //     exactly as if it had just fetched it fresh.
+//
+// HONEST SCOPE (HQ FINAL ADOPTION EVIDENCE RECONCILIATION finding): this
+// codebase has NO durable raw-content (blob) store anywhere -- confirmed
+// by direct search. What this module genuinely, provably reuses is a
+// source's LOCATOR/HASH/POLICY-VALIDATION metadata (avoiding redundant
+// re-admission/re-validation of an already-vetted immutable source into a
+// new mission -- real, useful, real provenance/audit value). It does
+// NOT, by itself, avoid a real network refetch when the reusing mission
+// needs the actual page CONTENT to extract a new field -- that would
+// require a real content-addressed store, which is a material storage
+// redesign, deliberately not invented here. `contentReusableWithoutRefetch`
+// on every entry makes this explicit and machine-checkable rather than
+// letting a caller assume otherwise (see indexSourceSnapshot). The
+// SEPARATE, pre-existing, already-real "no refetch AND no re-extraction"
+// property lives one level up: cross-mission CanonicalFact reuse
+// (indexCanonicalFact/evaluateResearchLibraryReuse above), proven with
+// real data in the second real-pilot mission (3/3 real fetches AND
+// re-extractions avoided, because the already-EXTRACTED VALUE itself was
+// reused, not just its source's locator).
 // ---------------------------------------------------------------------
 
 // Indexes ONE already-admitted SourceSnapshotReference from
@@ -323,6 +342,25 @@ export function indexSourceSnapshot(library, mission, nodeId, sourceSnapshotId, 
     publisher: sourceRef?.publisher ?? null,
     contentHash: snapshot.contentHash,
     rawContentRef: snapshot.rawContentRef ?? null,
+    // HQ FINAL ADOPTION EVIDENCE RECONCILIATION finding: this codebase has
+    // NO durable raw-content (blob) storage anywhere -- confirmed by
+    // direct search (no file writes actual page/response bytes to a
+    // content-addressed store; admitSourceSnapshot's bulk source-first
+    // path hardcodes rawContentRef: null always; the real pilot's
+    // deterministic Wikipedia acquisition never populated it either).
+    // rawContentRef is a structural placeholder for a FUTURE real
+    // content-store this V0 deliberately does not invent (a real blob-
+    // storage architecture is a material redesign, not a bounded
+    // correction). This field makes that limitation explicit and
+    // machine-checkable rather than letting a caller assume a
+    // SOURCE_CACHE_HIT means "no refetch needed for content": true ONLY
+    // when a real caller-supplied rawContentRef is present (never the
+    // case for any real script in this codebase today). When false, a
+    // hit still means the source's LOCATOR/HASH/POLICY metadata is
+    // trusted and reusable without re-admission/re-validation -- but the
+    // reusing mission must independently refetch the actual content if it
+    // needs to extract a NEW field/claim from it.
+    contentReusableWithoutRefetch: Boolean(snapshot.rawContentRef),
     retrievedAt: sourceRef?.retrievedAt ?? null,
     // Honestly unavailable from anything upstream captures today -- never
     // fabricated. A future source adapter that DOES capture these should
