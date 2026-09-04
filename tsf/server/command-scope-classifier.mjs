@@ -23,6 +23,67 @@
 // live planner is available (no CLI configured, offline, etc.) -- coverage
 // there is a best-effort safety net, not the primary mechanism, and every
 // caller can tell the two apart via `source`.
+//
+// INTENT MODEL RECONCILIATION (Command architecture round 3): every
+// semantic class the product design calls for is represented somewhere in
+// this codebase -- not always as an enum member of GLOBAL_SCOPES below,
+// since several of them are already correctly owned by an existing,
+// separately-tested layer this file deliberately never duplicates:
+//   GLOBAL_STATUS         -> GLOBAL_SCOPES (this file)
+//   GLOBAL_ADVISORY        -> GLOBAL_SCOPES (this file)
+//   GLOBAL_ACTION           -> command-responder.mjs's resolveAllProjectsQuantifier
+//                             + dispatchAndRespond ("run everything except X")
+//   PROJECT_STATUS          -> chat-responder.mjs's STATUS/HEALTH/FINISHED
+//                             (a named/resolved project's own real intents,
+//                             untouched by this round)
+//   PROJECT_ADVISORY        -> chat-responder.mjs's GENERAL/RATIONALE per-
+//                             project answers, already advisory-only
+//                             (verified this round: TIM_REQUIRED's inquiry/
+//                             negation handling already keeps "should I
+//                             deploy X?" from being read as a directive)
+//   PROJECT_ACTION          -> command-responder.mjs's DISPATCH_WORTHY_INTENTS
+//                             path (exact-match-only) + command-run-action-
+//                             bridge.mjs's PAUSE/RESUME (new this round)
+//   MULTI_PROJECT_ACTION    -> the same DISPATCH_WORTHY_INTENTS path, fanned
+//                             out across every exact match (pre-existing) or
+//                             the "everything" quantifier (new this round)
+//   FOLLOW_UP_EXPLANATION   -> DISCLOSED GAP, not built this round -- would
+//                             require remembering the prior ANSWER's own
+//                             content ("what does that mean?"/bare "why?"),
+//                             not just a resolved project id. Proven honest
+//                             (never fabricates an action) in
+//                             command-dogfood-sequences.test.mjs's
+//                             sequences A and B.
+//   FOLLOW_UP_ACTION        -> command-responder.mjs's lastReferencedProjectId
+//                             back-reference, now feeding BOTH dispatch and
+//                             pause/resume (new this round) -- "run it",
+//                             "pause it", "continue that"
+//   RESEARCH_REQUEST        -> GLOBAL_SCOPES (this file) + command-research-
+//                             bridge.mjs's own deterministic patterns
+//   RESEARCH_STATUS         -> command-research-bridge.mjs's RESEARCH_STATUS/
+//                             COMPLETENESS/CONFLICTS/ARTIFACTS intents
+//   RESEARCH_ACTION         -> command-research-bridge.mjs's RESEARCH_CANCEL
+//                             (new this round) + the existing continue/grant
+//                             paths
+//   NEEDS_YOU_QUERY         -> GLOBAL_SCOPES (this file, new this round)
+//   SELF_REPAIR             -> domain/self-repair-authority.mjs (verified
+//                             solid this round, not touched: an explicit UI
+//                             toggle is required, never derivable from chat
+//                             text alone)
+//   ADOPTION_DECISION       -> chat-responder.mjs's ADOPTION intent (verified
+//                             advisory-only this round, regression-tested in
+//                             test/chat-responder.test.mjs)
+//   AMBIGUOUS               -> GLOBAL_SCOPES' UNCLEAR (this file) for the
+//                             global case; PROJECT_REQUIRED (this file) and
+//                             resolveProjectsFromText's own ambiguous/fuzzy
+//                             handling for the project case
+//
+// Deliberately NOT a rename to these exact enum names: several of the
+// classes above are already correctly split across files by a different,
+// pre-existing, load-bearing axis (global vs. per-project, action vs.
+// read-only) that predates this round and is heavily tested on its own
+// terms -- collapsing them into one central enum would be exactly the
+// "second, larger regex/keyword table" this round was told not to build.
 import { invokeLiveStructuredAnalysis } from './live-planner.mjs'
 
 export const GLOBAL_SCOPES = Object.freeze([
@@ -67,9 +128,28 @@ function deterministicScopeFallback(message) {
   if (/\b(what'?s (running|going on)|status|catch me up|update me|where are we)\b/i.test(message)) {
     return 'GLOBAL_STATUS'
   }
+  // Adversarial-corpus findings, two real gaps closed:
+  // (1) casual/profane phrasing that never says "safe" at all ("without
+  //     fucking anything up") still clearly means the same thing --
+  //     "without breaking/messing/f***ing (anything) up" is its own
+  //     safety-intent signal, an alternative to the explicit safety-word
+  //     bucket, not a replacement for it.
+  // (2) "mess/screw/play around (with)"/"experiment (with)" already IMPLY
+  //     wanting something disposable on their own -- they no longer need a
+  //     companion safety word ("what project can we screw around with?"
+  //     has no "safe"/"disposable" in it at all, but is unambiguous).
+  //     Bounded safely by this whole function only ever running when NO
+  //     project resolved from the message at all (see classifyGlobalScope's
+  //     one call site) -- a genuine "let's experiment with NWR" is never
+  //     reached here, since "NWR" would already have resolved.
+  const safetyImplyingActivity = /\b(mess (around|with)|screw around( with)?|play around( with)?|experiment( with)?)\b/i
   const safetyWords = /\b(safe(ly)?|disposable|throwaway|don'?t matter|doesn'?t matter|expendable)\b/i
-  const testWords = /\b(project|projects|repo|repos|test|tests|testing|mess (around|with)|play (around|with)|experiment)\b/i
-  if (safetyWords.test(message) && testWords.test(message)) {
+  const safetyPhrase = /\bwithout (breaking|messing|f\S*ing|screwing) (anything |it |that )?up\b/i
+  const neutralTestWords = /\b(project|projects|repo|repos|test|tests|testing)\b/i
+  if (
+    safetyImplyingActivity.test(message) ||
+    ((safetyWords.test(message) || safetyPhrase.test(message)) && neutralTestWords.test(message))
+  ) {
     return 'GLOBAL_ADVISORY'
   }
   if (/\b(research|build (?:me )?(?:a )?dataset|dataset\s+(?:of|for))\b/i.test(message)) {
@@ -115,8 +195,19 @@ function isAdvisorySafeProject(project) {
   return project.sourceClass === 'FIXTURE' || /\btest\b/i.test(project.id) || /\btest\b/i.test(project.displayName)
 }
 
+// Exported separately (not just used internally by buildGlobalAdvisoryText)
+// so a caller can decide whether a follow-up ("run that") has a single,
+// unambiguous referent -- dogfood sequence C ("safe-project advisory -> run
+// that -> prove durable state"): an advisory that names exactly ONE real
+// candidate is worth remembering as a back-reference target, exactly like
+// any other single-project answer; one that lists several stays
+// intentionally ambiguous (never guessed at).
+export function advisorySafeProjects(projects) {
+  return projects.filter(isAdvisorySafeProject)
+}
+
 export function buildGlobalAdvisoryText(projects) {
-  const safe = projects.filter(isAdvisorySafeProject)
+  const safe = advisorySafeProjects(projects)
   if (safe.length === 0) {
     return "I don't see a project in the current catalog that's clearly marked as disposable/test-only -- every known project here is a real one. Ask me to onboard a throwaway repo if you want something safe to experiment on."
   }

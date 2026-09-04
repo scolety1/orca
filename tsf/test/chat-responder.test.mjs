@@ -416,3 +416,15 @@ test('FINISHED on a non-terminal live run honestly answers "not yet", grounded i
   assert.match(result.text, /No, not yet/)
   assert.match(result.text, /WORKING/)
 })
+
+// Command architecture round 3, adoption/deployment advisory: "merely
+// mentioning deploy, merge, adopt, etc. is not authorization." Verified
+// existing behavior, locked in as a regression test -- no new code, this
+// codebase's own inquiry/negation handling (isConsequentialDirective's
+// BARE_OPENER/TELL_ME_WHETHER logic) already gets this right.
+test('a genuine deploy/adopt/update QUESTION is never treated as TIM_REQUIRED authorization -- only a bare directive is', () => {
+  for (const question of ['should I deploy WorldForge?', 'is TSF safe to update?', 'can I adopt this candidate?', 'should I push this?']) {
+    assert.notEqual(classifyDecision(question, classifyIntent(question)), 'TIM_REQUIRED', `"${question}" must not be treated as authorization`)
+  }
+  assert.equal(classifyDecision('deploy WorldForge', classifyIntent('deploy WorldForge')), 'TIM_REQUIRED', 'a genuine bare directive must still require Tim')
+})

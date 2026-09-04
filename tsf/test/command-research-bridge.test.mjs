@@ -355,3 +355,50 @@ test('bridge: a genuinely under-specified research request asks ONE bounded clar
     else process.env.STUB_RESEARCH_SPEC_INSUFFICIENT = saved.insufficient
   }
 })
+
+// Command architecture round 3: research follow-up gaps.
+test('classifyResearchIntent: the round-3 additions ("what\'s missing", "show me the evidence", "could Exa help?", "cancel it")', () => {
+  assert.equal(classifyResearchIntent("what's missing?"), 'RESEARCH_COMPLETENESS')
+  assert.equal(classifyResearchIntent('show me the evidence'), 'RESEARCH_ARTIFACTS')
+  assert.equal(classifyResearchIntent('could Exa help?'), 'RESEARCH_PAID_ADVISORY')
+  assert.equal(classifyResearchIntent('cancel it'), 'RESEARCH_CANCEL')
+  assert.equal(classifyResearchIntent('cancel that'), 'RESEARCH_CANCEL')
+})
+
+test('RESEARCH_PAID_ADVISORY ("could Exa help?"): advisory only -- never grants or requests anything, mission state completely untouched', async () => {
+  const missionId = 'mission:advisory-test'
+  await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [{ id: 'n1', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'e1' }, requestedFields: [{ fieldName: 'x', valueType: 'number', required: true }], requestedOutputSchema: { type: 'object' } }] }, clock)
+  const before = readResearchMissionStatus(missionId)
+  const opStateWithMission = { researchMissions: { [missionId]: before } }
+  const reply = await respondResearchCommand({ message: `could Exa help with ${missionId}?`, opState: opStateWithMission, clock })
+  assert.equal(reply.intent, 'RESEARCH_PAID_ADVISORY')
+  assert.equal(reply.live, false)
+  const after = readResearchMissionStatus(missionId)
+  assert.deepEqual(after, before, 'an advisory question must never mutate mission state')
+  assert.equal(readActiveResearchPaidApproval(missionId, EXA_PROVIDER_ID, clock), null)
+})
+
+test('RESEARCH_CANCEL ("cancel it"): really cancels the real durable mission (BLOCKED), and refuses honestly on an already-terminal mission', async () => {
+  const missionId = 'mission:cancel-test'
+  await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+  const opStateWithMission = { researchMissions: { [missionId]: readResearchMissionStatus(missionId) } }
+  const reply = await respondResearchCommand({ message: `for ${missionId}, cancel it`, opState: opStateWithMission, clock })
+  assert.match(reply.text, /^Cancelled/)
+  assert.equal(readResearchMissionStatus(missionId).state, 'BLOCKED')
+
+  // Already terminal (BLOCKED has no further transitions this bridge
+  // reaches for in this test -- COMPLETE is the real terminal case, proven
+  // via the domain layer already; here we prove a SECOND cancel on the
+  // same now-BLOCKED mission is refused honestly, not silently re-applied).
+  const second = await respondResearchCommand({ message: `for ${missionId}, cancel it`, opState: { researchMissions: { [missionId]: readResearchMissionStatus(missionId) } }, clock })
+  assert.match(second.text, /Couldn't cancel/)
+})
+
+test('RESEARCH_CANCEL: bare "cancel it" (no id in the message) resolves the most-recently-touched real mission from real durable state', async () => {
+  const missionId = 'mission:cancel-backref-test'
+  await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+  const reply = await respondResearchCommand({ message: 'cancel it', opState: freshOpState(), clock })
+  assert.match(reply.text, /^Cancelled/)
+  assert.match(reply.text, new RegExp(missionId))
+  assert.equal(readResearchMissionStatus(missionId).state, 'BLOCKED')
+})

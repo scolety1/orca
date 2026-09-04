@@ -18,12 +18,13 @@
 // guessing which project(s) to act on. Status/question answers (read-only,
 // no action taken) may still use fuzzy matches informationally.
 import { classifyIntent, classifyDecision } from './chat-responder.mjs'
-import { findAliasForAbsentProject, resolveProjectsFromText } from './project-name-resolver.mjs'
+import { findAliasForAbsentProject, resolveAllProjectsQuantifier, resolveProjectsFromText } from './project-name-resolver.mjs'
 import { fleetNeedsYouStatus, fleetResearchStatus, fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { classifyResearchIntent, respondResearchCommand } from './command-research-bridge.mjs'
-import { buildGlobalAdvisoryText, classifyGlobalScope } from './command-scope-classifier.mjs'
+import { advisorySafeProjects, buildGlobalAdvisoryText, classifyGlobalScope } from './command-scope-classifier.mjs'
+import { classifyContinueAction, classifyRunActionVerb, pauseProjectRun, resumeProjectRun } from './command-run-action-bridge.mjs'
 
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
 export const DISPATCH_WORTHY_INTENTS = new Set(['DISPATCH_REQUEST', 'FIX_REQUEST'])
@@ -158,6 +159,45 @@ export async function respondCommand({
   const scopeFor = (ids) =>
     ids.length === 0 ? 'FLEET' : ids.length === 1 ? 'PROJECT' : 'MULTI_PROJECT'
 
+  // Extracted so the same real dispatch + result-shaping is reachable both
+  // from the normal exact-match path below AND from an actionable follow-
+  // up's resolved back-reference ("run it") -- one real dispatch pipeline,
+  // never two independently-maintained copies of how a dispatch result is
+  // reported.
+  async function dispatchAndRespond(targetProjects) {
+    const dispatch = await planAndDispatchFromCommand({ projects: targetProjects, message, clock, deps })
+    // BUG-06 (bug-ledger.json): r.detail already states the real outcome
+    // (e.g. "new mission started, task X dispatched" vs. "added to running
+    // mission: WAVE_DISPATCHED") -- a "dispatched:" prefix here read as a
+    // redundant double statement ("dispatched: new mission started...").
+    const lines = dispatch.results.map((r) =>
+      r.ok
+        ? `- **${r.project.displayName}** — ${r.detail}.`
+        : `- **${r.project.displayName}** — skipped: ${r.reason}${r.detail ? ` (${r.detail})` : ''}.`
+    )
+    return {
+      intent,
+      decisionClass,
+      text: `Multi-project dispatch:\n${lines.join('\n')}`,
+      plannerRole: 'PLANNER_DEEP',
+      providerLabel: 'PLANNER_DEEP · real dispatch via Keep Going, looped across resolved projects',
+      live: dispatch.results.some((r) => r.ok),
+      // Adversarial-review finding: this was the outer resolvedProjectIds
+      // (exact + fuzzy noise) -- a fuzzy co-match that was never actually
+      // dispatched to would render as a "Targeting" chip in the UI as if it
+      // had been acted on. Only the projects a real dispatch was actually
+      // attempted against are reported here.
+      resolvedProjectIds: targetProjects.map((p) => p.id),
+      scope: scopeFor(targetProjects.map((p) => p.id)),
+      dispatchResults: dispatch.results.map((r) => ({
+        projectId: r.project.id,
+        ok: r.ok,
+        reason: r.reason ?? null,
+        detail: r.detail ?? null
+      }))
+    }
+  }
+
   if (decisionClass === 'TIM_REQUIRED') {
     return {
       intent,
@@ -169,6 +209,92 @@ export async function respondCommand({
       resolvedProjectIds,
       scope: scopeFor(resolvedProjectIds)
     }
+  }
+
+  // Actionable follow-up context, round 3 (Command architecture): PAUSE/
+  // RESUME had NO Command-facing recognition at all before this --
+  // chat-responder.mjs's shared intent taxonomy has no pause/resume
+  // intent, so "pause NWR" previously fell through to a read-only answer
+  // that paused nothing. Checked independently of DISPATCH_WORTHY_INTENTS,
+  // for BOTH a named exact match and a back-referenced one -- context
+  // resolves WHICH project only; the mutation itself is the exact same
+  // durable keep-going-controller.mjs call a directly-named project gets,
+  // with no separate/weaker authorization path for the referenced case.
+  const runActionVerb = classifyRunActionVerb(message)
+  if (runActionVerb) {
+    const namedExact = exactMatches.length === 1 ? exactMatches[0].project : null
+    const backReferenceProjectId =
+      !namedExact && resolution.matches.length === 0 ? lastReferencedProjectId(opState, projects) : null
+    const backReferenceProject = backReferenceProjectId
+      ? projects.find((p) => p.id === backReferenceProjectId)
+      : null
+    const targetProject = namedExact ?? backReferenceProject
+    if (targetProject) {
+      const resolvedVia = namedExact ? 'named' : 'resolved from the prior turn'
+      if (runActionVerb === 'PAUSE') {
+        try {
+          await pauseProjectRun(targetProject.id, 'OPERATOR_CHAT_PAUSE', clock)
+          return {
+            intent: 'PROJECT_ACTION',
+            decisionClass,
+            text: `Paused **${targetProject.displayName}** (${resolvedVia}).`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel: 'PLANNER_DEEP · real pause via Keep Going',
+            live: true,
+            resolvedProjectIds: [targetProject.id],
+            scope: 'PROJECT'
+          }
+        } catch (error) {
+          return {
+            intent: 'PROJECT_ACTION',
+            decisionClass,
+            text: `Couldn't pause **${targetProject.displayName}**: ${error.message}.`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel: 'PLANNER_DEEP · action refused',
+            live: false,
+            resolvedProjectIds: [targetProject.id],
+            scope: 'PROJECT'
+          }
+        }
+      }
+      // RESUME/"continue" -- genuinely ambiguous in isolation
+      // (classifyContinueAction decides using the REAL current run state,
+      // never guessed from the verb alone): a PAUSED run resumes; anything
+      // else (no run yet, or an already-ACTIVE run with nothing durable to
+      // resume from) means the same thing "run it" does.
+      const action = classifyContinueAction(targetProject.id)
+      if (action === 'RESUME') {
+        try {
+          await resumeProjectRun(targetProject.id, clock)
+          return {
+            intent: 'PROJECT_ACTION',
+            decisionClass,
+            text: `Resumed **${targetProject.displayName}** (${resolvedVia}).`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel: 'PLANNER_DEEP · real resume via Keep Going',
+            live: true,
+            resolvedProjectIds: [targetProject.id],
+            scope: 'PROJECT'
+          }
+        } catch (error) {
+          return {
+            intent: 'PROJECT_ACTION',
+            decisionClass,
+            text: `Couldn't resume **${targetProject.displayName}**: ${error.message}.`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel: 'PLANNER_DEEP · action refused',
+            live: false,
+            resolvedProjectIds: [targetProject.id],
+            scope: 'PROJECT'
+          }
+        }
+      }
+      return dispatchAndRespond([targetProject])
+    }
+    // No target resolved (no name, no usable back-reference) -- falls
+    // through to the normal read-only/dispatch-worthy branches below,
+    // which report the same honest "couldn't tell" this file already
+    // gives a directly-named, unresolvable project.
   }
 
   if (!DISPATCH_WORTHY_INTENTS.has(intent)) {
@@ -217,6 +343,13 @@ export async function respondCommand({
         }
       }
       if (classification.scope === 'GLOBAL_ADVISORY') {
+        // Dogfood sequence C ("safe-project advisory -> run that"): an
+        // advisory that names exactly ONE real candidate is remembered as
+        // a back-reference target -- a genuinely ambiguous multi-project
+        // list is not (resolvedProjectIds stays empty, exactly as before,
+        // so a later "run that" still honestly asks which one).
+        const safe = advisorySafeProjects(projects)
+        const singleCandidateId = safe.length === 1 ? safe[0].id : null
         return {
           intent: 'GLOBAL_ADVISORY',
           decisionClass,
@@ -227,8 +360,8 @@ export async function respondCommand({
               ? 'PLANNER_DEEP · real scope classification, grounded in the real catalog, no dispatch, no action taken'
               : 'PLANNER_DEEP · deterministic fallback scope classification (live planner unavailable), grounded in the real catalog',
           live: false,
-          resolvedProjectIds: [],
-          scope: 'FLEET'
+          resolvedProjectIds: singleCandidateId ? [singleCandidateId] : [],
+          scope: singleCandidateId ? 'PROJECT' : 'FLEET'
         }
       }
       if (classification.scope === 'NEEDS_YOU_QUERY') {
@@ -294,6 +427,44 @@ export async function respondCommand({
   // guess, or an ambiguous multi-fuzzy match) asks for clarification
   // instead of guessing.
   if (exactMatches.length === 0) {
+    // Actionable follow-up context: "run it"/"fix it" already classify as
+    // DISPATCH_REQUEST/FIX_REQUEST through chat-responder.mjs's own
+    // existing patterns -- the only thing missing was WHICH project "it"
+    // means. Tried only when nothing was named at all (never overrides an
+    // ambiguous/ fuzzy-only named guess, which still asks for
+    // clarification exactly as before).
+    if (resolution.matches.length === 0) {
+      // Multi-project actions round 3: "run everything safe except TSF" --
+      // checked before back-reference (a quantifier is a stronger, more
+      // explicit signal than conversational history) and only when nothing
+      // was individually named at all. Never reaches self-repair -- this
+      // always goes through the same multi-project dispatchAndRespond path
+      // exact-match multi-project dispatch already uses, which never
+      // evaluates self-repair (that stays the single-project http-server.mjs
+      // branch's job alone, unaffected by anything here).
+      const allProjects = resolveAllProjectsQuantifier(message, projects, aliases)
+      if (allProjects) {
+        return allProjects.length > 0
+          ? dispatchAndRespond(allProjects)
+          : {
+              intent,
+              decisionClass,
+              text: 'Every project is excluded -- nothing left to act on.',
+              plannerRole: 'PLANNER_DEEP',
+              providerLabel: 'PLANNER_DEEP · dispatch withheld -- exclusions covered the entire catalog',
+              live: false,
+              resolvedProjectIds: [],
+              scope: 'FLEET'
+            }
+      }
+      const backReferenceProjectId = lastReferencedProjectId(opState, projects)
+      const backReferenceProject = backReferenceProjectId
+        ? projects.find((p) => p.id === backReferenceProjectId)
+        : null
+      if (backReferenceProject) {
+        return dispatchAndRespond([backReferenceProject])
+      }
+    }
     return {
       intent,
       decisionClass,
@@ -315,43 +486,7 @@ export async function respondCommand({
   // incidentally alongside other projects in one dispatch fan-out. The
   // single-project path (http-server.mjs, exactly one total match, exact)
   // is the only place self-repair is ever evaluated.
-  const targetProjects = exactMatches.map((m) => m.project)
-  const dispatch = await planAndDispatchFromCommand({
-    projects: targetProjects,
-    message,
-    clock,
-    deps
-  })
-  // BUG-06 (bug-ledger.json): r.detail already states the real outcome
-  // (e.g. "new mission started, task X dispatched" vs. "added to running
-  // mission: WAVE_DISPATCHED") -- a "dispatched:" prefix here read as a
-  // redundant double statement ("dispatched: new mission started...").
-  const lines = dispatch.results.map((r) =>
-    r.ok
-      ? `- **${r.project.displayName}** — ${r.detail}.`
-      : `- **${r.project.displayName}** — skipped: ${r.reason}${r.detail ? ` (${r.detail})` : ''}.`
-  )
-  return {
-    intent,
-    decisionClass,
-    text: `Multi-project dispatch:\n${lines.join('\n')}`,
-    plannerRole: 'PLANNER_DEEP',
-    providerLabel: 'PLANNER_DEEP · real dispatch via Keep Going, looped across resolved projects',
-    live: dispatch.results.some((r) => r.ok),
-    // Adversarial-review finding: this was the outer resolvedProjectIds
-    // (exact + fuzzy noise) -- a fuzzy co-match that was never actually
-    // dispatched to would render as a "Targeting" chip in the UI as if it
-    // had been acted on. Only the projects a real dispatch was actually
-    // attempted against are reported here.
-    resolvedProjectIds: targetProjects.map((p) => p.id),
-    scope: scopeFor(targetProjects.map((p) => p.id)),
-    dispatchResults: dispatch.results.map((r) => ({
-      projectId: r.project.id,
-      ok: r.ok,
-      reason: r.reason ?? null,
-      detail: r.detail ?? null
-    }))
-  }
+  return dispatchAndRespond(exactMatches.map((m) => m.project))
 }
 
 // Exported so http-server.mjs's single-resolved-project branch can compute

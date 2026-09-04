@@ -337,6 +337,44 @@ export function resolveProjectsFromText(message, projects, options = {}) {
   }
 }
 
+// Command architecture round 3, multi-project actions: "run everything
+// safe except TSF" / "pause everything except NWR" had no quantifier
+// concept at all before this -- resolveProjectsFromText only ever matches
+// NAMED projects. Deliberately its own, separate function (never folded
+// into resolveProjectsFromText's own exact/fuzzy contract) since "act on
+// literally everything" is a fundamentally different, higher-stakes
+// resolution than matching a name -- callers must opt into it explicitly,
+// never receive it as a side effect of an ordinary name-resolution call.
+// Reuses the exact same per-clause isExcludedNear exclusion check every
+// named project already gets, so "except TSF" here behaves identically to
+// an exclusion in a normally-named multi-project message -- not a second,
+// differently-tuned exclusion mechanism.
+const ALL_PROJECTS_QUANTIFIER = /\b(everything|every project|all projects)\b/i
+
+export function isAllProjectsQuantified(message) {
+  return ALL_PROJECTS_QUANTIFIER.test(message)
+}
+
+// Returns the full project list minus any explicitly excluded by id,
+// displayName, or a registered alias -- or null if the message doesn't use
+// the quantifier at all (callers should fall back to normal
+// resolveProjectsFromText in that case).
+export function resolveAllProjectsQuantifier(message, projects, aliases = loadProjectAliases()) {
+  if (!isAllProjectsQuantified(message)) return null
+  const clauses = splitClauses(message)
+  return projects.filter((project) => {
+    const aliasEntries = Object.entries(aliases)
+      .filter(([, id]) => id === project.id)
+      .map(([alias]) => alias)
+    return !clauses.some(
+      (clause) =>
+        isExcludedNear(clause, project.id) ||
+        isExcludedNear(clause, project.displayName) ||
+        aliasEntries.some((alias) => isExcludedNear(clause, alias))
+    )
+  })
+}
+
 // Hands-on pilot Finding 4: resolveProjectsFromText above only ever checks
 // an alias against a project that IS in the current `projects` catalog (its
 // aliasEntries are filtered by `id === project.id` for a project already

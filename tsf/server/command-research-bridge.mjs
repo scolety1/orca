@@ -23,6 +23,7 @@ import { EXA_PROVIDER_ID } from '../adapters/exa-research-worker.mjs'
 import { PARALLEL_PROVIDER_ID } from '../adapters/parallel-research-worker.mjs'
 import {
   attemptFreeResearchProgressDurable,
+  cancelResearchMissionDurable,
   createResearchMissionDurable,
   grantResearchPaidApprovalDurable,
   readResearchMissionArtifacts,
@@ -40,10 +41,16 @@ const PROVIDER_NAME_TO_ID = Object.freeze({ exa: EXA_PROVIDER_ID, parallel: PARA
 // research doing?" is never swallowed by the bare-"research" pattern.
 const RESEARCH_INTENT_PATTERNS = [
   { id: 'RESEARCH_PAID_GRANT', test: (msg) => parsePaidGrant(msg) != null },
+  // Advisory-only -- "could Exa help?" (no $ amount) must never be
+  // confused with RESEARCH_PAID_GRANT (which requires a real amount)
+  // above; checked next so it's never swallowed by the broad
+  // RESEARCH_CREATE_OR_CONTINUE catch-all just because it says "help"
+  // near a provider name.
+  { id: 'RESEARCH_PAID_ADVISORY', test: (msg) => /\b(could|can|would)\s+(exa|parallel)\s+help\b|\bshould (i|we) use (exa|parallel)\b/i.test(msg) },
   {
     id: 'RESEARCH_ARTIFACTS',
     test: (msg) =>
-      /\b(show me the artifacts|show the artifacts|artifacts?\W*\bcsv|the csv|download (the )?(data|csv)|see the (data|artifacts))\b/i.test(
+      /\b(show me the artifacts|show the artifacts|artifacts?\W*\bcsv|the csv|download (the )?(data|csv)|see the (data|artifacts)|show me the evidence|show the evidence|see the evidence)\b/i.test(
         msg
       )
   },
@@ -52,7 +59,7 @@ const RESEARCH_INTENT_PATTERNS = [
   // (a real Git merge conflict on some other project) and must never
   // hijack an ordinary fleet-dispatch message away from real dispatch.
   { id: 'RESEARCH_CONFLICTS', test: (msg) => /\bwhat conflicts\b|\bresearch conflicts\b|\bconflicts?\s+(remain|left|open|outstanding)\b/i.test(msg) },
-  { id: 'RESEARCH_COMPLETENESS', test: (msg) => /\bhow complete\b|\bcompleteness\b|\bhow far along\b/i.test(msg) },
+  { id: 'RESEARCH_COMPLETENESS', test: (msg) => /\bhow complete\b|\bcompleteness\b|\bhow far along\b|\bwhat'?s missing\b|\bwhat is missing\b/i.test(msg) },
   {
     id: 'RESEARCH_STATUS',
     test: (msg) =>
@@ -60,6 +67,13 @@ const RESEARCH_INTENT_PATTERNS = [
         msg
       )
   },
+  // "cancel it"/"cancel that"/"cancel the research"/"cancel this mission" --
+  // narrower than a bare /\bcancel\b/ for the same reason RESEARCH_CONFLICTS
+  // is narrower than bare "conflict": "cancel" alone could plausibly mean
+  // something else in a future, unrelated Command feature. Checked only
+  // after the research-specific artifact/status/conflict patterns above so
+  // none of those get shadowed.
+  { id: 'RESEARCH_CANCEL', test: (msg) => /\bcancel\s+(it|that|this|the research|this mission|the mission)\b/i.test(msg) },
   // Disclosed scope limitation, not fixed here: a bare "research" anywhere
   // in the message is loose enough to catch a message that mentions
   // research only in passing about an unrelated fleet project ("I did some
@@ -182,6 +196,49 @@ export async function respondResearchCommand({ message, opState, clock = () => n
       live: true,
       researchMissionId: missionId
     })
+  }
+
+  if (intent === 'RESEARCH_PAID_ADVISORY') {
+    // Advisory only -- "could Exa help?" must never itself grant or
+    // request anything (that's RESEARCH_PAID_GRANT's job, requiring a real
+    // $ amount, and Command's own initiative during a continue cycle,
+    // requestResearchPaidApprovalDurable below). This branch never
+    // mutates mission state at all.
+    const missionId = explicitMissionIdIn(message, opState) ?? mostRecentMissionId(opState)
+    if (!missionId) {
+      return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
+    }
+    const openItems = readResearchMissionReviewItems(missionId) ?? []
+    const openPaidRequest = openItems.find((n) => n.category === 'PAID_PROVIDER_APPROVAL_REQUIRED')
+    const text = openPaidRequest
+      ? `Possibly -- there's already an open paid-research request on **${missionId}**: "${openPaidRequest.question}". Say something like "use Exa up to $N" to approve it, scoped to this mission and this provider only. I won't spend anything without that.`
+      : `**${missionId}** has no open gap I've flagged as needing paid research right now. Paid providers (Exa/Parallel) stay off by default -- if you want me to check whether one would help, ask me to continue the research and I'll raise a scoped request if a real gap remains.`
+    return result({ intent, decisionClass: 'AUTO_DECIDE', text, live: false, researchMissionId: missionId })
+  }
+
+  if (intent === 'RESEARCH_CANCEL') {
+    const missionId = explicitMissionIdIn(message, opState) ?? mostRecentMissionId(opState)
+    if (!missionId) {
+      return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
+    }
+    try {
+      await cancelResearchMissionDurable(missionId, 'OPERATOR_CHAT_CANCEL', clock)
+      return result({
+        intent,
+        decisionClass: 'RECOMMEND_AND_PROCEED',
+        text: `Cancelled **${missionId}**.`,
+        live: true,
+        researchMissionId: missionId
+      })
+    } catch (error) {
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: `Couldn't cancel **${missionId}**: ${error.message}.`,
+        live: false,
+        researchMissionId: missionId
+      })
+    }
   }
 
   if (intent === 'RESEARCH_ARTIFACTS' || intent === 'RESEARCH_STATUS' || intent === 'RESEARCH_COMPLETENESS' || intent === 'RESEARCH_CONFLICTS') {

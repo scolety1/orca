@@ -20,7 +20,7 @@
 // AMBIGUOUS_REQUIRES_RECONCILIATION) -- calling the SAME driver function
 // again is the resume action, and it checks that classification FIRST,
 // before ever risking a second real call.
-import { addResearchNode, assertNodeTransition, computeResearchMissionPhase, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, readyResearchNodes, withResearchNode } from '../domain/research-mission.mjs'
+import { addResearchNode, assertNodeTransition, blockResearchMission, computeResearchMissionPhase, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, readyResearchNodes, withResearchNode } from '../domain/research-mission.mjs'
 import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
 import { classifyDispatchDeliveryGuarantee, recordDispatchAttempt, resolveDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
@@ -135,6 +135,24 @@ export function readResearchMissionProviderUsage(missionId) {
     }
   }
   return { missionId, totalRequests, totalProviderReportedCostUsd, byProvider }
+}
+
+// ---------------------------------------------------------------------
+// CANCEL (mission-level) -- Command architecture round 3: "cancel it" had
+// no real mission-level primitive before this (only cancelResearchNodeDurable
+// existed, one node at a time). Reuses BLOCKED (domain/research-mission.mjs's
+// blockResearchMission) rather than inventing a new terminal state --
+// BLOCKED already means "stopped, needs attention", an honest fit for an
+// operator-initiated cancellation; the reason string makes it clear this
+// was a deliberate cancel, not a discovered blocker. Fails honestly (the
+// real MISSION_ALLOWED transition table) rather than silently no-op-ing
+// when the mission is already COMPLETE (terminal, no outgoing transition).
+// ---------------------------------------------------------------------
+export async function cancelResearchMissionDurable(missionId, reason, clock) {
+  return withResearchMission(missionId, (mission) => {
+    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    return blockResearchMission(mission, reason ?? 'OPERATOR_CANCELLED', [], clock, mission.revision)
+  })
 }
 
 // ---------------------------------------------------------------------

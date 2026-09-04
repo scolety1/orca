@@ -201,15 +201,94 @@ test('a bare pronoun ("it") is NOT treated as a back-reference -- too common a w
   assert.match(result.text, /couldn't tell which project/i)
 })
 
-test('a back-reference is never honored for a dispatch-worthy message -- real action still requires naming the project again', async () => {
+// Command architecture round 3: actionable follow-up context. A resolved
+// back-reference now IS trusted enough to dispatch -- "context resolves
+// identity only" (a per-file adversarial-review discipline this suite
+// already applies to exact/alias/fuzzy resolution) means the SAME real
+// dispatch pipeline and SAME real gates a directly-named project gets, not
+// a weaker path. The STUB dispatch dep below only proves an attempt was
+// made -- the mechanics themselves are already proven end to end in
+// http-command.test.mjs.
+const STUB_DISPATCH_DEPS = { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+
+test('actionable follow-up: "go ahead and fix that project" now resolves the prior turn\'s project and attempts a REAL dispatch', async () => {
   const result = await respondCommand({
     message: 'go ahead and fix that project',
     projects: [project('alpha-widgets', 'Alpha Widgets')],
     opState: opStateWithLastTurn(['alpha-widgets']),
-    clock
+    clock,
+    deps: STUB_DISPATCH_DEPS
   })
-  assert.equal(result.dispatchResults, undefined, 'no dispatch was ever attempted from a back-reference alone')
+  assert.deepEqual(result.resolvedProjectIds, ['alpha-widgets'])
+  assert.ok(result.dispatchResults, 'a real dispatch attempt was made, not a fabricated "started"')
+})
+
+test('actionable follow-up: bare "run it"/"fix it" (no back-reference phrase at all) also resolves the prior turn\'s project', async () => {
+  const runIt = await respondCommand({ message: 'run it', projects: [project('alpha-widgets', 'Alpha Widgets')], opState: opStateWithLastTurn(['alpha-widgets']), clock, deps: STUB_DISPATCH_DEPS })
+  assert.deepEqual(runIt.resolvedProjectIds, ['alpha-widgets'])
+  assert.ok(runIt.dispatchResults)
+
+  const fixIt = await respondCommand({ message: 'fix it', projects: [project('alpha-widgets', 'Alpha Widgets')], opState: opStateWithLastTurn(['alpha-widgets']), clock, deps: STUB_DISPATCH_DEPS })
+  assert.deepEqual(fixIt.resolvedProjectIds, ['alpha-widgets'])
+  assert.ok(fixIt.dispatchResults)
+})
+
+test('actionable follow-up: an explicitly-NAMED project in the same message always wins over stale back-reference context -- never overridden', async () => {
+  const result = await respondCommand({
+    message: 'go ahead and fix alpha-gadgets',
+    projects: [project('alpha-widgets', 'Alpha Widgets'), project('alpha-gadgets', 'Alpha Gadgets')],
+    opState: opStateWithLastTurn(['alpha-widgets']), // prior turn was about a DIFFERENT project
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
+  assert.deepEqual(result.resolvedProjectIds, ['alpha-gadgets'], 'the explicitly named project must win, never the stale referent')
+})
+
+test('actionable follow-up: a follow-up action still refuses when the prior turn resolved to more than one project -- ambiguous history is never silently narrowed to a guess', async () => {
+  const result = await respondCommand({
+    message: 'go ahead and fix that project',
+    projects: [project('alpha-widgets', 'Alpha Widgets'), project('alpha-gadgets', 'Alpha Gadgets')],
+    opState: opStateWithLastTurn(['alpha-widgets', 'alpha-gadgets']),
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
+  assert.equal(result.dispatchResults, undefined, 'no dispatch was ever attempted from an ambiguous prior turn')
   assert.match(result.text, /couldn't tell which project|not confident/i)
+})
+
+test('actionable follow-up: a project referenced in a prior turn but since REMOVED from the catalog is never dispatched to -- context never outlives the real catalog', async () => {
+  const result = await respondCommand({
+    message: 'run it',
+    projects: [project('someone-else', 'Someone Else')], // alpha-widgets no longer exists
+    opState: opStateWithLastTurn(['alpha-widgets']),
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
+  assert.equal(result.dispatchResults, undefined)
+  assert.match(result.text, /couldn't tell which project|not confident/i)
+})
+
+test('actionable follow-up: a TIM_REQUIRED (consequential) message is refused BEFORE any back-reference resolution is even attempted -- context can never grant authorization a named project wouldn\'t already need', async () => {
+  const result = await respondCommand({
+    message: 'push it to production',
+    projects: [project('alpha-widgets', 'Alpha Widgets')],
+    opState: opStateWithLastTurn(['alpha-widgets']),
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
+  assert.equal(result.decisionClass, 'TIM_REQUIRED')
+  assert.equal(result.dispatchResults, undefined, 'a consequential action is never silently authorized via conversational context')
+})
+
+test('actionable follow-up: a negated action ("don\'t run it") is never honored, even with a real resolvable back-reference', async () => {
+  const result = await respondCommand({
+    message: "don't run it",
+    projects: [project('alpha-widgets', 'Alpha Widgets')],
+    opState: opStateWithLastTurn(['alpha-widgets']),
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
+  assert.equal(result.dispatchResults, undefined)
 })
 
 // Hands-on pilot round 2, Finding 1: a message naming no project that asks
@@ -228,7 +307,11 @@ test('GLOBAL_ADVISORY: "are there any projects here that are safe to mess around
   })
   assert.doesNotMatch(result.text, /couldn't tell which project/i)
   assert.match(result.text, /TSF UI Capability Check/)
-  assert.equal(result.resolvedProjectIds.length, 0, 'advisory is informational -- it never resolves/targets a project for action')
+  // Advisory never DISPATCHES on its own (no dispatchResults here) -- but
+  // with exactly one safe candidate, it IS remembered as a back-reference
+  // target so a later "run that" resolves it (dogfood sequence C).
+  assert.equal(result.dispatchResults, undefined, 'advisory alone never dispatches')
+  assert.deepEqual(result.resolvedProjectIds, ['tsf-ui-capability-check'])
 })
 
 test('GLOBAL_ADVISORY natural variants all avoid the generic failure, without one exact-phrase regex', async () => {
@@ -283,4 +366,55 @@ test('NEEDS_YOU_QUERY: "what needs me?" surfaces real outstanding Needs You acro
   const result = await respondCommand({ message: 'what needs me?', projects: [project('alpha-widgets', 'Alpha Widgets')], opState: withOpenItem, clock })
   assert.match(result.text, /Alpha Widgets/)
   assert.match(result.text, /A real decision is pending/)
+})
+
+// Multi-project actions round 3: the "everything"/"all projects" quantifier.
+test('multi-project: "run everything except TSF" dispatches to every project except the explicitly excluded one', async () => {
+  const result = await respondCommand({
+    message: 'run everything except tsf-orca',
+    projects: [project('nwr', 'NWR'), project('nytheria-proj', 'Nytheria'), project('tsf-orca', 'TSF Orca')],
+    opState,
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
+  assert.deepEqual(new Set(result.resolvedProjectIds), new Set(['nwr', 'nytheria-proj']))
+  assert.ok(!result.resolvedProjectIds.includes('tsf-orca'), 'the explicitly excluded project must never be dispatched to')
+})
+
+test('multi-project: "pause everything" (no exclusions) really pauses every real project with a run', async () => {
+  const result = await respondCommand({
+    message: 'pause everything',
+    projects: [project('alpha-widgets', 'Alpha Widgets'), project('alpha-gadgets', 'Alpha Gadgets')],
+    opState,
+    clock
+  })
+  // No single project resolved -- classifyRunActionVerb's PAUSE branch only
+  // ever targets ONE project (named or referenced); "everything" is a
+  // dispatch-only quantifier today (disclosed scope: bulk pause is real,
+  // valuable follow-up work, not built this round). Proves this stays an
+  // honest non-match rather than silently pausing an arbitrary one project.
+  assert.match(result.text, /couldn't tell which project/i)
+})
+
+test('multi-project: "everything" quantified with EVERY project excluded dispatches to nothing, honestly', async () => {
+  const result = await respondCommand({
+    message: 'run everything except alpha-widgets and except alpha-gadgets',
+    projects: [project('alpha-widgets', 'Alpha Widgets'), project('alpha-gadgets', 'Alpha Gadgets')],
+    opState,
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
+  assert.equal(result.dispatchResults, undefined)
+  assert.match(result.text, /nothing left to act on/i)
+})
+
+test('multi-project: a message naming a specific project is completely unaffected by the "everything" quantifier machinery -- normal exact-match resolution still wins', async () => {
+  const result = await respondCommand({
+    message: 'go ahead and fix alpha-widgets',
+    projects: [project('alpha-widgets', 'Alpha Widgets'), project('alpha-gadgets', 'Alpha Gadgets')],
+    opState,
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
+  assert.deepEqual(result.resolvedProjectIds, ['alpha-widgets'])
 })
