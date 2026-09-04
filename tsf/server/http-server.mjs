@@ -407,10 +407,12 @@ export function createRequestHandler(options = {}) {
         return
       }
 
-      // GET/POST /api/research/:missionId[/review-items|completeness|artifacts|usage|nodes/:nodeId/cancel]
-      // -- see research-http-routes.mjs. CREATE/READ/CANCEL only (never
-      // spends real money); real dispatch stays a server-side-only driver
-      // call, not a bare HTTP route -- see that file's own header comment.
+      // GET/POST /api/research/:missionId[/review-items|completeness|artifacts|
+      // usage|nodes/:nodeId/{cancel,dispatch,poll}] -- see research-http-
+      // routes.mjs. dispatch/poll are governed (server-side provider
+      // allowlist, credential check, fixed pricing, the same durable cost
+      // gate the driver enforces internally), never a bare endpoint -- see
+      // that file's own header comment for the full rationale.
       if (await handleResearchRoute(parts, req, res, {}, { json, notFound, readBody })) {
         return
       }
