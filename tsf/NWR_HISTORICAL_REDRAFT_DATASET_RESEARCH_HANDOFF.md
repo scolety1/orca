@@ -5,13 +5,44 @@ reuse the generic Dataset Research platform without rediscovering it. The
 Dataset Research lane remains generic and does **not** start or continue
 a parallel NWR historical NFL acquisition project.
 
+## 0. HQ customer-use authorization (recorded, current as of this update)
+
+HQ has explicitly authorized: **NWR Historical Redraft Data HQ may use
+this candidate branch as a governed CUSTOMER MISSION substrate before
+Dataset Research code is formally adopted.** This means Dataset Research
+may execute real `ResearchMission`s whose customer specification comes
+from that lane — source discovery, source admission, deterministic/bulk
+acquisition, bounded research providers, provenance, temporal validation,
+identity, verification, reconciliation, and candidate artifacts are all
+in scope. This authorization does **not** cover NWR writes, dataset
+admission, NWR model changes, merge, deploy, or live TSF restart — those
+remain separate, unauthorized-here decisions. Dataset Research remains
+generic: if a customer mission from this lane exposes a genuine platform
+gap, it gets classified `ALREADY_SUPPORTED` / `GENERIC_GAP` /
+`NWR_SPECIFIC` / `DEFERRED` and NWR-specific semantics are never patched
+into generic Research code.
+
+**Operational note for real dispatch**: real, billable research-provider
+dispatch is now gated OFF by default (`TSF_RESEARCH_LIVE_DISPATCH_ENABLED`,
+unset or not `'1'` = disabled) — see §3 below. Mission creation, source
+discovery/admission, deterministic bulk acquisition, verification,
+reconciliation, and artifact generation are all unaffected by this gate
+(never billable). If a real customer mission genuinely needs a real,
+governed, paid provider dispatch, that requires either calling the driver
+function directly (`dispatchResearchNodeDurable`, unaffected by the HTTP
+gate) or explicitly setting `TSF_RESEARCH_LIVE_DISPATCH_ENABLED=1` for
+the HTTP surface — a deliberate, visible, operator act, not a default.
+
 ## 1. Current Dataset Research candidate
 
 - **Worktree**: `C:\Users\codex-agent\orca\workspaces\TSF_ORCA\dataset-research-engine-v0`
 - **Branch**: `tsf/feature/dataset-research-engine-v0`
-- **HEAD**: `c6b058fc98afa36b537efd05ccd5fb02d373c36f`
-  ("non-NFL genericity proof -- real GitHub API acquisition, zero engine code changes")
-- **Status**: clean (no uncommitted changes at handoff time)
+- **HEAD**: `e06cbf8fe4...` (this line is updated less often than the
+  branch itself — always confirm the live HEAD with `git log -1` rather
+  than trusting this line alone; as of this update the real HEAD is
+  `e06cbf8fe4` — "honest Source Library content-reuse scope + operator-
+  controlled live-dispatch gate")
+- **Status**: clean (no uncommitted changes at this update)
 - Not merged, not deployed, no live TSF restart, no NWR write — isolated
   candidate branch only.
 
@@ -37,7 +68,8 @@ code changes.
 | Verification (claim verification, conflict detection) | `domain/research-verification.mjs` |
 | Source independence (quality classes, independence states, upstream-chain resolution, conflict independence guidance) | `domain/research-source-independence.mjs` |
 | Reconciliation (all decision types incl. derived fields, library reuse) | `domain/research-reconciliation.mjs`, `domain/research-library.mjs` |
-| Research Library (cross-mission source/fact reuse, CACHE_HIT/MISS/REJECTED_* outcomes) | `domain/research-library.mjs`, `server/research-library-store.mjs` |
+| Research Library (cross-mission **already-reconciled CanonicalFact** reuse, CACHE_HIT/MISS/REJECTED_* outcomes) | `domain/research-library.mjs`, `server/research-library-store.mjs`, `indexCanonicalFact`/`evaluateResearchLibraryReuse` — **genuinely avoids both a refetch AND a re-extraction**, since the already-EXTRACTED VALUE is reused, proven with real data |
+| Source Library V0 (cross-mission **raw source locator/hash/policy-validation** reuse, SOURCE_CACHE_HIT/MISS/REJECTED_* outcomes) | `domain/research-library.mjs`, `indexSourceSnapshot`/`evaluateSourceLibraryReuse`/`reuseSourceSnapshotIntoNode` — **honest scope, read this precisely**: this codebase has NO durable raw-content (blob) store anywhere. A hit avoids redundant re-admission/re-validation of an already-vetted source's metadata, but does NOT avoid a real network refetch if you need the actual page CONTENT to extract a NEW field — check `contentReusableWithoutRefetch` on any entry (always `false` for every real source in this repo today, since no caller has ever supplied a real content reference). If your mission needs "the exact same already-extracted value," use Research Library (fact-level) above, not this. |
 | Artifact generation (status/completeness/review-items/provenance package/provider usage, full CSV+JSON output package) | `server/research-mission-driver.mjs` read surfaces; see the real pilot's 12-item output package for a worked example (§4) |
 | Crash/resume (durable, boundary-committed, ambiguity-classified on resume) | `domain/research-dispatch-bookkeeping.mjs`, `server/research-mission-driver.mjs`, proven under real simulated crashes in `test/research-mission-driver.test.mjs` |
 | Cost/provider governance (fail-closed metered spend gate) | `domain/research-cost-governance.mjs` |
@@ -46,6 +78,18 @@ code changes.
 | Completeness metrics (no opaque single quality score) | `domain/research-completeness.mjs` |
 
 ## 3. Exact repo-native entrypoints the Historical Redraft lane should use
+
+**HTTP surface** (`server/research-http-routes.mjs`, mounted live in
+`server/http-server.mjs`): `GET/POST /api/research/:missionId`,
+`GET .../review-items|completeness|artifacts|usage`,
+`POST .../nodes/:nodeId/cancel`, `POST .../nodes/:nodeId/dispatch`,
+`POST .../nodes/:nodeId/poll`. **Real, billable dispatch is gated OFF by
+default** — `POST .../dispatch` returns HTTP 403
+`TSF_RESEARCH_LIVE_DISPATCH_DISABLED` unless
+`TSF_RESEARCH_LIVE_DISPATCH_ENABLED=1` is explicitly set in the server's
+environment. `poll` is never gated (structurally cannot create a new
+provider run). Everything else (create/read/artifacts/cancel) is
+unaffected either way.
 
 **Do not call domain functions directly for real, persisted work** — use
 the durable driver (`server/research-mission-driver.mjs`), which wraps
