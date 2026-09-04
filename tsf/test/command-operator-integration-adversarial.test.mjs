@@ -60,23 +60,15 @@ test('SCENARIO: "What\'s going on with NWR?" -- STATUS intent, resolves via alia
 })
 
 // "Run Nytheria using TSF/Orca." combines three things this integration
-// must get right at once: alias resolution (Nytheria), a directive-shaped
-// sentence, and a literal infra-tooling mention of "TSF/Orca" in the SAME
-// message. Disclosed, pre-existing, orthogonal limitation (present before
-// either candidate and unchanged by this merge): "Run X" is not itself one
-// of chat-responder.mjs's recognized dispatch-trigger phrases (its
-// vocabulary is "go ahead"/"proceed with"/"build that"/etc, never a bare
-// "run"), so this classifies GENERAL, not DISPATCH_REQUEST -- no dispatch
-// happens. That is a real, disclosed vocabulary gap, not a regression
-// introduced by reconciling these two candidates (neither one touches the
-// INTENTS trigger-phrase list). What this pins is narrower and IS this
-// integration's own territory: the infra mention must never corrupt
-// resolution -- Nytheria/WorldForge must still resolve via alias, and
-// tsf-orca must never appear as a false match from the "TSF/Orca" phrase.
-test('SCENARIO: "Run Nytheria using TSF/Orca." -- alias resolves correctly, infra mention never produces a false tsf-orca match, no dispatch (GENERAL intent -- disclosed pre-existing vocabulary gap, not a regression)', () => {
+// must get right at once: alias resolution (Nytheria), a bare-imperative
+// directive ("Run X" -- Command final hands-on hardening fixed this to
+// classify DISPATCH_REQUEST, see chat-responder.mjs's BARE_IMPERATIVE
+// alternative), and a literal infra-tooling mention of "TSF/Orca" in the
+// SAME message that must never corrupt resolution.
+test('SCENARIO: "Run Nytheria using TSF/Orca." -- bare imperative recognized as DISPATCH_REQUEST, alias resolves correctly, infra mention never produces a false tsf-orca match', () => {
   const message = 'Run Nytheria using TSF/Orca.'
-  assert.equal(classifyIntent(message), 'GENERAL')
-  assert.equal(classifyDecision(message, 'GENERAL'), 'AUTO_DECIDE')
+  assert.equal(classifyIntent(message), 'DISPATCH_REQUEST')
+  assert.equal(classifyDecision(message, 'DISPATCH_REQUEST'), 'RECOMMEND_AND_PROCEED')
   const { matches } = resolveProjectsFromText(message, REAL_PROJECTS)
   assert.deepEqual(ids(matches), ['worldforge-sablewake-live-runtime-repair-v3'])
   assert.equal(matches[0].matchedOn, 'alias')

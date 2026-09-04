@@ -54,7 +54,8 @@ const TIM_REQUIRED_PATTERNS = [
 // interrogative in structure regardless of punctuation, so it stays
 // unconditional.
 const BARE_OPENER = /^\s*(?:is|are|was|would|will|should|could|can|what|why|when|whether|how)\b/i
-const TELL_ME_WHETHER = /\b(?:tell me|let me know|explain|assess|evaluate|prepare)\b[\s\S]*\bwhether\b/i
+const TELL_ME_WHETHER =
+  /\b(?:tell me|let me know|explain|assess|evaluate|prepare)\b[\s\S]*\bwhether\b/i
 const PROHIBITION_MARKERS =
   /\b(?:no|not|never|don['’]t|do not|won['’]t|without|isn['’]t|aren['’]t|shouldn['’]t|wouldn['’]t|couldn['’]t|can['’]t|cannot|none of)\b/i
 // Second-independent-verification-pass finding (real, reproduced, pre-
@@ -195,8 +196,34 @@ const INTENTS = [
     // through to GENERAL and never dispatched, forcing a repeated ask
     // instead of consuming the explicit authorization once. Broadened to
     // any following word/id-shaped token, not just the three pronouns.
+    //
+    // Command final hands-on hardening: bare imperatives ("Run Nytheria",
+    // "Start WorldForge", "Run Nytheria overnight") are Command's own stated
+    // main-surface vocabulary but were not recognized at all -- disclosed as
+    // a usability gap, not a regression, but a real one for the surface
+    // meant to be the primary conversational control plane. BARE_IMPERATIVE
+    // is deliberately ANCHORED to the start of its own clause (after
+    // matchesAsGenuineDirective's own per-clause split), not a bare \brun\b/
+    // \bstart\b anywhere -- a clause has to actually OPEN with the verb to
+    // count. That alone is what keeps every non-dispatch "run"/"start"
+    // sentence in ordinary use out of this pattern without needing a second
+    // negation/question check: "what's running right now?" (already its own
+    // earlier-checked STATUS intent), "is the test still running?", "how do
+    // I run the migration?", and "the CI run failed" all have "run" only as
+    // a noun/gerund or mid-sentence, never as the clause's own opening verb,
+    // so the anchor alone excludes them -- reusing isGenuineDirective (via
+    // directiveOnly below) is what then separately rejects a genuine
+    // question ("Run Nytheria?") or negated form ("Don't run Nytheria" does
+    // not even reach isGenuineDirective -- "don't" is the clause's own first
+    // word, so the anchor itself never matches). "run into" (a common
+    // encounter-idiom, "ran into an issue") is the one disclosed, explicitly
+    // reproduced false-positive shape and is excluded here directly; "start
+    // over" (restart-from-scratch idiom) is a narrower, disclosed residual
+    // gap left unhandled rather than guessed at, matching this file's own
+    // stated convention (see PROHIBITION_MARKERS's own header) -- extend
+    // this exclusion, not the anchor shape, if another such idiom is found.
     pattern:
-      /\b(go ahead|go for it|please proceed|proceed with [\w-]+|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b/i,
+      /\b(go ahead|go for it|please proceed|proceed with [\w-]+|build (that|this|it)|do (the recommended( next)? step|it|that)|sounds good,? (go ahead|do it))\b|^\s*(?:please\s+)?(?:run(?!\s*into\b)|start)\b/i,
     // Adversarial-review finding (2nd pass): a first fix here only guarded
     // the "proceed" alternative, only against negation words immediately
     // adjacent, and against the WHOLE message rather than per-clause --
