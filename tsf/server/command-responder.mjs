@@ -25,6 +25,7 @@ import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { classifyResearchIntent, respondResearchCommand } from './command-research-bridge.mjs'
 import { advisorySafeProjects, buildGlobalAdvisoryText, classifyGlobalScope } from './command-scope-classifier.mjs'
 import { classifyContinueAction, classifyRunActionVerb, pauseProjectRun, resumeProjectRun } from './command-run-action-bridge.mjs'
+import { explainPriorAnswer } from './command-followup-context.mjs'
 
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
 export const DISPATCH_WORTHY_INTENTS = new Set(['DISPATCH_REQUEST', 'FIX_REQUEST'])
@@ -298,6 +299,35 @@ export async function respondCommand({
   }
 
   if (!DISPATCH_WORTHY_INTENTS.has(intent)) {
+    // Gap 1, final conversational-context pass: explanatory follow-ups
+    // ("what does that mean?", "why?", "why that one?", "why is it stuck?",
+    // "what's blocking it?", "explain that", "is that bad?"). Checked
+    // BEFORE the plain back-reference fallback below -- some of these
+    // phrasings (e.g. "why that one?") also match BACK_REFERENCE_PATTERN,
+    // and a "why" question is more specific than a bare status
+    // back-reference: asking why deserves an explanation, not a status
+    // repeat. Also checked before the live-planner scope classifier
+    // further down -- a deterministic pattern match against a real,
+    // bounded prior-answer summary is more specific and certain than a
+    // live classification call, and explainPriorAnswer is read-only by
+    // construction (see its own header: context establishes referent
+    // only, never authority).
+    if (resolution.matches.length === 0) {
+      const explanation = explainPriorAnswer({ message, opState, projects, clock })
+      if (explanation) {
+        return {
+          intent: 'FOLLOW_UP_EXPLANATION',
+          decisionClass,
+          text: explanation.text,
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel: 'PLANNER_DEEP · fresh explanation from current canonical state, no live call made',
+          live: false,
+          resolvedProjectIds: explanation.resolvedProjectIds,
+          researchMissionId: explanation.researchMissionId,
+          scope: explanation.scope
+        }
+      }
+    }
     // Read-only: every resolved match (exact or fuzzy) is safe to use for
     // an informational answer -- no action is ever taken here.
     if (resolution.matches.length === 0 && BACK_REFERENCE_PATTERN.test(message)) {

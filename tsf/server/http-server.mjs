@@ -504,14 +504,19 @@ export function createRequestHandler(options = {}) {
                 at: new Date().toISOString(),
                 decisionClass: commandResult.decisionClass,
                 intent: commandResult.intent,
-                // Bounded follow-up conversational context: the ONLY thing
-                // a later turn's back-reference resolution ("what about
-                // it?") is allowed to read -- see
-                // command-responder.mjs's lastReferencedProjectId. Persisted
-                // here (not recomputed from `content` text later) so it's
-                // exactly what THIS turn actually resolved to, never a
-                // re-guess from prose.
+                // Bounded semantic conversation record -- NOT the raw
+                // answer text replayed later (command-followup-context.mjs
+                // never reads `content` above for a follow-up; it recomputes
+                // a fresh explanation from CURRENT canonical state using
+                // only this bounded reference). The ONLY fields a later
+                // turn's back-reference resolution ("what about it?", "run
+                // it") or explanatory follow-up ("why is it stuck?", "what
+                // does that mean?") is allowed to read. Persisted here (not
+                // recomputed from `content` text later) so it's exactly
+                // what THIS turn actually resolved to, never a re-guess
+                // from prose.
                 resolvedProjectIds: commandResult.resolvedProjectIds ?? [],
+                researchMissionId: commandResult.researchMissionId ?? null,
                 scope: commandResult.scope ?? null
               }
             ].slice(-200)

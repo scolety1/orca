@@ -49,7 +49,7 @@ async function turn(message, projects, extra = {}) {
   threads.__command__ = [
     ...(threads.__command__ ?? []),
     { role: 'user', content: message, at: clock().toISOString() },
-    { role: 'assistant', content: result.text, at: clock().toISOString(), decisionClass: result.decisionClass, intent: result.intent, resolvedProjectIds: result.resolvedProjectIds, scope: result.scope }
+    { role: 'assistant', content: result.text, at: clock().toISOString(), decisionClass: result.decisionClass, intent: result.intent, resolvedProjectIds: result.resolvedProjectIds, researchMissionId: result.researchMissionId ?? null, scope: result.scope }
   ]
   const { saveState } = await import('../server/data-store.mjs')
   saveState({ ...fresh, chatThreads: threads })
@@ -60,56 +60,84 @@ async function seedActiveRun(projectId) {
   await withKeepGoingRun(projectId, () => createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock))
 }
 
+async function seedNeedsYouRun(projectId, question) {
+  await withKeepGoingRun(projectId, (current) => {
+    const run = current ?? createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock)
+    return { ...run, state: 'NEEDS_YOU', needsYou: [{ id: 'q1', question, resolvedAt: null }] }
+  })
+}
+
 // ---------------------------------------------------------------------
-// A. global status -> explanation -> Needs You
+// A. global status -> what does that mean? -> Needs You -> why is that blocked?
 // ---------------------------------------------------------------------
-test('dogfood A: global status -> Needs You (real state after each turn)', async () => {
+test('dogfood A: global status -> what does that mean? -> what needs me? -> why is that blocked? (real state after each turn)', async () => {
   await seedActiveRun('dogfood-a-project')
-  const projects = [project('dogfood-a-project', 'Dogfood A Project')]
+  await seedNeedsYouRun('dogfood-a-blocked-project', 'A real decision is pending on dogfood-a-blocked-project')
+  const projects = [project('dogfood-a-project', 'Dogfood A Project'), project('dogfood-a-blocked-project', 'Dogfood A Blocked Project')]
 
   const status = await turn("what's running right now?", projects)
   assert.equal(status.scope, 'FLEET')
   assert.match(status.text, /Dogfood A Project/)
 
-  // Disclosed gap, not silently faked: "what does that mean?" (following
-  // up on the PRIOR ANSWER's own content, not a project referent) is real,
-  // bounded follow-up work not built this round -- conversational context
-  // here resolves WHICH PROJECT, not "what did you just say". Proven here
-  // as an honest non-crash, non-fabricated degrade, not a working feature.
+  // "what does that mean?" on a fleet-wide status answer has no single
+  // project/mission referent -- Gap 1's honest "nothing specific" answer,
+  // never a fabricated action.
   const explanation = await turn('what does that mean?', projects)
+  assert.equal(explanation.intent, 'FOLLOW_UP_EXPLANATION')
   assert.doesNotMatch(explanation.text, /^Paused|^Resumed|^Cancelled|^Created a real research mission/, 'must never fabricate an action from an unresolvable meta-question')
 
   const needsYou = await turn('what needs me?', projects)
-  assert.match(needsYou.text, /nothing needs you/i)
+  assert.match(needsYou.text, /Dogfood A Blocked Project/)
+  assert.match(needsYou.text, /A real decision is pending/)
+
+  // Gap 1: "why is that blocked?" now explains the REAL open item behind
+  // the just-given Needs You answer, not a generic non-answer.
+  const why = await turn('why is that blocked?', projects)
+  assert.equal(why.intent, 'FOLLOW_UP_EXPLANATION')
+  assert.match(why.text, /Dogfood A Blocked Project/)
+  assert.match(why.text, /A real decision is pending/)
 })
 
 // ---------------------------------------------------------------------
-// B. project status -> why -> run it
+// B. project status -> why? -> run it -> what's it doing now?
 // ---------------------------------------------------------------------
-test('dogfood B: project status -> run it (back-reference resolves identity, real dispatch attempted)', async () => {
+test("dogfood B: what's going on with NWR? -> why? -> run it -> what's it doing now?", async () => {
   const projects = [project('dogfood-b-nwr', 'NWR')]
   const status = await turn('what is the current state of dogfood-b-nwr', projects)
   assert.deepEqual(status.resolvedProjectIds, ['dogfood-b-nwr'])
 
-  // Disclosed gap: bare "why?" (FOLLOW_UP_EXPLANATION) is not built this
-  // round -- chat-responder.mjs's RATIONALE pattern requires "why did
-  // you"/"why choose", not a bare "why?". Proven honest, not fabricated.
+  // Gap 1: bare "why?" now resolves to the prior turn's project and
+  // explains its real current state -- never fabricates an action.
   const why = await turn('why?', projects)
+  assert.equal(why.intent, 'FOLLOW_UP_EXPLANATION')
+  assert.deepEqual(why.resolvedProjectIds, ['dogfood-b-nwr'])
+  assert.match(why.text, /NWR/)
   assert.doesNotMatch(why.text, /^Paused|^Resumed|^Cancelled/)
 
   const runIt = await turn('run it', projects)
   assert.deepEqual(runIt.resolvedProjectIds, ['dogfood-b-nwr'])
   assert.ok(runIt.dispatchResults, 'a real dispatch attempt was made against the back-referenced project')
+
+  const now = await turn("what's that project doing now?", projects)
+  assert.deepEqual(now.resolvedProjectIds, ['dogfood-b-nwr'])
+  assert.match(now.text, /NWR/)
 })
 
 // ---------------------------------------------------------------------
-// C. safe-project advisory -> run that -> prove durable state
+// C. safe-project advisory -> why that one? -> run that -> prove durable state
 // ---------------------------------------------------------------------
-test('dogfood C: safe-project advisory -> run that -> real durable dispatch attempt', async () => {
+test('dogfood C: find me something safe to test on -> why that one? -> run that -> real durable dispatch attempt', async () => {
   const projects = [project('dogfood-c-real', 'Dogfood C Real'), project('dogfood-c-test-project', 'dogfood-c-TEST-project')]
   const advisory = await turn('find me something safe to test on', projects)
   assert.deepEqual(advisory.resolvedProjectIds, ['dogfood-c-test-project'], 'exactly one safe candidate -- remembered as a back-reference target')
   assert.equal(advisory.dispatchResults, undefined, 'advisory alone never dispatches')
+
+  // Gap 1: "why that one?" grounds in real current state -- never a
+  // fabricated action, never a repeat of the raw prior answer text.
+  const why = await turn('why that one?', projects)
+  assert.equal(why.intent, 'FOLLOW_UP_EXPLANATION')
+  assert.match(why.text, /dogfood-c-TEST-project/)
+  assert.doesNotMatch(why.text, /^Paused|^Resumed|^Cancelled/)
 
   const runThat = await turn('run that', projects)
   assert.deepEqual(runThat.resolvedProjectIds, ['dogfood-c-test-project'])
@@ -131,6 +159,29 @@ test('dogfood D: research request -> status -> completeness -> artifacts, all gr
     const status = await turn("what's the research doing?", [])
     assert.equal(status.researchMissionId, missionId)
     assert.match(status.text, /CREATED/)
+
+    // Gap 1: "what does that mean?" grounds in the REAL current mission
+    // phase, resolved via the persisted conversational context, not a
+    // repeat of the raw status text.
+    const explanation = await turn('what does that mean?', [])
+    assert.equal(explanation.intent, 'FOLLOW_UP_EXPLANATION')
+    assert.equal(explanation.researchMissionId, missionId)
+    assert.match(explanation.text, /CREATED/)
+
+    // Gap 2: "could Exa help?" resolves THIS mission from conversational
+    // context (no id in the message) and answers advisory-only.
+    const advisory = await turn('could Exa help?', [])
+    assert.equal(advisory.intent, 'RESEARCH_PAID_ADVISORY')
+    assert.equal(advisory.researchMissionId, missionId)
+    assert.equal(advisory.live, false)
+    assert.equal(readActiveResearchPaidApproval(missionId, EXA_PROVIDER_ID, clock), null, 'advisory alone must never grant anything')
+
+    // "use Exa up to $2" is the existing explicit scoped-approval flow --
+    // a durable grant, still zero actual spend (no dispatch call made).
+    const grant = await turn('use Exa up to $2', [])
+    assert.match(grant.text, /Approved/)
+    const approval = readActiveResearchPaidApproval(missionId, EXA_PROVIDER_ID, clock)
+    assert.equal(approval.maxSpendUsd, 2)
 
     const completeness = await turn('how complete is it?', [])
     assert.equal(completeness.researchMissionId, missionId)

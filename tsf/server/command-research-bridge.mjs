@@ -154,8 +154,55 @@ function mostRecentMissionId(opState) {
   return missions.slice().sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0].id
 }
 
+// Gap 2 (final conversational-context pass): "could Exa help?" and every
+// other missionId-less follow-up must resolve the mission THIS
+// CONVERSATION was actually about, not merely "whichever mission was
+// touched most recently anywhere in the system" -- a real risk once more
+// than one mission genuinely exists (a second mission progressing in the
+// background, e.g. via another session, must never silently hijack "it"
+// away from the one Tim is actually talking to). Reads the SAME bounded
+// per-turn record command-followup-context.mjs's lastAnswerSummary reads
+// (chatThreads.__command__'s persisted researchMissionId), never the raw
+// answer text.
+function lastReferencedMissionId(opState) {
+  const thread = opState.chatThreads?.__command__ ?? []
+  const known = new Set(Object.keys(opState.researchMissions ?? {}))
+  for (let i = thread.length - 1; i >= 0; i -= 1) {
+    const entry = thread[i]
+    if (entry.role === 'assistant' && entry.researchMissionId && known.has(entry.researchMissionId)) {
+      return entry.researchMissionId
+    }
+  }
+  return null
+}
+
+// The one real resolution priority every missionId-less follow-up in this
+// file should use: explicit mention > this conversation's own history >
+// (only when the system genuinely has exactly one mission at all, so
+// there is nothing to actually be ambiguous about) the sole existing
+// mission. Returns { missionId, ambiguous } -- ambiguous:true means
+// "more than one mission exists and neither an explicit name nor this
+// conversation's own history picked one", the caller's cue to ask rather
+// than guess (never falls back to raw recency, which is not a real
+// conversational signal).
+function resolveMissionContext(message, opState) {
+  const explicit = explicitMissionIdIn(message, opState)
+  if (explicit) return { missionId: explicit, ambiguous: false }
+  const contextual = lastReferencedMissionId(opState)
+  if (contextual) return { missionId: contextual, ambiguous: false }
+  const known = Object.keys(opState.researchMissions ?? {})
+  if (known.length === 1) return { missionId: known[0], ambiguous: false }
+  if (known.length > 1) return { missionId: null, ambiguous: true }
+  return { missionId: null, ambiguous: false }
+}
+
 function noMissionYetText() {
   return "There's no research mission yet to talk about -- say what to research (e.g. \"research 2019 NFL rookie WRs\" or \"build me a dataset of X\") and I'll start a real, durable one."
+}
+
+function ambiguousMissionText(opState) {
+  const ids = Object.keys(opState.researchMissions ?? {})
+  return `More than one research mission exists and it's not clear which one you mean (${ids.join(', ')}) -- name the one you're asking about.`
 }
 
 function result({ intent, decisionClass, text, live, researchMissionId = null }) {
@@ -180,7 +227,11 @@ export async function respondResearchCommand({ message, opState, clock = () => n
 
   if (intent === 'RESEARCH_PAID_GRANT') {
     const grant = parsePaidGrant(message)
-    const missionId = explicitMissionIdIn(message, opState) ?? mostRecentMissionId(opState)
+    const missionContext = resolveMissionContext(message, opState)
+    if (missionContext.ambiguous) {
+      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+    }
+    const missionId = missionContext.missionId
     if (!missionId) {
       return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
     }
@@ -204,7 +255,11 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     // $ amount, and Command's own initiative during a continue cycle,
     // requestResearchPaidApprovalDurable below). This branch never
     // mutates mission state at all.
-    const missionId = explicitMissionIdIn(message, opState) ?? mostRecentMissionId(opState)
+    const missionContext = resolveMissionContext(message, opState)
+    if (missionContext.ambiguous) {
+      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+    }
+    const missionId = missionContext.missionId
     if (!missionId) {
       return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
     }
@@ -217,7 +272,11 @@ export async function respondResearchCommand({ message, opState, clock = () => n
   }
 
   if (intent === 'RESEARCH_CANCEL') {
-    const missionId = explicitMissionIdIn(message, opState) ?? mostRecentMissionId(opState)
+    const missionContext = resolveMissionContext(message, opState)
+    if (missionContext.ambiguous) {
+      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+    }
+    const missionId = missionContext.missionId
     if (!missionId) {
       return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
     }
@@ -242,7 +301,11 @@ export async function respondResearchCommand({ message, opState, clock = () => n
   }
 
   if (intent === 'RESEARCH_ARTIFACTS' || intent === 'RESEARCH_STATUS' || intent === 'RESEARCH_COMPLETENESS' || intent === 'RESEARCH_CONFLICTS') {
-    const missionId = explicitMissionIdIn(message, opState) ?? mostRecentMissionId(opState)
+    const missionContext = resolveMissionContext(message, opState)
+    if (missionContext.ambiguous) {
+      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+    }
+    const missionId = missionContext.missionId
     if (!missionId) {
       return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
     }
@@ -295,7 +358,11 @@ export async function respondResearchCommand({ message, opState, clock = () => n
   const freeOnly = isFreeOnlyRequest(message)
   const topic = extractResearchTopic(message)
   const explicitId = explicitMissionIdIn(message, opState)
-  let missionId = explicitId ?? (topic ? slugify(topic) : mostRecentMissionId(opState))
+  // Pronoun-only continuation ("continue it"/"research this deeply"):
+  // prefer THIS conversation's own history over blind system-wide
+  // recency, same reasoning as resolveMissionContext above -- a second
+  // mission progressing elsewhere must never silently steal "it".
+  let missionId = explicitId ?? (topic ? slugify(topic) : (lastReferencedMissionId(opState) ?? mostRecentMissionId(opState)))
 
   if (!missionId) {
     return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })

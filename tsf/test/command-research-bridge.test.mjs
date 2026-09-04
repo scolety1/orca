@@ -62,6 +62,42 @@ function freshOpState() {
   return loadState()
 }
 
+// Mirrors http-server.mjs's own real chat-save exactly (see that file's
+// comment on the bounded semantic record) -- this test file calls
+// respondResearchCommand directly, bypassing the HTTP layer that would
+// normally persist this after every real turn.
+async function persistCommandTurn(reply) {
+  const { saveState } = await import('../server/data-store.mjs')
+  const state = loadState()
+  const threads = { ...state.chatThreads }
+  threads.__command__ = [
+    ...(threads.__command__ ?? []),
+    { role: 'assistant', content: reply.text, at: clock().toISOString(), decisionClass: reply.decisionClass, intent: reply.intent, resolvedProjectIds: reply.resolvedProjectIds ?? [], researchMissionId: reply.researchMissionId ?? null, scope: reply.scope }
+  ]
+  saveState({ ...state, chatThreads: threads })
+}
+
+// Earlier tests in this file persist real __command__ chat context into the
+// shared on-disk state (same pattern production uses); a test that means to
+// prove the "no conversational context at all" case has to actually clear
+// that, not just assume it -- otherwise it's testing leftover context from
+// whatever ran before it, not the no-context case its name claims.
+async function clearCommandThread() {
+  const { saveState } = await import('../server/data-store.mjs')
+  const state = loadState()
+  saveState({ ...state, chatThreads: { ...state.chatThreads, __command__: [] } })
+}
+
+// Same reasoning as clearCommandThread: this file's tests share one
+// on-disk state, so missions from earlier tests really do accumulate --
+// a test that means to prove the genuinely-zero-missions case has to wipe
+// this too, or it's testing "many missions, no context" instead.
+async function clearAllResearchMissions() {
+  const { saveState } = await import('../server/data-store.mjs')
+  const state = loadState()
+  saveState({ ...state, researchMissions: {} })
+}
+
 function fieldSpec(fieldNames, { allowLibraryReuse = true } = {}) {
   return {
     schemaVersion: 'TSF_RESEARCH_SPECIFICATION_V1',
@@ -164,9 +200,14 @@ test('bridge: create/continue routes to real durable ResearchMission state, not 
   assert.equal(status.state, 'ACTIVE')
 })
 
-test('bridge: a follow-up question resolves the most-recently-touched mission without being told its name again', async () => {
+test('bridge: a follow-up question resolves THIS CONVERSATION\'s own mission without being told its name again -- even with other missions in the system', async () => {
   const created = await respondResearchCommand({ message: 'Research bridge follow-up topic', opState: freshOpState(), clock })
   assert.ok(created.researchMissionId)
+  // Simulates http-server.mjs's own real chat-save (this unit test calls
+  // respondResearchCommand directly, bypassing that layer) -- conversation
+  // context is exactly this persisted record, never re-derived from raw
+  // recency (see resolveMissionContext's own header).
+  await persistCommandTurn(created)
   const status = await respondResearchCommand({ message: "What's the research doing?", opState: freshOpState(), clock })
   assert.equal(status.researchMissionId, created.researchMissionId)
   assert.match(status.text, /ACTIVE/)
@@ -394,11 +435,72 @@ test('RESEARCH_CANCEL ("cancel it"): really cancels the real durable mission (BL
   assert.match(second.text, /Couldn't cancel/)
 })
 
-test('RESEARCH_CANCEL: bare "cancel it" (no id in the message) resolves the most-recently-touched real mission from real durable state', async () => {
+test('RESEARCH_CANCEL: bare "cancel it" (no id in the message) resolves THIS CONVERSATION\'s own mission, even with other missions in the system', async () => {
   const missionId = 'mission:cancel-backref-test'
   await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+  // Establishes real conversational context first -- exactly what a real
+  // Tim conversation does (ask about it, THEN say "cancel it") -- never
+  // relying on raw system-wide recency (resolveMissionContext's own
+  // header).
+  const status = await respondResearchCommand({ message: `research status for ${missionId}`, opState: freshOpState(), clock })
+  assert.equal(status.researchMissionId, missionId)
+  await persistCommandTurn(status)
+
   const reply = await respondResearchCommand({ message: 'cancel it', opState: freshOpState(), clock })
   assert.match(reply.text, /^Cancelled/)
   assert.match(reply.text, new RegExp(missionId))
   assert.equal(readResearchMissionStatus(missionId).state, 'BLOCKED')
+})
+
+test('RESEARCH_CANCEL/RESEARCH_PAID_ADVISORY: with NO conversational context and MULTIPLE missions in the system, a bare "cancel it"/"could Exa help?" asks which one rather than guessing by raw recency', async () => {
+  const a = 'mission:ambiguous-a'
+  const b = 'mission:ambiguous-b'
+  for (const id of [a, b]) {
+    await createResearchMissionDurable(id, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+  }
+  await clearCommandThread()
+  const cancelReply = await respondResearchCommand({ message: 'cancel it', opState: freshOpState(), clock })
+  assert.match(cancelReply.text, /more than one research mission/i)
+  assert.doesNotMatch(cancelReply.text, /^Cancelled/)
+
+  const adviceReply = await respondResearchCommand({ message: 'could Exa help?', opState: freshOpState(), clock })
+  assert.match(adviceReply.text, /more than one research mission/i)
+})
+
+test('Gap 2: RESEARCH_STATUS turn -> bare "could Exa help?" resolves the mission JUST discussed, purely from conversational context (no id in either message)', async () => {
+  const missionId = 'mission:advisory-after-status'
+  await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+  await clearCommandThread()
+  const status = await respondResearchCommand({ message: `research status for ${missionId}`, opState: freshOpState(), clock })
+  assert.equal(status.researchMissionId, missionId)
+  await persistCommandTurn(status)
+
+  const advice = await respondResearchCommand({ message: 'could Exa help?', opState: freshOpState(), clock })
+  assert.equal(advice.intent, 'RESEARCH_PAID_ADVISORY')
+  assert.equal(advice.researchMissionId, missionId)
+  assert.equal(advice.live, false)
+  assert.equal(readActiveResearchPaidApproval(missionId, EXA_PROVIDER_ID, clock), null)
+})
+
+test('Gap 2: an EXPLICIT mission id in the message always outranks stale conversational context', async () => {
+  const stale = 'mission:advisory-stale'
+  const real = 'mission:advisory-real-target'
+  await createResearchMissionDurable(stale, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+  await createResearchMissionDurable(real, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+  await clearCommandThread()
+  const status = await respondResearchCommand({ message: `research status for ${stale}`, opState: freshOpState(), clock })
+  assert.equal(status.researchMissionId, stale)
+  await persistCommandTurn(status)
+
+  const advice = await respondResearchCommand({ message: `could Exa help with ${real}?`, opState: freshOpState(), clock })
+  assert.equal(advice.researchMissionId, real, 'the explicitly-named mission wins over the stale context from the prior turn')
+})
+
+test('Gap 2: no prior research context and no missions at all -> bounded clarification, never a guess at an unrelated project', async () => {
+  await clearCommandThread()
+  await clearAllResearchMissions()
+  const advice = await respondResearchCommand({ message: 'could Exa help?', opState: freshOpState(), clock })
+  assert.equal(advice.researchMissionId, null)
+  assert.doesNotMatch(advice.text, /more than one research mission/i, 'zero missions is not the ambiguous-multiple case')
+  assert.match(advice.text, /no research mission yet/i)
 })
