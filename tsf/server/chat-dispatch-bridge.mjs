@@ -16,6 +16,11 @@ import { tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
 import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
 import { createOrcaWorktree, findRegisteredOrcaRepo } from '../adapters/orca-cli-bridge.mjs'
 import { resolveRepositoryIdentity } from './repository-identity.mjs'
+import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
+import {
+  classifyResourcePressureTier,
+  buildAdmissionPolicy
+} from '../domain/resource-pressure-governor.mjs'
 
 const WORK_PLAN_SYSTEM_PROMPT = [
   'You are the TSF (Thousand Sunny Fleet) Planner producing a BOUNDED, SAFE',
@@ -161,6 +166,33 @@ export async function planAndDispatchFromChat({
       reason: 'RUN_NOT_DISPATCHABLE',
       detail: recoveryHintFor(existingRun.state),
       run: existingRun
+    }
+  }
+
+  // Resource Pressure Governor gate (Main TSF overnight review, bounded
+  // correction): checked BEFORE the planner call below, not just before
+  // the eventual worker spawn -- invokeStructured is itself a real,
+  // costly live-provider call, and refusing only after paying for it
+  // would defeat the point of gating under CRITICAL/EMERGENCY host
+  // memory. Only hard-refuses at CRITICAL/EMERGENCY (mirrors this
+  // codebase's fail-closed-but-don't-over-block philosophy: PRESSURED
+  // still admits a single project's dispatch here rather than blocking
+  // ordinary work, leaving multi-mission throttling to the heavy-task
+  // lease that already gates full-suite/pilot/research-worker
+  // categories). Reads via the collector's real os.freemem()/totalmem()
+  // by default; tests use its existing TSF_RESOURCE_PRESSURE_TEST_*_BYTES
+  // env-var seam or this function's own deps.collectHostMemoryEvidence
+  // override, same convention as http-resource-pressure-governor.test.mjs.
+  const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
+  const { availableBytes } = readHostMemory()
+  const tier = classifyResourcePressureTier(availableBytes)
+  const admission = buildAdmissionPolicy(tier)
+  if (admission.newHeavyweightWorkerDispatch === 'REFUSE') {
+    return {
+      ok: false,
+      reason: 'RESOURCE_PRESSURE_REFUSED',
+      detail: admission.reason,
+      tier
     }
   }
 

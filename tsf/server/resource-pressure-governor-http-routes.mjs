@@ -6,6 +6,7 @@
 // domain/resource-pressure-governor.mjs for the actual logic and
 // docs/tsf/TSF_RESOURCE_PRESSURE_GOVERNOR_V0.md for the design record.
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
+import { readLeases, withLeases } from './resource-pressure-lease-store.mjs'
 import {
   buildResourcePressureState,
   requestHeavyTaskLease,
@@ -13,17 +14,7 @@ import {
   classifyResourcePressureTier
 } from '../domain/resource-pressure-governor.mjs'
 
-function currentLeases(opState) {
-  return opState.resourcePressureLeases ?? {}
-}
-
-export async function handleResourcePressureGovernorRoute(
-  parts,
-  req,
-  res,
-  { opState },
-  { json, notFound, readBody, saveState }
-) {
+export async function handleResourcePressureGovernorRoute(parts, req, res, _ctx, { json, notFound, readBody }) {
   if (parts[1] !== 'resource-pressure') {
     return false
   }
@@ -41,7 +32,7 @@ export async function handleResourcePressureGovernorRoute(
       hostMemory: collectHostMemoryEvidence(),
       protectedProcesses: body?.protectedProcesses,
       missionsWaitingForResources: body?.missionsWaitingForResources,
-      leases: currentLeases(opState)
+      leases: await readLeases()
     })
     json(res, 200, { ok: true, state })
     return true
@@ -63,13 +54,15 @@ export async function handleResourcePressureGovernorRoute(
     }
     const { availableBytes } = collectHostMemoryEvidence()
     const tier = classifyResourcePressureTier(availableBytes)
-    const result = requestHeavyTaskLease(
-      currentLeases(opState),
-      { kind: body.kind, missionId: body.missionId, ttlMs: body.ttlMs },
-      tier
-    )
-    opState.resourcePressureLeases = result.leases
-    await saveState(opState)
+    let result
+    await withLeases((current) => {
+      result = requestHeavyTaskLease(
+        current,
+        { kind: body.kind, missionId: body.missionId, ttlMs: body.ttlMs },
+        tier
+      )
+      return result.leases
+    })
     json(res, 200, {
       ok: true,
       granted: result.granted,
@@ -94,12 +87,11 @@ export async function handleResourcePressureGovernorRoute(
       json(res, 422, { ok: false, error: 'kind and missionId are required strings' })
       return true
     }
-    const result = releaseHeavyTaskLease(currentLeases(opState), {
-      kind: body.kind,
-      missionId: body.missionId
+    let result
+    await withLeases((current) => {
+      result = releaseHeavyTaskLease(current, { kind: body.kind, missionId: body.missionId })
+      return result.leases
     })
-    opState.resourcePressureLeases = result.leases
-    await saveState(opState)
     json(res, 200, { ok: true, released: result.released, reason: result.reason })
     return true
   }

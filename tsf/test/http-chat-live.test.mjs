@@ -13,6 +13,12 @@ process.env.TSF_UI_STATE_FILE = STATE_FILE
 process.env.TSF_PLANNER_CLAUDE_COMMAND = STUB
 process.env.STUB_MODE = 'success'
 process.env.STUB_SESSION_ID = 'http-test-session'
+// Main TSF overnight review of Resource Pressure Governor V0: forced
+// HEALTHY so a genuinely shared, loaded host never makes this file's real
+// dispatch assertions flaky, same env-var seam
+// http-resource-pressure-governor.test.mjs already uses deterministically.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 // Imported after env is set: resolveAgentEntry/data-store read process.env at
 // call time, but importing after keeps this test file's intent explicit.

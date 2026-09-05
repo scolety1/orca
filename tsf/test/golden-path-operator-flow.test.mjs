@@ -34,6 +34,12 @@ process.env.STUB_ORCA_MODE = 'success'
 process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
 process.env.STUB_MODE = 'success'
 process.env.STUB_SESSION_ID = 'golden-path-operator-flow-test-session'
+// Main TSF overnight review of Resource Pressure Governor V0: forced
+// HEALTHY so a genuinely shared, loaded host never makes this file's real
+// dispatch assertions flaky, same env-var seam
+// http-resource-pressure-governor.test.mjs already uses deterministically.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 // resolveSenderTerminal (keep-going-dispatch-loop.mjs) short-circuits on
 // this env var -- clearing it makes a real tick deterministically exercise
 // the stub CLI's own `terminal create` handler, matching every other

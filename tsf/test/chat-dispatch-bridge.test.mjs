@@ -12,6 +12,13 @@ import { createOvernightRun, pauseRun } from '../domain/keep-going.mjs'
 // binary.
 process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
 process.env.STUB_ORCA_MODE = 'success'
+// Main TSF overnight review of Resource Pressure Governor V0: forced
+// HEALTHY for every test in this file EXCEPT the two below that
+// deliberately override deps.collectHostMemoryEvidence themselves (which
+// takes precedence over this env var) -- keeps this file's other,
+// unrelated dispatch assertions immune to a genuinely shared, loaded host.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const clock = () => new Date('2026-08-20T05:00:00.000Z')
 const PROJECT = { id: 'fixture:proj', displayName: 'Fixture Project' }
@@ -123,6 +130,54 @@ test('rejects a missing repository identity before ever calling the planner', as
   })
   assert.equal(result.ok, false)
   assert.equal(result.reason, 'TSF_MISSING_REPOSITORY_IDENTITY')
+})
+
+// REQUIRED PROOF (Main TSF overnight review of Resource Pressure Governor
+// V0, bounded correction): this is the one real heavy-operation dispatch
+// path TSF's server has today -- it must consult the governor before
+// spawning a new heavyweight Claude/Codex worker, and refuse outright
+// (never silently dispatch) under CRITICAL/EMERGENCY host memory.
+test('CRITICAL host memory refuses dispatch before the planner is ever called -- never a silent heavyweight spawn', async () => {
+  const store = makeFakeStore(null)
+  let plannerCalled = false
+  const result = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead and add a one-line doc note',
+    placement,
+    identity,
+    clock,
+    deps: {
+      ...baseDeps(store),
+      invokeLiveStructuredAnalysis: async () => {
+        plannerCalled = true
+        return workPlanResponse()
+      },
+      collectHostMemoryEvidence: () => ({ availableBytes: 2 * 1024 ** 3 }) // 2 GB free -> CRITICAL
+    }
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'RESOURCE_PRESSURE_REFUSED')
+  assert.equal(result.tier, 'CRITICAL')
+  assert.equal(plannerCalled, false, 'refused before ever paying for a live planner call')
+  assert.equal(store.readRun(), null, 'no run was created -- refused before ensureActiveRun too')
+})
+
+test('HEALTHY host memory dispatches normally through the resource-pressure gate', async () => {
+  const store = makeFakeStore(null)
+  const result = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead and add a one-line doc note',
+    placement,
+    identity,
+    clock,
+    deps: {
+      ...baseDeps(store),
+      invokeLiveStructuredAnalysis: async () => workPlanResponse(),
+      collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }) // 8 GB free -> HEALTHY
+    }
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.tickResult.action, 'WAVE_DISPATCHED')
 })
 
 test('a project with no Keep Going run yet: creates one and genuinely dispatches through the real tick path', async () => {

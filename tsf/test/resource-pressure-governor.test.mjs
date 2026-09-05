@@ -31,14 +31,23 @@ test('zero available memory is EMERGENCY, not a division/boundary artifact', () 
   assert.equal(classifyResourcePressureTier(0), 'EMERGENCY')
 })
 
-for (const bad of [null, undefined, NaN, -1, '4000000000', {}, []]) {
+for (const bad of [null, undefined, Number.NaN, -1, '4000000000', {}, []]) {
   test(`REQUIRED PROOF: unmeasurable/invalid availableBytes (${JSON.stringify(bad)}) fails closed to EMERGENCY, never HEALTHY`, () => {
     assert.equal(classifyResourcePressureTier(bad), 'EMERGENCY')
   })
 }
 
 test('admission policy: HEALTHY admits, PRESSURED delays, CRITICAL/EMERGENCY refuse -- uniformly across work categories', () => {
-  const categories = ['newFullSuiteTests', 'newBrowserPilots', 'newResearchWorkers']
+  // REQUIRED PROOF (Main TSF overnight review): the governing directive
+  // names four heavy-operation categories, not three -- newHeavyweightWorkerDispatch
+  // (chat-dispatch-bridge.mjs's real Keep Going Claude/Codex worker spawn)
+  // must be gated exactly like the other three, not silently exempt.
+  const categories = [
+    'newFullSuiteTests',
+    'newBrowserPilots',
+    'newResearchWorkers',
+    'newHeavyweightWorkerDispatch'
+  ]
   const expected = { HEALTHY: 'ADMIT', PRESSURED: 'DELAY', CRITICAL: 'REFUSE', EMERGENCY: 'REFUSE' }
   for (const [tier, decision] of Object.entries(expected)) {
     const policy = buildAdmissionPolicy(tier)

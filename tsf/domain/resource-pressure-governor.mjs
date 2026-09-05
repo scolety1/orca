@@ -79,6 +79,12 @@ export function buildAdmissionPolicy(tier) {
     newFullSuiteTests: decision,
     newBrowserPilots: decision,
     newResearchWorkers: decision,
+    // Main TSF overnight review finding: the original V0 candidate had no
+    // field for this category even though it's explicitly named in the
+    // governing directive alongside the other three -- Keep Going's own
+    // Claude/Codex worker dispatch (chat-dispatch-bridge.mjs) is the one
+    // heavy operation this consults today.
+    newHeavyweightWorkerDispatch: decision,
     reason
   }
 }

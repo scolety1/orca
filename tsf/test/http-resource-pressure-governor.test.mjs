@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { rmSync } from 'node:fs'
 
@@ -14,8 +15,17 @@ const STATE_FILE = path.join(
   '.local-state',
   `operator-state.test-http-resource-pressure-${process.pid}.json`
 )
+// Real regression this file itself caught (Main TSF overnight review):
+// the lease store is deliberately host-wide (see
+// server/resource-pressure-lease-store.mjs) via one fixed default OS-temp
+// path -- correct for production, but that same fixed default collided
+// across separate test runs/files with no per-process isolation, unlike
+// TSF_UI_STATE_FILE above. Scoped to a unique dir per test process, same
+// convention as STATE_FILE's own pid suffix.
+const LEASE_DIR = path.join(tmpdir(), `tsf-resource-pressure-lease-test-http-${process.pid}`)
 
 process.env.TSF_UI_STATE_FILE = STATE_FILE
+process.env.TSF_RESOURCE_PRESSURE_LEASE_DIR = LEASE_DIR
 process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 process.env.TSF_PLANNER_CODEX_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 process.env.TSF_ORCA_CLI_COMMAND = path.join(HERE, 'fixtures', 'stub-orca-cli.mjs')
@@ -64,6 +74,7 @@ function setFakeHostMemory(totalBytes, freeBytes) {
 test.after(() => {
   delete process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES
   delete process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES
+  rmSync(LEASE_DIR, { recursive: true, force: true })
 })
 
 const GB = 1024 ** 3

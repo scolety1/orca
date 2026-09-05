@@ -140,6 +140,13 @@ process.env.TSF_PLANNER_CODEX_COMMAND = NONEXISTENT
 process.env.STUB_MODE = 'success'
 process.env.TSF_ORCA_CLI_COMMAND = ORCA_STUB
 process.env.STUB_ORCA_MODE = 'success'
+// Main TSF overnight review of Resource Pressure Governor V0: real dispatch
+// now consults real host memory before spawning a heavyweight worker
+// (chat-dispatch-bridge.mjs). Forced HEALTHY so a genuinely shared, loaded
+// host never makes this file's real dispatch assertions flaky, same
+// env-var seam http-resource-pressure-governor.test.mjs already uses.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 
