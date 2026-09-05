@@ -180,6 +180,62 @@ test('HEALTHY host memory dispatches normally through the resource-pressure gate
   assert.equal(result.tickResult.action, 'WAVE_DISPATCHED')
 })
 
+// REQUIRED PROOF (independent adversarial review finding): if the inner
+// dispatchStep gate refuses AFTER this function's own upfront gate
+// admitted (e.g. real memory fluctuated between the two reads, or a
+// caller overrode only the upfront seam), the result must still be
+// honestly RESOURCE_PRESSURE_REFUSED -- never the raw internal action
+// name leaking through as a generic dispatch failure.
+test('a resource refusal from the INNER dispatch-loop gate (after the upfront gate already admitted) is still reported as RESOURCE_PRESSURE_REFUSED, never a raw action-name leak', async () => {
+  const store = makeFakeStore(null)
+  let calls = 0
+  // Simulates real memory fluctuating between the upfront read and the
+  // inner dispatchStep read moments later -- HEALTHY first, CRITICAL by
+  // the time dispatchStep's own gate reads it.
+  const fluctuatingMemory = () => {
+    calls += 1
+    return { availableBytes: (calls === 1 ? 8 : 2) * 1024 ** 3 }
+  }
+  const result = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead and add a one-line doc note',
+    placement,
+    identity,
+    clock,
+    deps: {
+      ...baseDeps(store),
+      invokeLiveStructuredAnalysis: async () => workPlanResponse(),
+      collectHostMemoryEvidence: fluctuatingMemory
+    }
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'RESOURCE_PRESSURE_REFUSED')
+  assert.notEqual(result.reason, 'DISPATCH_WAITING_FOR_RESOURCES', 'must never leak the raw internal action name as the reason')
+  assert.equal(result.tier, 'CRITICAL')
+})
+
+// REQUIRED PROOF: overriding ONLY this function's own upfront
+// collectHostMemoryEvidence seam (the one this file's other tests already
+// use) now also covers the inner dispatchStep gate by default -- the two
+// seams no longer silently disagree.
+test('overriding only the upfront resource-pressure seam also covers the inner dispatch-loop gate -- the two seams no longer disagree by default', async () => {
+  const store = makeFakeStore(null)
+  const result = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead and add a one-line doc note',
+    placement,
+    identity,
+    clock,
+    deps: {
+      ...baseDeps(store),
+      invokeLiveStructuredAnalysis: async () => workPlanResponse(),
+      collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }) // HEALTHY, consistently
+    }
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.tickResult.action, 'WAVE_DISPATCHED')
+})
+
 test('a project with no Keep Going run yet: creates one and genuinely dispatches through the real tick path', async () => {
   const store = makeFakeStore(null)
   const result = await planAndDispatchFromChat({

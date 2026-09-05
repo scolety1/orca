@@ -12,15 +12,16 @@
 // -- the governing requirement explicitly says a resource wait must never
 // look like a failure.
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
-import { classifyResourcePressureTier, buildAdmissionPolicy } from '../domain/resource-pressure-governor.mjs'
+import { classifyDispatchAdmission as classifyAdmission } from '../domain/resource-pressure-governor.mjs'
 
 export const DEFAULT_RESOURCE_PRESSURE = Object.freeze({ collectHostMemoryEvidence })
 
+// Independent-review finding: this "read host memory -> classify tier ->
+// check one admission category" pattern was independently re-implemented
+// three times across this codebase (here, chat-dispatch-bridge.mjs,
+// research-mission-fleet-driver.mjs) -- delegates to the one shared
+// domain-level implementation now, so a future change to tier semantics
+// or refusal wording can't silently drift between the three.
 export function classifyDispatchAdmission(resourcePressure) {
-  const tier = classifyResourcePressureTier(resourcePressure.collectHostMemoryEvidence().availableBytes)
-  return {
-    tier,
-    admitted: buildAdmissionPolicy(tier).newHeavyweightWorkerDispatch !== 'REFUSE',
-    reason: `host memory tier is ${tier} -- no new heavyweight dispatch until it clears`
-  }
+  return classifyAdmission(resourcePressure.collectHostMemoryEvidence(), 'newHeavyweightWorkerDispatch')
 }

@@ -180,6 +180,31 @@ test('mission-level: a dispatch-class action is only chosen when no cheaper work
   assert.deepEqual(decideNextMissionAction(baseMission([first, second])), { type: 'DISPATCH', nodeId: 'node:first' })
 })
 
+// REQUIRED PROOF (independent adversarial review finding on the fix
+// above): ESCALATE must NEVER preempt an earlier-declared, unblocked
+// DISPATCH -- ESCALATE raises mission.needsYou, and this function's own
+// top-of-function guard then blocks the ENTIRE mission (every node, not
+// just the escalated one) on every subsequent tick. Letting a later
+// node's exhausted-retry ESCALATE win ahead of an independent, healthy,
+// ready DISPATCH would freeze that unrelated real progress sooner than
+// the original declared-order-only policy ever would have -- worse than
+// the starvation bug this whole fix exists to prevent, just inverted.
+test('mission-level: ESCALATE never preempts an earlier, unblocked DISPATCH -- real progress happens before any escalation can freeze the mission', () => {
+  const readyToDispatch = baseNode({ id: 'node:ready', status: 'READY' })
+  const exhausted = baseNode({
+    id: 'node:exhausted',
+    status: 'FAILED',
+    retryCount: DEFAULT_RESEARCH_RETRY_BUDGET.maxRetriesPerNode
+  })
+  assert.deepEqual(decideNextMissionAction(baseMission([readyToDispatch, exhausted])), {
+    type: 'DISPATCH',
+    nodeId: 'node:ready'
+  })
+  // Only once nothing dispatchable/pollable/verifiable exists anywhere
+  // does ESCALATE finally win.
+  assert.deepEqual(decideNextMissionAction(baseMission([exhausted])).type, 'ESCALATE')
+})
+
 test('mission-level: every node terminal -> CHECK_COMPLETE; a genuinely stuck-but-not-terminal node -> NOTHING_TO_DO, never fabricated as complete', () => {
   const allAdmitted = baseMission([baseNode({ status: 'ADMITTED', canonicalFacts: [{ fieldName: 'value' }] })])
   assert.deepEqual(decideNextMissionAction(allAdmitted), { type: 'CHECK_COMPLETE' })

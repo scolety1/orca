@@ -137,26 +137,32 @@ export function decideNextNodeAction(node, isReady, budget = DEFAULT_RESEARCH_RE
   return null
 }
 
-// Actions that result in a real, resource-pressure-gated dispatch call in
-// the server driver. Main TSF Governor x Research Autonomy interaction
-// review finding: a naive single-pass "first actionable node in declared
-// order" scan let a resource-blocked DISPATCH candidate permanently starve
-// a LATER node's cheap, ungated work (POLL/VERIFY_AND_RECONCILE_FIELD/
-// ESCALATE) -- that later node's action never changes tick over tick since
-// the blocked dispatch candidate's own state never advances either, so it
-// would keep "winning" first place forever. The governing requirement is
-// explicit: "CRITICAL -> heavy research waits, lightweight reconciliation
-// continues where possible." Cheap work is now preferred mission-wide,
-// dispatch-class work only falls back to when nothing cheaper exists
-// anywhere in the mission -- this changes ordering for every tier, not
-// just constrained ones, which is also the more sensible general default
-// (finish what's already in flight before starting new work).
-const DISPATCH_ACTION_TYPES = new Set(['DISPATCH', 'RETRY_DISPATCH'])
+// Three priority tiers, not two. Main TSF Governor x Research Autonomy
+// interaction review found the original single-pass "first actionable
+// node in declared order" scan let a resource-blocked DISPATCH candidate
+// permanently starve a LATER node's cheap, ungated work -- fixed by
+// preferring non-dispatch work mission-wide. An independent adversarial
+// review then found that fix itself introduced a WORSE regression:
+// ESCALATE was bucketed as "cheap, non-dispatch" too, but ESCALATE has a
+// mission-wide side effect (mission.needsYou), and this function's own
+// top-of-function guard blocks the ENTIRE mission -- every other node,
+// including a fully independent, ready, healthy DISPATCH candidate --
+// once ANY needsYou is open. Letting a later-declared ESCALATE preempt an
+// earlier-declared, unblocked DISPATCH meant one exhausted/blocked node
+// now froze unrelated healthy progress SOONER than the original declared-
+// order-only policy ever would have. ESCALATE is therefore its own,
+// lowest tier: real, ungated work (POLL/VERIFY_AND_RECONCILE_FIELD) still
+// preempts a resource-blocked dispatch (the original fix's intent);
+// dispatch-class work still gets a chance to make real progress before
+// any escalation is allowed to freeze the mission; ESCALATE fires only
+// once nothing else anywhere in the mission can move forward at all.
+const TIER_RANK = { POLL: 0, VERIFY_AND_RECONCILE_FIELD: 0, DISPATCH: 1, RETRY_DISPATCH: 1, ESCALATE: 2 }
 
-// The one bounded action for this entire mission this tick -- the first
-// non-dispatch (cheap) actionable node in declared order, falling back to
-// the first dispatch-class one only when no cheaper work exists anywhere;
-// or a mission-level verdict once no node has anything left to do.
+// The one bounded action for this entire mission this tick -- the lowest-
+// tier actionable node in declared order (tier 0 cheap work, then tier 1
+// dispatch-class, then tier 2 escalation, each only chosen once no lower
+// tier has anything to do anywhere in the mission); or a mission-level
+// verdict once no node has anything left to do.
 export function decideNextMissionAction(mission, budget = DEFAULT_RESEARCH_RETRY_BUDGET) {
   if (mission.state !== 'ACTIVE') {
     return { type: 'NOTHING_TO_DO', reason: `mission state is ${mission.state}` }
@@ -165,21 +171,25 @@ export function decideNextMissionAction(mission, budget = DEFAULT_RESEARCH_RETRY
     return { type: 'NOTHING_TO_DO', reason: 'an open Needs You question is unresolved' }
   }
   const readyIds = new Set(readyResearchNodes(mission).map((n) => n.id))
-  let firstDispatchAction = null
+  const bestByTier = [null, null, null]
   for (const node of mission.nodes) {
     const action = decideNextNodeAction(node, readyIds.has(node.id), budget)
     if (!action) {
       continue
     }
-    if (!DISPATCH_ACTION_TYPES.has(action.type)) {
-      return action
+    const tier = TIER_RANK[action.type]
+    if (tier === 0) {
+      return action // Cheap, ungated work always wins immediately -- no reason to keep scanning.
     }
-    if (!firstDispatchAction) {
-      firstDispatchAction = action
+    if (bestByTier[tier] === null) {
+      bestByTier[tier] = action
     }
   }
-  if (firstDispatchAction) {
-    return firstDispatchAction
+  if (bestByTier[1]) {
+    return bestByTier[1]
+  }
+  if (bestByTier[2]) {
+    return bestByTier[2]
   }
   // No node had anything to do -- either genuinely complete, or every
   // remaining node is PENDING on a dependency that will never resolve

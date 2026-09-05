@@ -17,10 +17,7 @@ import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
 import { createOrcaWorktree, findRegisteredOrcaRepo } from '../adapters/orca-cli-bridge.mjs'
 import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
-import {
-  classifyResourcePressureTier,
-  buildAdmissionPolicy
-} from '../domain/resource-pressure-governor.mjs'
+import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
 
 const WORK_PLAN_SYSTEM_PROMPT = [
   'You are the TSF (Thousand Sunny Fleet) Planner producing a BOUNDED, SAFE',
@@ -184,15 +181,13 @@ export async function planAndDispatchFromChat({
   // env-var seam or this function's own deps.collectHostMemoryEvidence
   // override, same convention as http-resource-pressure-governor.test.mjs.
   const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
-  const { availableBytes } = readHostMemory()
-  const tier = classifyResourcePressureTier(availableBytes)
-  const admission = buildAdmissionPolicy(tier)
-  if (admission.newHeavyweightWorkerDispatch === 'REFUSE') {
+  const admission = classifyDispatchAdmission(readHostMemory(), 'newHeavyweightWorkerDispatch')
+  if (!admission.admitted) {
     return {
       ok: false,
       reason: 'RESOURCE_PRESSURE_REFUSED',
       detail: admission.reason,
-      tier
+      tier: admission.tier
     }
   }
 
@@ -263,7 +258,36 @@ export async function planAndDispatchFromChat({
   // Orca bridge/store without replacing tickKeepGoingRun wholesale --
   // separate from `deps.tickKeepGoingRun` above, which replaces the tick
   // function itself for tests that don't want to exercise it at all.
-  const tickResult = await tick(project.id, [candidateWorkItem], clock, deps.tickDeps ?? {})
+  // Independent-review finding: keep-going-dispatch-loop.mjs's own
+  // dispatchStep has ITS OWN resource-pressure gate (deps.tickDeps.
+  // resourcePressure), structurally independent of this function's
+  // upfront one (deps.collectHostMemoryEvidence) -- a caller overriding
+  // only this one for a test, expecting it to cover the whole dispatch,
+  // would silently fall back to the real collector for the inner gate.
+  // Threading the SAME readHostMemory through by default (an explicit
+  // deps.tickDeps.resourcePressure still wins if a caller wants to test
+  // them differently) makes overriding one seam actually cover both.
+  const tickDeps = {
+    ...deps.tickDeps,
+    resourcePressure: deps.tickDeps?.resourcePressure ?? { collectHostMemoryEvidence: readHostMemory }
+  }
+  const tickResult = await tick(project.id, [candidateWorkItem], clock, tickDeps)
+  // Independent-review finding: this generic branch below turned the
+  // inner gate's own DISPATCH_WAITING_FOR_RESOURCES into a plain ok:false
+  // with the raw action name as `reason`, indistinguishable in shape from
+  // a real dispatch failure -- directly contradicting "a resource wait
+  // must never look like a failure." Reuses the exact same
+  // RESOURCE_PRESSURE_REFUSED reason the upfront gate above already uses,
+  // so every caller/UI surface treats both refusal points identically.
+  if (tickResult.action === 'DISPATCH_WAITING_FOR_RESOURCES') {
+    return {
+      ok: false,
+      reason: 'RESOURCE_PRESSURE_REFUSED',
+      detail: tickResult.reason,
+      tier: tickResult.tier,
+      run: tickResult.run ?? activeRun
+    }
+  }
   if (tickResult.action !== 'WAVE_DISPATCHED' && tickResult.action !== 'WAVE_DISPATCHED_PARTIAL') {
     // Defense in depth against the same class of silent-discard: even with
     // the up-front check above, a tick lost a real race (another caller

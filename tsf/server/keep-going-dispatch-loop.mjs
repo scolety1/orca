@@ -327,6 +327,22 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     return { action: 'NOOP', reason: 'no candidate work items available to plan a wave' }
   }
 
+  // Resource Pressure Governor gate -- checked BEFORE claim(), unlike the
+  // capacity check below. Independent-review finding: this check is a
+  // synchronous, lock-independent, host-wide read with no claim-freshness
+  // race to protect against (unlike the capacity check, which genuinely
+  // needs to run against a just-claimed, up-to-date lock) -- paying a full
+  // claim/release round trip through the cross-process file-lock store
+  // just to be told "no" here was pure wasted I/O under sustained
+  // CRITICAL/EMERGENCY pressure, exactly when this host can least afford
+  // it. Only CRITICAL/EMERGENCY refuse; PRESSURED still admits a single
+  // dispatch here (the heavy-task lease, not this gate, is what throttles
+  // concurrent full-suite/pilot/research-worker categories).
+  const admission = classifyDispatchAdmission(resourcePressure)
+  if (!admission.admitted) {
+    return { action: 'DISPATCH_WAITING_FOR_RESOURCES', ...admission }
+  }
+
   // Sized to this wave's candidate count -- see PER_ITEM_LOCK_TIMEOUT_MS.
   const dispatchTimeoutMs =
     TICK_LOCK_TIMEOUT_MS + candidateWorkItems.length * PER_ITEM_LOCK_TIMEOUT_MS
@@ -342,21 +358,6 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       reason: error.code ?? 'CLAIM_FAILED',
       detail: error.message
     }
-  }
-
-  // Resource Pressure Governor gate -- checked first, before the capacity
-  // check below and before any real Orca CLI work, for the same reason
-  // the capacity check runs post-claim: this tick genuinely holds the
-  // lock, so releasing it honestly here (not pausing, not failing) is
-  // exactly "missions waiting on memory become WAITING_FOR_RESOURCES, not
-  // FAILED/STALLED" -- the run stays ACTIVE with no wave dispatched, and
-  // the very next tick (from any of this function's several real callers)
-  // tries again. Only CRITICAL/EMERGENCY refuse; PRESSURED still admits a
-  // single dispatch here (the heavy-task lease, not this gate, is what
-  // throttles concurrent full-suite/pilot/research-worker categories).
-  const admission = classifyDispatchAdmission(resourcePressure)
-  if (!admission.admitted) {
-    return commitReleaseOnly(projectId, store, claimed, clock, 'DISPATCH_WAITING_FOR_RESOURCES', undefined, admission)
   }
 
   // M5: real capacity check now that this tick genuinely holds the lock --

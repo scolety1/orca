@@ -89,6 +89,22 @@ export function buildAdmissionPolicy(tier) {
   }
 }
 
+// The shared "read host memory -> classify tier -> check one admission
+// category" pattern -- independent-review finding: this was independently
+// re-implemented three times (chat-dispatch-bridge.mjs, research-mission-
+// fleet-driver.mjs, keep-going-resource-pressure-gate.mjs), each risking
+// silent drift from the other two on any future change to tier semantics
+// or refusal wording. `hostMemory` is the already-real evidence a caller
+// read via its own collectHostMemoryEvidence() (this stays a pure domain
+// function, no I/O); `admissionField` selects which buildAdmissionPolicy
+// category this dispatch category maps to (e.g.
+// 'newHeavyweightWorkerDispatch', 'newResearchWorkers').
+export function classifyDispatchAdmission(hostMemory, admissionField) {
+  const tier = classifyResourcePressureTier(hostMemory?.availableBytes)
+  const policy = buildAdmissionPolicy(tier)
+  return { tier, admitted: policy[admissionField] !== 'REFUSE', reason: policy.reason }
+}
+
 function sanitizeProcessList(list) {
   if (!Array.isArray(list)) {
     return []

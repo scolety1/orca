@@ -22,7 +22,7 @@ import {
 import { findResearchNode, escalateResearchNodeToNeedsYou, completeResearchMission } from '../domain/research-mission.mjs'
 import { recordResearchNodeAttempt } from '../domain/research-node.mjs'
 import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
-import { classifyResourcePressureTier, buildAdmissionPolicy } from '../domain/resource-pressure-governor.mjs'
+import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 import {
   attemptFreeResearchProgressDurable,
@@ -45,12 +45,13 @@ export const DEFAULT_MAX_CONCURRENT_TICKS = 2
 // Mirrors chat-dispatch-bridge.mjs's own gate exactly: only hard-refuses at
 // CRITICAL/EMERGENCY, reads real os.freemem()/totalmem() by default,
 // test-overridable via deps.collectHostMemoryEvidence or the collector's
-// own TSF_RESOURCE_PRESSURE_TEST_*_BYTES env-var seam.
+// own TSF_RESOURCE_PRESSURE_TEST_*_BYTES env-var seam. Delegates the
+// actual classification to the one shared domain-level implementation
+// (independent-review finding: this pattern was independently
+// re-implemented in three places across this codebase).
 function isDispatchAdmitted(deps) {
   const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
-  const { availableBytes } = readHostMemory()
-  const tier = classifyResourcePressureTier(availableBytes)
-  return { admitted: buildAdmissionPolicy(tier).newResearchWorkers !== 'REFUSE', tier }
+  return classifyDispatchAdmission(readHostMemory(), 'newResearchWorkers')
 }
 
 async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
