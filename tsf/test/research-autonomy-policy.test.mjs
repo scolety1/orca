@@ -151,9 +151,32 @@ test('mission-level: not ACTIVE, or an unresolved Needs You, is NOTHING_TO_DO --
   )
 })
 
-test('mission-level: the first actionable node in declared order wins, never a later one', () => {
-  const first = baseNode({ id: 'node:first', status: 'READY' })
+// REQUIRED PROOF (Main TSF Governor x Research Autonomy interaction
+// review): cheap, non-dispatch work (POLL/VERIFY_AND_RECONCILE_FIELD/
+// ESCALATE) is preferred mission-wide over a dispatch-class action, even
+// when the dispatch-class node comes first in declared order -- this is
+// what prevents a resource-blocked dispatch from permanently starving a
+// later node's ungated work under sustained CRITICAL/EMERGENCY pressure
+// (the resource gate lives in the server driver, which never even sees a
+// node this policy didn't select).
+test('mission-level: cheap non-dispatch work is preferred mission-wide over a dispatch-class action, regardless of declared order', () => {
+  const dispatchable = baseNode({ id: 'node:dispatchable', status: 'READY' })
+  const pollable = baseNode({ id: 'node:pollable', status: 'DISPATCHED' })
+  assert.deepEqual(decideNextMissionAction(baseMission([dispatchable, pollable])), {
+    type: 'POLL',
+    nodeId: 'node:pollable'
+  })
+})
+
+test('mission-level: among two non-dispatch actions, declared order still wins', () => {
+  const first = baseNode({ id: 'node:first', status: 'DISPATCHED' })
   const second = baseNode({ id: 'node:second', status: 'DISPATCHED' })
+  assert.deepEqual(decideNextMissionAction(baseMission([first, second])), { type: 'POLL', nodeId: 'node:first' })
+})
+
+test('mission-level: a dispatch-class action is only chosen when no cheaper work exists anywhere in the mission', () => {
+  const first = baseNode({ id: 'node:first', status: 'READY' })
+  const second = baseNode({ id: 'node:second', status: 'READY' })
   assert.deepEqual(decideNextMissionAction(baseMission([first, second])), { type: 'DISPATCH', nodeId: 'node:first' })
 })
 

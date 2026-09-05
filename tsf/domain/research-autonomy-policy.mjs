@@ -137,9 +137,26 @@ export function decideNextNodeAction(node, isReady, budget = DEFAULT_RESEARCH_RE
   return null
 }
 
-// The one bounded action for this entire mission this tick -- first
-// actionable node in declared order, or a mission-level verdict once no
-// node has anything left to do.
+// Actions that result in a real, resource-pressure-gated dispatch call in
+// the server driver. Main TSF Governor x Research Autonomy interaction
+// review finding: a naive single-pass "first actionable node in declared
+// order" scan let a resource-blocked DISPATCH candidate permanently starve
+// a LATER node's cheap, ungated work (POLL/VERIFY_AND_RECONCILE_FIELD/
+// ESCALATE) -- that later node's action never changes tick over tick since
+// the blocked dispatch candidate's own state never advances either, so it
+// would keep "winning" first place forever. The governing requirement is
+// explicit: "CRITICAL -> heavy research waits, lightweight reconciliation
+// continues where possible." Cheap work is now preferred mission-wide,
+// dispatch-class work only falls back to when nothing cheaper exists
+// anywhere in the mission -- this changes ordering for every tier, not
+// just constrained ones, which is also the more sensible general default
+// (finish what's already in flight before starting new work).
+const DISPATCH_ACTION_TYPES = new Set(['DISPATCH', 'RETRY_DISPATCH'])
+
+// The one bounded action for this entire mission this tick -- the first
+// non-dispatch (cheap) actionable node in declared order, falling back to
+// the first dispatch-class one only when no cheaper work exists anywhere;
+// or a mission-level verdict once no node has anything left to do.
 export function decideNextMissionAction(mission, budget = DEFAULT_RESEARCH_RETRY_BUDGET) {
   if (mission.state !== 'ACTIVE') {
     return { type: 'NOTHING_TO_DO', reason: `mission state is ${mission.state}` }
@@ -148,11 +165,21 @@ export function decideNextMissionAction(mission, budget = DEFAULT_RESEARCH_RETRY
     return { type: 'NOTHING_TO_DO', reason: 'an open Needs You question is unresolved' }
   }
   const readyIds = new Set(readyResearchNodes(mission).map((n) => n.id))
+  let firstDispatchAction = null
   for (const node of mission.nodes) {
     const action = decideNextNodeAction(node, readyIds.has(node.id), budget)
-    if (action) {
+    if (!action) {
+      continue
+    }
+    if (!DISPATCH_ACTION_TYPES.has(action.type)) {
       return action
     }
+    if (!firstDispatchAction) {
+      firstDispatchAction = action
+    }
+  }
+  if (firstDispatchAction) {
+    return firstDispatchAction
   }
   // No node had anything to do -- either genuinely complete, or every
   // remaining node is PENDING on a dependency that will never resolve
