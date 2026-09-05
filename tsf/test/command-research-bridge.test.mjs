@@ -333,14 +333,23 @@ test('bridge: status/completeness/conflicts/artifacts conversational reads are g
   const status = await respondResearchCommand({ message: `What's the research doing on ${missionId}?`, opState: opStateWithMission, clock })
   assert.match(status.text, /ACTIVE/)
 
+  // Bug 4 fix: human-readable, grounded in real state -- never a raw JSON
+  // dump, never a fixed string (real expected-count/phase appear).
   const completeness = await respondResearchCommand({ message: `How complete is ${missionId}?`, opState: opStateWithMission, clock })
-  assert.match(completeness.text, /Completeness/)
+  assert.match(completeness.text, /isn't done yet/)
+  assert.match(completeness.text, /all 1 expected item/)
+  assert.doesNotMatch(completeness.text, /```json/, 'must never be a raw JSON dump')
 
   const conflicts = await respondResearchCommand({ message: `What conflicts remain on ${missionId}?`, opState: opStateWithMission, clock })
   assert.match(conflicts.text, /conflict/i)
 
+  // Bug 3 fix: grounded in real per-node canonicalFacts, never the
+  // nonexistent top-level artifacts.canonicalFacts field (a real,
+  // independently-found bug -- that always reported 0 regardless of
+  // real state).
   const artifacts = await respondResearchCommand({ message: `Show me the artifacts/CSV for ${missionId}`, opState: opStateWithMission, clock })
-  assert.match(artifacts.text, /Artifacts/)
+  assert.match(artifacts.text, /hasn't produced that artifact yet/)
+  assert.match(artifacts.text, /currently CREATED/)
 })
 
 test('integration: respondCommand (the real global-scope Command entry point) routes a research message to the bridge and never touches project-fleet dispatch', async () => {
@@ -368,11 +377,26 @@ test('bridge: a reasonably-scoped research request synthesizes a real specificat
   process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
   try {
     const reply = await respondCommand({ message: 'research something reasonably scoped for the bridge synthesis test', projects: [], opState: freshOpState(), clock })
-    assert.match(reply.text, /^Created a real research mission/)
+    assert.match(reply.text, /^Created the research mission/)
     assert.doesNotMatch(reply.text, /Started/)
     assert.doesNotMatch(reply.text, /provisional scaffold/)
+    // Bug 1 fix: creation must never say "ask me to continue it" -- a real
+    // free-path attempt already ran, and since no free match exists for
+    // this brand-new topic and freeOnly wasn't requested, a real scoped
+    // paid-research request is already raised (never a grant) and the
+    // mission is explicitly stated as queued for autonomous progression.
+    assert.doesNotMatch(reply.text, /ask me to continue/)
+    assert.match(reply.text, /paid-research approval request/)
+    assert.match(reply.text, /Queued for autonomous progression/)
+    // This request is NOT freeOnly and no free-path match exists for a
+    // brand-new topic, so Command's own immediate free-path attempt
+    // correctly finds a genuine gap and raises a real scoped paid
+    // request -- the mission's real phase reflects that a decision is
+    // genuinely needed (WAITING_NEEDS_INPUT), never silently CREATED as
+    // if nothing happened. See the sibling free-path-only test below for
+    // the case where no owner decision is needed and it stays autonomous.
     const status = readResearchMissionStatus(reply.researchMissionId)
-    assert.equal(status.phase, 'CREATED')
+    assert.equal(status.phase, 'WAITING_NEEDS_INPUT')
     assert.ok(status.nodeCount > 0, 'a real synthesized specification must produce real nodes, not an empty scaffold')
   } finally {
     if (saved.claude === undefined) delete process.env.TSF_PLANNER_CLAUDE_COMMAND

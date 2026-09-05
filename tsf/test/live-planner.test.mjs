@@ -211,6 +211,71 @@ test('project context is actually transmitted to the provider process, bound to 
   }
 })
 
+// Hands-on pilot round 3, Bug 5: real conversation showed Command falsely
+// asserting continuity ("Same answer as a second ago", "Third time asking
+// the exact same thing") about a project it had NEVER discussed in that
+// project's own history -- with recentHistory genuinely empty each time.
+// This is a model-behavior bug, not deterministic code -- the actual fix
+// is the explicit system-prompt instruction added below; a stub CLI
+// cannot verify what a real model would then choose to say. What CAN be
+// deterministically proven, and is the real, previously-missing guardrail:
+// (1) the instruction against fabricating continuity is actually present
+// in every transmitted prompt, and (2) history is genuinely scoped
+// per-project -- an empty history says so explicitly, and a DIFFERENT
+// project's own history never leaks into this one's prompt. Real,
+// end-to-end model-behavior verification happened separately, against the
+// live pilot server with the real configured provider (see the round 3
+// report's dogfood transcript).
+test('Bug 5 guardrail: the system prompt explicitly forbids fabricated conversational continuity, and history is honestly scoped per project', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tsf-planner-continuity-'))
+  const debugFile = path.join(dir, 'argv.json')
+  try {
+    await withStubEnv(
+      { TSF_PLANNER_CLAUDE_COMMAND: STUB, STUB_MODE: 'success', STUB_SESSION_ID: 's1', STUB_DEBUG_FILE: debugFile },
+      async () => {
+        await invokeLivePlanner({
+          project: project({ id: 'nwr-fixture' }),
+          message: 'what is nwr doing right now',
+          opState: opState(),
+          recentHistory: [] // genuinely no prior turns for THIS project
+        })
+      }
+    )
+    const seen = JSON.parse(readFileSync(debugFile, 'utf8'))
+    const prompt = seen.args[seen.args.indexOf('--system-prompt') + 1]
+    assert.match(prompt, /never assert conversational continuity you cannot see/i)
+    assert.match(prompt, /same as a second ago/i, 'the exact real-pilot phrasing must be named as an example to avoid')
+    assert.match(prompt, /\(no prior turns in this session\)/, 'an honestly empty history must say so explicitly, not omit the block')
+    assert.doesNotMatch(prompt, /nytheria/i, "a different project's own conversation must never leak into this project's prompt")
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('UX polish guardrail: the system prompt instructs leading with state/blockers/whether Tim needs to care, not a low-value audit dump', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tsf-planner-ux-'))
+  const debugFile = path.join(dir, 'argv.json')
+  try {
+    await withStubEnv(
+      { TSF_PLANNER_CLAUDE_COMMAND: STUB, STUB_MODE: 'success', STUB_SESSION_ID: 's1', STUB_DEBUG_FILE: debugFile },
+      async () => {
+        await invokeLivePlanner({
+          project: project({ id: 'nytheria-fixture' }),
+          message: 'how is nytheria doing',
+          opState: opState(),
+          recentHistory: []
+        })
+      }
+    )
+    const seen = JSON.parse(readFileSync(debugFile, 'utf8'))
+    const prompt = seen.args[seen.args.indexOf('--system-prompt') + 1]
+    assert.match(prompt, /lead with: current state, any active work, any real blockers/i)
+    assert.match(prompt, /do not open with a low-value audit dump/i)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 // BUG-13 real reproduction + fix proof: before this fix, a real, currently
 // STALLED Keep Going run for this exact project never reached the live
 // conversational planner's transmitted context at all (buildProjectContextCapsule

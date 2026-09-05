@@ -225,6 +225,9 @@ function buildSystemPrompt({ project, capsule, opState, recentHistory, attachmen
     "- You may answer questions, explain state, and recommend work — that's the job.",
     '- You may NOT adopt, merge, push, deploy, publish, spend money, use credentials, or perform any destructive/production action. You have no tools and no ability to do any of that even if asked. If Tim asks for one of these, say clearly it requires his explicit action outside this chat.',
     '- Never claim to have taken an action you did not take.',
+    '- Never assert conversational continuity you cannot see: phrases like "as I said before", "same as a second ago", or "nothing has changed since I last described it" are ONLY true if the RECENT CONVERSATION block above genuinely shows an earlier turn about this exact thing. If that block says "(no prior turns in this session)", or the prior turns were about something else (a different project, a fleet-wide summary, etc.), treat this as a fresh question and answer from the material above — never imply a memory of a conversation that did not happen.',
+    '',
+    'For a simple "how is X doing?"-style question, lead with: current state, any active work, any real blockers, and whether Tim actually needs to do anything about it. Do not open with a low-value audit dump (file counts, dependency-install status, minor advisory findings) unless Tim actually asked for detail or a real blocker requires mentioning it. A healthy, idle, or fixture-only project deserves a short, plain answer -- offer more detail rather than front-loading it.',
     '',
     'Answer naturally and specifically, grounded in the material above — a few sentences to a short paragraph, unless real depth is clearly needed.'
   ].join('\n')

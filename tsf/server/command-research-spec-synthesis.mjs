@@ -96,7 +96,7 @@ export function validateSynthesis(data) {
   return data
 }
 
-export async function synthesizeResearchSpecification({ message, missionId, freeOnly }) {
+export async function synthesizeResearchSpecification({ message, missionId, freeOnly, clock = () => new Date() }) {
   const live = await invokeLiveStructuredAnalysis({
     systemPrompt: SPEC_SYNTHESIS_SYSTEM_PROMPT,
     prompt: message,
@@ -145,7 +145,25 @@ export async function synthesizeResearchSpecification({ message, missionId, free
       minSourceCount: 0,
       allowCrossMissionLibraryReuse: true
     },
-    temporalRequirements: { asOfDate: null, periodScope: validated.temporalPeriodScope ?? null },
+    // Real, independently-found bug (hands-on pilot round 3, Bug 1
+    // investigation): both fields are REQUIRED non-empty strings in
+    // TSF_RESEARCH_SPECIFICATION_V1/BoundedResearchRequest (contracts/
+    // research-specification.schema.v1.json,
+    // bounded-research-worker-protocol.schema.v1.json) -- this always set
+    // asOfDate to null, meaning EVERY Command-synthesized mission's
+    // specification was structurally invalid the moment any real dispatch
+    // was attempted (buildBoundedResearchRequest throws). Never caught
+    // before because no existing test exercised a real dispatch against a
+    // Command-created mission -- only free-path library reuse, which
+    // never calls buildBoundedResearchRequest at all. asOfDate defaults
+    // honestly to the date the request was actually made (this is never a
+    // claim about when the DATA is from, only when TSF asked); periodScope
+    // defaults to an honest 'UNSPECIFIED' rather than null when the
+    // planner's own proposal didn't include one.
+    temporalRequirements: {
+      asOfDate: clock().toISOString().slice(0, 10),
+      periodScope: validated.temporalPeriodScope ?? 'UNSPECIFIED'
+    },
     budget: { maxCostUsd: freeOnly ? 0 : null, maxLatencyMs: null, maxToolCallsPerNode: null },
     toolPermissions: []
   }

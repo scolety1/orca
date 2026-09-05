@@ -136,6 +136,31 @@ test('a fleet-wide status question may still use a fuzzy match informationally -
   assert.match(result.text, /running right now/i)
 })
 
+// Hands-on pilot round 3, UX polish: a small idle fleet still names each
+// project (the exact regression this threshold fixes -- collapsing even a
+// one-project answer to a bare count broke "what about that project?",
+// which resolves to exactly one project and must still say its name); a
+// large idle fleet collapses to a count instead of listing every one
+// individually, the original noise complaint.
+test('UX polish: a small idle fleet (<= 3) still names each project -- collapsing is a many-projects concern, not a one-or-two-projects one', async () => {
+  const result = await respondCommand({
+    message: "what's running right now?",
+    projects: [project('alpha-widgets', 'Alpha Widgets'), project('alpha-gadgets', 'Alpha Gadgets')],
+    opState,
+    clock
+  })
+  assert.match(result.text, /Alpha Widgets/)
+  assert.match(result.text, /Alpha Gadgets/)
+  assert.doesNotMatch(result.text, /project\(s\) are idle/)
+})
+
+test('UX polish: a large idle fleet (> 3) collapses to a human-first summary instead of listing every project individually', async () => {
+  const manyProjects = Array.from({ length: 7 }, (_, i) => project(`p${i}`, `Project ${i}`))
+  const result = await respondCommand({ message: "what's running right now?", projects: manyProjects, opState, clock })
+  assert.match(result.text, /Nothing is running right now\. 7 project\(s\) are idle/)
+  assert.doesNotMatch(result.text, /Project 0/, 'individual idle projects are not enumerated once the fleet is large')
+})
+
 // Phase 2: bounded follow-up conversational context. Deliberately narrow --
 // covered here rather than a separate file since it's a small addition to
 // this exact resolution-confidence gate the rest of this file already

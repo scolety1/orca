@@ -67,24 +67,57 @@ function lastReferencedProjectId(opState, projects) {
 // WAITING_NEEDS_INPUT phase now appears in fleet-wide status exactly like
 // a Keep Going run does, never silently absent from "what's running right
 // now" just because it isn't project-scoped coding work.
+// Hands-on pilot round 3, UX polish: the original version listed every
+// idle project individually every time -- correct, but noisy, exactly the
+// complaint. Active/waiting/Needs-You work is now what leads; idle
+// projects collapse to a count when nothing needs attention there. Full
+// per-project detail is never actually lost -- naming any project or
+// research mission by name still gets its own real, ungrouped answer
+// through the normal per-project/per-mission path; this function only
+// changes the FLEET-WIDE summary's shape, never what real detail is
+// available on request.
+// Idle projects are still named individually up to this many -- collapsing
+// even a single- or few-project answer to a bare count (the regression
+// this threshold fixes: "what about that project?" resolves to exactly
+// ONE project and must still say its name) defeats the point for the
+// common small-fleet/single-project case this function is also used for.
+// Noise is a many-idle-projects problem, not a one-or-two problem.
+const IDLE_NAME_THRESHOLD = 3
+
 export function formatFleetStatusText(statuses, researchStatuses = []) {
-  const projectLines =
-    statuses.length === 0
-      ? []
-      : statuses.map((s) =>
-          s.hasRun
-            ? `- **${s.displayName}** — ${s.feed.state} (run \`${s.runId}\`) — ${s.feed.reason}.`
-            : `- **${s.displayName}** — no Keep Going run.`
-        )
+  if (statuses.length === 0 && researchStatuses.length === 0) {
+    return 'No known projects yet -- add one from the Projects page.'
+  }
+  const activeProjectLines = statuses
+    .filter((s) => s.hasRun)
+    .map((s) => `- **${s.displayName}** — ${s.feed.state} (run \`${s.runId}\`) — ${s.feed.reason}.`)
+  const idleProjects = statuses.filter((s) => !s.hasRun)
   const researchLines = researchStatuses.map(
     (r) => `- **Research ${r.missionId}** — ${r.phase}${r.phase === 'WAITING_NEEDS_INPUT' ? ' (needs a decision)' : ''}.`
   )
-  if (projectLines.length === 0 && researchLines.length === 0) {
-    return 'No known projects yet -- add one from the Projects page.'
+  const idleLines = idleProjects.map((s) => `- **${s.displayName}** — no Keep Going run.`)
+
+  if (activeProjectLines.length === 0 && researchLines.length === 0) {
+    if (idleProjects.length === 0) {
+      return 'No known projects yet -- add one from the Projects page.'
+    }
+    if (idleProjects.length <= IDLE_NAME_THRESHOLD) {
+      return `Nothing is running right now:\n${idleLines.join('\n')}`
+    }
+    return `Nothing is running right now. ${idleProjects.length} project(s) are idle. Ask me about any one by name for detail.`
   }
+
   const sections = []
-  if (projectLines.length > 0) sections.push(projectLines.join('\n'))
-  if (researchLines.length > 0) sections.push(researchLines.join('\n'))
+  if (activeProjectLines.length > 0 || researchLines.length > 0) {
+    sections.push([...activeProjectLines, ...researchLines].join('\n'))
+  }
+  if (idleProjects.length > 0) {
+    sections.push(
+      idleProjects.length <= IDLE_NAME_THRESHOLD
+        ? idleLines.join('\n')
+        : `${idleProjects.length} other project(s) idle, nothing to report -- ask me about any one by name for detail.`
+    )
+  }
   return `Here's what's really running right now:\n${sections.join('\n')}`
 }
 

@@ -47,19 +47,46 @@ const RESEARCH_INTENT_PATTERNS = [
   // RESEARCH_CREATE_OR_CONTINUE catch-all just because it says "help"
   // near a provider name.
   { id: 'RESEARCH_PAID_ADVISORY', test: (msg) => /\b(could|can|would)\s+(exa|parallel)\s+help\b|\bshould (i|we) use (exa|parallel)\b/i.test(msg) },
+  // Hands-on pilot round 3, Bug 2/3: natural research follow-ups ("paste
+  // it here", "paste the salary cap you found", "show me what it found",
+  // "where's the CSV", "what did it find", "what sources did it use")
+  // were falling through to generic project-required rejection because
+  // this pattern never matched them at all -- classifyResearchIntent
+  // returning null skips respondResearchCommand entirely
+  // (command-responder.mjs only calls it when this returns truthy), so
+  // these messages never reached resolveMissionContext's own
+  // already-correct conversational-referent resolution. The fix is
+  // entirely here, not in the routing/resolution logic below, which
+  // already does the right thing once given the chance.
   {
     id: 'RESEARCH_ARTIFACTS',
     test: (msg) =>
       /\b(show me the artifacts|show the artifacts|artifacts?\W*\bcsv|the csv|download (the )?(data|csv)|see the (data|artifacts)|show me the evidence|show the evidence|see the evidence)\b/i.test(
         msg
-      )
+      ) ||
+      /\bpaste (it|that|this|the \S+(?:\s+\S+)?)( here| in chat)?\b/i.test(msg) ||
+      /\bshow (me )?(what it found|the dataset|the results?)\b/i.test(msg) ||
+      /\bwhere'?s the csv\b/i.test(msg) ||
+      /\bwhat did (it|the research) find\b/i.test(msg) ||
+      /\bwhat sources? did (it|the research) use\b/i.test(msg)
   },
   // Deliberately narrower than bare /\bconflicts?\b/ -- "conflict" alone
   // is common, unrelated chat vocabulary in this codebase's own domain
   // (a real Git merge conflict on some other project) and must never
   // hijack an ordinary fleet-dispatch message away from real dispatch.
   { id: 'RESEARCH_CONFLICTS', test: (msg) => /\bwhat conflicts\b|\bresearch conflicts\b|\bconflicts?\s+(remain|left|open|outstanding)\b/i.test(msg) },
-  { id: 'RESEARCH_COMPLETENESS', test: (msg) => /\bhow complete\b|\bcompleteness\b|\bhow far along\b|\bwhat'?s missing\b|\bwhat is missing\b/i.test(msg) },
+  // Round 3, Bug 2/4: "is it done", "is the research still running", "how
+  // do I know when it's done" (incl. the exact real-pilot typo "donw"),
+  // "why isn't it done" -- all genuine completion-status questions that
+  // previously matched nothing here at all.
+  {
+    id: 'RESEARCH_COMPLETENESS',
+    test: (msg) =>
+      /\bhow complete\b|\bcompleteness\b|\bhow far along\b|\bwhat'?s missing\b|\bwhat is missing\b/i.test(msg) ||
+      /\bis (it|this|that|the research) (still )?(running|done|finished|complete)\b/i.test(msg) ||
+      /\bhow do i know (when|if)( it'?s| the .+ is)?\s*don[ew]\b/i.test(msg) ||
+      /\bwhy isn'?t it done\b/i.test(msg)
+  },
   {
     id: 'RESEARCH_STATUS',
     test: (msg) =>
@@ -205,6 +232,133 @@ function ambiguousMissionText(opState) {
   return `More than one research mission exists and it's not clear which one you mean (${ids.join(', ')}) -- name the one you're asking about.`
 }
 
+// Hands-on pilot round 3, Bug 1: mission creation only ever created the
+// mission and told Tim to say "continue" -- violating the zero-relay
+// architecture (research-mission-fleet-driver.mjs already discovers and
+// ticks any ACTIVE mission with no open Needs You entirely on its own;
+// the missing piece was never the driver, it was this bridge never giving
+// a freshly-created mission the SAME immediate real attempt an explicit
+// "continue" already got). Shared by both the create and continue paths
+// now, so they can never drift back out of sync: attempts real, free,
+// $0 progress via Research Library reuse, and -- unless freeOnly -- raises
+// a scoped paid-research request (never a grant) for whatever remains,
+// exactly once per standing gap.
+async function attemptProgressAndRaisePaidRequestIfNeeded(missionId, { freeOnly, clock }) {
+  const progress = await attemptFreeResearchProgressDurable(missionId, clock)
+  const remainingGap = progress.fieldsAttempted - progress.fieldsAdvanced
+
+  let paidRequestRaised = false
+  if (!freeOnly && remainingGap > 0) {
+    const openItems = readResearchMissionReviewItems(missionId) ?? []
+    const alreadyAsked = openItems.some((n) => n.category === 'PAID_PROVIDER_APPROVAL_REQUIRED')
+    if (!alreadyAsked) {
+      await requestResearchPaidApprovalDurable(
+        missionId,
+        {
+          providerId: EXA_PROVIDER_ID,
+          scope: missionId,
+          estimatedSpendUsd: null,
+          expectedBenefit: `${remainingGap} field(s) with no free-path (Research Library) match could likely be resolved by a bounded paid research call.`
+        },
+        clock
+      )
+      paidRequestRaised = true
+    }
+  }
+  return { progress, remainingGap, paidRequestRaised }
+}
+
+// The remaining-gap clause shared by both the create and continue
+// responses -- grounded in the real numbers attemptProgressAndRaisePaidRequestIfNeeded
+// just produced, never a fixed string.
+function remainingGapNote({ remainingGap, paidRequestRaised, freeOnly }) {
+  if (remainingGap <= 0) {
+    return ''
+  }
+  if (paidRequestRaised) {
+    return ` ${remainingGap} field(s) have no free-path match -- I've raised a scoped paid-research approval request (Exa) for you to review; I will not spend anything without your explicit approval.`
+  }
+  if (freeOnly) {
+    return ` ${remainingGap} field(s) have no free-path match yet -- queued for autonomous free-path research; I'll only interrupt you if it needs owner input or paid access.`
+  }
+  return ` ${remainingGap} field(s) still have no free-path match (a paid-research approval request is already open for this mission).`
+}
+
+// Hands-on pilot round 3, Bug 4: "how do I know if it's done" must be
+// answered from the mission's OWN real completion model (phase, expected-
+// universe progress, verification/completeness, what COMPLETE actually
+// means for THIS mission, whether Tim needs to act) -- never a fixed
+// string. Every number below comes from computeCompletenessMetrics/
+// readResearchMissionStatus; only the surrounding sentence shape is
+// templated, matching the style of every other grounded response in this
+// file (e.g. the existing RESEARCH_STATUS handler).
+function describeMissionCompletion(missionId, status, completeness) {
+  const expectedCount = status.nodeCount
+  if (status.state === 'COMPLETE') {
+    return `**${missionId}** is COMPLETE -- all ${expectedCount} expected item(s) have sourced, verified data and the dataset is ready.`
+  }
+  const pct = (ratio) => (ratio == null ? null : Math.round(ratio * 100))
+  const fieldPct = pct(completeness.fieldCoverage)
+  const entityPct = pct(completeness.presentEntityCoverage)
+  const progressBits = []
+  if (entityPct != null) {
+    progressBits.push(`${entityPct}% of expected item(s) present`)
+  }
+  if (fieldPct != null) {
+    progressBits.push(`${fieldPct}% of requested fields resolved`)
+  }
+  const progressNote = progressBits.length > 0 ? `, ${progressBits.join(', ')}` : ''
+
+  const sentences = [
+    "It isn't done yet.",
+    `I'll mark it COMPLETE once all ${expectedCount} expected item(s) have sourced, verified values and the requested dataset artifact is produced.`,
+    `Right now it's ${status.phase} (mission state ${status.state}${progressNote}).`
+  ]
+  if (completeness.unresolvedConflictCount > 0) {
+    sentences.push(`${completeness.unresolvedConflictCount} unresolved conflict(s) need your decision before it can finish.`)
+  }
+  if (status.openNeedsYouCount > 0) {
+    sentences.push(`${status.openNeedsYouCount} open item(s) need your input -- I've flagged those separately.`)
+  } else {
+    sentences.push("You don't need to keep checking manually; TSF will continue it in the background.")
+  }
+  return sentences.join(' ')
+}
+
+// Hands-on pilot round 3, Bug 3: an artifact request must reflect real
+// mission/artifact state -- never hallucinate output, never claim a
+// complete dataset that doesn't exist yet, and never silently report a
+// count of 0 due to reading a field that never existed (the real,
+// independently-found bug here: the prior version read
+// artifacts.canonicalFacts, a top-level field buildResearchProvenancePackage
+// never produces -- canonicalFacts only ever exists per node -- so the
+// reported count was always 0 regardless of real state).
+function describeArtifacts(missionId, artifacts, status) {
+  // buildResearchProvenancePackage (research-provenance.mjs) returns
+  // { packageBody, receipt } -- the real bug this fixes read
+  // artifacts.canonicalFacts directly, a field that never exists at
+  // either level (canonicalFacts only ever lives per node, nested inside
+  // packageBody.nodes), so the reported count was always 0.
+  const facts = artifacts.packageBody.nodes.flatMap((node) =>
+    node.canonicalFacts.map((f) => ({ ...f, entityLabel: node.targetEntity?.name ?? node.id }))
+  )
+  if (facts.length === 0) {
+    return `The research hasn't produced that artifact yet. It is currently ${status.phase} (${status.nodeCount} node(s), 0 verified fact(s) so far).`
+  }
+  const byEntity = new Map()
+  for (const fact of facts) {
+    if (!byEntity.has(fact.entityLabel)) {
+      byEntity.set(fact.entityLabel, [])
+    }
+    byEntity.get(fact.entityLabel).push(`${fact.fieldName}: ${JSON.stringify(fact.value)}`)
+  }
+  const lines = [...byEntity.entries()].map(([entity, fields]) => `- **${entity}** — ${fields.join(', ')}`)
+  if (status.state === 'COMPLETE') {
+    return `Here's the completed dataset for **${missionId}**:\n${lines.join('\n')}`
+  }
+  return `Partial, independently verified results so far for **${missionId}** (not yet complete -- currently ${status.phase}):\n${lines.join('\n')}\n\nThis isn't the full dataset yet.`
+}
+
 function result({ intent, decisionClass, text, live, researchMissionId = null }) {
   return {
     intent,
@@ -323,11 +477,12 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     }
     if (intent === 'RESEARCH_COMPLETENESS') {
       const completeness = readResearchMissionCompleteness(missionId, clock)
-      if (!completeness) return result({ intent, decisionClass: 'AUTO_DECIDE', text: `I don't have a research mission called ${missionId}.`, live: false })
+      const status = readResearchMissionStatus(missionId)
+      if (!completeness || !status) return result({ intent, decisionClass: 'AUTO_DECIDE', text: `I don't have a research mission called ${missionId}.`, live: false })
       return result({
         intent,
         decisionClass: 'AUTO_DECIDE',
-        text: `Completeness for **${missionId}**:\n\`\`\`json\n${JSON.stringify(completeness, null, 2)}\n\`\`\``,
+        text: describeMissionCompletion(missionId, status, completeness),
         live: false,
         researchMissionId: missionId
       })
@@ -342,13 +497,21 @@ export async function respondResearchCommand({ message, opState, clock = () => n
           : `${conflicts.length} open conflict(s) on **${missionId}**:\n${conflicts.map((c) => `- ${c.question}`).join('\n')}`
       return result({ intent, decisionClass: 'AUTO_DECIDE', text, live: false, researchMissionId: missionId })
     }
-    // RESEARCH_ARTIFACTS
+    // RESEARCH_ARTIFACTS. Bug 3 fix: this previously read
+    // artifacts.canonicalFacts (a top-level field that never exists --
+    // buildResearchProvenancePackage only ever nests canonicalFacts per
+    // node) so the reported count was always 0 regardless of real state,
+    // and the response text never actually distinguished "nothing yet"
+    // from "some results" from "a complete dataset" -- exactly the
+    // hallucination risk this bug named. Aggregates the real per-node
+    // facts and grounds the response in real mission state instead.
     const artifacts = readResearchMissionArtifacts(missionId, clock)
-    if (!artifacts) return result({ intent, decisionClass: 'AUTO_DECIDE', text: `I don't have a research mission called ${missionId}.`, live: false })
+    const artifactStatus = readResearchMissionStatus(missionId)
+    if (!artifacts || !artifactStatus) return result({ intent, decisionClass: 'AUTO_DECIDE', text: `I don't have a research mission called ${missionId}.`, live: false })
     return result({
       intent,
       decisionClass: 'AUTO_DECIDE',
-      text: `Artifacts for **${missionId}** are ready to read via the real provenance package (GET /api/research/${missionId}/artifacts) -- ${artifacts.canonicalFacts?.length ?? 0} canonical fact(s) captured so far.`,
+      text: describeArtifacts(missionId, artifacts, artifactStatus),
       live: false,
       researchMissionId: missionId
     })
@@ -381,19 +544,33 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     // synthesizeResearchSpecification never fabricates domain content
     // (see its own header); it only asks a real live-planner call to
     // propose structure, independently re-validated before use.
-    const synthesis = await synthesizeResearchSpecification({ message, missionId, freeOnly })
+    const synthesis = await synthesizeResearchSpecification({ message, missionId, freeOnly, clock })
 
     if (synthesis.ok) {
       await createResearchMissionDurable(missionId, { projectId: 'COMMAND_CHAT', specification: synthesis.specification, expectedUniverse: synthesis.expectedUniverse, nodes: synthesis.nodes }, clock)
       // "Started" must mean something real (Finding 3): real nodes with a
       // real requested-fields shape now exist, so this mission's phase is
-      // CREATED, not DRAFT -- "Created", never "Started", since no node
-      // has actually been dispatched yet (see computeResearchMissionPhase).
+      // CREATED, not DRAFT -- "Created", never "Started".
+      //
+      // Bug 1 fix: a freshly-created mission with sufficient specification,
+      // no open Needs You, and a real requested-fields shape is ALREADY
+      // exactly the canonical state research-mission-fleet-driver.mjs
+      // discovers and ticks on its own (mission.state === 'ACTIVE',
+      // ready nodes) -- attempting the same real, free progress an
+      // explicit "continue" already gets, immediately, means Tim sees the
+      // truth about what's already happening instead of a manual-action
+      // prompt for work that's already autonomous.
+      const { remainingGap, paidRequestRaised } = await attemptProgressAndRaisePaidRequestIfNeeded(missionId, { freeOnly, clock })
       const strategyNote = synthesis.sourceStrategy ? ` Strategy: ${synthesis.sourceStrategy}.` : ''
+      const gapNote = remainingGapNote({ remainingGap, paidRequestRaised, freeOnly })
+      const queuedNote =
+        remainingGap > 0 && freeOnly && !paidRequestRaised
+          ? ''
+          : ' Queued for autonomous progression -- I\'ll only interrupt you if it needs owner input or paid access.'
       return result({
         intent,
         decisionClass: 'RECOMMEND_AND_PROCEED',
-        text: `Created a real research mission **${missionId}** for "${topic}" -- ${synthesis.expectedUniverse.expectedCount} expected item(s), ${synthesis.specification.requestedFields.length} field(s) per item${freeOnly ? ', free-path only' : ''}.${strategyNote} Nothing has actually been dispatched yet -- ask me to continue it, or ask its status any time.`,
+        text: `Created the research mission **${missionId}** for "${topic}" -- ${synthesis.expectedUniverse.expectedCount} expected item(s), ${synthesis.specification.requestedFields.length} field(s) per item${freeOnly ? ', free-path only' : ''}.${strategyNote}${gapNote}${queuedNote}`,
         live: true,
         researchMissionId: missionId
       })
@@ -436,7 +613,10 @@ export async function respondResearchCommand({ message, opState, clock = () => n
             minSourceCount: 0,
             allowCrossMissionLibraryReuse: true
           },
-          temporalRequirements: { asOfDate: null, periodScope: null },
+          // Same real schema requirement fixed above -- both fields are
+          // required non-empty strings even on this zero-node draft
+          // scaffold, for consistency should a node ever be added to it later.
+          temporalRequirements: { asOfDate: clock().toISOString().slice(0, 10), periodScope: 'UNSPECIFIED' },
           budget: { maxCostUsd: freeOnly ? 0 : null, maxLatencyMs: null, maxToolCallsPerNode: null },
           toolPermissions: []
         },
@@ -466,39 +646,9 @@ export async function respondResearchCommand({ message, opState, clock = () => n
   // make on its own (see the module header) -- a real mission script or a
   // future, more specific command drives that, gated by
   // dispatchResearchNodeWithApprovalDurable.
-  const progress = await attemptFreeResearchProgressDurable(missionId, clock)
+  const { progress, remainingGap, paidRequestRaised } = await attemptProgressAndRaisePaidRequestIfNeeded(missionId, { freeOnly, clock })
   const freeNote = freeOnly ? ' (free-path only, as requested)' : ''
-  const remainingGap = progress.fieldsAttempted - progress.fieldsAdvanced
-
-  // Command's OWN judgment that paid research could help -- only ever a
-  // REQUEST (open Needs You), never a grant, and never raised twice for
-  // the same standing gap (raiseResearchNeedsYou itself never dedupes, so
-  // this bridge is responsible for not re-asking every single turn).
-  let paidRequestRaised = false
-  if (!freeOnly && remainingGap > 0) {
-    const openItems = readResearchMissionReviewItems(missionId) ?? []
-    const alreadyAsked = openItems.some((n) => n.category === 'PAID_PROVIDER_APPROVAL_REQUIRED')
-    if (!alreadyAsked) {
-      await requestResearchPaidApprovalDurable(
-        missionId,
-        {
-          providerId: EXA_PROVIDER_ID,
-          scope: missionId,
-          estimatedSpendUsd: null,
-          expectedBenefit: `${remainingGap} field(s) with no free-path (Research Library) match could likely be resolved by a bounded paid research call.`
-        },
-        clock
-      )
-      paidRequestRaised = true
-    }
-  }
-
-  const gapNote =
-    remainingGap > 0
-      ? paidRequestRaised
-        ? ` ${remainingGap} field(s) have no free-path match -- I've raised a scoped paid-research approval request (Exa) for you to review; I will not spend anything without your explicit approval.`
-        : ` ${remainingGap} field(s) still have no free-path match (a paid-research approval request is already open for this mission).`
-      : ''
+  const gapNote = remainingGapNote({ remainingGap, paidRequestRaised, freeOnly })
   const text =
     progress.fieldsAttempted === 0
       ? `**${missionId}** has no ready nodes with free-path (Research Library) matches right now${freeNote}. Current state: ${existing.state}, ${existing.nodeCount} node(s).`
