@@ -152,13 +152,21 @@ test('dogfood D: research request -> status -> completeness -> artifacts, all gr
   process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
   try {
     const created = await turn('research the history of the NFL salary cap from 2018 through 2020, sourced dataset, no money', [])
-    assert.match(created.text, /^Created a real research mission/)
+    // Round 3 Bug 1 fix: creation immediately attempts free-path progress
+    // rather than waiting for a manual "continue" -- this fixture's spec
+    // has fields with no free-path match, so it honestly surfaces a
+    // paid-research approval request instead of silently stalling.
+    assert.match(created.text, /^Created the research mission/)
+    assert.match(created.text, /Queued for autonomous progression/)
     const missionId = created.researchMissionId
     assert.ok(missionId)
 
+    // Real durable proof: the free-path attempt already ran at creation
+    // time and raised a genuine Needs You item -- not the old "CREATED,
+    // nothing dispatched yet" phase.
     const status = await turn("what's the research doing?", [])
     assert.equal(status.researchMissionId, missionId)
-    assert.match(status.text, /CREATED/)
+    assert.match(status.text, /WAITING_NEEDS_INPUT/)
 
     // Gap 1: "what does that mean?" grounds in the REAL current mission
     // phase, resolved via the persisted conversational context, not a
@@ -166,7 +174,7 @@ test('dogfood D: research request -> status -> completeness -> artifacts, all gr
     const explanation = await turn('what does that mean?', [])
     assert.equal(explanation.intent, 'FOLLOW_UP_EXPLANATION')
     assert.equal(explanation.researchMissionId, missionId)
-    assert.match(explanation.text, /CREATED/)
+    assert.match(explanation.text, /waiting on you/)
 
     // Gap 2: "could Exa help?" resolves THIS mission from conversational
     // context (no id in the message) and answers advisory-only.
@@ -185,14 +193,15 @@ test('dogfood D: research request -> status -> completeness -> artifacts, all gr
 
     const completeness = await turn('how complete is it?', [])
     assert.equal(completeness.researchMissionId, missionId)
-    assert.match(completeness.text, /Completeness/)
+    assert.match(completeness.text, /isn't done yet/)
 
     const artifacts = await turn('show me the CSV', [])
     assert.equal(artifacts.researchMissionId, missionId)
-    assert.match(artifacts.text, /Artifacts/)
+    assert.match(artifacts.text, /hasn't produced that artifact yet/)
 
-    // Real durable proof, not just chat text.
-    assert.equal(readResearchMissionStatus(missionId).phase, 'CREATED')
+    // Real durable proof, not just chat text: the free-path attempt at
+    // creation time genuinely advanced this mission past CREATED.
+    assert.equal(readResearchMissionStatus(missionId).phase, 'WAITING_NEEDS_INPUT')
   } finally {
     if (saved === undefined) delete process.env.TSF_PLANNER_CLAUDE_COMMAND
     else process.env.TSF_PLANNER_CLAUDE_COMMAND = saved

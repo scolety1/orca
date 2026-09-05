@@ -18,13 +18,13 @@
 // scripts are excluded from `npm test` the same way, structurally).
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
-import { addResearchNode, createResearchMission } from '../domain/research-mission.mjs'
-import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
-import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
-import { detectResearchConflicts, verifyResearchClaim } from '../domain/research-verification.mjs'
-import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
-import { createDeterministicFakeResearchWorker } from '../adapters/deterministic-fake-research-worker.mjs'
+import { admitBoundedResearchResult } from '../../domain/research-admission.mjs'
+import { addResearchNode, createResearchMission } from '../../domain/research-mission.mjs'
+import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../../domain/research-node.mjs'
+import { admitReconciliationDecision, decideReconciliation } from '../../domain/research-reconciliation.mjs'
+import { detectResearchConflicts, verifyResearchClaim } from '../../domain/research-verification.mjs'
+import { buildNflQb2001Specification } from '../../fixtures/nfl-2001-qb-research-fixture.mjs'
+import { createDeterministicFakeResearchWorker } from '../../adapters/deterministic-fake-research-worker.mjs'
 
 const clock = () => new Date('2026-10-20T09:00:00.000Z')
 
