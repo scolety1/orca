@@ -39,8 +39,16 @@ function realSpawnFn(serverEntryPath, port) {
     // testOverrides.spawnFn, or any test calling startStandaloneServer
     // directly) -- a periodic background driver that can dispatch real
     // Orca work is exactly the kind of thing an isolated test's ephemeral
-    // state file must never accidentally trigger.
-    env: { ...env, TSF_API_PORT: String(port), TSF_KEEP_GOING_FLEET_DRIVER: '1' },
+    // state file must never accidentally trigger. TSF_RESEARCH_MISSION_FLEET_DRIVER
+    // is the same real, live-plugin-only opt-in for Research's own
+    // autonomous heartbeat (hands-on pilot round 3 -- Research Autonomy
+    // Bootstrap; see research-mission-fleet-driver-bootstrap.mjs).
+    env: {
+      ...env,
+      TSF_API_PORT: String(port),
+      TSF_KEEP_GOING_FLEET_DRIVER: '1',
+      TSF_RESEARCH_MISSION_FLEET_DRIVER: '1'
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   })
 }

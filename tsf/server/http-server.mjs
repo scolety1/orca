@@ -66,6 +66,7 @@ import providerRoles from '../routing/provider-role-mappings.v1.json' with { typ
 import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
 import { writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
 import { bootstrapKeepGoingFleetDriverIfEnabled } from './keep-going-fleet-driver-bootstrap.mjs'
+import { bootstrapResearchMissionFleetDriverIfEnabled } from './research-mission-fleet-driver-bootstrap.mjs'
 import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
 import { handleResourcePressureGovernorRoute } from './resource-pressure-governor-http-routes.mjs'
 
@@ -718,13 +719,9 @@ export function createRequestHandler(options = {}) {
         return
       }
 
-      // GET/POST /api/eval[/:packId/*] -- see eval-http-routes.mjs
-      if (await handleEvalRoute(parts, req, res, url, { opState }, { json, notFound, saveState })) {
-        return
-      }
-
+      // GET/POST /api/eval[/:packId/*] -- see eval-http-routes.mjs;
       // GET /api/projects/:id/flight-recorder -- see flight-recorder-http-routes.mjs
-      if (handleFlightRecorderRoute(parts, req, res, url, { map, opState }, { json, notFound })) {
+      if ((await handleEvalRoute(parts, req, res, url, { opState }, { json, notFound, saveState })) || handleFlightRecorderRoute(parts, req, res, url, { map, opState }, { json, notFound })) {
         return
       }
 
@@ -819,6 +816,7 @@ export function startStandaloneServer(port = 4610, options = {}) {
     console.error('runtime metadata write failed:', error)
   })
   bootstrapKeepGoingFleetDriverIfEnabled(server) // see keep-going-fleet-driver-bootstrap.mjs
+  bootstrapResearchMissionFleetDriverIfEnabled(server) // see research-mission-fleet-driver-bootstrap.mjs
   return server
 }
 
