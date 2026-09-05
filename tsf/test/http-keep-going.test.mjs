@@ -14,6 +14,10 @@ const STATE_FILE = path.join(
 )
 
 process.env.TSF_UI_STATE_FILE = STATE_FILE
+// Main TSF Resource Pressure Governor integration review: forced HEALTHY,
+// same seam http-resource-pressure-governor.test.mjs uses.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 // resolveSenderTerminal (keep-going-dispatch-loop.mjs) short-circuits on
 // this env var -- clearing it makes real-tick tests below deterministically
 // exercise the stub CLI's `terminal create` handler (a real dev/interactive
@@ -281,6 +285,51 @@ test('POST tick with real candidate work items dispatches a wave through the rea
       'WAVE_DISPATCHED',
       'the dispatched wave must be reflected in persisted state, not just the tick response'
     )
+  })
+})
+
+// REQUIRED PROOF (Main TSF integration review, admission-coverage
+// inventory): this direct tick route -- callable with no chat/planner
+// involved at all -- was one of the real gaps Job 1's original bounded
+// correction missed (it only gated chat-dispatch-bridge.mjs). The gate now
+// lives inside keep-going-dispatch-loop.mjs's own dispatchStep, so this
+// route is covered without this test needing any server-side wiring
+// beyond the collector's own real env-var seam.
+test('POST tick under CRITICAL host memory returns DISPATCH_WAITING_FOR_RESOURCES honestly over the real HTTP route, never a fabricated dispatch or a 5xx', async () => {
+  await withServer(async (base) => {
+    await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ originalGoal: 'Resource pressure tick proof.', acceptanceCriteria: ['X'] })
+    })
+    process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+    process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(1 * 1024 ** 3) // EMERGENCY
+    try {
+      const tickRes = await withStubOrca('success', () =>
+        fetch(`${base}/api/keep-going/${PROJECT_ID}/tick`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            candidateWorkItems: [
+              { id: 't1', scope: ['docs/x.md'], worktree: 'C:/repo/wt1', agent: 'codex' }
+            ]
+          })
+        })
+      )
+      assert.equal(tickRes.status, 200, 'a resource wait is never a server error')
+      const body = await tickRes.json()
+      assert.equal(body.action, 'DISPATCH_WAITING_FOR_RESOURCES')
+      assert.notEqual(body.action, 'DISPATCH_FAILED', 'a resource wait must never look like a real dispatch failure')
+
+      const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
+      const got = await getRes.json()
+      assert.equal(got.started, true, 'the run itself remains ACTIVE, not paused or failed')
+    } finally {
+      // Restored to this file's own forced-HEALTHY default for every
+      // other test.
+      process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+      process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
+    }
   })
 })
 

@@ -39,6 +39,10 @@ const STATE_FILE = path.join(
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 process.env.TSF_ORCA_CLI_COMMAND = path.join(HERE, 'fixtures', 'stub-orca-cli.mjs')
 process.env.STUB_ORCA_MODE = 'success'
+// Main TSF Resource Pressure Governor integration review: forced HEALTHY,
+// same seam http-resource-pressure-governor.test.mjs uses.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 process.env.STUB_ORCA_REPOS = '[]'
 // stub-orca-cli.mjs's task-create always returns the fixed id
 // 'stub-task-id' (never a real per-call id) -- task-list must be seeded to

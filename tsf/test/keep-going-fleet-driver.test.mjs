@@ -15,6 +15,10 @@ import {
 
 process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
 process.env.STUB_ORCA_MODE = 'success'
+// Main TSF Resource Pressure Governor integration review: forced HEALTHY,
+// same seam http-resource-pressure-governor.test.mjs uses.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 delete process.env.ORCA_TERMINAL_HANDLE
 
 const clock = () => new Date()
@@ -235,6 +239,46 @@ test('driveOneCycle dispatches a real CONTINUATION wave when reconciliation find
     true,
     'a real continuation implementation wave is now in flight'
   )
+})
+
+// REQUIRED PROOF (Main TSF integration review, admission-coverage
+// inventory): this autonomous fleet driver's OWN heartbeat -- completely
+// independent of chat, running on its own setInterval -- is exactly the
+// path Job 1's original bounded correction missed (it only gated
+// chat-dispatch-bridge.mjs directly). The gate now lives inside
+// keep-going-dispatch-loop.mjs's own dispatchStep, so this driver's
+// continuation dispatch is covered without this test file needing to know
+// anything about HOW it's gated.
+test('driveOneCycle: CRITICAL host memory defers a real CONTINUATION wave honestly -- WAITING_FOR_RESOURCES, never FAILED/STALLED, and the run stays ACTIVE for the very next cycle', async () => {
+  const dir = initRepo()
+  await new Promise((resolve) => setTimeout(resolve, 1100))
+  let run = newRun('r', 'p', dir)
+  const { tickKeepGoingRun } = await import('../server/keep-going-dispatch-loop.mjs')
+  const store = makeFakeStore({ p: run })
+  const tickDeps = { store, orchestration: okOrchestration() }
+  await tickKeepGoingRun('p', [], clock, tickDeps) // settle initial wave
+
+  mkdirSync(path.join(dir, 'docs', 'tsf', 'verification'), { recursive: true })
+  writeFileSync(
+    path.join(dir, verificationVerdictPath('r')),
+    JSON.stringify({ criteria: [{ criterion: 'A', verified: false, evidence: 'still broken' }] })
+  )
+
+  const criticalTickDeps = {
+    ...tickDeps,
+    resourcePressure: { collectHostMemoryEvidence: () => ({ availableBytes: 1 * 1024 ** 3 }) } // EMERGENCY
+  }
+  const [result] = await driveOneCycle(['p'], clock, { store, tickDeps: criticalTickDeps })
+  assert.equal(result.action, 'RECONCILED_AND_CONTINUED')
+  assert.equal(result.continuationResult.action, 'DISPATCH_WAITING_FOR_RESOURCES')
+  assert.equal(result.continuationResult.admitted, false)
+  assert.equal(store.all.p.state, 'ACTIVE', 'the run itself is never paused or failed by a resource wait')
+  assert.equal(store.all.p.inFlightWave, null, 'no wave was dispatched -- honestly nothing in flight, not a fabricated one')
+
+  // Resources clear -- the very next cycle succeeds with no special resume
+  // step, proving this is a per-tick condition, never a durable run state.
+  const [recovered] = await driveOneCycle(['p'], clock, { store, tickDeps })
+  assert.equal(recovered.continuationResult.action, 'WAVE_DISPATCHED')
 })
 
 // --- driveOneCycle: fleet properties ---

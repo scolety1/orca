@@ -14,6 +14,10 @@ import { tickKeepGoingRun } from '../server/keep-going-dispatch-loop.mjs'
 // binary and depending on a live account.
 process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
 process.env.STUB_ORCA_MODE = 'success'
+// Main TSF Resource Pressure Governor integration review: forced HEALTHY,
+// same seam http-resource-pressure-governor.test.mjs uses.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 // resolveSenderTerminal short-circuits on this env var -- clearing it makes
 // every test here deterministically exercise the createDispatcherTerminal
 // fallback (a real dev/interactive shell may have it set; CI never does).

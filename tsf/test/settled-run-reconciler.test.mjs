@@ -21,6 +21,10 @@ import {
 // hermetic instead of depending on a live account.
 process.env.TSF_ORCA_CLI_COMMAND = path.join(import.meta.dirname, 'fixtures', 'stub-orca-cli.mjs')
 process.env.STUB_ORCA_MODE = 'success'
+// Main TSF Resource Pressure Governor integration review: forced HEALTHY,
+// same seam http-resource-pressure-governor.test.mjs uses.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 // A REAL-time clock, deliberately -- unlike most other test files in this
 // suite, these tests compare domain checkpoint timestamps this clock

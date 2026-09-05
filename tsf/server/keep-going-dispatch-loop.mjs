@@ -59,6 +59,7 @@ import {
 import { fetchCapacitySnapshot } from '../adapters/orca-capacity-bridge.mjs'
 import { isoNow } from '../domain/canonical.mjs'
 import { decideCapacityAction } from '../domain/capacity-policy.mjs'
+import { DEFAULT_RESOURCE_PRESSURE, classifyDispatchAdmission } from './keep-going-resource-pressure-gate.mjs'
 import {
   checkpointRun,
   claimTick,
@@ -133,6 +134,19 @@ async function resolveSenderTerminal(orchestration) {
 // override hook today, and this module doesn't choose a work item's
 // requested agent, it only dispatches what candidateWorkItems specify.
 const DEFAULT_CAPACITY = Object.freeze({ fetchCapacitySnapshot, provider: 'codex' })
+
+// Main TSF Resource Pressure Governor integration review finding: this is
+// the ONE real choke point every heavyweight-worker dispatch caller
+// funnels through (chat-dispatch-bridge.mjs, keep-going-http-routes.mjs's
+// direct tick route, keep-going-fleet-driver.mjs's autonomous heartbeat --
+// both its settle path, which never reaches dispatchStep, and its
+// continuation-dispatch path, which does -- and settled-run-reconciler.mjs).
+// Job 1's own bounded correction only gated chat-dispatch-bridge.mjs
+// directly, which left every OTHER caller -- most importantly the
+// autonomous fleet driver's own unattended heartbeat -- completely
+// ungated. Gating here once, instead of at every call site, makes missing
+// a future caller structurally impossible. See keep-going-resource-
+// pressure-gate.mjs for the gate itself.
 
 // Fresh work items dispatch through a new agent terminal unless the item
 // specifies an existing one to reuse (item.workerTerminal).
@@ -308,7 +322,7 @@ function trimPlanToDispatched(wavePlan, dispatchedWorkItemIds) {
   return { ...wavePlan, batches }
 }
 
-async function dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity) {
+async function dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity, resourcePressure) {
   if (!Array.isArray(candidateWorkItems) || candidateWorkItems.length === 0) {
     return { action: 'NOOP', reason: 'no candidate work items available to plan a wave' }
   }
@@ -328,6 +342,21 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       reason: error.code ?? 'CLAIM_FAILED',
       detail: error.message
     }
+  }
+
+  // Resource Pressure Governor gate -- checked first, before the capacity
+  // check below and before any real Orca CLI work, for the same reason
+  // the capacity check runs post-claim: this tick genuinely holds the
+  // lock, so releasing it honestly here (not pausing, not failing) is
+  // exactly "missions waiting on memory become WAITING_FOR_RESOURCES, not
+  // FAILED/STALLED" -- the run stays ACTIVE with no wave dispatched, and
+  // the very next tick (from any of this function's several real callers)
+  // tries again. Only CRITICAL/EMERGENCY refuse; PRESSURED still admits a
+  // single dispatch here (the heavy-task lease, not this gate, is what
+  // throttles concurrent full-suite/pilot/research-worker categories).
+  const admission = classifyDispatchAdmission(resourcePressure)
+  if (!admission.admitted) {
+    return commitReleaseOnly(projectId, store, claimed, clock, 'DISPATCH_WAITING_FOR_RESOURCES', undefined, admission)
   }
 
   // M5: real capacity check now that this tick genuinely holds the lock --
@@ -397,10 +426,7 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
 
   const senderTerminal = await resolveSenderTerminal(orchestration)
   if (!senderTerminal.ok) {
-    return commitAbortedDispatch(projectId, store, claimed, clock, {
-      reason: senderTerminal.reason ?? 'SENDER_TERMINAL_UNAVAILABLE',
-      detail: senderTerminal.detail ?? 'could not resolve a sender-terminal identity for dispatch'
-    })
+    return commitAbortedDispatch(projectId, store, claimed, clock, { reason: senderTerminal.reason ?? 'SENDER_TERMINAL_UNAVAILABLE', detail: senderTerminal.detail ?? 'could not resolve a sender-terminal identity for dispatch' })
   }
   const from = senderTerminal.handle
 
@@ -416,10 +442,7 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       from
     })
     if (!runResult.ok) {
-      return commitAbortedDispatch(projectId, store, claimed, clock, {
-        reason: runResult.reason,
-        detail: runResult.detail
-      })
+      return commitAbortedDispatch(projectId, store, claimed, clock, { reason: runResult.reason, detail: runResult.detail })
     }
     orchestrationRunId = runResult.result.run.id
   } else {
@@ -431,10 +454,7 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     // no-op when already correctly bound.
     const bindResult = await orchestration.bindOrchestrationRun({ id: orchestrationRunId, from })
     if (!bindResult.ok) {
-      return commitAbortedDispatch(projectId, store, claimed, clock, {
-        reason: bindResult.reason,
-        detail: bindResult.detail
-      })
+      return commitAbortedDispatch(projectId, store, claimed, clock, { reason: bindResult.reason, detail: bindResult.detail })
     }
   }
 
@@ -888,6 +908,7 @@ export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, dep
   const orchestration = deps.orchestration ?? DEFAULT_ORCHESTRATION
   const store = deps.store ?? DEFAULT_STORE
   const capacity = deps.capacity ?? DEFAULT_CAPACITY
+  const resourcePressure = deps.resourcePressure ?? DEFAULT_RESOURCE_PRESSURE
 
   const before = store.readRun(projectId)
   if (!before) {
@@ -897,9 +918,12 @@ export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, dep
     return { action: 'NOOP', reason: `run state is ${before.state}, not ACTIVE` }
   }
   if (before.inFlightWave) {
+    // Settling an already-in-flight wave is a cheap read/reconcile of a
+    // worker that already exists -- never gated. Only a genuinely NEW
+    // heavyweight worker spawn (dispatchStep, below) consults the governor.
     return settleStep(projectId, clock, orchestration, store)
   }
-  return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity)
+  return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity, resourcePressure)
 }
 
 // Recovers a run whose in-flight wave stalled AND releases the real Orca
