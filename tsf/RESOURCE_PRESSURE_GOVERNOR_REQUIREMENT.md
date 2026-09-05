@@ -152,13 +152,16 @@ retirement/termination is V1, explicitly not attempted here.
 
 ## 6. Status and next step
 
-**Design/contract recorded. No code implemented, no worktree created, no
-test run.** This requirement is sequenced as an extension of the already-
-queued `ORCA_RESOURCE_AUDITOR_V0` Main TSF integration mission (currently
-`PAUSED_RESOURCE_PRESSURE`) — when that mission's resource gate clears,
-the host-tier classifier (§2, needs no Orca-core change) should be built
-alongside it in the same integration worktree, as a natural extension of
-`resource-auditor.mjs`'s existing classifier pattern. The Orca-core bridge
-proposal for `reclaimCandidates`/session attribution remains a separate,
-explicitly-deferred authorization, already called for in the Resource
-Auditor review and not duplicated here.
+**Superseded by implementation.** §2's host-tier classifier, admission
+policy, and the heavy-task lease from §4 are now built — see
+`tsf-resource-pressure-governor-v0` (branched from this commit,
+`fec9bf3275`, per this doc's own base) and
+`tsf/docs/tsf/TSF_RESOURCE_PRESSURE_GOVERNOR_V0.md` for the full record.
+Built as its own standalone module rather than inside
+`resource-auditor.mjs`'s worktree as originally suggested here, because
+`ORCA_RESOURCE_AUDITOR_V0`'s code had not actually landed on this base at
+implementation time (only its Main TSF review doc had) — the host-tier
+classifier has no runtime dependency on that module, so no coupling was
+lost. The Orca-core bridge proposal for `reclaimCandidates`/session
+attribution remains exactly as deferred here — not built, not duplicated,
+still gated on separate authorization.

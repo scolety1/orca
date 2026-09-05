@@ -34,7 +34,8 @@ const DEFAULTS = {
   estimateActuals: {}, // projectId -> TSF_ESTIMATE_ACTUAL_V1[] (see tsf/domain/estimate-calibration.mjs)
   evalRuns: {}, // packId -> TSF_EVAL_RUN_RESULT_V1[], append-only (see tsf/server/eval-http-routes.mjs)
   prepareForWorkOperations: {}, // operationId -> TSF_PREPARE_FOR_WORK_OPERATION_V1 (see tsf/domain/prepare-for-work-operation.mjs)
-  healthRepairOperations: {} // operationId -> TSF_HEALTH_REPAIR_OPERATION_V1 (see tsf/domain/health-repair-operation.mjs) -- BUG-05
+  healthRepairOperations: {}, // operationId -> TSF_HEALTH_REPAIR_OPERATION_V1 (see tsf/domain/health-repair-operation.mjs) -- BUG-05
+  resourcePressureLeases: {} // kind -> { holderMissionId, acquiredAt, expiresAt } (see tsf/domain/resource-pressure-governor.mjs)
 }
 
 // Exposes the real state file path (honoring the same TSF_UI_STATE_FILE
@@ -88,7 +89,11 @@ function withWindowsRenameRetry(fn) {
       return fn()
     } catch (error) {
       const retryable = error.code === 'EPERM' || error.code === 'EACCES' || error.code === 'EBUSY'
-      if (process.platform !== 'win32' || !retryable || attempt >= WINDOWS_RENAME_RETRY_DELAYS_MS.length) {
+      if (
+        process.platform !== 'win32' ||
+        !retryable ||
+        attempt >= WINDOWS_RENAME_RETRY_DELAYS_MS.length
+      ) {
         throw error
       }
       sleepSync(WINDOWS_RENAME_RETRY_DELAYS_MS[attempt])

@@ -67,6 +67,7 @@ import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
 import { writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
 import { bootstrapKeepGoingFleetDriverIfEnabled } from './keep-going-fleet-driver-bootstrap.mjs'
 import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
+import { handleResourcePressureGovernorRoute } from './resource-pressure-governor-http-routes.mjs'
 
 const FOUNDATION = Object.freeze({
   product: 'Thousand Sunny Fleet — Orca Foundation',
@@ -409,15 +410,8 @@ export function createRequestHandler(options = {}) {
       }
 
       // GET/POST /api/keep-going/:projectId[/start|pause|resume] -- see keep-going-http-routes.mjs
-      if (
-        await handleKeepGoingRoute(
-          parts,
-          req,
-          res,
-          { map, opState },
-          { json, notFound, readBody, saveState }
-        )
-      ) {
+      const keepGoingHelpers = { json, notFound, readBody, saveState }
+      if (await handleKeepGoingRoute(parts, req, res, { map, opState }, keepGoingHelpers)) {
         return
       }
 
@@ -677,16 +671,8 @@ export function createRequestHandler(options = {}) {
       }
 
       // GET/POST /api/onboarding/* -- see onboarding-http-routes.mjs
-      if (
-        await handleOnboardingRoute(
-          parts,
-          req,
-          res,
-          url,
-          { opState },
-          { json, notFound, readBody, saveState }
-        )
-      ) {
+      const onboardingHelpers = { json, notFound, readBody, saveState }
+      if (await handleOnboardingRoute(parts, req, res, url, { opState }, onboardingHelpers)) {
         return
       }
 
@@ -742,50 +728,45 @@ export function createRequestHandler(options = {}) {
         return
       }
 
-      // POST /api/fleet/schedule -- see fleet-optimizer-http-routes.mjs
+      // POST /api/fleet/schedule -- see fleet-optimizer-http-routes.mjs;
+      // GET /api/capacity -- see capacity-http-routes.mjs
+      const fleetOptimizerHelpers = { json, notFound, readBody }
       if (
-        await handleFleetOptimizerRoute(
+        (await handleFleetOptimizerRoute(
           parts,
           req,
           res,
           url,
           { opState },
-          { json, notFound, readBody }
-        )
+          fleetOptimizerHelpers
+        )) ||
+        (await handleCapacityRoute(parts, req, res, { json, notFound }))
       ) {
-        return
-      }
-
-      // GET /api/capacity -- see capacity-http-routes.mjs
-      if (await handleCapacityRoute(parts, req, res, { json, notFound })) {
         return
       }
 
       // POST /api/portfolio/active-fleet, /api/portfolio/work-set -- see
-      // portfolio-membership-http-routes.mjs
+      // portfolio-membership-http-routes.mjs; POST
+      // /api/projects/prepare-for-work -- see prepare-for-work-http-routes.mjs
+      const portfolioHelpers = { json, notFound, readBody, saveState }
       if (
-        await handlePortfolioMembershipRoute(
+        (await handlePortfolioMembershipRoute(
           parts,
           req,
           res,
           { map, opState },
-          { json, notFound, readBody, saveState }
-        )
+          portfolioHelpers
+        )) ||
+        (await handlePrepareForWorkRoute(parts, req, res, { opState }, portfolioHelpers))
       ) {
         return
       }
 
-      // POST /api/projects/prepare-for-work -- see
-      // prepare-for-work-http-routes.mjs
-      if (
-        await handlePrepareForWorkRoute(
-          parts,
-          req,
-          res,
-          { opState },
-          { json, notFound, readBody, saveState }
-        )
-      ) {
+      // GET/POST /api/resource-pressure/state, POST /api/resource-pressure/
+      // heavy-task-lease/* -- see resource-pressure-governor-http-routes.mjs
+      const rpCtx = { opState }
+      const rpHelpers = { json, notFound, readBody, saveState }
+      if (await handleResourcePressureGovernorRoute(parts, req, res, rpCtx, rpHelpers)) {
         return
       }
 
