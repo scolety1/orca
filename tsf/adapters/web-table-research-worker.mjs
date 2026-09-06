@@ -63,10 +63,16 @@ function baseResult(request, status) {
 }
 
 async function attemptOneCandidate(url, request, clock, acquireFn) {
+  // A page with many unrelated tables (real-network finding: Wikipedia's
+  // "Salary cap" article has 12) can otherwise lose the actually-matching
+  // table to a larger, irrelevant one under the adapter's default size
+  // heuristic. This hint is generic -- the caller's own targetEntity id/
+  // name, never a hardcoded topic keyword.
+  const entityHints = [request.targetEntity?.entityId, request.targetEntity?.name].filter(Boolean)
   const { receipt } = await acquireFn({
     candidate: { url, contentTypeHint: null },
     accessInput: ACCESS_INPUT,
-    tableSelectionHint: null,
+    tableSelectionHint: entityHints.length > 0 ? { preferTableContainingAnyOf: entityHints } : null,
     clock
   })
   if (receipt.decision !== 'EXTRACTED') {
@@ -107,6 +113,15 @@ async function computeResult(request, clock, acquireFn) {
       warnings.push(`${url}: table extracted but no row matched this entity`)
       continue
     }
+    if (extraction.proposedClaims.length === 0) {
+      // Honest, actionable diagnostic: the entity WAS found, but none of
+      // the requested field names matched this page's own real column
+      // headers -- surfacing those headers here (never hardcoded per
+      // topic) is what makes this a genuine, generic gap report rather
+      // than a silent, unexplained miss.
+      warnings.push(`${url}: entity matched but no requested field matched this page's real headers: [${receipt.artifactRef.headers.join(', ')}]`)
+      continue
+    }
     proposedClaims.push(...extraction.proposedClaims)
     evidence.push(...extraction.evidence)
     sourceReferences.push(...extraction.sourceReferences)
@@ -134,6 +149,24 @@ async function computeResult(request, clock, acquireFn) {
 export function createWebTableResearchWorker({ clock = () => new Date(), acquireFn = acquirePublicWebTableSource } = {}) {
   async function dispatch(request) {
     const result = await computeResult(request, clock, acquireFn)
+    // Real-network finding (REAL FREE-PATH RESEARCH EXECUTION V1 proving
+    // run): a FAILED result reported here as {ok:true, workerRunRef} makes
+    // dispatchResearchNodeDurable's own idempotency check (research-
+    // dispatch-bookkeeping.mjs) classify it EXACTLY_ONCE -- correct for a
+    // real, billable provider job that TSF must never blindly re-ask, but
+    // it PERMANENTLY blocks any real retry for this synchronous, $0 worker
+    // (no external job exists to re-poll; the SAME taskFingerprint recurs
+    // on every retry attempt since nothing about the request itself
+    // changes). Reporting {ok:false} instead classifies as AT_MOST_ONCE
+    // (dispatchResearchNodeDurable's dedup guard only blocks EXACTLY_ONCE/
+    // AT_LEAST_ONCE), which correctly permits the existing retry/escalate
+    // machinery to make a genuine new attempt -- no new mechanism, no
+    // change to shared bookkeeping. Only a genuine SUCCEEDED extraction
+    // needs a workerRunRef at all (nothing to poll for on a failure).
+    if (result.status === 'FAILED') {
+      const detail = result.warnings.length > 0 ? `${result.failureDetails.detail} -- ${result.warnings.join('; ')}` : result.failureDetails.detail
+      return { ok: false, reason: result.failureDetails.reason, detail }
+    }
     const dispatchedAt = isoNow(clock)
     const providerRunRef = { provider: WEB_TABLE_PROVIDER_ID, providerRunId: JSON.stringify({ dispatchedAt, result: { ...result, providerRunRef: undefined } }), dispatchedAt }
     return { ok: true, workerRunRef: providerRunRef }

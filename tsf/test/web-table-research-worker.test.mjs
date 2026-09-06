@@ -8,8 +8,22 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { rmSync } from 'node:fs'
 import { acquireWebSourceViaStaticTable } from '../domain/web-table-source-adapter.mjs'
 import { createWebTableResearchWorker, WEB_TABLE_PROVIDER_ID } from '../adapters/web-table-research-worker.mjs'
+
+const HERE = import.meta.dirname
+const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-state.test-web-table-worker-${process.pid}.json`)
+process.env.TSF_UI_STATE_FILE = STATE_FILE
+function cleanupStateFile() {
+  for (const suffix of ['', '.tmp', '.research.lock']) {
+    rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  }
+}
+cleanupStateFile()
+test.after(cleanupStateFile)
+const { createResearchMissionDurable, dispatchResearchNodeDurable } = await import('../server/research-mission-driver.mjs')
+const { readResearchMission } = await import('../server/research-mission-store.mjs')
 
 const fixturesDir = path.join(import.meta.dirname, '..', 'fixtures', 'web-table-source-acquisition')
 const publicResolve = async () => [{ address: '93.184.216.34' }]
@@ -94,33 +108,91 @@ test('restart-safety: a fresh call to fetchResult using only the durably-shaped 
   assert.equal(fetched.result.proposedClaims.length, 2)
 })
 
-test('honest FAILED result (never a fabricated claim) when no row matches the requested entity', async () => {
+// Real-network finding, fixed: dispatch() now reports a genuine "no match"
+// as {ok:false} (never a fabricated claim), NOT {ok:true} with an embedded
+// FAILED result -- the latter made dispatchResearchNodeDurable's own
+// idempotency-by-taskFingerprint check classify it EXACTLY_ONCE, which
+// PERMANENTLY blocked any real retry for this synchronous, $0 worker (no
+// external job exists to re-poll). {ok:false} classifies AT_MOST_ONCE,
+// which the SAME existing dedup guard does not block -- see
+// research-mission-fleet-driver.mjs's own retry/escalate machinery, no
+// new mechanism.
+test('a genuine no-match reports {ok:false} (never a fabricated claim, and never blocks a future real retry)', async () => {
   const html = await loadFixture('qb-stats-1995.html')
   const worker = createWebTableResearchWorker({ clock, acquireFn: fixtureAcquireFn(html) })
   const request = baseRequest({ nodeId: 'node:someone-else', targetEntity: { entityId: 'Someone Else', name: 'Someone Else' } })
   const dispatched = await worker.dispatch(request)
-  const fetched = await worker.fetchResult(dispatched.workerRunRef)
-  assert.equal(fetched.result.status, 'FAILED')
-  assert.equal(fetched.result.failureDetails.reason, 'NO_FREE_PUBLIC_MATCH_FOUND')
-  assert.equal(fetched.result.proposedClaims.length, 0)
+  assert.equal(dispatched.ok, false)
+  assert.equal(dispatched.reason, 'NO_FREE_PUBLIC_MATCH_FOUND')
+  assert.match(dispatched.detail, /table extracted but no row matched this entity/)
 })
 
-test('honest FAILED result when the mission specification names no preferredSources at all', async () => {
+test('{ok:false} when the mission specification names no preferredSources at all', async () => {
   const worker = createWebTableResearchWorker({ clock, acquireFn: fixtureAcquireFn('<html></html>') })
   const request = baseRequest({ preferredSources: [] })
   const dispatched = await worker.dispatch(request)
-  const fetched = await worker.fetchResult(dispatched.workerRunRef)
-  assert.equal(fetched.result.status, 'FAILED')
-  assert.equal(fetched.result.failureDetails.reason, 'NO_CANDIDATE_SOURCE_CONFIGURED')
+  assert.equal(dispatched.ok, false)
+  assert.equal(dispatched.reason, 'NO_CANDIDATE_SOURCE_CONFIGURED')
 })
 
-test('a genuinely refused/blocked source (e.g. robots disallow) is reported as a warning, never silently treated as a match', async () => {
+test('a genuinely refused/blocked source (e.g. robots disallow) is reported in {ok:false}\'s detail, never silently treated as a match', async () => {
   const worker = createWebTableResearchWorker({
     clock,
     acquireFn: () => Promise.resolve({ receipt: { decision: 'REFUSED', decisionReason: 'ROBOTS_DISALLOWED' } })
   })
   const dispatched = await worker.dispatch(baseRequest())
-  const fetched = await worker.fetchResult(dispatched.workerRunRef)
-  assert.equal(fetched.result.status, 'FAILED')
-  assert.match(fetched.result.warnings[0], /ROBOTS_DISALLOWED/)
+  assert.equal(dispatched.ok, false)
+  assert.match(dispatched.detail, /ROBOTS_DISALLOWED/)
+})
+
+// REAL INTEGRATION PROOF, the whole point of the {ok:false} fix: a real
+// dispatchResearchNodeDurable call that fails to find a match must NOT
+// permanently block a later real retry attempt for the SAME node/provider/
+// taskFingerprint -- this exercises the actual shared dedup guard
+// (research-dispatch-bookkeeping.mjs's classifyDispatchDeliveryGuarantee),
+// not a mock of it.
+test('REAL retry proof: two separate dispatchResearchNodeDurable calls against a node that keeps failing to match both genuinely attempt real acquisition -- never silently no-op\'d as "already dispatched"', async () => {
+  const missionId = 'mission:retry-proof'
+  const spec = {
+    schemaVersion: 'TSF_RESEARCH_SPECIFICATION_V1',
+    id: 'spec:retry-proof',
+    researchQuestion: 'q',
+    entityType: 'FIXTURE',
+    requestedFields: [{ fieldName: 'Passing / Yards', valueType: 'number', required: true, derivationRule: null }],
+    sourcePolicy: { preferredSources: ['https://example.com/1995-qb-stats'], disallowedSources: [], licensingConstraints: [], freshnessPolicy: 'UNSPECIFIED', requireIndependentSources: false, minSourceCount: 0, allowCrossMissionLibraryReuse: true },
+    temporalRequirements: { asOfDate: '2026-09-06', periodScope: '1995' },
+    budget: { maxCostUsd: 0, maxLatencyMs: null, maxToolCallsPerNode: null },
+    toolPermissions: []
+  }
+  await createResearchMissionDurable(
+    missionId,
+    {
+      projectId: 'test',
+      specification: spec,
+      expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [{ entityId: 'nobody', identityHints: {} }] },
+      nodes: [{ id: 'node:nobody', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'nobody', name: 'Nobody Real' }, requestedFields: spec.requestedFields, requestedOutputSchema: { type: 'object', properties: { 'Passing / Yards': { type: 'number' } } } }]
+    },
+    clock
+  )
+  const html = await loadFixture('qb-stats-1995.html')
+  let realAcquireCalls = 0
+  const countingAcquireFn = (...args) => {
+    realAcquireCalls += 1
+    return fixtureAcquireFn(html)(...args)
+  }
+  const worker = createWebTableResearchWorker({ clock, acquireFn: countingAcquireFn })
+
+  const first = await dispatchResearchNodeDurable(missionId, 'node:nobody', WEB_TABLE_PROVIDER_ID, worker, clock)
+  assert.equal(first.ok, false, 'genuinely no match for "Nobody Real" in this fixture -- an honest failure')
+  assert.equal(realAcquireCalls, 1, 'the first call really attempted real acquisition')
+
+  const second = await dispatchResearchNodeDurable(missionId, 'node:nobody', WEB_TABLE_PROVIDER_ID, worker, clock)
+  assert.equal(second.ok, false)
+  assert.equal(second.alreadyDispatched, undefined, 'must never be silently short-circuited as already-dispatched')
+  assert.equal(realAcquireCalls, 2, 'the second call ALSO really attempted real acquisition -- the fix in question: this used to be permanently blocked after the first FAILED attempt')
+
+  const mission = readResearchMission(missionId)
+  const node = mission.nodes[0]
+  assert.equal(node.dispatchAttempts.length, 2, 'two real, distinct dispatch attempts are durably recorded')
+  assert.ok(node.dispatchAttempts.every((a) => a.outcome === 'FAILED_CLEAN'), 'both attempts resolve FAILED_CLEAN, never left UNKNOWN/ambiguous')
 })

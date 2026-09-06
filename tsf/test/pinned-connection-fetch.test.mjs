@@ -61,6 +61,22 @@ test('connects to exactly the vetted address, never re-resolving the hostname', 
   }
 })
 
+test('REAL FREE-PATH RESEARCH EXECUTION V1 finding: a caller-set User-Agent header actually reaches the real request -- confirms the fix for public-web-source-acquisition.mjs, which previously sent no distinguishing User-Agent on the content fetch at all (only robots-txt-fetch.mjs did), and real public sites (Wikipedia, live-verified) correctly reject that', async () => {
+  let seenUserAgent = null
+  const server = http.createServer((req, res) => {
+    seenUserAgent = req.headers['user-agent']
+    res.end('ok')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  try {
+    await pinConnectionToAddresses(`http://my-real-hostname.example:${port}/`, { headers: { 'User-Agent': 'TsfWebSourceAcquisitionBot/0.1 (+web-table-source-adapter)' } }, ['127.0.0.1'])
+    assert.equal(seenUserAgent, 'TsfWebSourceAcquisitionBot/0.1 (+web-table-source-adapter)')
+  } finally {
+    server.close()
+  }
+})
+
 test('the Host header still reflects the real hostname, not the pinned IP', async () => {
   let seenHost = null
   const server = http.createServer((req, res) => {

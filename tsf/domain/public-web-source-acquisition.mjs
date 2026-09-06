@@ -19,6 +19,7 @@
 // refuse.
 
 import { createPinnedFetch } from '../adapters/pinned-connection-fetch.mjs'
+import { TSF_WEB_ACQUISITION_USER_AGENT } from '../adapters/robots-txt-fetch.mjs'
 import { acquireWebSourceViaStaticTable } from './web-table-source-adapter.mjs'
 import { WEB_PUBLIC_ACQUISITION_TRANSPORT_CAPABILITY_V1 } from './web-source-acquisition-transport-capability.mjs'
 import { buildExtractionFailureReceipt } from './web-source-acquisition-receipt.mjs'
@@ -54,7 +55,18 @@ export async function acquirePublicWebTableSource({
 }) {
   let pinnedFetchImpl
   try {
-    pinnedFetchImpl = createPinnedFetch({ resolveImpl })
+    const rawPinnedFetch = createPinnedFetch({ resolveImpl })
+    // Real-network finding (REAL FREE-PATH RESEARCH EXECUTION V1 proving
+    // run): robots-txt-fetch.mjs already applies this same identifying
+    // User-Agent to the robots.txt request, but the actual CONTENT fetch
+    // never did -- Node's default fetch sends no distinguishing User-Agent
+    // at all, and real public sites (Wikipedia confirmed live) correctly
+    // reject that with 403 per their own API etiquette. Wrapped here, not
+    // in bounded-http-fetch.mjs, since that module has no headers
+    // parameter by design (same fetchImpl-wrapping technique
+    // robots-txt-fetch.mjs already established).
+    pinnedFetchImpl = (url, init) =>
+      rawPinnedFetch(url, { ...init, headers: { ...init?.headers, 'User-Agent': TSF_WEB_ACQUISITION_USER_AGENT } })
   } catch (error) {
     // Fail closed: the safe transport itself could not even be constructed.
     // Never falls through to an unpinned fetch -- refuses the acquisition

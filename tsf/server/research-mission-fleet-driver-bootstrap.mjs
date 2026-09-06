@@ -44,6 +44,18 @@ export function bootstrapResearchMissionFleetDriverIfEnabled(server) {
     onError: (error) => {
       console.error('Research mission fleet driver cycle failed:', error)
     },
+    // Real operational visibility for "record typed missingness/blocker
+    // honestly": a dispatch that returns {ok:false} (the real, per-URL
+    // reason/detail from the free-public worker) is otherwise invisible
+    // once resolved -- dispatchAttempts durably records only outcome/
+    // timestamps, not why. Logged, never stored as new durable state.
+    onCycle: (results) => {
+      for (const result of results) {
+        if (result?.action === 'DISPATCHED' && result.dispatchResult?.ok === false) {
+          console.log(`Research node dispatch (${result.missionId}/${result.nodeId}) found no real match: ${result.dispatchResult.reason} -- ${result.dispatchResult.detail}`)
+        }
+      }
+    },
     // REAL FREE-PATH RESEARCH EXECUTION V1: a genuinely $0, free-public
     // worker (never Exa/Parallel) -- deps.requiresPaidApproval stays unset
     // (falsy), so dispatch always uses the ungated dispatchResearchNodeDurable

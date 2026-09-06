@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { acquireWebSourceViaStaticTable } from '../domain/web-table-source-adapter.mjs'
+import { acquireWebSourceViaStaticTable, selectTableWithEvidence } from '../domain/web-table-source-adapter.mjs'
 
 const fixturesDir = path.join(import.meta.dirname, '..', 'fixtures', 'web-table-source-acquisition')
 const publicResolve = async () => [{ address: '93.184.216.34' }]
@@ -268,4 +268,34 @@ test('V0.5: raw HTML never leaks into the receipt even when robots evidence rete
   assert.equal(receipt.robotsEvidence.robotsContent, undefined)
   assert.ok(receipt.receiptHash)
   assert.ok(receipt.contentHash)
+})
+
+// Real-network finding (REAL FREE-PATH RESEARCH EXECUTION V1): a page with
+// many unrelated tables can lose its actually-matching table to a larger,
+// irrelevant one under the default size heuristic (Wikipedia's "Salary
+// cap" article has 12 tables; the real year-by-year data table is small,
+// a cross-league comparison table is larger). Still domain-neutral: the
+// hint is a plain list of exact cell values (a caller's own targetEntity),
+// never a hardcoded topic keyword.
+test('selectTableWithEvidence: preferTableContainingAnyOf picks the table that actually contains the wanted value, even when a larger, unrelated table exists', () => {
+  const irrelevantLargeTable = { index: 0, caption: null, headers: ['A', 'B', 'C'], bodyRows: [['x', 'y', 'z'], ['p', 'q', 'r'], ['s', 't', 'u']], rowCount: 3, columnCount: 3 }
+  const realMatchingTable = { index: 1, caption: null, headers: ['Year', 'Amount'], bodyRows: [['2018', '$1'], ['2019', '$2']], rowCount: 2, columnCount: 2 }
+  const result = selectTableWithEvidence([irrelevantLargeTable, realMatchingTable], { preferTableContainingAnyOf: ['2018'] })
+  assert.equal(result.selectedIndex, 1)
+  assert.equal(result.method, 'ENTITY_MATCH_HINT')
+})
+
+test('selectTableWithEvidence: preferTableContainingAnyOf with no match anywhere falls through to the existing size heuristic, never throws', () => {
+  const only = { index: 0, caption: null, headers: ['A'], bodyRows: [['x']], rowCount: 1, columnCount: 1 }
+  const result = selectTableWithEvidence([only], { preferTableContainingAnyOf: ['nothing-present-anywhere'] })
+  assert.equal(result.selectedIndex, 0)
+  assert.equal(result.method, 'LARGEST_TABLE_WITH_HEADER')
+})
+
+test('selectTableWithEvidence: an explicit tableIndex/captionIncludes hint still wins over preferTableContainingAnyOf when both are given (unchanged precedence)', () => {
+  const t0 = { index: 0, caption: null, headers: ['Year'], bodyRows: [['2018']], rowCount: 1, columnCount: 1 }
+  const t1 = { index: 1, caption: null, headers: ['Year'], bodyRows: [['2018']], rowCount: 1, columnCount: 1 }
+  const result = selectTableWithEvidence([t0, t1], { tableIndex: 1, preferTableContainingAnyOf: ['2018'] })
+  assert.equal(result.selectedIndex, 1)
+  assert.equal(result.method, 'EXPLICIT_INDEX_HINT')
 })

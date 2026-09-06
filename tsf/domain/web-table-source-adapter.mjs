@@ -123,6 +123,32 @@ export function selectTableWithEvidence(tables, hint) {
       }
     }
   }
+  // Real-network finding (REAL FREE-PATH RESEARCH EXECUTION V1): a page
+  // with many unrelated tables (Wikipedia's "Salary cap" article has 12 --
+  // navboxes, cross-league comparisons, etc.) can have its ACTUAL matching
+  // table lose to a larger, irrelevant one under the default size
+  // heuristic below. Still domain-neutral: this hint is a plain list of
+  // exact cell values to look for (a caller's own targetEntity id/name,
+  // never a hardcoded topic keyword) -- the table containing the MOST of
+  // them, among those containing at least one, wins.
+  if (Array.isArray(hint?.preferTableContainingAnyOf) && hint.preferTableContainingAnyOf.length > 0) {
+    const wanted = hint.preferTableContainingAnyOf.map((v) => String(v).trim().toLowerCase())
+    const scored = tables
+      .map((t) => {
+        const cells = t.bodyRows.flat().map((c) => String(c ?? '').trim().toLowerCase())
+        const hitCount = wanted.filter((w) => cells.includes(w)).length
+        return { table: t, hitCount }
+      })
+      .filter((s) => s.hitCount > 0)
+    if (scored.length > 0) {
+      const best = scored.reduce((top, s) => (s.hitCount > top.hitCount ? s : top), scored[0])
+      return {
+        selectedIndex: best.table.index,
+        method: 'ENTITY_MATCH_HINT',
+        candidatesConsidered: candidates
+      }
+    }
+  }
   const withHeader = tables.filter((t) => t.headers.length > 0 && t.rowCount > 0)
   const pool = withHeader.length > 0 ? withHeader : tables
   const largest = pool.reduce(
