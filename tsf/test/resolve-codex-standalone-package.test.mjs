@@ -97,3 +97,55 @@ test('never activates on a non-Windows platform, even with a real install presen
 test('a homedirFn returning nothing fails closed, never throws', () => {
   assert.equal(resolveCodexStandalonePackage({ platform: 'win32', homedirFn: () => null }), null)
 })
+
+// CODEX_HOME-aware resolution (real, live-reproduced finding): the
+// official Windows installer updated the standalone package under a
+// DIFFERENT effective CODEX_HOME (Orca's own runtime home) while the
+// bare %USERPROFILE%\.codex tree stayed on the older version -- two
+// genuinely independent, correctly-versioned trees on the same machine.
+function buildFakeCodexHome(codexHomeDir, version) {
+  const standaloneDir = path.join(codexHomeDir, 'packages', 'standalone')
+  const releaseDir = path.join(standaloneDir, 'releases', version)
+  mkdirSync(path.join(releaseDir, 'bin'), { recursive: true })
+  writeFileSync(path.join(releaseDir, 'bin', 'codex.exe'), `fake ${version}`)
+  symlinkSync(releaseDir, path.join(standaloneDir, 'current'), 'junction')
+  return releaseDir
+}
+
+test('an explicit codexHome is used AS-IS (never %USERPROFILE%\\.codex appended) and wins over the bare default', () => {
+  const home = buildFakeInstall('0.148.0-x86_64-pc-windows-msvc') // the bare %USERPROFILE%\.codex tree
+  const orcaHome = mkdtempSync(path.join(tmpdir(), 'tsf-codex-orcahome-'))
+  try {
+    const orcaRelease = buildFakeCodexHome(orcaHome, '0.153.4-x86_64-pc-windows-msvc')
+    const entry = resolveCodexStandalonePackage({ platform: 'win32', homedirFn: () => home, codexHome: orcaHome })
+    assert.equal(entry, path.join(orcaRelease, 'bin', 'codex.exe'), 'must resolve the codexHome tree, not the homedir-derived default')
+    assert.match(entry, /0\.153\.4/)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+    rmSync(orcaHome, { recursive: true, force: true })
+  }
+})
+
+test('no codexHome supplied at all falls back to the %USERPROFILE%\\.codex default', () => {
+  const home = buildFakeInstall('0.148.0-x86_64-pc-windows-msvc')
+  try {
+    const entry = resolveCodexStandalonePackage({ platform: 'win32', homedirFn: () => home, codexHome: undefined })
+    assert.match(entry, /0\.148\.0/)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('a broken/nonexistent codexHome fails closed (null) -- never silently falls back to the bare default', () => {
+  const home = buildFakeInstall('0.148.0-x86_64-pc-windows-msvc')
+  try {
+    const entry = resolveCodexStandalonePackage({
+      platform: 'win32',
+      homedirFn: () => home,
+      codexHome: path.join(tmpdir(), 'tsf-codex-nonexistent-codexhome-that-was-never-created')
+    })
+    assert.equal(entry, null, 'a real, resolvable default tree existing must never mask a broken explicit codexHome')
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})

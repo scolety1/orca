@@ -63,8 +63,14 @@ function npmGlobalCandidatePaths(relPath, homedirFn) {
 
 // homedirFn defaults to the real os.homedir() -- injectable so tests can
 // point the homedir-derived candidate at a hermetic fixture directory
-// instead of this machine's real npm global install.
-export function resolveAgentEntry(agentId, { homedirFn = homedir } = {}) {
+// instead of this machine's real npm global install. codexHome defaults
+// to this process's own real, inherited CODEX_HOME (e.g. set by Orca on
+// every terminal/child it spawns) -- the standalone-package candidate
+// resolves that SAME effective tree rather than always the bare
+// %USERPROFILE%\.codex default, so a caller whose environment already
+// carries a real CODEX_HOME (a newer, independently-updated tree) gets
+// the binary matching what it will actually run under.
+export function resolveAgentEntry(agentId, { homedirFn = homedir, codexHome = process.env.CODEX_HOME } = {}) {
   const candidates = CANDIDATES[agentId]
   if (!candidates) {
     return null
@@ -83,7 +89,7 @@ export function resolveAgentEntry(agentId, { homedirFn = homedir } = {}) {
       return { command: value, args: [], viaShell: false }
     }
     if (candidate.standalonePackage) {
-      const entry = resolveCodexStandalonePackage({ homedirFn })
+      const entry = resolveCodexStandalonePackage({ homedirFn, codexHome })
       if (!entry) {
         continue
       }

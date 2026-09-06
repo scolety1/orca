@@ -101,7 +101,7 @@ function npmAgentEntry(packageName, entryName) {
   return existsSync(candidate) ? candidate : null
 }
 
-function resolveProviderCommand(provider) {
+function resolveProviderCommand(provider, codexHome) {
   if (provider === 'codex') {
     // TSF_CODEX_ENTRY / npm-global still win first (operator override,
     // and the older, still-real install method) -- checked before the
@@ -116,8 +116,12 @@ function resolveProviderCommand(provider) {
     // real, non-symlinked release-directory path works every time -- see
     // resolve-codex-standalone-package.mjs. Tried before the win32
     // PATH-command refusal below so a healthy standalone install is used
-    // directly rather than failing past a fixable case.
-    const standalone = resolveCodexStandalonePackage()
+    // directly rather than failing past a fixable case. `codexHome` is
+    // the SAME effective home this launch's own child process receives
+    // (below) -- a real, live-reproduced mismatch otherwise (a caller
+    // whose effective CODEX_HOME had already been updated to a newer
+    // version still resolved the older %USERPROFILE%\.codex binary).
+    const standalone = resolveCodexStandalonePackage({ codexHome })
     if (standalone) {
       return { command: standalone, prefix: [] }
     }
@@ -149,8 +153,17 @@ if (!['codex', 'claude'].includes(input.provider)) {
 }
 rejectUnsafeArguments(input.providerArguments)
 const worktree = validateIsolatedWorktree(input.workspace)
-const resolvedCommand = resolveProviderCommand(input.provider)
-const codexHome = resolve(process.env.TSF_CODEX_HOME || join(homedir(), '.codex'))
+// Effective CODEX_HOME, highest priority first: TSF_CODEX_HOME (an
+// explicit, deliberate TSF-level override, e.g. for tests) -> the real
+// CODEX_HOME this process already inherited (e.g. from Orca, which sets
+// it on every terminal/child it spawns -- this IS "the provider launch's
+// effective CODEX_HOME" whenever present, live-verified against Orca's
+// own runtime home) -> the documented %USERPROFILE%\.codex default only
+// when neither is set. Computed before resolveProviderCommand so the
+// SAME value both picks the binary and is handed to the child below --
+// never two independently-computed answers that can disagree.
+const codexHome = resolve(process.env.TSF_CODEX_HOME || process.env.CODEX_HOME || join(homedir(), '.codex'))
+const resolvedCommand = resolveProviderCommand(input.provider, codexHome)
 
 const safeArguments =
   input.provider === 'codex'

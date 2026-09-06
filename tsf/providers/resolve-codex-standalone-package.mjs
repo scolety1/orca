@@ -1,13 +1,11 @@
 // Real, live-reproduced Windows bug (Codex Physical-Launcher Repair):
 // codex.exe resolved through the standalone installer's PATH shim
 // (AppData\Local\Programs\OpenAI\Codex\bin\codex.exe -> a symlink chain
-// ending at ~/.codex/packages/standalone/current/bin/codex.exe) fails
+// ending at <codex home>\packages\standalone\current\bin\codex.exe) fails
 // Windows sandbox setup -- "program not found" launching
-// codex-windows-sandbox-setup.exe, or an indefinite hang, reproduced
-// identically regardless of CODEX_HOME. The SAME binary, invoked via its
-// REAL (fully resolved, non-symlinked) release-directory path, works
-// correctly every time -- proven interactively (a real, independently-
-// reproduced `sandbox -- cmd /c "echo sandbox-ok"` smoke test) before this
+// codex-windows-sandbox-setup.exe, or an indefinite hang. The SAME binary,
+// invoked via its REAL (fully resolved, non-symlinked) release-directory
+// path, works correctly every time -- proven interactively before this
 // file existed. Root cause is upstream (how codex.exe on Windows computes
 // its own sibling `codex-resources` directory from an unresolved symlink
 // target); this file works around it by resolving and returning the real
@@ -17,22 +15,42 @@
 // every version change) to the active releases/<version>/ directory --
 // resolving it with realpathSync means this never hardcodes a version and
 // keeps working across every future `codex update`.
+//
+// CODEX_HOME-aware (real, live-reproduced finding): the official Windows
+// installer updated the standalone package under Orca's OWN runtime home
+// (CODEX_HOME=...\orca\codex-runtime-home\home) to 0.153.4, while the
+// bare default (%USERPROFILE%\.codex, used whenever no CODEX_HOME is
+// resolved) stayed on 0.148.0 -- two genuinely independent, correctly-
+// versioned trees. A caller whose provider launch has an effective
+// CODEX_HOME must resolve the SAME tree the launch will actually run
+// under, or it picks a binary that doesn't match the CODEX_HOME its own
+// child process receives. `codexHome`, when given, is used AS-IS (it is
+// already the terminal codex-home directory, never a user home needing
+// `.codex` appended); the %USERPROFILE%\.codex default is used only when
+// no effective CODEX_HOME was supplied at all. Never hardcodes Orca's own
+// path -- this is generic over whatever CODEX_HOME a caller resolves.
 import { existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-export function resolveCodexStandalonePackage({ platform = process.platform, homedirFn = homedir } = {}) {
+export function resolveCodexStandalonePackage({ platform = process.platform, homedirFn = homedir, codexHome } = {}) {
   // The whole bug (and this workaround) is specific to the Windows
   // standalone-installer layout; every other platform/install method is
   // unaffected and must fall through to the existing candidates unchanged.
   if (platform !== 'win32') {
     return null
   }
-  const home = homedirFn()
-  if (!home) {
-    return null
+  let base
+  if (codexHome) {
+    base = codexHome
+  } else {
+    const home = homedirFn()
+    if (!home) {
+      return null
+    }
+    base = join(home, '.codex')
   }
-  const currentLink = join(home, '.codex', 'packages', 'standalone', 'current')
+  const currentLink = join(base, 'packages', 'standalone', 'current')
   let releaseDir
   try {
     releaseDir = realpathSync(currentLink)
