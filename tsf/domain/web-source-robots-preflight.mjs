@@ -64,7 +64,12 @@ export async function performRobotsPreflight({
   retainRawRobotsContent = false,
   clock = () => new Date()
 }) {
-  const target = new URL(url)
+  let target
+  try {
+    target = new URL(url)
+  } catch {
+    return buildEvidence({ outcome: 'ROBOTS_INVALID', robotsDecisionForGate: 'UNKNOWN', fetchResult: null, matchedRule: null, retainRawRobotsContent, clock })
+  }
   const fetchResult = await fetchRobotsTxt(target.origin, { fetchOptions })
 
   if (!fetchResult.ok) {

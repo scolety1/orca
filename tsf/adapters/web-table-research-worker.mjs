@@ -1,30 +1,21 @@
-// A real, $0, free-public BoundedResearchWorker: tries each of the
-// mission's own declared preferredSources (never a hardcoded/topic-
-// specific URL) via the ported web-table acquisition stack, admits real
-// evidence from every source that matches this node's entity, and
-// honestly reports FAILED (typed missingness, handled by the existing
-// retry/escalate machinery -- no new mechanism) when none do.
-//
-// dispatch() does the entire fetch+extract synchronously -- there is no
-// real async remote job to poll. Restart-safety without any in-memory
-// cache or schema change: `providerRunId` is documented as an opaque
-// string, so the fully-computed BoundedResearchResult is serialized into
-// it directly. workerRunRef (which durably persists this) already exists
-// for every real provider; fetchResult here is a pure read of what
-// dispatch already computed and TSF already persisted -- a genuine
-// process restart between dispatch and the next poll cycle loses nothing.
+// Real, $0, free-public BoundedResearchWorker: tries each mission-declared
+// preferredSource via the ported web-table acquisition stack. dispatch()
+// fetches+extracts synchronously (no real async job); restart-safety comes
+// from serializing the full BoundedResearchResult into providerRunId
+// (documented opaque string) so fetchResult is a pure re-read.
 import { acquirePublicWebTableSource } from '../domain/public-web-source-acquisition.mjs'
 import { extractObservationsFromWebTable } from '../domain/web-table-observation-extraction.mjs'
+import { reconcileFieldsToHeaders } from '../server/field-source-reconciliation.mjs'
 import { isoNow } from '../domain/canonical.mjs'
 
 export const WEB_TABLE_PROVIDER_ID = 'WEB_TABLE_STATIC_EXTRACTION'
 
-// This worker's own declared operating policy (never inferred per
-// request): attempt PUBLIC_WEB_SOURCE_EXTRACTION only. The real,
-// non-bypassable safety gate is acquirePublicWebTableSource's mandatory
-// live robots.txt preflight (overrides this regardless) plus its SSRF/
-// DNS-pinning transport -- this flag only affirms that TSF permits this
-// worker to attempt that mode at all, never a per-URL rights judgment.
+// Declares only that PUBLIC_WEB_SOURCE_EXTRACTION is attempted at all --
+// the real rights gate is acquirePublicWebTableSource's mandatory robots
+// preflight + SSRF/DNS-pinning transport, unaffected by this flag. KNOWN
+// GAP: paywallDetected/authenticationRequired are hardcoded false because
+// no real detection exists anywhere in the ported stack -- a paywalled
+// page that still returns 200/HTML is not currently caught here.
 const ACCESS_INPUT = Object.freeze({
   explicitPublicAllowance: true,
   authenticationRequired: false,
@@ -62,34 +53,61 @@ function baseResult(request, status) {
   }
 }
 
-async function attemptOneCandidate(url, request, clock, acquireFn) {
-  // A page with many unrelated tables (real-network finding: Wikipedia's
-  // "Salary cap" article has 12) can otherwise lose the actually-matching
-  // table to a larger, irrelevant one under the adapter's default size
-  // heuristic. This hint is generic -- the caller's own targetEntity id/
-  // name, never a hardcoded topic keyword.
-  const entityHints = [request.targetEntity?.entityId, request.targetEntity?.name].filter(Boolean)
-  const { receipt } = await acquireFn({
-    candidate: { url, contentTypeHint: null },
-    accessInput: ACCESS_INPUT,
-    tableSelectionHint: entityHints.length > 0 ? { preferTableContainingAnyOf: entityHints } : null,
-    clock
+// Two-pass field resolution: exact header match first (pure, 100% safe);
+// anything left unresolved goes through bounded semantic reconciliation
+// (server/field-source-reconciliation.mjs, a real LLM call gated to only
+// ever SELECT among the real headers) before a second, final extraction.
+async function resolveFields(receipt, request) {
+  const table = { headers: receipt.artifactRef.headers, rows: receipt.artifactRef.rows }
+  const extractionArgs = {
+    requestedFieldNames: fieldNames(request),
+    targetEntity: request.targetEntity,
+    temporalScope: request.temporalRequirements?.periodScope ?? null,
+    sourceRef: receipt.sourceUrl,
+    publisher: null,
+    retrievedAt: receipt.retrievalTime
+  }
+  const firstPass = extractObservationsFromWebTable(table, extractionArgs)
+  if (!firstPass.matched || firstPass.unresolvedFieldNames.length === 0) {
+    return firstPass
+  }
+  const bindings = await reconcileFieldsToHeaders({
+    headers: table.headers,
+    unresolvedFieldNames: firstPass.unresolvedFieldNames,
+    sourceIdentity: receipt.sourceUrl
   })
+  if (bindings.length === 0) {
+    return firstPass
+  }
+  return extractObservationsFromWebTable(table, { ...extractionArgs, additionalBindings: bindings })
+}
+
+async function attemptOneCandidate(url, request, clock, acquireFn) {
+  // Generic entity hint (never a hardcoded topic keyword) so a page with
+  // many tables (e.g. Wikipedia) picks the one matching this entity.
+  const entityHints = [request.targetEntity?.entityId, request.targetEntity?.name].filter(Boolean)
+  // Any uncaught throw (e.g. new URL() on a malformed URL) must degrade to
+  // a skipped candidate, never escape dispatch() and wedge retry.
+  let receipt
+  try {
+    ;({ receipt } = await acquireFn({
+      candidate: { url, contentTypeHint: null },
+      accessInput: ACCESS_INPUT,
+      tableSelectionHint: entityHints.length > 0 ? { preferTableContainingAnyOf: entityHints } : null,
+      clock
+    }))
+  } catch (error) {
+    return { receipt: { decision: 'ACQUISITION_ERROR', decisionReason: error.message }, extraction: null }
+  }
   if (receipt.decision !== 'EXTRACTED') {
     return { receipt, extraction: null }
   }
-  const extraction = extractObservationsFromWebTable(
-    { headers: receipt.artifactRef.headers, rows: receipt.artifactRef.rows },
-    {
-      requestedFieldNames: fieldNames(request),
-      targetEntity: request.targetEntity,
-      temporalScope: request.temporalRequirements?.periodScope ?? null,
-      sourceRef: receipt.sourceUrl,
-      publisher: null,
-      retrievedAt: receipt.retrievalTime
-    }
-  )
-  return { receipt, extraction }
+  try {
+    const extraction = await resolveFields(receipt, request)
+    return { receipt, extraction }
+  } catch (error) {
+    return { receipt: { decision: 'ACQUISITION_ERROR', decisionReason: error.message }, extraction: null }
+  }
 }
 
 async function computeResult(request, clock, acquireFn) {
@@ -114,11 +132,6 @@ async function computeResult(request, clock, acquireFn) {
       continue
     }
     if (extraction.proposedClaims.length === 0) {
-      // Honest, actionable diagnostic: the entity WAS found, but none of
-      // the requested field names matched this page's own real column
-      // headers -- surfacing those headers here (never hardcoded per
-      // topic) is what makes this a genuine, generic gap report rather
-      // than a silent, unexplained miss.
       warnings.push(`${url}: entity matched but no requested field matched this page's real headers: [${receipt.artifactRef.headers.join(', ')}]`)
       continue
     }
@@ -142,27 +155,16 @@ async function computeResult(request, clock, acquireFn) {
   return result
 }
 
-// `acquireFn` defaults to the real, safe-by-default production entrypoint
-// (mandatory live robots preflight + DNS-pinned transport) -- overriding
-// it is for deterministic tests only (mirrors createExaResearchWorker's
-// own injected `transport`), never wired to anything else in production.
+// `acquireFn` override is for deterministic tests only (mirrors
+// createExaResearchWorker's injected `transport`); defaults to the real,
+// safe-by-default production entrypoint.
 export function createWebTableResearchWorker({ clock = () => new Date(), acquireFn = acquirePublicWebTableSource } = {}) {
   async function dispatch(request) {
     const result = await computeResult(request, clock, acquireFn)
-    // Real-network finding (REAL FREE-PATH RESEARCH EXECUTION V1 proving
-    // run): a FAILED result reported here as {ok:true, workerRunRef} makes
-    // dispatchResearchNodeDurable's own idempotency check (research-
-    // dispatch-bookkeeping.mjs) classify it EXACTLY_ONCE -- correct for a
-    // real, billable provider job that TSF must never blindly re-ask, but
-    // it PERMANENTLY blocks any real retry for this synchronous, $0 worker
-    // (no external job exists to re-poll; the SAME taskFingerprint recurs
-    // on every retry attempt since nothing about the request itself
-    // changes). Reporting {ok:false} instead classifies as AT_MOST_ONCE
-    // (dispatchResearchNodeDurable's dedup guard only blocks EXACTLY_ONCE/
-    // AT_LEAST_ONCE), which correctly permits the existing retry/escalate
-    // machinery to make a genuine new attempt -- no new mechanism, no
-    // change to shared bookkeeping. Only a genuine SUCCEEDED extraction
-    // needs a workerRunRef at all (nothing to poll for on a failure).
+    // {ok:true} embedding a FAILED result classifies EXACTLY_ONCE in
+    // dispatch-bookkeeping, permanently blocking retry for this synchronous
+    // $0 worker (no external job to re-poll) -- {ok:false} classifies
+    // AT_MOST_ONCE, correctly permitting the existing retry/escalate path.
     if (result.status === 'FAILED') {
       const detail = result.warnings.length > 0 ? `${result.failureDetails.detail} -- ${result.warnings.join('; ')}` : result.failureDetails.detail
       return { ok: false, reason: result.failureDetails.reason, detail }

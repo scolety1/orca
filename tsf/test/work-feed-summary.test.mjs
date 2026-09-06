@@ -244,3 +244,15 @@ test('backward compatible: omitting researchMissions entirely (existing callers)
   const summary = summarizeWorkFromRuns([project('a')], {}, clock)
   assert.deepEqual(summary.active, [])
 })
+
+// Adversarial review finding: RESEARCH_PHASE_SECTION previously had no
+// BLOCKED entry at all, so a mission genuinely awaiting a human decision
+// was invisible in every bucket -- neither active, needsYou, nor blocked.
+test('a BLOCKED research mission appears in blocked, not nowhere', () => {
+  let mission = createResearchMission({ id: 'mission:blocked', projectId: 'p', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] } }, clock)
+  mission = transitionResearchMission(mission, 'BLOCKED', { reason: 'no legal source found', expectedRevision: mission.revision }, clock)
+  const summary = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission })
+  assert.deepEqual(summary.blocked.filter((x) => x.kind === 'RESEARCH_MISSION').map((x) => x.missionId), ['mission:blocked'])
+  assert.deepEqual(summary.active, [])
+  assert.deepEqual(summary.needsYou, [])
+})

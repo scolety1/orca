@@ -141,7 +141,12 @@ export function selectTableWithEvidence(tables, hint) {
       })
       .filter((s) => s.hitCount > 0)
     if (scored.length > 0) {
-      const best = scored.reduce((top, s) => (s.hitCount > top.hitCount ? s : top), scored[0])
+      // Tie-break on hitCount by table size, not first-encountered (review
+      // finding: strict `>` kept an arbitrary earlier table on an exact tie).
+      const best = scored.reduce((top, s) => {
+        if (s.hitCount !== top.hitCount) return s.hitCount > top.hitCount ? s : top
+        return s.table.rowCount * s.table.columnCount > top.table.rowCount * top.table.columnCount ? s : top
+      }, scored[0])
       return {
         selectedIndex: best.table.index,
         method: 'ENTITY_MATCH_HINT',

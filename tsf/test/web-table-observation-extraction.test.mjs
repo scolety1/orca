@@ -1,69 +1,108 @@
-// Real-network finding: a synthesized requestedFields name ("League Year")
-// vs a real page's own column header ("Year") is common, honest naming
-// variance, not a reason to lose the column entirely. Proves the
-// word-subset-widening fix, and that it stays a purely structural rule --
-// never a semantic/synonym guess.
+// Exact-match tier only (100% safe, purely structural). Bounded semantic
+// reconciliation lives in field-source-reconciliation.mjs; its output is
+// consumed here only via caller-supplied FieldBindings (additionalBindings).
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { extractObservationsFromWebTable } from '../domain/web-table-observation-extraction.mjs'
+import { extractObservationsFromWebTable, matchExactColumnIndex } from '../domain/web-table-observation-extraction.mjs'
+import { buildFieldBinding } from '../domain/field-binding.mjs'
 
-const headers = ['Year', 'Maximum team salary']
+const headers = ['Year', 'Maximum team salary', 'Team Record', 'Record High Team Attendance']
 const rows = [
-  ['2018', '$177.2 million'],
-  ['2019', '$188.2 million'],
-  ['2020', '$198.2 million']
+  ['2018', '$177.2 million', '13-3', '73,548'],
+  ['2019', '$188.2 million', '12-4', '74,102'],
+  ['2020', '$198.2 million', '11-5', '0 (no fans)']
 ]
 
-function extract(requestedFieldNames, entityId) {
+function extract(requestedFieldNames, entityId, additionalBindings = []) {
   return extractObservationsFromWebTable(
     { headers, rows },
-    { requestedFieldNames, targetEntity: { entityId, name: null }, temporalScope: null, sourceRef: 'https://example.com/cap', publisher: null, retrievedAt: '2026-09-06T00:00:00.000Z' }
+    { requestedFieldNames, targetEntity: { entityId, name: null }, temporalScope: null, sourceRef: 'https://example.com/cap', publisher: null, retrievedAt: '2026-09-06T00:00:00.000Z', additionalBindings }
   )
 }
 
-test('exact normalized header match still works unchanged', () => {
+test('exact normalized header match resolves the field', () => {
   const result = extract(['Year'], '2018')
   assert.equal(result.matched, true)
   assert.equal(result.proposedClaims.length, 1)
   assert.equal(result.proposedClaims[0].proposedValue, '2018')
 })
 
-test('word-subset widening: a requested field name that CONTAINS the real header ("League Year" contains "Year") matches', () => {
-  const result = extract(['League Year'], '2019')
-  assert.equal(result.matched, true)
-  assert.equal(result.proposedClaims.length, 1)
-  assert.equal(result.proposedClaims[0].fieldName, 'League Year')
-  assert.equal(result.proposedClaims[0].proposedValue, '2019')
-})
-
-// REAL, ADVERSARIALLY-FOUND BUG (REAL FREE-PATH RESEARCH EXECUTION V1 live
-// proving run): an earlier version of this widening used plain character-
-// substring containment, which let "Percent Change from Prior Year"
-// spuriously match the "Year" column purely because "year" is a
-// coincidental substring of "prioryear" once spaces are stripped -- a
-// genuine FABRICATED CLAIM (the real page has no percent-change data at
-// all), not mere imprecision. This is the regression test for that exact
-// failure mode.
-test('a single common word buried in an otherwise unrelated, much longer phrase must NEVER match -- the exact false-claim bug found live', () => {
-  const result = extract(['Percent Change from Prior Year'], '2018')
+test('an unrelated numeric column never matches purely by being adjacent/numeric -- exact header only', () => {
+  const result = extract(['Salary Cap'], '2018')
   assert.equal(result.matched, true, 'the entity row was found')
-  assert.equal(result.proposedClaims.length, 0, '"Percent Change from Prior Year" must not match "Year" merely because both happen to contain the word "year"')
+  assert.equal(result.proposedClaims.length, 0, 'no exact header equals "Salary Cap" -- must stay unresolved, not guess "Maximum team salary" or any other column')
+  assert.deepEqual(result.unresolvedFieldNames, ['Salary Cap'])
 })
 
-test('a genuine, honest limitation: substantially different phrasing with no meaningful word overlap stays unmatched, never guessed', () => {
-  const result = extract(['Salary Cap Amount'], '2018')
-  assert.equal(result.matched, true, 'the entity row was found')
-  assert.equal(result.proposedClaims.length, 0, '"Salary Cap Amount" shares no full word-subset relationship with "Maximum team salary" -- correctly left unmatched, not fuzzy-guessed')
-})
-
-test('a genuine, honest limitation: a single shared word diluted across a longer real header also stays unmatched (ratio guard)', () => {
-  const result = extract(['Salary'], '2020')
+test('a misleading near-match on shared words never matches without an exact header -- regression for the live-found "Team Record" / "Record High Team Attendance" false-claim class', () => {
+  const result = extract(['Team Record'], '2018')
   assert.equal(result.matched, true)
-  assert.equal(result.proposedClaims.length, 0, '"Salary" is only 1 of 3 words in "Maximum team salary" (ratio 1/3 < 0.5) -- too diluted a match to trust, correctly rejected')
+  // "Team Record" IS itself an exact header here, so it correctly resolves --
+  // the adversarial case is the OTHER direction: a near-miss phrasing must not.
+  assert.equal(result.proposedClaims[0].proposedValue, '13-3')
+  const nearMiss = extract(['Attendance Record'], '2018')
+  assert.equal(nearMiss.proposedClaims.length, 0, '"Attendance Record" must not fuzzy-match "Record High Team Attendance" or "Team Record"')
 })
 
-test('entity matching is unaffected by field-matching changes: an unknown entity still reports matched:false', () => {
+test('multiple plausible headers: only the field named exactly resolves, its sibling stays unresolved', () => {
+  const result = extract(['Team Record', 'Record High Team Attendance'], '2019')
+  assert.equal(result.proposedClaims.length, 2)
+  assert.equal(result.proposedClaims.find((c) => c.fieldName === 'Team Record').proposedValue, '12-4')
+  assert.equal(result.proposedClaims.find((c) => c.fieldName === 'Record High Team Attendance').proposedValue, '74,102')
+})
+
+test('Salary Cap <-> Maximum team salary: unresolved by exact match alone, resolves once a bounded-semantic FieldBinding is supplied', () => {
+  const withoutBinding = extract(['Salary Cap'], '2020')
+  assert.equal(withoutBinding.proposedClaims.length, 0)
+  const binding = buildFieldBinding({
+    canonicalField: 'Salary Cap',
+    rawHeader: 'Maximum team salary',
+    sourceIdentity: 'https://example.com/cap',
+    reconciliationMethod: 'BOUNDED_SEMANTIC',
+    confidence: 0.94,
+    reasoning: 'Both refer to the league-imposed maximum team payroll for a season.'
+  })
+  const withBinding = extract(['Salary Cap'], '2020', [binding])
+  assert.equal(withBinding.proposedClaims.length, 1)
+  assert.equal(withBinding.proposedClaims[0].proposedValue, '$198.2 million')
+  assert.equal(withBinding.fieldBindingsUsed[0].reconciliationMethod, 'BOUNDED_SEMANTIC')
+})
+
+test('a FieldBinding naming a header that is not verbatim on this table is ignored, never guessed at a fallback column', () => {
+  const binding = buildFieldBinding({
+    canonicalField: 'Salary Cap',
+    rawHeader: 'Salary Cap (Millions)', // not a real header on this table
+    sourceIdentity: 'https://example.com/cap',
+    reconciliationMethod: 'BOUNDED_SEMANTIC'
+  })
+  const result = extract(['Salary Cap'], '2020', [binding])
+  assert.equal(result.proposedClaims.length, 0)
+  assert.deepEqual(result.unresolvedFieldNames, ['Salary Cap'])
+})
+
+test('a FieldBinding survives being serialized and reconstructed (restart/provenance-reconstruction proof)', () => {
+  const binding = buildFieldBinding({
+    canonicalField: 'Salary Cap',
+    rawHeader: 'Maximum team salary',
+    sourceIdentity: 'https://example.com/cap',
+    reconciliationMethod: 'BOUNDED_SEMANTIC',
+    confidence: 0.94,
+    reasoning: 'same concept'
+  })
+  const rehydrated = JSON.parse(JSON.stringify(binding))
+  const result = extract(['Salary Cap'], '2018', [rehydrated])
+  assert.equal(result.proposedClaims[0].proposedValue, '$177.2 million')
+  assert.equal(rehydrated.schemaVersion, 'TSF_FIELD_BINDING_V1')
+})
+
+test('entity matching is unaffected by field-matching: an unknown entity reports matched:false', () => {
   const result = extract(['Year'], '1899')
   assert.equal(result.matched, false)
   assert.equal(result.proposedClaims.length, 0)
+})
+
+test('matchExactColumnIndex normalizes case/punctuation/whitespace but requires full equality, not containment', () => {
+  assert.equal(matchExactColumnIndex(headers, 'year'), 0)
+  assert.equal(matchExactColumnIndex(headers, 'Maximum Team Salary'), 1)
+  assert.equal(matchExactColumnIndex(headers, 'Team'), -1)
 })

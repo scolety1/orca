@@ -12,6 +12,23 @@ import { rmSync } from 'node:fs'
 import { acquireWebSourceViaStaticTable } from '../domain/web-table-source-adapter.mjs'
 import { createWebTableResearchWorker, WEB_TABLE_PROVIDER_ID } from '../adapters/web-table-research-worker.mjs'
 
+const STUB = path.join(import.meta.dirname, 'fixtures', 'stub-planner-cli.mjs')
+const NONEXISTENT_CLI = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
+
+async function withStubEnv(vars, fn) {
+  const prior = {}
+  for (const key of Object.keys(vars)) prior[key] = process.env[key]
+  Object.assign(process.env, vars)
+  try {
+    return await fn()
+  } finally {
+    for (const key of Object.keys(vars)) {
+      if (prior[key] === undefined) delete process.env[key]
+      else process.env[key] = prior[key]
+    }
+  }
+}
+
 const HERE = import.meta.dirname
 const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-state.test-web-table-worker-${process.pid}.json`)
 process.env.TSF_UI_STATE_FILE = STATE_FILE
@@ -125,6 +142,31 @@ test('a genuine no-match reports {ok:false} (never a fabricated claim, and never
   assert.equal(dispatched.ok, false)
   assert.equal(dispatched.reason, 'NO_FREE_PUBLIC_MATCH_FOUND')
   assert.match(dispatched.detail, /table extracted but no row matched this entity/)
+})
+
+test('a requested field with no exact header match resolves via bounded semantic reconciliation, not left unresolved', async () => {
+  await withStubEnv({ TSF_PLANNER_CLAUDE_COMMAND: STUB, TSF_PLANNER_CODEX_COMMAND: NONEXISTENT_CLI, STUB_MODE: 'success', STUB_RECONCILE_MODE: 'match' }, async () => {
+    const html = await loadFixture('qb-stats-1995.html')
+    const worker = createWebTableResearchWorker({ clock, acquireFn: fixtureAcquireFn(html) })
+    const request = baseRequest({ requestedOutputSchema: { properties: { 'Total Passing Yards Gained': {} } } })
+    const dispatched = await worker.dispatch(request)
+    assert.equal(dispatched.ok, true)
+    const { result } = await worker.fetchResult(dispatched.workerRunRef)
+    assert.equal(result.status, 'SUCCEEDED')
+    assert.equal(result.proposedClaims[0].fieldName, 'Total Passing Yards Gained')
+    assert.equal(result.proposedClaims[0].proposedValue, '4413', 'value came from the real matched cell, not the reconciliation call')
+  })
+})
+
+test('a field the live planner cannot confidently reconcile stays unresolved -- the node reports an honest NO_FREE_PUBLIC_MATCH_FOUND, never a guess', async () => {
+  await withStubEnv({ TSF_PLANNER_CLAUDE_COMMAND: STUB, TSF_PLANNER_CODEX_COMMAND: NONEXISTENT_CLI, STUB_MODE: 'success', STUB_RECONCILE_MODE: 'null' }, async () => {
+    const html = await loadFixture('qb-stats-1995.html')
+    const worker = createWebTableResearchWorker({ clock, acquireFn: fixtureAcquireFn(html) })
+    const request = baseRequest({ requestedOutputSchema: { properties: { 'Something Unrelated': {} } } })
+    const dispatched = await worker.dispatch(request)
+    assert.equal(dispatched.ok, false)
+    assert.equal(dispatched.reason, 'NO_FREE_PUBLIC_MATCH_FOUND')
+  })
 })
 
 test('{ok:false} when the mission specification names no preferredSources at all', async () => {

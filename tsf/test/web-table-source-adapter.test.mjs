@@ -299,3 +299,13 @@ test('selectTableWithEvidence: an explicit tableIndex/captionIncludes hint still
   assert.equal(result.selectedIndex, 1)
   assert.equal(result.method, 'EXPLICIT_INDEX_HINT')
 })
+
+// Adversarial review finding: on an exact hitCount tie, strict `>` kept the
+// FIRST-encountered table regardless of size/quality -- a smaller/sparser
+// table could beat a larger, more complete one purely by coming first.
+test('selectTableWithEvidence: preferTableContainingAnyOf breaks an exact hitCount tie by table size, not by encounter order', () => {
+  const smallerFirst = { index: 0, caption: null, headers: ['Year'], bodyRows: [['2018']], rowCount: 1, columnCount: 1 }
+  const largerSecond = { index: 1, caption: null, headers: ['Year', 'Amount', 'Note'], bodyRows: [['2018', '$1', 'a'], ['2019', '$2', 'b']], rowCount: 2, columnCount: 3 }
+  const result = selectTableWithEvidence([smallerFirst, largerSecond], { preferTableContainingAnyOf: ['2018'] })
+  assert.equal(result.selectedIndex, 1, 'both tables tie at hitCount 1 -- the larger, more complete table should win, not the first-encountered one')
+})

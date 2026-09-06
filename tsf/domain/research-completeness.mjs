@@ -33,6 +33,8 @@ export function computeCompletenessMetrics(mission, clock) {
 
   let requestedFieldTotal = 0
   let resolvedFieldTotal = 0
+  let requiredFieldTotal = 0
+  let requiredResolvedFieldTotal = 0
   let claimTotal = 0
   let claimsWithEvidence = 0
   let verifiableClaimTotal = 0
@@ -58,13 +60,27 @@ export function computeCompletenessMetrics(mission, clock) {
       // for a different date or with no temporalScope at all (a scope-
       // less record never satisfies a specific required scope -- failing
       // honestly rather than guessing it's "close enough").
+      // REQUIRED_REQUESTED/REQUIRED_IDENTITY vs OPTIONAL_ENRICHMENT/
+      // SYSTEM_PROVENANCE (real free-path research execution finding):
+      // fieldCoverage below counts EVERY requested field equally, so a
+      // mission can never reach COMPLETE while any optional enrichment
+      // field (e.g. a derived "Year-over-Year Change" no one asked for)
+      // stays unresolved -- even once every field Tim actually needs is
+      // genuinely resolved. requiredFieldCoverage is the new, separate
+      // metric COMPLETE-worthiness actually gates on (see
+      // research-mission-fleet-driver.mjs); fieldCoverage is kept
+      // unchanged for existing informational/reporting callers.
+      const countsAsRequired = rf.required !== false
       const requiredScopes = rf.requiredTemporalScopes ?? null
       if (requiredScopes && requiredScopes.length > 0) {
         for (const scope of requiredScopes) {
           requestedFieldTotal += 1
+          if (countsAsRequired) requiredFieldTotal += 1
           const scopedFact = node.canonicalFacts.find((f) => f.fieldName === rf.fieldName && f.temporalScope === scope)
           const scopedMissing = node.typedMissingness.some((m) => m.fieldName === rf.fieldName && m.temporalScope === scope)
-          if (scopedFact || scopedMissing) resolvedFieldTotal += 1
+          const resolved = Boolean(scopedFact || scopedMissing)
+          if (resolved) resolvedFieldTotal += 1
+          if (resolved && countsAsRequired) requiredResolvedFieldTotal += 1
           if (rf.derivationRule) {
             derivedFieldTotal += 1
             if (scopedFact?.derivationLineage) {
@@ -86,9 +102,12 @@ export function computeCompletenessMetrics(mission, clock) {
       // limitation as before for the untyped case -- callers that need
       // point-in-time precision opt in via requiredTemporalScopes instead
       // of this module guessing at one.
+      if (countsAsRequired) requiredFieldTotal += 1
       const fact = node.canonicalFacts.find((f) => f.fieldName === rf.fieldName)
       const hasMissing = node.typedMissingness.some((m) => m.fieldName === rf.fieldName)
-      if (fact || hasMissing) resolvedFieldTotal += 1
+      const resolvedPlain = Boolean(fact || hasMissing)
+      if (resolvedPlain) resolvedFieldTotal += 1
+      if (resolvedPlain && countsAsRequired) requiredResolvedFieldTotal += 1
       if (rf.derivationRule) {
         derivedFieldTotal += 1
         if (fact?.derivationLineage) {
@@ -118,6 +137,7 @@ export function computeCompletenessMetrics(mission, clock) {
     expectedEntityCoverage,
     presentEntityCoverage,
     fieldCoverage: ratio(resolvedFieldTotal, requestedFieldTotal),
+    requiredFieldCoverage: ratio(requiredResolvedFieldTotal, requiredFieldTotal),
     evidenceCoverage: ratio(claimsWithEvidence, claimTotal),
     verifiedCoverage: ratio(verifiedClaimTotal, verifiableClaimTotal),
     conflictCount,

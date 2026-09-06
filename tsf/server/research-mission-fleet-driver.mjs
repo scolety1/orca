@@ -125,6 +125,10 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
   // governing directive requires -- falling back to the same provider
   // (still safe, just a no-op re-ask) only if no distinct retry provider
   // was configured.
+  // NOTE: providerId is a cost/bookkeeping label only -- dispatch always
+  // runs deps.worker. Never set retryProviderId to a label naming a
+  // DIFFERENT provider than deps.worker actually is (currently unreachable:
+  // no bootstrap configures retryProviderId today).
   const providerId = node.retryCount > 0 && deps.retryProviderId ? deps.retryProviderId : deps.providerId ?? 'DEFAULT'
   // Paid providers remain default-OFF: dispatchResearchNodeWithApprovalDurable
   // itself refuses cleanly (NO_PAID_APPROVAL) with no dispatch attempted at
@@ -193,7 +197,10 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
   // matching computeCompletenessMetrics' own established discipline) says
   // there is nothing left outstanding.
   const completeness = computeCompletenessMetrics(mission, clock)
-  const fieldsResolved = completeness.fieldCoverage === null || completeness.fieldCoverage === 1
+  // Gates on requiredFieldCoverage, not fieldCoverage: an unresolved
+  // OPTIONAL_ENRICHMENT field must never block COMPLETE (real free-path
+  // research execution finding -- see research-completeness.mjs).
+  const fieldsResolved = completeness.requiredFieldCoverage === null || completeness.requiredFieldCoverage === 1
   if (fieldsResolved && completeness.unresolvedConflictCount === 0) {
     await withResearchMission(missionId, (m) => completeResearchMission(m, clock, m.revision))
     return { missionId, action: 'COMPLETED', completeness }

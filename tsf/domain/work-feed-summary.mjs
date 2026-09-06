@@ -25,7 +25,8 @@ import { computeResearchMissionPhase } from './research-mission.mjs'
 const RESEARCH_PHASE_SECTION = Object.freeze({
   EXECUTING: 'active',
   WAITING_NEEDS_INPUT: 'needsYou',
-  COMPLETE: 'recentlyCompleted'
+  COMPLETE: 'recentlyCompleted',
+  BLOCKED: 'blocked'
 })
 
 function researchMissionWorkItem(mission, phase) {
@@ -135,6 +136,7 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
   const researchActive = []
   const researchNeedsYou = []
   const researchRecentlyCompleted = []
+  const researchBlocked = []
   for (const mission of Object.values(researchMissions)) {
     const phase = computeResearchMissionPhase(mission)
     const section = RESEARCH_PHASE_SECTION[phase]
@@ -145,6 +147,8 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
       researchNeedsYou.push(item)
     } else if (section === 'recentlyCompleted') {
       researchRecentlyCompleted.push(item)
+    } else if (section === 'blocked') {
+      researchBlocked.push(item)
     }
   }
 
@@ -154,7 +158,7 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
     verifying,
     needsYou: [...needsYou, ...researchNeedsYou],
     stalled,
-    blocked,
+    blocked: [...blocked, ...researchBlocked],
     readyForAdoption: [...legacyReadyForAdoption, ...runReadyForAdoption],
     recentlyCompleted: [...legacyRecentlyCompleted, ...runRecentlyCompleted, ...researchRecentlyCompleted]
   }

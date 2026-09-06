@@ -1,38 +1,16 @@
-// Generic mapper: an already-extracted web table ({headers, rows} -- see
-// web-table-source-adapter.mjs's artifactRef) -> BoundedResearchResult-
-// shaped proposedClaims/evidence/sourceReferences. No entity-specific or
-// field-specific names are hardcoded: the target row is found by matching
-// ANY cell against the request's own targetEntity, and each requested
-// field is matched against a column HEADER by normalized string equality
-// first, then a word-level subset check (real-network finding: a
-// synthesized field name like "League Year" vs a real page's own "Year"
-// header are common, honest naming variance, not a reason to miss the
-// column entirely) -- still purely structural, never a semantic/synonym
-// guess (e.g. "Salary Cap Amount" vs "Maximum team salary" shares no word
-// overlap and is correctly left unmatched, disclosed as a real, generic
-// limitation in the final report).
-//
-// Real, adversarially-found bug in an earlier version of this widening:
-// plain character-substring containment let "Percent Change from Prior
-// Year" match the "Year" column, since "year" is a coincidental substring
-// of "prioryear" once spaces are stripped -- a genuine false claim, not
-// mere imprecision. Fixed by matching on WHOLE WORDS only, and requiring
-// the shorter phrase's word count to be a substantial fraction (>= half)
-// of the longer's, so one incidental shared word buried in an otherwise
-// unrelated, much longer phrase is correctly rejected.
+// Generic web-table -> BoundedResearchResult mapper: no entity/field names
+// hardcoded. Exact header match only here (100% safe); anything unresolved
+// goes to bounded semantic reconciliation (field-source-reconciliation.mjs)
+// via caller-supplied FieldBindings -- fuzzy lexical matching was removed
+// after it produced a false match on a word coincidence (e.g. "Team Record"
+// vs "Record High Team Attendance").
 function normalize(text) {
   return String(text ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
 }
 
-function words(text) {
-  return String(text ?? '').trim().toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
-}
-
-const MIN_WORD_OVERLAP_RATIO = 0.5
-
 // The row whose cells contain the target entity's id or name, checked
 // against every column (never assumes which column identifies the row).
-function findEntityRow(headers, rows, targetEntity) {
+export function findEntityRow(headers, rows, targetEntity) {
   if (!targetEntity) {
     return null
   }
@@ -43,52 +21,40 @@ function findEntityRow(headers, rows, targetEntity) {
   return rows.find((row) => row.some((cell) => candidates.includes(normalize(cell)))) ?? null
 }
 
-// True only if the shorter word-list is ENTIRELY contained (every word
-// present) in the longer one, AND is at least half its length -- a single
-// common word (e.g. "year") inside an otherwise unrelated 5-word phrase
-// fails the ratio check and is correctly rejected.
-function isWordSubsetMatch(fieldWords, headerWords) {
-  const [shorter, longer] = fieldWords.length <= headerWords.length ? [fieldWords, headerWords] : [headerWords, fieldWords]
-  if (shorter.length === 0) {
-    return false
-  }
-  if (shorter.length / longer.length < MIN_WORD_OVERLAP_RATIO) {
-    return false
-  }
-  const longerSet = new Set(longer)
-  return shorter.every((w) => longerSet.has(w))
-}
-
-function matchColumnIndex(headers, fieldName) {
+export function matchExactColumnIndex(headers, fieldName) {
   const target = normalize(fieldName)
-  const exact = headers.findIndex((header) => normalize(header) === target)
-  if (exact !== -1) {
-    return exact
-  }
-  const fieldWords = words(fieldName)
-  return headers.findIndex((header) => isWordSubsetMatch(fieldWords, words(header)))
+  return headers.findIndex((header) => normalize(header) === target)
 }
 
-/**
- * Returns { proposedClaims, evidence, sourceReferences } -- proposedClaims
- * only for fields whose header matched AND whose cell is a real, non-missing
- * value; unmatched fields are simply absent (honest typed missingness via
- * the existing completeness machinery, never a fabricated null claim).
- */
-export function extractObservationsFromWebTable({ headers, rows }, { requestedFieldNames, targetEntity, temporalScope, sourceRef, publisher, retrievedAt }) {
+// `additionalBindings`: FieldBinding[] from a prior reconciliation pass;
+// rawHeader is re-looked-up via indexOf (never trusted as an index), so the
+// extracted VALUE always comes from the real matched cell.
+export function extractObservationsFromWebTable({ headers, rows }, { requestedFieldNames, targetEntity, temporalScope, sourceRef, publisher, retrievedAt, additionalBindings = [] }) {
   const row = findEntityRow(headers, rows, targetEntity)
   if (!row) {
-    return { matched: false, proposedClaims: [], evidence: [], sourceReferences: [] }
+    return { matched: false, proposedClaims: [], evidence: [], sourceReferences: [], unresolvedFieldNames: [...requestedFieldNames] }
   }
   const proposedClaims = []
   const evidence = []
+  const unresolvedFieldNames = []
+  const fieldBindingsUsed = []
   for (const fieldName of requestedFieldNames) {
-    const columnIndex = matchColumnIndex(headers, fieldName)
-    if (columnIndex < 0) {
+    let columnIndex = matchExactColumnIndex(headers, fieldName)
+    let method = 'EXACT'
+    if (columnIndex === -1) {
+      const binding = additionalBindings.find((b) => b.canonicalField === fieldName && b.rawHeader != null)
+      if (binding) {
+        columnIndex = headers.indexOf(binding.rawHeader)
+        method = binding.reconciliationMethod ?? 'BOUNDED_SEMANTIC'
+      }
+    }
+    if (columnIndex === -1) {
+      unresolvedFieldNames.push(fieldName)
       continue
     }
     const rawValue = row[columnIndex]
     if (rawValue == null || String(rawValue).trim() === '') {
+      unresolvedFieldNames.push(fieldName)
       continue
     }
     proposedClaims.push({
@@ -99,7 +65,8 @@ export function extractObservationsFromWebTable({ headers, rows }, { requestedFi
       providerReasoning: null
     })
     evidence.push({ claimFieldName: fieldName, sourceRef, snippet: `${headers[columnIndex]}: ${rawValue}`, supportsClaim: true })
+    fieldBindingsUsed.push({ fieldName, rawHeader: headers[columnIndex], reconciliationMethod: method })
   }
   const sourceReferences = proposedClaims.length > 0 ? [{ sourceRef, url: sourceRef, publisher: publisher ?? null, retrievedAt }] : []
-  return { matched: true, proposedClaims, evidence, sourceReferences }
+  return { matched: true, proposedClaims, evidence, sourceReferences, unresolvedFieldNames, fieldBindingsUsed }
 }

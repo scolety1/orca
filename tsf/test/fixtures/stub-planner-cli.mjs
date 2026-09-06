@@ -233,6 +233,39 @@ function structuredResponseFor(schemaJson, prompt) {
       completenessRequirement: 'stub: every expected entity has a value and a source'
     }
   }
+  if (schema?.properties?.bindings) {
+    // Field-source-reconciliation stub: STUB_RECONCILE_MODE picks the
+    // response shape -- 'hallucinate' proves the caller's verbatim-header
+    // gate discards an invented header; 'null' proves ambiguous fields stay
+    // unresolved; default heuristically matches by shared normalized words
+    // (good enough to prove the real "Salary Cap"/"Maximum team salary"
+    // wiring end to end without hardcoding that pair into the stub).
+    const { realColumnHeaders, requestedFieldsNeedingAMatch } = JSON.parse(prompt)
+    const mode = process.env.STUB_RECONCILE_MODE || 'match'
+    const words = (s) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]+/g, '').split(/\s+/).filter(Boolean))
+    const bindings = requestedFieldsNeedingAMatch.map((fieldName) => {
+      if (mode === 'hallucinate') {
+        return { fieldName, matchedHeader: 'Invented Header Not On The Table', confidence: 0.9, reasoning: 'stub hallucination' }
+      }
+      if (mode === 'null') {
+        return { fieldName, matchedHeader: null, confidence: 0, reasoning: 'stub: ambiguous' }
+      }
+      const fw = words(fieldName)
+      let best = null
+      let bestOverlap = 0
+      for (const header of realColumnHeaders) {
+        const overlap = [...words(header)].filter((w) => fw.has(w)).length
+        if (overlap > bestOverlap) {
+          bestOverlap = overlap
+          best = header
+        }
+      }
+      return best
+        ? { fieldName, matchedHeader: best, confidence: 0.85, reasoning: `stub: "${fieldName}" and "${best}" name the same concept` }
+        : { fieldName, matchedHeader: null, confidence: 0, reasoning: 'stub: no plausible header found' }
+    })
+    return { bindings }
+  }
   // Falls back to the onboarding direction-analysis shape (the only other
   // structured caller today).
   return {

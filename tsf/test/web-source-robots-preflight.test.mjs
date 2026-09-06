@@ -220,3 +220,13 @@ test('other caller-supplied access flags survive the merge untouched', () => {
   assert.equal(merged.explicitPublicAllowance, true)
   assert.equal(merged.robotsDecision, 'ALLOWED')
 })
+
+test('a malformed candidate URL fails closed (UNKNOWN) instead of throwing out of preflight', async () => {
+  const evidence = await performRobotsPreflight({
+    url: 'not a valid url',
+    fetchOptions: { resolveImpl: publicResolve, fetchImpl: async () => textResponse('User-agent: *\nAllow: /') },
+    clock
+  })
+  assert.equal(evidence.outcome, 'ROBOTS_INVALID')
+  assert.equal(evidence.robotsDecisionForGate, 'UNKNOWN')
+})

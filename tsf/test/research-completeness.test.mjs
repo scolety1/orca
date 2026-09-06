@@ -159,3 +159,41 @@ test('temporal completeness: a derived, temporally-scoped field is reproducibili
   })
   assert.equal(computeCompletenessMetrics(wrongScope, clock).fieldCoverage, 0)
 })
+
+// Real free-path research execution finding: an unresolved OPTIONAL_
+// ENRICHMENT field (required: false) must never count against
+// requiredFieldCoverage, the metric COMPLETE-worthiness actually gates on --
+// fieldCoverage (informational only) still counts every field equally.
+test('requiredFieldCoverage ignores an unresolved optional field entirely; fieldCoverage still counts it', () => {
+  const mission = baseMissionWithField([
+    { fieldName: 'salaryCap', valueType: 'number', required: true },
+    { fieldName: 'yearOverYearChange', valueType: 'number', required: false }
+  ])
+  const withOnlyRequiredResolved = injectFact(mission, 'salaryCap', 198_200_000)
+  const metrics = computeCompletenessMetrics(withOnlyRequiredResolved, clock)
+  assert.equal(metrics.requiredFieldCoverage, 1, 'the only required field is resolved -- COMPLETE-worthy despite the unresolved enrichment')
+  assert.equal(metrics.fieldCoverage, 0.5, 'fieldCoverage stays an unweighted count of all fields, unchanged behavior')
+})
+
+test('requiredFieldCoverage: a field with no `required` key at all defaults to required (backward-compatible)', () => {
+  const mission = baseMissionWithField([{ fieldName: 'salaryCap', valueType: 'number' }])
+  const metrics = computeCompletenessMetrics(mission, clock)
+  assert.equal(metrics.requiredFieldCoverage, 0, 'unresolved and counted as required by default')
+})
+
+test('requiredFieldCoverage is null when every requested field is optional (no required field exists at all)', () => {
+  const mission = baseMissionWithField([{ fieldName: 'yearOverYearChange', valueType: 'number', required: false }])
+  const metrics = computeCompletenessMetrics(mission, clock)
+  assert.equal(metrics.requiredFieldCoverage, null, 'zero required fields is an honest unknown denominator, never fabricated as 0 or 1')
+})
+
+test('requiredFieldCoverage applies the same required/optional split to temporal-scoped fields', () => {
+  const mission = baseMissionWithField([
+    { fieldName: 'adp', valueType: 'number', required: true, requiredTemporalScopes: ['2020-week-1'] },
+    { fieldName: 'trendNote', valueType: 'string', required: false, requiredTemporalScopes: ['2020-week-1'] }
+  ])
+  const resolved = injectFact(mission, 'adp', 5, '2020-week-1')
+  const metrics = computeCompletenessMetrics(resolved, clock)
+  assert.equal(metrics.requiredFieldCoverage, 1, 'the required snapshot is resolved; the optional one being unresolved must not block it')
+  assert.equal(metrics.fieldCoverage, 0.5)
+})
