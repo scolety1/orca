@@ -4,7 +4,8 @@ import {
   humanizeConstant,
   humanizePhase,
   humanizeGapDecision,
-  humanizeEventType
+  humanizeEventType,
+  humanizeResearchPhase
 } from './orchestration-terminology.ts'
 
 test('humanizeConstant converts SCREAMING_SNAKE_CASE to a readable sentence fragment', () => {
@@ -14,6 +15,13 @@ test('humanizeConstant converts SCREAMING_SNAKE_CASE to a readable sentence frag
 
 test('humanizeConstant never crashes on an empty string', () => {
   assert.equal(humanizeConstant(''), '')
+})
+
+// Real, live-discovered crash (Operator IA consolidation hands-on pass): a
+// real resultCapsule with status: null crashed ProjectDetailPage entirely.
+test('humanizeConstant never crashes on null/undefined -- degrades to "Unknown"', () => {
+  assert.equal(humanizeConstant(null), 'Unknown')
+  assert.equal(humanizeConstant(undefined), 'Unknown')
 })
 
 test('every real, already-observed phase constant gets a specific human label', () => {
@@ -39,4 +47,13 @@ test('every real Flight Recorder event type gets a human label', () => {
   assert.equal(humanizeEventType('STATE_TRANSITION'), 'State changed')
   assert.equal(humanizeEventType('WAVE_RECORDED'), 'Wave recorded')
   assert.equal(humanizeEventType('NEEDS_YOU_RAISED'), 'Needs you raised')
+})
+
+test('every real ResearchMission phase gets a human-first label, not the raw state name', () => {
+  assert.equal(humanizeResearchPhase('EXECUTING'), 'Researching')
+  assert.equal(humanizeResearchPhase('WAITING_NEEDS_INPUT'), 'Needs your approval')
+  assert.equal(humanizeResearchPhase('COMPLETE'), 'Complete')
+  assert.equal(humanizeResearchPhase('BLOCKED'), 'Blocked')
+  assert.equal(humanizeResearchPhase('CREATED'), 'Starting research')
+  assert.equal(humanizeResearchPhase('SOME_NEW_PHASE'), 'Some new phase', 'an unmapped future phase still degrades to a readable fallback')
 })

@@ -32,3 +32,10 @@ test('resolveProjectDetailTab: a known tab passes through', () => {
 test('resolveProjectDetailTab: a garbage/hand-edited value falls back to overview, never crashes Tabs', () => {
   assert.equal(resolveProjectDetailTab('../../etc/passwd'), 'overview')
 })
+
+test('research and health are known tabs (IA consolidation: HQ/Work deep-link into a project\'s Research/Health)', () => {
+  assert.equal(projectDeepLinkTo('proj-1', { tab: 'research' }), '/projects/proj-1?tab=research')
+  assert.equal(projectDeepLinkTo('proj-1', { tab: 'health' }), '/projects/proj-1?tab=health')
+  assert.equal(resolveProjectDetailTab('research'), 'research')
+  assert.equal(resolveProjectDetailTab('health'), 'health')
+})

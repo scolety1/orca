@@ -1,4 +1,4 @@
-import type { WorkItem, WorkSummary } from './types'
+import { isResearchMissionWorkItem, type ProjectDetail, type WorkItem, type WorkSummary } from './types.ts'
 
 export type HomeNeedsYouItem = WorkItem & { keyPrefix: string }
 
@@ -12,11 +12,14 @@ export type HomeNeedsYouItem = WorkItem & { keyPrefix: string }
 // already guards this exact overlap with prefixed keys; this is the same
 // fix, factored out so it's actually testable (HomePage.tsx has no test
 // harness of its own).
+// ResearchMissions in needsYou/blocked are rendered separately (their own
+// ResearchMissionCard, not a project card -- see HQPage.tsx) -- filtered
+// out here rather than typed into HomeNeedsYouItem, which is project-only.
 export function buildHomeNeedsYouItems(work: WorkSummary): HomeNeedsYouItem[] {
   return [
-    ...work.needsYou.map((p) => ({ ...p, keyPrefix: 'needs-you' })),
+    ...work.needsYou.filter((p): p is WorkItem => !isResearchMissionWorkItem(p)).map((p) => ({ ...p, keyPrefix: 'needs-you' })),
     ...work.stalled.map((p) => ({ ...p, keyPrefix: 'stalled' })),
-    ...work.blocked.map((p) => ({ ...p, keyPrefix: 'blocked' })),
+    ...work.blocked.filter((p): p is ProjectDetail => !isResearchMissionWorkItem(p)).map((p) => ({ ...p, keyPrefix: 'blocked' })),
     ...work.readyForAdoption.map((p) => ({ ...p, keyPrefix: 'ready-for-adoption' }))
   ]
 }

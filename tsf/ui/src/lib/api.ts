@@ -45,6 +45,7 @@ import type {
   ProjectCard,
   ProjectDetail,
   ReceiptEntry,
+  ResearchMissionSummary,
   RoutingInfo,
   WorkSummary
 } from './types'
@@ -151,6 +152,12 @@ export const api = {
   chatHistory: (projectId: string) =>
     request<ChatMessage[]>(`/chat/${encodeURIComponent(projectId)}`),
   fleetStatus: () => request<FleetWorkStatusItem[]>('/fleet/status'),
+  // GET /api/research[?projectId=] -- HQ's Active Research, Work's Research
+  // filter, Project detail's "Research for this project".
+  researchMissions: (projectId?: string) =>
+    request<{ missions: ResearchMissionSummary[] }>(
+      `/research${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`
+    ).then((r) => r.missions),
   runtimeIdentity: () => request<RuntimeIdentity>('/runtime-identity'),
   updateSafety: () => request<UpdateSafety>('/update-safety'),
   browseDirectory: (dirPath?: string) =>

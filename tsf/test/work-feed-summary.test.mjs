@@ -216,6 +216,20 @@ test('a research mission with a real dispatch attempt (EXECUTING) appears in act
   assert.equal(summary.active[0].phase, 'EXECUTING')
 })
 
+// IA consolidation: HQ/Work render a real title/stats line straight from
+// this item -- no second round-trip needed.
+test('a research work item carries enough fields to render on HQ/Work without a second fetch', () => {
+  let mission = createResearchMission({ id: 'mission:enriched', projectId: 'proj-1', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 3, expectedEntities: [] } }, clock)
+  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = recordDispatchAttempt(mission, 'node:a', { taskFingerprint: 'a'.repeat(64) }, clock, mission.revision)
+  const item = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission }).active[0]
+  assert.equal(item.researchQuestion, 'q')
+  assert.equal(item.entityType, 'FIXTURE')
+  assert.equal(item.expectedCount, 3)
+  assert.equal(item.freePathOnly, true)
+  assert.equal(item.projectId, 'proj-1')
+})
+
 test('a research mission WAITING_NEEDS_INPUT appears in needsYou, alongside any real Keep Going needsYou items', () => {
   let mission = createResearchMission({ id: 'mission:needs-you', projectId: 'p', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] } }, clock)
   mission = raiseResearchNeedsYou(mission, { question: 'approve paid access?' }, clock, mission.revision)

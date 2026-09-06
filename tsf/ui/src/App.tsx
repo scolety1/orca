@@ -1,7 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppShell } from '@/components/AppShell'
-import { HomePage } from '@/pages/HomePage'
+import { HQPage } from '@/pages/HQPage'
 import { CommandPage } from '@/pages/CommandPage'
 import { WorkPage } from '@/pages/WorkPage'
 import { ProjectsPage } from '@/pages/ProjectsPage'
@@ -11,14 +11,19 @@ import { AddProjectPage } from '@/pages/AddProjectPage'
 import { EvaluationPage } from '@/pages/EvaluationPage'
 import { FleetPage } from '@/pages/FleetPage'
 import { HealthRepairCenterPage } from '@/pages/HealthRepairCenterPage'
+import { MorePage } from '@/pages/MorePage'
 
+// Operator IA consolidation V1: primary navigation is HQ/Work/Projects/More
+// (see AppShell.tsx's NAV) -- every prior route stays mounted and reachable
+// (deep links, bookmarks, and More's own links all still work) so this is
+// a navigation change, not a capability removal.
 export function App() {
   return (
     <TooltipProvider delayDuration={400}>
       <BrowserRouter>
         <Routes>
           <Route element={<AppShell />}>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<HQPage />} />
             <Route path="/command" element={<CommandPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
@@ -28,6 +33,7 @@ export function App() {
             <Route path="/evaluation" element={<EvaluationPage />} />
             <Route path="/fleet" element={<FleetPage />} />
             <Route path="/health-repair" element={<HealthRepairCenterPage />} />
+            <Route path="/more" element={<MorePage />} />
           </Route>
         </Routes>
       </BrowserRouter>

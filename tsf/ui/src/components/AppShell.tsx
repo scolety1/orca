@@ -1,14 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom'
-import {
-  CalendarClock,
-  Compass,
-  FlaskConical,
-  FolderKanban,
-  LayoutGrid,
-  MessageSquareText,
-  Stethoscope,
-  TerminalSquare
-} from 'lucide-react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Compass, FolderKanban, LayoutGrid, MoreHorizontal } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
@@ -16,19 +7,26 @@ import { CapacityIndicator } from '@/components/CapacityIndicator'
 import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
 import { GlobalRunStatusIndicator } from '@/components/GlobalRunStatusIndicator'
 
+// Operator IA consolidation V1: normal navigation converges on these four
+// destinations (goals/durable objects, not implementation subsystems) --
+// Command, Agents, Evaluation, Fleet, and Health Repair Center remain real,
+// reachable routes (deep links + More's own links), just out of PRIMARY
+// nav. /command in particular is superseded by HQ's own embedded composer.
 const NAV = [
-  { to: '/', label: 'Home', icon: LayoutGrid, end: true },
-  { to: '/command', label: 'Command', icon: MessageSquareText },
+  { to: '/', label: 'HQ', icon: LayoutGrid, end: true },
   { to: '/work', label: 'Work', icon: Compass },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
-  { to: '/agents', label: 'Agents', icon: TerminalSquare },
-  { to: '/evaluation', label: 'Evaluation', icon: FlaskConical },
-  { to: '/fleet', label: 'Fleet', icon: CalendarClock },
-  { to: '/health-repair', label: 'Health Repair', icon: Stethoscope }
+  { to: '/more', label: 'More', icon: MoreHorizontal }
 ]
+// Advanced/legacy routes reachable via More or a deep link, highlighted as
+// "More" being active in the sidebar so the operator isn't left with no
+// nav item highlighted while on one of them.
+const ADVANCED_ROUTE_PREFIXES = ['/command', '/agents', '/evaluation', '/fleet', '/health-repair']
 
 export function AppShell() {
   const { data: meta } = useApi(() => api.meta(), [])
+  const { pathname } = useLocation()
+  const onAdvancedRoute = ADVANCED_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 
   return (
     // Real V1 stabilization finding (Operator UX pass): the sidebar used to
@@ -65,7 +63,10 @@ export function AppShell() {
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring',
-                    isActive && 'bg-secondary text-secondary-foreground'
+                    // "More" also lights up on an advanced route reached via a
+                    // deep link (e.g. /fleet) so the operator is never left
+                    // with no nav item highlighted at all.
+                    (isActive || (to === '/more' && onAdvancedRoute)) && 'bg-secondary text-secondary-foreground'
                   )
                 }
               >

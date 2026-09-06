@@ -19,7 +19,16 @@
 // partial". Never the sole translation for a known value (the specific
 // maps below read better), but keeps a genuinely new/unmapped constant
 // from ever showing as raw, unbroken snake_case.
-export function humanizeConstant(value: string): string {
+// Real, live-discovered crash (Operator IA consolidation hands-on pass): a
+// real project's own resultCapsule can genuinely have status: null (a
+// worker result recorded before a status was ever set) -- ProjectDetailPage
+// passed it straight through, unguarded, and every caller of this function
+// crashed the ENTIRE page (JSX children evaluate eagerly for every tab,
+// not just the active one). Never throw on missing input again.
+export function humanizeConstant(value: string | null | undefined): string {
+  if (value == null) {
+    return 'Unknown'
+  }
   const words = value.toLowerCase().split('_').filter(Boolean)
   if (words.length === 0) {
     return value
@@ -69,4 +78,21 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 
 export function humanizeEventType(eventType: string): string {
   return EVENT_TYPE_LABELS[eventType] ?? humanizeConstant(eventType)
+}
+
+// Operator IA consolidation: ResearchMission phases (tsf/domain/research-
+// mission.mjs's computeResearchMissionPhase -- CREATED/EXECUTING/
+// WAITING_NEEDS_INPUT/COMPLETE/BLOCKED, the same five values every backend
+// surface already reads) shown on primary surfaces (HQ/Work) in the same
+// human-first vocabulary Keep Going runs already use.
+const RESEARCH_PHASE_LABELS: Record<string, string> = {
+  CREATED: 'Starting research',
+  EXECUTING: 'Researching',
+  WAITING_NEEDS_INPUT: 'Needs your approval',
+  COMPLETE: 'Complete',
+  BLOCKED: 'Blocked'
+}
+
+export function humanizeResearchPhase(phase: string): string {
+  return RESEARCH_PHASE_LABELS[phase] ?? humanizeConstant(phase)
 }

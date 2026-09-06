@@ -73,6 +73,21 @@ test('research HTTP routes: a real mission is created, read, and cancelled throu
     assert.equal(usageRes.status, 200)
     assert.equal((await usageRes.json()).totalRequests, 0)
 
+    // GET /api/research (list) -- HQ/Work/Project-detail Research sections.
+    const listRes = await fetch(`${base}/api/research`)
+    assert.equal(listRes.status, 200)
+    const { missions } = await listRes.json()
+    const listed = missions.find((m) => m.missionId === 'mission:http-test')
+    assert.ok(listed, 'the created mission appears in the list')
+    assert.equal(listed.projectId, 'fixture:proj')
+    assert.equal(listed.nodeCount, 1)
+    assert.equal(listed.freePathOnly, true)
+
+    const filteredRes = await fetch(`${base}/api/research?projectId=fixture:proj`)
+    assert.ok((await filteredRes.json()).missions.some((m) => m.missionId === 'mission:http-test'))
+    const excludedRes = await fetch(`${base}/api/research?projectId=some-other-project`)
+    assert.ok(!(await excludedRes.json()).missions.some((m) => m.missionId === 'mission:http-test'))
+
     const cancelRes = await fetch(`${base}/api/research/mission:http-test/nodes/node:x/cancel`, { method: 'POST' })
     assert.equal(cancelRes.status, 200)
     assert.equal((await cancelRes.json()).nodesByStatus.CANCELLED, 1)

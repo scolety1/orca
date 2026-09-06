@@ -55,7 +55,10 @@ export type Mission = {
 
 export type ResultCapsuleView = {
   id: string | null
-  status: string
+  // A real recorded capsule can genuinely have no status yet -- typed
+  // honestly as nullable (a real, live-discovered crash previously assumed
+  // this was always a string).
+  status: string | null
   filesChanged: string[]
   testsRun: { command?: string; passed?: number; failed?: number; exitCode?: number }[]
   implementationSummary: string | null
@@ -181,22 +184,63 @@ export type WorkItem = ProjectDetail & {
   lastCheckpointAt?: string | null
 }
 
+// Operator IA consolidation: a ResearchMission bucketed into the SAME
+// active/needsYou/blocked/recentlyCompleted arrays a project's coding work
+// lives in (tsf/domain/work-feed-summary.mjs's researchMissionWorkItem) --
+// never a separate feed, so "what's running" genuinely means everything.
+// Shape is intentionally NOT a ProjectDetail (a mission is not a project).
+export type ResearchMissionWorkItem = {
+  kind: 'RESEARCH_MISSION'
+  missionId: string
+  phase: 'CREATED' | 'EXECUTING' | 'WAITING_NEEDS_INPUT' | 'COMPLETE' | 'BLOCKED'
+  updatedAt: string
+  researchQuestion: string | null
+  entityType: string | null
+  expectedCount: number | null
+  freePathOnly: boolean
+  projectId: string | null
+}
+
+export function isResearchMissionWorkItem(item: unknown): item is ResearchMissionWorkItem {
+  return !!item && typeof item === 'object' && (item as { kind?: unknown }).kind === 'RESEARCH_MISSION'
+}
+
+// GET /api/research[?projectId=] -- one real object per mission (HQ's
+// Active Research, Work's Research filter, Project detail's "Research for
+// this project"), mirroring server/research-mission-driver.mjs's
+// readAllResearchMissionSummaries exactly.
+export type ResearchMissionSummary = {
+  missionId: string
+  projectId: string | null
+  state: string
+  phase: 'CREATED' | 'EXECUTING' | 'WAITING_NEEDS_INPUT' | 'COMPLETE' | 'BLOCKED'
+  revision: number
+  researchQuestion: string | null
+  entityType: string | null
+  expectedCount: number | null
+  freePathOnly: boolean
+  nodeCount: number
+  nodesByStatus: Record<string, number>
+  openNeedsYouCount: number
+  updatedAt: string
+}
+
+export type AnyWorkItem = WorkItem | ResearchMissionWorkItem
+export type RecentlyCompletedItem =
+  | { id: string; displayName: string; missionId: string | null; adoptedAt: string | null }
+  | ResearchMissionWorkItem
+
 export type WorkSummary = {
-  active: WorkItem[]
+  active: AnyWorkItem[]
   // Always empty in this pass -- no domain signal yet distinguishes
   // "queued" from "planning" (see tsf/domain/work-feed-summary.mjs).
   queued: WorkItem[]
   verifying: WorkItem[]
-  needsYou: WorkItem[]
+  needsYou: AnyWorkItem[]
   stalled: WorkItem[]
-  blocked: ProjectDetail[]
+  blocked: (ProjectDetail | ResearchMissionWorkItem)[]
   readyForAdoption: WorkItem[]
-  recentlyCompleted: {
-    id: string
-    displayName: string
-    missionId: string | null
-    adoptedAt: string | null
-  }[]
+  recentlyCompleted: RecentlyCompletedItem[]
 }
 
 export type UsageModeConfig = {
@@ -244,7 +288,11 @@ export type ChatResponse = {
   // projectId: null (Command) request; absent on ordinary project-scoped
   // Planner Chat responses.
   resolvedProjectIds?: string[]
-  scope?: 'PROJECT' | 'MULTI_PROJECT' | 'FLEET'
+  scope?: 'PROJECT' | 'MULTI_PROJECT' | 'FLEET' | 'RESEARCH'
+  // Present when this turn resolved to a real ResearchMission (created,
+  // continued, or read) -- HQ's Command composer and Project detail's
+  // "Research for this project" both key off this to link straight to it.
+  researchMissionId?: string | null
   dispatched?: boolean
   dispatchResults?: {
     projectId: string

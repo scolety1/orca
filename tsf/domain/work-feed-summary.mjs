@@ -29,8 +29,23 @@ const RESEARCH_PHASE_SECTION = Object.freeze({
   BLOCKED: 'blocked'
 })
 
+// Operator IA consolidation: enough for HQ/Work to render a real title/
+// stats line ("NFL Salary Cap 2018-2020 · RESEARCH · 3 expected items ·
+// Free-path only") without a second round-trip -- same fields
+// readAllResearchMissionSummaries (research-mission-driver.mjs) exposes,
+// computed here directly since this module has the mission object already.
 function researchMissionWorkItem(mission, phase) {
-  return { kind: 'RESEARCH_MISSION', missionId: mission.id, phase, updatedAt: mission.updatedAt }
+  return {
+    kind: 'RESEARCH_MISSION',
+    missionId: mission.id,
+    phase,
+    updatedAt: mission.updatedAt,
+    researchQuestion: mission.specification?.researchQuestion ?? null,
+    entityType: mission.specification?.entityType ?? null,
+    expectedCount: mission.expectedUniverse?.expectedCount ?? null,
+    freePathOnly: (mission.specification?.budget?.maxCostUsd ?? 0) === 0,
+    projectId: mission.projectId ?? null
+  }
 }
 
 // live-work-feed.mjs's vocabulary reserves COMPLETED for a run whose

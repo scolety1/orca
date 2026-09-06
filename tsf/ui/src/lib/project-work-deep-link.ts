@@ -11,7 +11,12 @@ const KNOWN_TABS = new Set([
   'flight-recorder',
   'adoption',
   'evidence',
-  'receipts'
+  'receipts',
+  // Operator IA consolidation: Research (that project's ResearchMissions)
+  // and Health (Health Repair, demoted from its own top-level page into a
+  // project-scoped action -- see docs/tsf/... IA consolidation notes).
+  'research',
+  'health'
 ])
 
 export function projectDeepLinkTo(

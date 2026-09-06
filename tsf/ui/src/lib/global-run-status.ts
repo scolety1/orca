@@ -1,4 +1,4 @@
-import type { WorkSummary } from './types'
+import { isResearchMissionWorkItem, type WorkSummary } from './types.ts'
 
 // Persistent global execution visibility (bug-ledger.json, BUG-14's own
 // disclosed remaining gap): "a user must be able to see, from anywhere in
@@ -29,7 +29,10 @@ export function buildGlobalRunStatusItems(work: WorkSummary): GlobalRunStatusIte
     work.readyForAdoption
   ]) {
     for (const p of bucket) {
-      if (p.liveWorkFeed) {
+      // A ResearchMission has no Keep Going liveWorkFeed of its own -- this
+      // indicator is Keep Going-run-specific by construction (see its own
+      // header); a research mission's activity is visible on HQ instead.
+      if (!isResearchMissionWorkItem(p) && p.liveWorkFeed) {
         items.push({
           id: p.id,
           displayName: p.displayName,

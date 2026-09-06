@@ -44,6 +44,7 @@ import {
   createResearchMissionDurable,
   dispatchResearchNodeDurable,
   pollAndAdmitResearchNodeDurable,
+  readAllResearchMissionSummaries,
   readResearchMissionArtifacts,
   readResearchMissionCompleteness,
   readResearchMissionProviderUsage,
@@ -104,6 +105,15 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
   if (parts[1] !== 'research') {
     return false
   }
+
+  // GET /api/research[?projectId=x] -- list summaries (HQ "Active Research",
+  // Work's Research filter, a Project's "Research for this project" section).
+  if (parts.length === 2 && req.method === 'GET') {
+    const projectId = new URL(req.url, 'http://localhost').searchParams.get('projectId') || undefined
+    json(res, 200, { missions: readAllResearchMissionSummaries({ projectId }) })
+    return true
+  }
+
   const missionId = parts[2]
   if (!missionId) {
     return false

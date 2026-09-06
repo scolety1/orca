@@ -430,7 +430,24 @@ function result({ intent, decisionClass, text, live, researchMissionId = null })
   }
 }
 
-export async function respondResearchCommand({ message, opState, clock = () => new Date() }) {
+// `contextProjectId` (optional): when this message came from a project-
+// scoped surface (Project detail's "Research for this project", threaded
+// from the SAME real project id the chat route already resolved -- see
+// http-server.mjs's chat route), a newly-created mission is attributed to
+// that real project instead of the generic 'COMMAND_CHAT' bucket, so it
+// shows up in that project's own Research list. Every other behavior
+// (resolution, status/artifacts/cancel/paid-grant on an EXISTING mission)
+// is completely unaffected -- this only changes what a brand-new mission's
+// projectId is set to.
+// Project-scoped entry point (http-server.mjs's per-project chat route):
+// null when the message isn't research-shaped at all, so that route falls
+// through to its normal dispatch/live-planner handling unchanged -- same
+// contract as shouldRouteToResearchBridge itself.
+export async function respondResearchCommandForProject({ project, message, opState, clock = () => new Date() }) {
+  return shouldRouteToResearchBridge(message, opState) ? respondResearchCommand({ message, opState, clock, contextProjectId: project.id }) : null
+}
+
+export async function respondResearchCommand({ message, opState, clock = () => new Date(), contextProjectId = null }) {
   const intent = classifyResearchIntent(message)
   if (!intent) return null // not a research-bridge message -- caller falls through
 
@@ -615,7 +632,7 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     const synthesis = await synthesizeResearchSpecification({ message, missionId, freeOnly, clock })
 
     if (synthesis.ok) {
-      await createResearchMissionDurable(missionId, { projectId: 'COMMAND_CHAT', specification: synthesis.specification, expectedUniverse: synthesis.expectedUniverse, nodes: synthesis.nodes }, clock)
+      await createResearchMissionDurable(missionId, { projectId: contextProjectId ?? 'COMMAND_CHAT', specification: synthesis.specification, expectedUniverse: synthesis.expectedUniverse, nodes: synthesis.nodes }, clock)
       // "Started" must mean something real (Finding 3): real nodes with a
       // real requested-fields shape now exist, so this mission's phase is
       // CREATED, not DRAFT -- "Created", never "Started".
@@ -672,7 +689,7 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     await createResearchMissionDurable(
       missionId,
       {
-        projectId: 'COMMAND_CHAT',
+        projectId: contextProjectId ?? 'COMMAND_CHAT',
         specification: {
           schemaVersion: 'TSF_RESEARCH_SPECIFICATION_V1',
           id: `${missionId}-spec`,

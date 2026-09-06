@@ -30,7 +30,7 @@ import {
 import { invokeLivePlanner, providerLabel, fallbackLabel } from './live-planner.mjs'
 import { planAndDispatchFromChat, ensureWorktreeForDispatch } from './chat-dispatch-bridge.mjs'
 import { respondCommand, DISPATCH_WORTHY_INTENTS } from './command-responder.mjs'
-import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
+import { respondResearchCommandForProject } from './command-research-bridge.mjs'; import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 
 // Configures which real, known project id actually IS TSF's own -- self-
 // repair (domain/self-repair-authority.mjs) can never be authorized for any
@@ -569,9 +569,14 @@ export function createRequestHandler(options = {}) {
         // decision).
         const statusWorthy = isLiveRunRelevantFor(intent, liveRun)
 
-        if (!project) {
-          result = respond(project, message)
-        } else if (decisionClass === 'TIM_REQUIRED') {
+        // Project detail's "Research for this project": the SAME real
+        // research bridge Command's global scope already uses, just given
+        // this route's own already-resolved project id so a newly-created
+        // mission is attributed to it (never 'COMMAND_CHAT') -- checked
+        // before dispatch/live-planner so a research-shaped message never
+        // reaches either.
+        const projectResearchResult = project ? await respondResearchCommandForProject({ project, message, opState, clock: () => new Date() }) : null
+        if (!project) { result = respond(project, message) } else if (projectResearchResult) { result = projectResearchResult } else if (decisionClass === 'TIM_REQUIRED') {
           // Consequential phrasing is refused deterministically, before ever
           // spending a live call on it — not left to the model's judgment.
           // Label this distinctly from an actually-unavailable provider: one

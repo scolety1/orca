@@ -15,6 +15,8 @@ import { KeepGoingPanel } from '@/components/keep-going/KeepGoingPanel'
 import { PlannerChatPanel } from '@/components/chat/PlannerChatPanel'
 import { RefreshProjectButton } from '@/components/onboarding/RefreshProjectButton'
 import { MembershipPanel } from '@/components/projects/MembershipPanel'
+import { ProjectResearchPanel } from '@/components/research/ProjectResearchPanel'
+import { ProjectHealthTab } from '@/components/health-repair/ProjectHealthTab'
 import { resolveProjectDetailTab } from '@/lib/project-work-deep-link'
 import { humanizeConstant } from '@/lib/orchestration-terminology'
 import { writeLastViewedProject } from '@/lib/last-viewed-project'
@@ -127,7 +129,18 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
             </div>
           )}
         </div>
-        <StatusChip status={project.health.status} />
+        <button
+          onClick={() =>
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev)
+              next.set('tab', 'health')
+              return next
+            })
+          }
+          aria-label="Open Health tab"
+        >
+          <StatusChip status={project.health.status} />
+        </button>
       </header>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
@@ -147,6 +160,8 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="keep-going">Keep Going</TabsTrigger>
+              <TabsTrigger value="research">Research</TabsTrigger>
+              <TabsTrigger value="health">Health</TabsTrigger>
               <TabsTrigger value="estimate">Estimate</TabsTrigger>
               <TabsTrigger value="flight-recorder">Flight Recorder</TabsTrigger>
               <TabsTrigger value="adoption">Adoption</TabsTrigger>
@@ -311,6 +326,14 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
               <KeepGoingPanel projectId={project.id} />
             </TabsContent>
 
+            <TabsContent value="research" className="mt-4">
+              <ProjectResearchPanel projectId={project.id} />
+            </TabsContent>
+
+            <TabsContent value="health" className="mt-4">
+              <ProjectHealthTab projectId={project.id} />
+            </TabsContent>
+
             <TabsContent value="estimate" className="mt-4">
               <EstimatePanel projectId={project.id} />
             </TabsContent>
@@ -342,7 +365,7 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
                               ? 'healthy'
                               : 'blocked'
                           }
-                          title={r.status}
+                          title={r.status ?? undefined}
                         >
                           {humanizeConstant(r.status)}
                         </Badge>

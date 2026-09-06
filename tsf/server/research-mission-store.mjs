@@ -29,6 +29,15 @@ export function readResearchMission(missionId) {
   return researchMissionFor(loadState(), missionId)
 }
 
+// For list surfaces (HQ/Work/Project-detail Research sections) that need
+// every mission, not one -- version-asserts each the same as readResearchMission.
+export function readAllResearchMissions() {
+  const opState = loadState()
+  const missions = opState.researchMissions ?? {}
+  for (const mission of Object.values(missions)) assertSupportedResearchMissionSchemaVersion(mission)
+  return missions
+}
+
 // The integrity-checked read: canonicalFacts lacking valid, consistent
 // ReconciliationDecision lineage are excluded from what's treated as
 // canonical (never silently deleted from the underlying store -- see

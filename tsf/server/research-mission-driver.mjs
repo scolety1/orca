@@ -31,7 +31,7 @@ import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
 import { createResearchLibrary, decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, evaluateSourceLibraryReuse, markResearchNodeAdmittedViaLibraryReuse, reuseSourceSnapshotIntoNode } from '../domain/research-library.mjs'
 import { activeResearchPaidApproval, grantResearchPaidApproval, requestResearchPaidApproval } from '../domain/research-paid-approval.mjs'
 import { buildResearchProvenancePackage } from '../domain/research-provenance.mjs'
-import { readResearchMission, readResearchMissionIntegrityChecked, withResearchMission } from './research-mission-store.mjs'
+import { readAllResearchMissions, readResearchMission, readResearchMissionIntegrityChecked, withResearchMission } from './research-mission-store.mjs'
 import { readResearchLibrary } from './research-library-store.mjs'
 
 // ---------------------------------------------------------------------
@@ -71,6 +71,38 @@ export function readResearchMissionStatus(missionId) {
     openNeedsYouCount: mission.needsYou.filter((n) => !n.resolvedAt).length,
     updatedAt: mission.updatedAt
   }
+}
+
+// List summary for HQ/Work/Project-detail Research sections -- one real
+// object per mission, no separate aggregation mechanism (same phase/
+// nodesByStatus computation readResearchMissionStatus already uses).
+// Operator UI IA consolidation: this is the one place "Active Research"/
+// "Research for this project" read from, so a project's mission list can
+// never drift from what /api/research/:id itself would say.
+export function readAllResearchMissionSummaries({ projectId } = {}) {
+  const missions = readAllResearchMissions()
+  const summaries = []
+  for (const [missionId, mission] of Object.entries(missions)) {
+    if (projectId && mission.projectId !== projectId) continue
+    const nodesByStatus = {}
+    for (const n of mission.nodes) nodesByStatus[n.status] = (nodesByStatus[n.status] ?? 0) + 1
+    summaries.push({
+      missionId,
+      projectId: mission.projectId,
+      state: mission.state,
+      phase: computeResearchMissionPhase(mission),
+      revision: mission.revision,
+      researchQuestion: mission.specification?.researchQuestion ?? null,
+      entityType: mission.specification?.entityType ?? null,
+      expectedCount: mission.expectedUniverse?.expectedCount ?? null,
+      freePathOnly: (mission.specification?.budget?.maxCostUsd ?? 0) === 0,
+      nodeCount: mission.nodes.length,
+      nodesByStatus,
+      openNeedsYouCount: mission.needsYou.filter((n) => !n.resolvedAt).length,
+      updatedAt: mission.updatedAt
+    })
+  }
+  return summaries
 }
 
 export function readResearchMissionReviewItems(missionId) {

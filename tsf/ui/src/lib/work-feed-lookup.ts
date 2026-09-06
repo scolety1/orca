@@ -1,4 +1,4 @@
-import type { WorkSummary } from './types'
+import { isResearchMissionWorkItem, type WorkSummary } from './types.ts'
 
 // BUG-14 (bug-ledger.json): FleetPage never called /api/work at all, so
 // none of the run-driven RUNNING/PAUSED/WAITING/STALLED/VERIFYING/
@@ -20,7 +20,9 @@ export function buildLiveWorkFeedLookup(
     work.readyForAdoption
   ]) {
     for (const item of bucket) {
-      if (item.liveWorkFeed) {
+      // A ResearchMission has no project id / liveWorkFeed of its own --
+      // this lookup is project-scoped by construction.
+      if (!isResearchMissionWorkItem(item) && item.liveWorkFeed) {
         lookup.set(item.id, item.liveWorkFeed)
       }
     }
