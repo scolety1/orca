@@ -33,6 +33,7 @@ import {
   requestResearchPaidApprovalDurable
 } from './research-mission-driver.mjs'
 import { synthesizeResearchSpecification } from './command-research-spec-synthesis.mjs'
+import { registerResearchCompletionWatch } from './command-research-completion-watch.mjs'
 
 const PROVIDER_NAME_TO_ID = Object.freeze({ exa: EXA_PROVIDER_ID, parallel: PARALLEL_PROVIDER_ID })
 
@@ -94,6 +95,30 @@ const RESEARCH_INTENT_PATTERNS = [
         msg
       )
   },
+  // Round 4: "let me know when it's done", "tell me when this finishes",
+  // "notify me when the research is complete", "let me know when the
+  // salary cap thing finishes", "can you tell me when it has the dataset"
+  // -- previously matched NOTHING here at all, so classifyResearchIntent
+  // returned null and this fell straight through to generic Command
+  // routing's "I couldn't tell which project this is about" rejection,
+  // even with an unambiguous single mission already in conversational
+  // context (real, reproduced hands-on pilot bug). Checked before the
+  // narrower RESEARCH_CANCEL/bare-"research" patterns below so "let me
+  // know when..." always wins over a coincidental later match.
+  {
+    // Group 2 is deliberately generic (any text), not a fixed pronoun
+    // list -- it must also match an explicit mission id referenced
+    // directly ("let me know when mission:xyz is done"), which
+    // resolveMissionContext's own explicitMissionIdIn check below relies
+    // on seeing in the first place. The surrounding
+    // "let me know/tell me/notify me ... when ... done/finished/complete"
+    // shape is specific enough that this stays safe.
+    id: 'RESEARCH_COMPLETION_WATCH_REQUEST',
+    test: (msg) =>
+      /\b(let me know|tell me|notify me)\s+when\s+.+?\s+(is )?(done|finished|finishes|complete|has the dataset)\b/i.test(
+        msg
+      )
+  },
   // "cancel it"/"cancel that"/"cancel the research"/"cancel this mission" --
   // narrower than a bare /\bcancel\b/ for the same reason RESEARCH_CONFLICTS
   // is narrower than bare "conflict": "cancel" alone could plausibly mean
@@ -142,7 +167,8 @@ const MISSION_CONTEXT_DEPENDENT_INTENTS = new Set([
   'RESEARCH_STATUS',
   'RESEARCH_COMPLETENESS',
   'RESEARCH_CONFLICTS',
-  'RESEARCH_PAID_ADVISORY'
+  'RESEARCH_PAID_ADVISORY',
+  'RESEARCH_COMPLETION_WATCH_REQUEST'
 ])
 
 export function shouldRouteToResearchBridge(message, opState) {
@@ -485,6 +511,19 @@ export async function respondResearchCommand({ message, opState, clock = () => n
         researchMissionId: missionId
       })
     }
+  }
+
+  if (intent === 'RESEARCH_COMPLETION_WATCH_REQUEST') {
+    const missionContext = resolveMissionContext(message, opState)
+    if (missionContext.ambiguous) {
+      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+    }
+    const missionId = missionContext.missionId
+    if (!missionId) {
+      return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
+    }
+    const text = await registerResearchCompletionWatch(missionId, message, clock)
+    return result({ intent, decisionClass: 'AUTO_DECIDE', text, live: false, researchMissionId: missionId })
   }
 
   if (intent === 'RESEARCH_ARTIFACTS' || intent === 'RESEARCH_STATUS' || intent === 'RESEARCH_COMPLETENESS' || intent === 'RESEARCH_CONFLICTS') {

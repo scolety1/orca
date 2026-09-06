@@ -66,7 +66,7 @@ import providerRoles from '../routing/provider-role-mappings.v1.json' with { typ
 import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
 import { writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
 import { bootstrapKeepGoingFleetDriverIfEnabled } from './keep-going-fleet-driver-bootstrap.mjs'
-import { bootstrapResearchMissionFleetDriverIfEnabled } from './research-mission-fleet-driver-bootstrap.mjs'
+import { bootstrapResearchMissionFleetDriverIfEnabled } from './research-mission-fleet-driver-bootstrap.mjs'; import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
 import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
 import { handleResourcePressureGovernorRoute } from './resource-pressure-governor-http-routes.mjs'
 
@@ -516,7 +516,7 @@ export function createRequestHandler(options = {}) {
               }
             ].slice(-200)
             saveState({ ...freshState, chatThreads: threads })
-            return json(res, 200, commandResult)
+            return json(res, 200, await attachDueCompletionNotices(commandResult, () => new Date()))
           }
         }
 
@@ -663,7 +663,7 @@ export function createRequestHandler(options = {}) {
           }
         ].slice(-200)
         saveState({ ...freshState, chatThreads: threads, plannerSessions: nextPlannerSessions })
-        return json(res, 200, result)
+        return json(res, 200, await attachDueCompletionNotices(result, () => new Date()))
       }
 
       // GET /api/chat/:projectId (history)
