@@ -104,6 +104,14 @@ export function HealthRepairCenterPage() {
         activity.kind === 'BASELINE'
           ? (result as BaselineCheckResult).causes
           : (result as RepairActionResult).causesAfter
+      // startRepair throws (never returns) when the durable operation
+      // settles without causesAfter, so a COMPLETED REPAIR activity here
+      // always has it -- but RepairActionResult's own type keeps it
+      // optional (it covers the FAILED case too), so TypeScript can't see
+      // that guarantee. Checked explicitly rather than asserted away.
+      if (!causes) {
+        continue
+      }
       setProjects((current) =>
         (current ?? data?.projects ?? []).map((project) =>
           project.projectId === projectId
@@ -111,7 +119,7 @@ export function HealthRepairCenterPage() {
                 ...project,
                 causes,
                 repairClass: overallRepairClass(causes),
-                readyForWork: result.readyForWork
+                readyForWork: result.readyForWork ?? project.readyForWork
               }
             : project
         )
