@@ -48,6 +48,7 @@ import {
   handleHealthRepairRoute,
   recoverInterruptedHealthRepairOperations
 } from './health-repair-http-routes.mjs'
+import { handleResourceAuditorRoute } from './resource-auditor-http-routes.mjs'
 import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
 import { handleEstimateRoute } from './estimate-http-routes.mjs'
 import { handleEvalRoute } from './eval-http-routes.mjs'
@@ -708,6 +709,11 @@ export function createRequestHandler(options = {}) {
           { json, notFound, readBody, saveState }
         )
       ) {
+        return
+      }
+
+      // GET/POST /api/resource-auditor/* -- see resource-auditor-http-routes.mjs
+      if (await handleResourceAuditorRoute(parts, req, res, { opState }, { json, notFound, readBody })) {
         return
       }
 
