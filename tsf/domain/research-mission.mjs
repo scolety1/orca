@@ -258,8 +258,18 @@ export function computeResearchMissionPhase(mission) {
   // network/worker call was attempted) or has real epistemic content
   // (ADMITTED/COMPLETED) -- never node COUNT alone, which a DRAFT-with-
   // declared-scope mission can also have without a single real dispatch.
+  // Real free-path research execution finding: dispatchAttempts (every
+  // real network attempt, confirmed or cleanly failed) is checked
+  // alongside dispatchRecords (confirmed dispatch only) -- a genuinely
+  // failed real attempt (e.g. the free-public worker's own honest
+  // {ok:false} on no match, see adapters/web-table-research-worker.mjs)
+  // never creates a dispatchRecord by design, but a real network call
+  // genuinely was attempted -- exactly "something real has actually run,"
+  // this check's own stated intent, previously latent because every
+  // pre-existing dispatch path either confirmed or was a no-op that
+  // recorded no attempt at all.
   const hasRealProgress = mission.nodes.some(
-    (n) => n.dispatchRecords?.length > 0 || n.status === 'ADMITTED' || n.status === 'COMPLETED'
+    (n) => n.dispatchRecords?.length > 0 || n.dispatchAttempts?.length > 0 || n.status === 'ADMITTED' || n.status === 'COMPLETED'
   )
   return hasRealProgress ? 'EXECUTING' : 'CREATED'
 }

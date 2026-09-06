@@ -10,6 +10,27 @@
 // less/more blocked in that sense), independent of `needsYou`/`stalled`,
 // which are purely run-driven and have no legacy equivalent.
 import { fleetWorkStatus } from './fleet-work-status.mjs'
+import { computeResearchMissionPhase } from './research-mission.mjs'
+
+// Real free-path research execution finding: this aggregation (Work page/
+// Home) had zero ResearchMission awareness at all -- a mission genuinely
+// EXECUTING never appeared here even though it does now appear in
+// Command's own fleet-status text (fleet-work-status.mjs's
+// fleetResearchStatus). Mapped onto the SAME phase vocabulary
+// computeResearchMissionPhase already produces -- no second, independently-
+// derived classification. Disclosed, not fixed here: there is no durable
+// per-mission "WAITING_FOR_RESOURCES" signal to bucket from (that decision
+// is made fresh each driver cycle, never persisted) -- a real, small,
+// separately-scoped follow-up, not implemented in this pass.
+const RESEARCH_PHASE_SECTION = Object.freeze({
+  EXECUTING: 'active',
+  WAITING_NEEDS_INPUT: 'needsYou',
+  COMPLETE: 'recentlyCompleted'
+})
+
+function researchMissionWorkItem(mission, phase) {
+  return { kind: 'RESEARCH_MISSION', missionId: mission.id, phase, updatedAt: mission.updatedAt }
+}
 
 // live-work-feed.mjs's vocabulary reserves COMPLETED for a run whose
 // project has since been adopted -- projectLiveWorkFeedState itself never
@@ -32,7 +53,7 @@ function recentlyCompletedEntry(project, missionId, adoptedAt) {
   return { id: project.id, displayName: project.displayName, missionId, adoptedAt }
 }
 
-export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () => new Date()) {
+export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () => new Date(), researchMissions = {}) {
   const statusByProjectId = new Map(
     fleetWorkStatus(projects, keepGoingRuns, clock).map((status) => [status.projectId, status])
   )
@@ -111,14 +132,30 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
     }
   }
 
+  const researchActive = []
+  const researchNeedsYou = []
+  const researchRecentlyCompleted = []
+  for (const mission of Object.values(researchMissions)) {
+    const phase = computeResearchMissionPhase(mission)
+    const section = RESEARCH_PHASE_SECTION[phase]
+    const item = researchMissionWorkItem(mission, phase)
+    if (section === 'active') {
+      researchActive.push(item)
+    } else if (section === 'needsYou') {
+      researchNeedsYou.push(item)
+    } else if (section === 'recentlyCompleted') {
+      researchRecentlyCompleted.push(item)
+    }
+  }
+
   return {
-    active: [...legacyActive, ...runActive],
+    active: [...legacyActive, ...runActive, ...researchActive],
     queued,
     verifying,
-    needsYou,
+    needsYou: [...needsYou, ...researchNeedsYou],
     stalled,
     blocked,
     readyForAdoption: [...legacyReadyForAdoption, ...runReadyForAdoption],
-    recentlyCompleted: [...legacyRecentlyCompleted, ...runRecentlyCompleted]
+    recentlyCompleted: [...legacyRecentlyCompleted, ...runRecentlyCompleted, ...researchRecentlyCompleted]
   }
 }

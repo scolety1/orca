@@ -13,6 +13,7 @@ import {
   transitionResearchMission
 } from '../domain/research-mission.mjs'
 import { markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
+import { recordDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
 
 function failedResultFor(nodeId) {
@@ -168,6 +169,24 @@ test('computeResearchMissionPhase: EXECUTING once a node has real dispatch histo
   mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
   mission = markResearchNodeReady(mission, 'node:a', clock, mission.revision)
   mission = recordResearchNodeDispatch(mission, 'node:a', { taskFingerprint: 'a'.repeat(64), workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() } }, clock, mission.revision)
+  assert.equal(computeResearchMissionPhase(mission), 'EXECUTING')
+})
+
+// Real free-path research execution finding: the free-public web-table
+// worker's own honest {ok:false} on a genuine no-match (see
+// adapters/web-table-research-worker.mjs) never creates a dispatchRecord
+// by design -- correctly avoids permanently blocking a real retry -- but
+// a real dispatchAttempt IS durably recorded, and that alone is "a real
+// network/worker call was attempted" (this function's own stated intent).
+// Command/status integration ("what's running right now") reads this
+// exact phase to decide whether a mission counts as active fleet-wide --
+// this proves a mission genuinely being retried never silently reads as
+// CREATED/idle just because no attempt has yet succeeded.
+test('computeResearchMissionPhase: EXECUTING once a node has a real dispatchAttempt, even if every attempt so far cleanly failed with no dispatchRecord', () => {
+  let mission = baseMission()
+  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = recordDispatchAttempt(mission, 'node:a', { taskFingerprint: 'a'.repeat(64) }, clock, mission.revision)
+  assert.equal(mission.nodes[0].dispatchRecords.length, 0, 'no dispatchRecord exists yet')
   assert.equal(computeResearchMissionPhase(mission), 'EXECUTING')
 })
 
