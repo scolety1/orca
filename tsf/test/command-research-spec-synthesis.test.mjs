@@ -45,6 +45,26 @@ test('sufficient request (stub happy path): produces a real, structurally-valid 
   })
 })
 
+test('REAL FREE-PATH RESEARCH EXECUTION V1: requestedOutputSchema.properties is populated from requestedFields -- a real, previously-undiscovered bug where it was always {} (no properties at all), meaning fieldNames(request) returned [] for every real worker dispatch', async () => {
+  await withPlannerEnv(PLANNER_STUB, {}, async () => {
+    const result = await synthesizeResearchSpecification({ message: 'research something reasonably scoped', missionId: 'mission:synth-schema-test', freeOnly: true })
+    assert.equal(result.ok, true)
+    for (const node of result.nodes) {
+      assert.equal(node.requestedOutputSchema.type, 'object')
+      const propertyNames = Object.keys(node.requestedOutputSchema.properties)
+      assert.deepEqual(propertyNames.sort(), node.requestedFields.map((f) => f.fieldName).sort(), 'requestedOutputSchema.properties must name exactly the requested fields, so a real worker actually asks for them')
+    }
+  })
+})
+
+test('preferredSourceUrls proposed by the planner become sourcePolicy.preferredSources, filtering out anything not a real http(s) URL', async () => {
+  await withPlannerEnv(PLANNER_STUB, {}, async () => {
+    const result = await synthesizeResearchSpecification({ message: 'research something reasonably scoped', missionId: 'mission:synth-sources-test', freeOnly: true })
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.specification.sourcePolicy.preferredSources, ['https://example.com/stub-source-1', 'https://example.com/stub-source-2'], 'the non-URL entry the stub planner proposed must be filtered out, never passed through to a real fetch attempt')
+  })
+})
+
 test('under-specified request (stub NEEDS_INPUT): refuses with ONE bounded clarification, creates nothing', async () => {
   await withPlannerEnv(PLANNER_STUB, { STUB_RESEARCH_SPEC_INSUFFICIENT: '1' }, async () => {
     const result = await synthesizeResearchSpecification({ message: 'research something vague', missionId: 'mission:synth-needs-input', freeOnly: false })

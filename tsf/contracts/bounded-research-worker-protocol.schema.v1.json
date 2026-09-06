@@ -22,6 +22,15 @@
         },
         "nodeRole": { "type": "string", "minLength": 1 },
         "researchQuestion": { "type": "string", "minLength": 1 },
+        "targetEntity": {
+          "description": "Optional structured entity identity, additive V1.1 field (a generic free/public worker needs this to match a table row; Exa/Parallel ignore it, relying on researchQuestion's free-text entity mention instead).",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "entityId": { "type": "string", "minLength": 1 },
+            "name": { "type": ["string", "null"] }
+          }
+        },
         "scope": { "type": "array", "items": { "type": "string" } },
         "requestedOutputSchema": { "type": "object" },
         "temporalRequirements": {

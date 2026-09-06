@@ -74,6 +74,11 @@ export function buildBoundedResearchRequest(mission, node, provider, clock) {
     }),
     nodeRole: node.nodeRole,
     researchQuestion,
+    // Additive V1.1 field: a generic free/public worker (e.g. a web-table
+    // extractor) needs a structured entity identity to match a table row --
+    // Exa/Parallel ignore this, relying on researchQuestion's free-text
+    // entity mention (scopedResearchQuestion above) instead.
+    targetEntity: node.targetEntity ? { entityId: node.targetEntity.entityId, name: node.targetEntity.name ?? null } : null,
     scope: [`node:${node.id}`],
     requestedOutputSchema: deepClone(node.requestedOutputSchema),
     temporalRequirements: deepClone(spec.temporalRequirements),

@@ -10,6 +10,7 @@
 // background subsystem's wiring.
 import { loadState } from './data-store.mjs'
 import { startResearchMissionFleetDriver } from './research-mission-fleet-driver.mjs'
+import { createWebTableResearchWorker } from '../adapters/web-table-research-worker.mjs'
 
 // Opt-in via TSF_RESEARCH_MISSION_FLEET_DRIVER=1 -- same convention as
 // TSF_KEEP_GOING_FLEET_DRIVER (main.mjs's realSpawnFn sets both for the
@@ -43,6 +44,14 @@ export function bootstrapResearchMissionFleetDriverIfEnabled(server) {
     onError: (error) => {
       console.error('Research mission fleet driver cycle failed:', error)
     },
+    // REAL FREE-PATH RESEARCH EXECUTION V1: a genuinely $0, free-public
+    // worker (never Exa/Parallel) -- deps.requiresPaidApproval stays unset
+    // (falsy), so dispatch always uses the ungated dispatchResearchNodeDurable
+    // path, correct for a worker that structurally cannot spend anything.
+    // Real paid dispatch remains exclusively behind the separate,
+    // deliberately-gated TSF_RESEARCH_LIVE_DISPATCH_ENABLED HTTP route
+    // (research-http-routes.mjs), untouched by this.
+    worker: createWebTableResearchWorker(),
     // Test-only override (real production always uses the real default) --
     // same convention as TSF_KEEP_GOING_FLEET_DRIVER_INTERVAL_MS.
     ...(process.env.TSF_RESEARCH_MISSION_FLEET_DRIVER_INTERVAL_MS

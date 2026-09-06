@@ -227,6 +227,7 @@ function structuredResponseFor(schemaJson, prompt) {
         { fieldName: 'stubSource', valueType: 'string', required: true }
       ],
       temporalPeriodScope: 'stub-period',
+      preferredSourceUrls: ['https://example.com/stub-source-1', 'not-a-real-url', 'https://example.com/stub-source-2'],
       sourceStrategy: 'stub: official/deterministic/public acquisition before AI research',
       verificationRequirement: 'stub: independent source cross-check where available',
       completenessRequirement: 'stub: every expected entity has a value and a source'

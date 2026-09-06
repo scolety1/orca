@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tsf.local/contracts/web-table-source-acquisition-receipt.schema.v1.json",
+  "title": "Web Source Acquisition Receipt V0",
+  "description": "Provisional generic acquisition receipt owned by this worktree. Not the same object as tsf/domain/receipts.mjs's TSF_RECEIPT_KINDS chain (TSF coding-mission lifecycle) or Dataset Research's own provenance package -- folding it into either is a Main TSF integration decision, not made here. V0.5 additively added robotsEvidence (nullable); the safety-default closure additively added transportEvidence (nullable, non-null only when produced by the safe public-web-source-acquisition.mjs entrypoint); no other field changed shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "acquisitionMode",
+    "sourceUrl",
+    "retrievalTime",
+    "adapter",
+    "accessClassification",
+    "decision",
+    "operatorReviewRequired",
+    "decisionReason",
+    "robotsEvidence",
+    "transportEvidence",
+    "sourceAsOf",
+    "responseMetadata",
+    "contentHash",
+    "normalizedTableHash",
+    "tableIdentity",
+    "schema",
+    "rowCount",
+    "warnings",
+    "artifactRef",
+    "createdAt",
+    "receiptHash"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "WEB_SOURCE_ACQUISITION_RECEIPT_V0" },
+    "acquisitionMode": {
+      "enum": [
+        "PUBLIC_WEB_SOURCE_EXTRACTION",
+        "AUTHENTICATED_OFFICIAL_DOWNLOAD",
+        "OWNER_SUPPLIED_LOCAL_ARTIFACT"
+      ]
+    },
+    "sourceUrl": { "type": "string" },
+    "retrievalTime": { "type": ["string", "null"], "format": "date-time" },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] }
+      }
+    },
+    "accessClassification": { "type": "string" },
+    "decision": {
+      "enum": [
+        "EXTRACTED",
+        "EXTRACTION_FAILED",
+        "BLOCKED",
+        "REQUIRES_REVIEW",
+        "ROUTE_TO_EXPORT_PATH"
+      ]
+    },
+    "operatorReviewRequired": { "type": "boolean" },
+    "decisionReason": { "type": "string" },
+    "robotsEvidence": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "outcome",
+        "robotsDecisionForGate",
+        "userAgentToken",
+        "retrievalTime",
+        "finalUrl",
+        "httpStatus",
+        "contentHash",
+        "matchedRule",
+        "robotsContentRetained"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "WEB_SOURCE_ROBOTS_PREFLIGHT_V0" },
+        "outcome": {
+          "enum": [
+            "ALLOWED",
+            "DISALLOWED",
+            "ROBOTS_NOT_FOUND",
+            "ROBOTS_UNREACHABLE",
+            "ROBOTS_INVALID",
+            "ROBOTS_UNSAFE_REDIRECT"
+          ]
+        },
+        "robotsDecisionForGate": { "enum": ["ALLOWED", "DISALLOWED", "UNKNOWN"] },
+        "userAgentToken": { "type": "string" },
+        "retrievalTime": { "type": "string", "format": "date-time" },
+        "finalUrl": { "type": ["string", "null"] },
+        "httpStatus": { "type": ["integer", "null"] },
+        "contentHash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "matchedRule": { "type": ["object", "null"] },
+        "robotsContentRetained": {
+          "const": false,
+          "description": "Always false on the canonical receipt -- raw robots.txt content is stripped here regardless of what the preflight evidence itself retained."
+        }
+      }
+    },
+    "transportEvidence": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "transport",
+        "robotsUsedPinnedTransport",
+        "contentUsedPinnedTransport",
+        "ordinaryFetchFallbackOccurred",
+        "capability"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "WEB_PUBLIC_ACQUISITION_TRANSPORT_EVIDENCE_V1" },
+        "transport": { "enum": ["PINNED_CONNECTION_FETCH"] },
+        "robotsUsedPinnedTransport": {
+          "type": "boolean",
+          "description": "false on the pinned-transport-construction-failure path (see public-web-source-acquisition.mjs) -- transportEvidence is attached there too, honestly reporting that pinning was never reached, not only when pinning succeeded."
+        },
+        "contentUsedPinnedTransport": {
+          "type": "boolean",
+          "description": "false on the pinned-transport-construction-failure path, for the same reason as robotsUsedPinnedTransport above."
+        },
+        "ordinaryFetchFallbackOccurred": { "const": false },
+        "capability": { "const": "WEB_PUBLIC_ACQUISITION_TRANSPORT_CAPABILITY_V1" }
+      }
+    },
+    "sourceAsOf": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["evidence", "extractionMethod", "confidence", "value"],
+      "properties": {
+        "evidence": { "type": ["string", "null"] },
+        "extractionMethod": {
+          "enum": [
+            "EXPLICIT_TIME_ELEMENT",
+            "TEXTUAL_DATE_IN_CAPTION",
+            "TEXTUAL_DATE_NEAR_TABLE",
+            "NONE"
+          ]
+        },
+        "confidence": { "enum": ["HIGH", "MEDIUM", "NONE"] },
+        "value": { "type": ["string", "null"] }
+      }
+    },
+    "responseMetadata": { "type": ["object", "null"] },
+    "contentHash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "normalizedTableHash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "tableIdentity": { "type": ["object", "null"] },
+    "schema": { "type": ["array", "null"] },
+    "rowCount": { "type": ["integer", "null"] },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "artifactRef": { "type": ["object", "null"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "receiptHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

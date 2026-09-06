@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tsf.local/contracts/web-source-access-classification.schema.v1.json",
+  "title": "Web Source Access Classification V1",
+  "description": "Typed access/rights decision for a web source candidate. Matches the taxonomy proposed (design-only) in tsf/feature/dataset-research-engine-v0's shared-generic-acquisition-contract.json so a future merge does not require renaming.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["accessClassification", "decision", "operatorReviewRequired", "decisionReason"],
+  "properties": {
+    "accessClassification": {
+      "enum": [
+        "PUBLIC_ALLOWED",
+        "PUBLIC_TERMS_UNCLEAR",
+        "AUTHENTICATED_OFFICIAL_EXPORT",
+        "AUTHENTICATED_PAGE_NO_EXPORT",
+        "ROBOTS_DISALLOWED",
+        "TERMS_BLOCKED",
+        "PAYWALL_ACCESS_CONTROL"
+      ]
+    },
+    "decision": { "enum": ["ALLOWED", "ROUTE_TO_EXPORT_PATH", "REQUIRES_REVIEW", "BLOCKED"] },
+    "operatorReviewRequired": { "type": "boolean" },
+    "decisionReason": { "type": "string", "minLength": 1 }
+  }
+}

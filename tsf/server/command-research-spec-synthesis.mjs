@@ -55,6 +55,11 @@ const SPEC_SYNTHESIS_SCHEMA = {
       }
     },
     temporalPeriodScope: { type: ['string', 'null'] },
+    preferredSourceUrls: {
+      description: 'Real, specific candidate public page URLs likely to contain a genuine data table for the requested fields -- never a search-engine URL, never fabricated as certain. A wrong/dead URL just fails cleanly at fetch time; this is a starting hint, not an oracle.',
+      type: 'array',
+      items: { type: 'string' }
+    },
     sourceStrategy: { type: ['string', 'null'] },
     verificationRequirement: { type: ['string', 'null'] },
     completenessRequirement: { type: ['string', 'null'] }
@@ -66,7 +71,7 @@ const SPEC_SYNTHESIS_SYSTEM_PROMPT = [
   '',
   'Judge whether the request is sufficiently specified to propose a real, bounded specification. It is sufficient when you can identify: what is being researched (the entity type and, ideally, an enumerable expected universe of specific items -- e.g. explicit years/names/categories the request itself names or clearly implies), and at least one concrete field to collect per item.',
   '',
-  'If sufficient: propose entityType, expectedEntities (one per item in the expected universe -- prefer a SMALL, explicit, enumerable set genuinely implied by the request over a vague open-ended one; if the request gives a bounded range like specific years, enumerate each one as its own entity), expectedUniverseSource (a short honest note on how you derived the universe -- e.g. "inferred from the request\'s own explicit year range", never claim a real external oracle you don\'t have), requestedFields (concrete fields worth collecting per entity -- include identity/value/source-provenance style fields where the topic implies them), temporalPeriodScope, sourceStrategy (prefer official/deterministic/public sources before speculative AI research when you can name one), verificationRequirement, and completenessRequirement.',
+  'If sufficient: propose entityType, expectedEntities (one per item in the expected universe -- prefer a SMALL, explicit, enumerable set genuinely implied by the request over a vague open-ended one; if the request gives a bounded range like specific years, enumerate each one as its own entity), expectedUniverseSource (a short honest note on how you derived the universe -- e.g. "inferred from the request\'s own explicit year range", never claim a real external oracle you don\'t have), requestedFields (concrete fields worth collecting per entity -- include identity/value/source-provenance style fields where the topic implies them; name each field to plausibly match a real page\'s own column header text, e.g. "Cap Number" rather than an internal identifier like "capNum"), preferredSourceUrls (0-3 real, specific public page URLs you genuinely believe are likely to contain a table with this data -- e.g. a specific Wikipedia article, an official league/government page; never a search-engine URL, never a URL you are only guessing exists -- leave empty rather than invent one), temporalPeriodScope, sourceStrategy (prefer official/deterministic/public sources before speculative AI research when you can name one), verificationRequirement, and completenessRequirement.',
   '',
   'If NOT sufficient: set sufficientlySpecified to false and clarificationNeeded to ONE short, specific, bounded question that would unblock it -- never a vague "can you clarify?".',
   '',
@@ -137,7 +142,9 @@ export async function synthesizeResearchSpecification({ message, missionId, free
     entityType: isNonEmptyString(validated.entityType) ? validated.entityType : 'UNSPECIFIED',
     requestedFields,
     sourcePolicy: {
-      preferredSources: [],
+      preferredSources: Array.isArray(validated.preferredSourceUrls)
+        ? validated.preferredSourceUrls.filter((url) => typeof url === 'string' && /^https?:\/\//.test(url))
+        : [],
       disallowedSources: [],
       licensingConstraints: [],
       freshnessPolicy: 'UNSPECIFIED',
@@ -181,12 +188,25 @@ export async function synthesizeResearchSpecification({ message, missionId, free
       ? validated.expectedUniverseSource
       : 'PLANNER_DEEP-inferred from the request itself -- not a real external oracle'
   }
+  // Real, independently-found bug (REAL FREE-PATH RESEARCH EXECUTION V1
+  // investigation): requestedOutputSchema had no `properties` at all, so
+  // fieldNames(request) (Exa/Parallel/the web-table worker all read
+  // Object.keys(requestedOutputSchema.properties)) always returned []
+  // for a Command-synthesized mission -- ANY real worker dispatch would
+  // have requested zero fields. Never caught before because no existing
+  // test exercised a real dispatch's field list against a Command-
+  // synthesized node, only against hand-built fixtures that already
+  // included `properties` explicitly.
+  const requestedOutputSchema = {
+    type: 'object',
+    properties: Object.fromEntries(requestedFields.map((f) => [f.fieldName, { type: f.valueType === 'date' ? 'string' : f.valueType }]))
+  }
   const nodes = validated.expectedEntities.map((e) => ({
     id: `node:${e.entityId}`,
     nodeRole: 'PRIMARY_RESEARCH',
     targetEntity: { entityId: e.entityId, name: e.label },
     requestedFields,
-    requestedOutputSchema: { type: 'object' }
+    requestedOutputSchema
   }))
 
   return {
