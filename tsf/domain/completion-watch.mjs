@@ -1,18 +1,8 @@
-// TSF_COMPLETION_WATCH_V1 -- a durable, target-agnostic record of "notify
-// Tim once this specific thing reaches a terminal outcome." Round 4
-// (Research Completion Notification Continuity): TSF has no push channel
-// to Tim at all (no OS notification API, no SSE/websocket, no webhook --
-// confirmed by direct investigation of the real Orca host surface and
-// every server/ui module before writing this). The only honest way to
-// "notify" him is to detect the transition durably, then surface it
-// unprompted on his very next real interaction with TSF, exactly once.
-//
-// `kind` is deliberately generic (not RESEARCH_MISSION-only) so this same
-// primitive can later cover Keep Going/Health Repair/verification/
-// Ready-for-Adoption completions without a second mechanism -- only
-// RESEARCH_MISSION is wired up in this pass (smallest correct scope; see
-// server/completion-watch-reconciler.mjs's resolver table for where a
-// future kind would be added).
+// TSF_COMPLETION_WATCH_V1 -- durable "notify Tim once X reaches a terminal
+// outcome." TSF has no push channel (no OS/SSE/webhook) -- see
+// server/completion-watch-reconciler.mjs for how this gets surfaced.
+// `kind` is generic on purpose (not RESEARCH_MISSION-only) so this covers
+// future target types with one new resolver entry, never a second store.
 export function createCompletionWatch({ id, kind, targetId, requestedByText = null }, clock) {
   const now = clock().toISOString()
   return {

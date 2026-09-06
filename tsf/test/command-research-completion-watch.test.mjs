@@ -32,6 +32,7 @@ const { cancelResearchMissionDurable, createResearchMissionDurable } = await imp
 const { withResearchMission } = await import('../server/research-mission-store.mjs')
 const { completeResearchMission } = await import('../domain/research-mission.mjs')
 const { findActiveCompletionWatch, listCompletionWatches } = await import('../server/completion-watch-store.mjs')
+const { registerResearchCompletionWatch } = await import('../server/command-research-completion-watch.mjs')
 const { attachDueCompletionNotices } = await import('../server/completion-watch-reconciler.mjs')
 const { loadState, saveState } = await import('../server/data-store.mjs')
 
@@ -94,6 +95,18 @@ test('classifyResearchIntent recognizes every required completion-notification p
   assert.equal(classifyResearchIntent('what did it find'), 'RESEARCH_ARTIFACTS')
 })
 
+test('adversarial-review finding, fixed: an ordinary DevOps-style "let me know when X is done" about something that is NOT research must never classify as a completion-watch request', () => {
+  const nonResearchVariants = [
+    'let me know when the deploy is done',
+    'notify me when the deploy is complete',
+    'tell me when the migration finishes',
+    'let me know when the build is done'
+  ]
+  for (const message of nonResearchVariants) {
+    assert.equal(classifyResearchIntent(message), null, `"${message}" must never be treated as a research-completion request`)
+  }
+})
+
 test('REQUIRED REGRESSION: research request -> status -> artifact -> is it done? -> let me know when it\'s done -- same mission retained throughout, no project-target rejection, no stale-context hijack', async () => {
   const created = await turn('research the completion notification regression topic, no money')
   const missionId = created.researchMissionId
@@ -144,7 +157,7 @@ test('a mission that is ALREADY complete when asked answers honestly instead of 
   await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
   await withResearchMission(missionId, (m) => completeResearchMission({ ...m, state: 'ACTIVE' }, clock, m.revision))
   await turn(`research status for ${missionId}`) // seed conversational context for the id
-  const notify = await turn(`let me know when ${missionId} is done`)
+  const notify = await turn("let me know when it's done") // resolves via that context, not a literal id in this message
   assert.match(notify.text, /already reached COMPLETE/i)
   assert.equal(findActiveCompletionWatch('RESEARCH_MISSION', missionId), null, 'no watch registered for an already-terminal mission')
 })
@@ -154,7 +167,7 @@ test('a mission that was already cancelled when asked answers honestly instead o
   await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
   await cancelResearchMissionDurable(missionId, 'TEST_SETUP', clock)
   await turn(`research status for ${missionId}`)
-  const notify = await turn(`notify me when ${missionId} is complete`)
+  const notify = await turn('notify me when the research is complete') // resolves via that context, not a literal id in this message
   assert.match(notify.text, /already cancelled/i)
   assert.equal(findActiveCompletionWatch('RESEARCH_MISSION', missionId), null)
 })
@@ -189,6 +202,20 @@ test('attachDueCompletionNotices: fires exactly once on real COMPLETE, delivers 
   assert.equal(second.text, 'unrelated reply two', 'no duplicate notification on a later call')
 })
 
+test('adversarial-review finding, fixed: two genuinely simultaneous attachDueCompletionNotices calls on the same FIRED_UNSEEN watch never both deliver the notice', async () => {
+  const created = await turn('research the concurrent delivery topic, no money')
+  const missionId = created.researchMissionId
+  await turn("let me know when it's done")
+  await withResearchMission(missionId, (m) => completeResearchMission({ ...m, state: 'ACTIVE' }, clock, m.revision))
+
+  const [payloadA, payloadB] = await Promise.all([
+    attachDueCompletionNotices({ text: 'reply A' }, clock),
+    attachDueCompletionNotices({ text: 'reply B' }, clock)
+  ])
+  const withNotice = [payloadA, payloadB].filter((p) => /reached COMPLETE/.test(p.text))
+  assert.equal(withNotice.length, 1, 'exactly one of the two concurrent calls actually delivers the notice, never both')
+})
+
 test('attachDueCompletionNotices: a watched mission that gets cancelled instead of completed is reported honestly, never as a false success', async () => {
   const created = await turn('research the honest-cancel topic, no money')
   const missionId = created.researchMissionId
@@ -198,6 +225,35 @@ test('attachDueCompletionNotices: a watched mission that gets cancelled instead 
   const payload = await attachDueCompletionNotices({ text: 'unrelated reply' }, clock)
   assert.match(payload.text, /cancelled before completing -- it did not finish/i)
   assert.doesNotMatch(payload.text, /reached COMPLETE/)
+})
+
+test('adversarial-review finding, fixed, end to end: a fleet with an existing (unrelated) research mission never hijacks "let me know when the deploy is done" into a bogus research-completion watch', async () => {
+  const created = await turn('research an old, unrelated topic from weeks ago, no money')
+  const missionId = created.researchMissionId
+  assert.ok(missionId)
+
+  const deploy = await turn('let me know when the deploy is done')
+  assert.notEqual(deploy.intent, 'RESEARCH_COMPLETION_WATCH_REQUEST')
+  assert.notEqual(deploy.researchMissionId, missionId, 'must never silently attach an unrelated DevOps question to the old research mission')
+  assert.equal(findActiveCompletionWatch('RESEARCH_MISSION', missionId), null, 'no watch was ever created from this unrelated message')
+})
+
+test('NO DUPLICATE NOTIFICATION under real concurrency: two genuinely simultaneous "let me know when it\'s done" registrations for the same mission never both create a watch', async () => {
+  const missionId = 'mission:completion-watch-concurrency-test'
+  await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+
+  const [replyA, replyB] = await Promise.all([
+    registerResearchCompletionWatch(missionId, "let me know when it's done", clock),
+    registerResearchCompletionWatch(missionId, "let me know when it's done", clock)
+  ])
+  const replies = [replyA, replyB]
+  const confirmations = replies.filter((r) => /I'll flag it here the next time/.test(r))
+  const alreadyWatching = replies.filter((r) => /already watching/i.test(r))
+  assert.equal(confirmations.length, 1, 'exactly one of the two concurrent calls actually registers a new watch')
+  assert.equal(alreadyWatching.length, 1, 'the other genuinely sees the first one\'s watch and confirms, never creates a second')
+
+  const watchesForMission = listCompletionWatches().filter((w) => w.targetId === missionId)
+  assert.equal(watchesForMission.length, 1, 'never two durable watch records for the same (kind, targetId) even under real concurrency')
 })
 
 test('durable across a fresh read of persisted state (restart-equivalent): a PENDING watch registered by one call is visible to a completely independent later read', async () => {

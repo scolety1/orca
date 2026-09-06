@@ -95,27 +95,16 @@ const RESEARCH_INTENT_PATTERNS = [
         msg
       )
   },
-  // Round 4: "let me know when it's done", "tell me when this finishes",
-  // "notify me when the research is complete", "let me know when the
-  // salary cap thing finishes", "can you tell me when it has the dataset"
-  // -- previously matched NOTHING here at all, so classifyResearchIntent
-  // returned null and this fell straight through to generic Command
-  // routing's "I couldn't tell which project this is about" rejection,
-  // even with an unambiguous single mission already in conversational
-  // context (real, reproduced hands-on pilot bug). Checked before the
-  // narrower RESEARCH_CANCEL/bare-"research" patterns below so "let me
-  // know when..." always wins over a coincidental later match.
+  // Round 4: "let me know/tell me/notify me when it's done" previously
+  // matched nothing, falling through to "I couldn't tell which project
+  // this is about" despite unambiguous mission context. Bounded to
+  // pronoun/back-reference phrasing plus "the X thing" (a concrete other-
+  // domain noun like "the deploy" deliberately does NOT match -- adversarial-
+  // review finding, was a false-positive hijack risk with a fully generic capture).
   {
-    // Group 2 is deliberately generic (any text), not a fixed pronoun
-    // list -- it must also match an explicit mission id referenced
-    // directly ("let me know when mission:xyz is done"), which
-    // resolveMissionContext's own explicitMissionIdIn check below relies
-    // on seeing in the first place. The surrounding
-    // "let me know/tell me/notify me ... when ... done/finished/complete"
-    // shape is specific enough that this stays safe.
     id: 'RESEARCH_COMPLETION_WATCH_REQUEST',
     test: (msg) =>
-      /\b(let me know|tell me|notify me)\s+when\s+.+?\s+(is )?(done|finished|finishes|complete|has the dataset)\b/i.test(
+      /\b(let me know|tell me|notify me)\s+when\s+(it'?s?|this|that|the research|the mission|the .+ thing)\s+(is )?(done|finished|finishes|complete|has the dataset)\b/i.test(
         msg
       )
   },

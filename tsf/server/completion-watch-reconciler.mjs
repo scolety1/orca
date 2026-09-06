@@ -1,28 +1,20 @@
-// Generic reconciliation + delivery for completion watches
-// (domain/completion-watch.mjs). For each PENDING watch, asks this watch's
-// `kind` resolver whether the real target has reached a terminal outcome,
-// and if so, fires it; then delivers every FIRED_UNSEEN watch exactly once
-// to the next real chat turn. Only RESEARCH_MISSION is wired today --
-// smallest correct scope for Round 4. The dispatch-table shape below is
-// what makes this "the smallest correct generic WORK_COMPLETION_
-// NOTIFICATION capability" rather than a Research-specific hack: adding
-// Keep Going/Health Repair/verification/Ready-for-Adoption completions
-// later is one new OUTCOME_RESOLVERS entry, never a second watch
-// mechanism, a second store, or a second scheduler.
-//
-// No new background scheduler is introduced: this reconciles lazily, on
-// every real chat turn (see attachDueCompletionNotices below), which is
-// also the only honest notion of "notify Tim" available -- TSF has no
-// push channel to him at all (see domain/completion-watch.mjs's header).
+// Reconciles + delivers completion watches (domain/completion-watch.mjs).
+// Adding a new target kind later is one OUTCOME_RESOLVERS entry, never a
+// second watch/store/scheduler. Reconciles lazily on every chat turn
+// (attachDueCompletionNotices) -- no new background scheduler.
 import { markCompletionWatchFired, markCompletionWatchDelivered } from '../domain/completion-watch.mjs'
 import { listCompletionWatches, withCompletionWatch } from './completion-watch-store.mjs'
 import { readResearchMissionStatus } from './research-mission-driver.mjs'
 
-// Returns { terminal: false } | { terminal: true, outcome: 'COMPLETE' | 'CANCELLED' } | null (target vanished -- honestly ignored, never fired).
+// BLOCKED is treated as terminal (CANCELLED): today it's only ever
+// reached via cancelResearchMissionDurable, and resumeResearchMission
+// (domain/research-mission.mjs) has no real caller anywhere -- if that
+// ever changes, this resolver would need a look at needsYou/nodes to
+// tell a true cancel from a recoverable block.
 function resolveResearchMissionOutcome(targetId) {
   const status = readResearchMissionStatus(targetId)
   if (!status) {
-    return null
+    return null // target vanished -- honestly ignored, never fired
   }
   if (status.state === 'COMPLETE') {
     return { terminal: true, outcome: 'COMPLETE' }
@@ -69,34 +61,43 @@ function describeCompletionOutcome(watch) {
     : `The research you asked me to flag (**${watch.targetId}**) was cancelled before completing -- it did not finish.`
 }
 
-// Reconciles first (so a target that just went terminal is caught even if
-// nothing else has touched it recently), then delivers every FIRED_UNSEEN
-// watch exactly once, marking each DELIVERED durably before returning --
-// never re-delivered on a later call, even if the caller never uses the
-// returned text.
+// Reconciles, then delivers every FIRED_UNSEEN watch exactly once,
+// marking each DELIVERED before returning -- never re-delivered later.
 export async function drainDueCompletionNotifications(clock) {
   await reconcilePendingCompletionWatches(clock)
   const due = listCompletionWatches().filter((w) => w.state === 'FIRED_UNSEEN')
   const notices = []
   for (const watch of due) {
-    const text = describeCompletionOutcome(watch)
+    // wonDelivery is true only for whichever concurrent caller's mutateFn
+    // actually observes FIRED_UNSEEN under the lock -- never double-delivers.
+    let wonDelivery = false
     // eslint-disable-next-line no-await-in-loop -- see reconcile's own comment
-    await withCompletionWatch(watch.id, (current) =>
-      current ? markCompletionWatchDelivered(current, clock) : current
-    )
-    notices.push({ watchId: watch.id, text })
+    await withCompletionWatch(watch.id, (current) => {
+      if (!current || current.state !== 'FIRED_UNSEEN') {
+        return current
+      }
+      wonDelivery = true
+      return markCompletionWatchDelivered(current, clock)
+    })
+    if (wonDelivery) {
+      notices.push({ watchId: watch.id, text: describeCompletionOutcome(watch) })
+    }
   }
   return notices
 }
 
-// Chat-turn integration point: prepends any due completion notices to
-// whatever the normal response text would have been, so they surface
-// unprompted on Tim's very next message -- regardless of what that
-// message is actually about. Kept as one small wrapper so http-server.mjs
-// (already at its own size discipline) only needs to change the payload
-// each existing `json(res, 200, ...)` call already sends, never grow.
+// Prepends any due notices to a chat payload, surfacing them unprompted
+// on Tim's next message regardless of what it's about.
 export async function attachDueCompletionNotices(payload, clock) {
-  const notices = await drainDueCompletionNotifications(clock)
+  let notices
+  try {
+    notices = await drainDueCompletionNotifications(clock)
+  } catch (error) {
+    // Never turn an already-persisted chat answer into a failed response
+    // over this augmentation (e.g. a lock timeout under contention).
+    console.error('completion-watch reconciliation failed:', error)
+    return payload
+  }
   if (!notices.length) {
     return payload
   }
