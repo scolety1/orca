@@ -255,7 +255,23 @@ const INTENTS = [
   },
   { id: 'RESEARCH', pattern: /\b(research|look into|compare|investigate|explore options)\b/i },
   { id: 'HEALTH', pattern: /\b(health|is it healthy|any (issues|problems|blockers))\b/i },
-  { id: 'ADOPTION', pattern: /\b(adopt|ready for adoption|candidate)\b/i }
+  { id: 'ADOPTION', pattern: /\b(adopt|ready for adoption|candidate)\b/i },
+  // Recovered from a stranded uncommitted worktree (command-tsf-orca-
+  // 1788395222325): a plain question ("Why does this sidebar jump?") and a
+  // bug report ("The save button is broken") both used to fall through to
+  // GENERAL's "that phrasing didn't match" non-answer -- checked last,
+  // after every more specific intent above, so a message like "is this
+  // actually finished?" (FINISHED) or "why did you choose that?"
+  // (RATIONALE) still matches its own more specific pattern first.
+  {
+    id: 'QUESTION',
+    pattern:
+      /^\s*(what|why|how|when|where|who|which|is|are|do|does|did|can|could|would|should|will)\b.*\?\s*$/i
+  },
+  {
+    id: 'FEEDBACK_BUG',
+    pattern: /\b(bug|broken|doesn['’]?t work|not working|jumps? around|regression|issue)\b/i
+  }
 ]
 
 // Command Authority repair: a dispatch-worthy intent (DISPATCH_REQUEST,
@@ -469,6 +485,17 @@ function respondDispatchRequest(project) {
   return `Got it — I can't dispatch a live Orca worker from this reply path yet (the chat-dispatch bridge is still being built). I've logged this as a request on **${project.displayName}**; once wired, this exact phrasing will be enough to create a bounded plan and a real dispatch without you opening a terminal.`
 }
 
+// Recovered from a stranded uncommitted worktree -- honest, in-project
+// acknowledgement rather than routing a bug report anywhere else; matches
+// respondCritiqueOrFix's own "not wired yet" disclosure style.
+function respondQuestion(project) {
+  return `I understand this as a question about **${project.displayName}**. I can answer from its recorded project state or the configured planner.`
+}
+
+function respondFeedback(project) {
+  return `Recorded on **${project.displayName}**. I understand this as project feedback or a bug report; ask me to fix it when you want a governed implementation mission started.`
+}
+
 const RESPONDERS = {
   STATUS: respondStatus,
   FINISHED: respondFinished,
@@ -480,6 +507,8 @@ const RESPONDERS = {
   RESEARCH: respondResearch,
   HEALTH: respondHealth,
   ADOPTION: respondAdoption,
+  QUESTION: respondQuestion,
+  FEEDBACK_BUG: respondFeedback,
   GENERAL: respondGeneral
 }
 

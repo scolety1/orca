@@ -13,6 +13,7 @@ import { classifyProjectLifecycle, type LifecycleBucket } from '@/lib/project-li
 import { matchesSearch, sortProjects } from '@/lib/project-filtering'
 import { readProjectsListFilters, writeProjectsListFilters } from '@/lib/projects-list-filters'
 import { readLastViewedProject } from '@/lib/last-viewed-project'
+import { loadProjectsSelection, saveProjectsSelection } from '@/lib/projects-selection-state'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -24,7 +25,15 @@ import { Button } from '@/components/ui/button'
 export function ProjectsPage() {
   const navigate = useNavigate()
   const { data: portfolio, loading, error, reload } = useApi(() => api.portfolio(), [])
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  // Recovered from a stranded uncommitted worktree, narrowed on
+  // reconciliation: filter/search/sort/scroll are already handled by the
+  // URL (BUG-02) and last-viewed-project.ts -- only checkbox selection was
+  // still lost on unmount, e.g. selecting a few projects, checking
+  // something in Health Repair, and coming back to Projects.
+  const [selected, setSelected] = useState<Record<string, boolean>>(loadProjectsSelection)
+  useEffect(() => {
+    saveProjectsSelection(selected)
+  }, [selected])
   // BUG-02 (bug-ledger.json): filter/search/sort now live in the URL
   // (projects-list-filters.ts), not local useState -- clicking into a
   // project and back (or browser back/forward) restores exactly what was

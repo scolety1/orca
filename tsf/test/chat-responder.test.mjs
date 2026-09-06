@@ -29,6 +29,29 @@ test('classifyIntent does not confuse ordinary questions with a dispatch request
   assert.equal(classifyIntent('is this actually finished?'), 'FINISHED')
 })
 
+// Recovered from a stranded uncommitted worktree: QUESTION/FEEDBACK_BUG
+// were genuinely missing (fell through to GENERAL's non-answer); ported
+// as-is, the underlying chat-responder.mjs base was unchanged here.
+test('Planner Chat distinguishes questions, bug feedback, and implementation requests', () => {
+  assert.equal(classifyIntent('Why does this sidebar jump?'), 'QUESTION')
+  assert.equal(
+    classifyIntent('The save button is broken and the sidebar jumps around.'),
+    'FEEDBACK_BUG'
+  )
+  assert.equal(classifyIntent('The sidebar is broken. Fix this.'), 'FIX_REQUEST')
+  assert.equal(classifyDecision('The save button is broken.', 'FEEDBACK_BUG'), 'AUTO_DECIDE')
+  assert.equal(classifyDecision('Fix this sidebar.', 'FIX_REQUEST'), 'RECOMMEND_AND_PROCEED')
+})
+
+test('bug feedback is recorded in-project without telling Tim to hand it to someone else', () => {
+  const project = loadRealPilotProjects()[0]
+  const result = respond(project, 'The save button is broken.')
+  assert.equal(result.intent, 'FEEDBACK_BUG')
+  assert.match(result.text, /recorded/i)
+  assert.match(result.text, new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.doesNotMatch(result.text, /hand (it|this) (to|off)/i)
+})
+
 // Command's own exact phrasing (spec Phase 7) -- a real gap found live via
 // a manual UI pass: this did not match any pattern and fell through to
 // GENERAL, so a fleet-wide "what's running?" question wrongly got Command's

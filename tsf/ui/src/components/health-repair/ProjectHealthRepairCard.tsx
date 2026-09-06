@@ -12,11 +12,10 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { RepairClassBadge } from '@/components/RepairClassBadge'
 import { api, ApiError } from '@/lib/api'
-import {
-  overallRepairClass,
-  type HealthCauseDiagnosis,
-  type ProjectHealthDiagnosis,
-  type RepairMissionSpec
+import type {
+  HealthCauseDiagnosis,
+  ProjectHealthDiagnosis,
+  RepairMissionSpec
 } from '@/lib/health-repair-types'
 
 // One cause row: its own summary, badge, and (for AUTO_REPAIR_SAFE /
@@ -60,55 +59,40 @@ function CauseRow({
   )
 }
 
+// Recovered from a stranded uncommitted worktree, reconciled: busy/running
+// state for Repair and Run-baseline now lives in the parent
+// (HealthRepairCenterPage's health-repair-activity.ts tracking, durable
+// across navigation) instead of local state here -- this card is now a
+// controlled component for those two actions. Mission-prep stays local
+// (never part of the durable-activity refactor): it never mutates project
+// state, so nothing needs to survive this card unmounting. BUG-05's
+// result.error / repairResult?.reason / repairResult?.detail fallback
+// chain (added to `repair()` independently on current main after the
+// stranded worktree diverged) is preserved -- moved into the parent's
+// startRepair, see HealthRepairCenterPage.tsx.
 export function ProjectHealthRepairCard({
   project,
   selected,
   onToggleSelected,
-  onChanged
+  runningCause,
+  baselineRunning,
+  onStartRepair,
+  onStartBaseline
 }: {
   project: ProjectHealthDiagnosis
   selected: boolean
   onToggleSelected: (checked: boolean) => void
-  onChanged: (updated: ProjectHealthDiagnosis) => void
+  runningCause: string | null
+  baselineRunning: boolean
+  onStartRepair: (cause: string) => void
+  onStartBaseline: () => void
 }) {
-  const [busyCause, setBusyCause] = useState<string | null>(null)
-  const [baselineBusy, setBaselineBusy] = useState(false)
+  const [missionBusyCause, setMissionBusyCause] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [missionSpec, setMissionSpec] = useState<RepairMissionSpec | null>(null)
 
-  async function repair(cause: HealthCauseDiagnosis) {
-    setBusyCause(cause.cause)
-    setError(null)
-    try {
-      // BUG-05: healthRepairRepair is now a durable operation
-      // (health-repair-polling.ts) -- a validation rejection (TIM_REQUIRED,
-      // not AUTO_REPAIR_SAFE) throws instead of resolving {ok:false,
-      // error}, caught below. result.ok===false here means either the real
-      // repair action ran and failed (repairResult present) OR the
-      // background runner itself threw a genuine exception (independent-
-      // verification finding, real and reproduced: no repairResult at all
-      // in that case, just {ok:false, error}) -- checked in that order so
-      // neither shape ever reaches an unguarded .repairResult access.
-      const result = await api.healthRepairRepair(project.projectId, cause.cause)
-      if (!result.ok || !result.causesAfter) {
-        setError(result.error ?? result.repairResult?.reason ?? result.repairResult?.detail ?? 'Repair failed.')
-        return
-      }
-      onChanged({
-        ...project,
-        causes: result.causesAfter,
-        repairClass: overallRepairClass(result.causesAfter),
-        readyForWork: result.readyForWork ?? project.readyForWork
-      })
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Repair failed.')
-    } finally {
-      setBusyCause(null)
-    }
-  }
-
   async function prepareMission(cause: HealthCauseDiagnosis) {
-    setBusyCause(cause.cause)
+    setMissionBusyCause(cause.cause)
     setError(null)
     try {
       const result = await api.healthRepairPrepareMission(project.projectId, cause.cause)
@@ -120,36 +104,7 @@ export function ProjectHealthRepairCard({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not prepare a mission.')
     } finally {
-      setBusyCause(null)
-    }
-  }
-
-  async function runBaseline() {
-    setBaselineBusy(true)
-    setError(null)
-    try {
-      const result = await api.healthRepairBaseline(project.projectId)
-      onChanged({
-        ...project,
-        causes: result.causes,
-        repairClass: result.repairClass,
-        readyForWork: result.readyForWork
-      })
-    } catch (err) {
-      // Independent-verification finding (BUG-05, second pass): unlike
-      // repair(), healthRepairBaseline (healthRepairBaselineDurable,
-      // health-repair-polling.ts) deliberately THROWS a plain Error --
-      // never ApiError -- for every real settled-failure/version-mismatch/
-      // timeout case (result.error verbatim, or a specific poll-failure
-      // message), so gating only on `instanceof ApiError` discarded every
-      // one of those real, actionable messages behind a generic "Baseline
-      // check failed." -- the exact same masking class already fixed for
-      // repair() below, just missed here on the first pass. Any real
-      // Error's own message is honest and specific; only a genuinely
-      // non-Error throw falls back to the generic string.
-      setError(err instanceof Error ? err.message : 'Baseline check failed.')
-    } finally {
-      setBaselineBusy(false)
+      setMissionBusyCause(null)
     }
   }
 
@@ -175,8 +130,8 @@ export function ProjectHealthRepairCard({
           </div>
         </div>
         {project.repairClass !== 'TIM_REQUIRED' && (
-          <Button size="xs" variant="ghost" disabled={baselineBusy} onClick={runBaseline}>
-            {baselineBusy ? (
+          <Button size="xs" variant="ghost" disabled={baselineRunning} onClick={onStartBaseline}>
+            {baselineRunning ? (
               <Loader2 className="size-3 animate-spin" />
             ) : (
               <RefreshCw className="size-3" />
@@ -197,8 +152,8 @@ export function ProjectHealthRepairCard({
               <CauseRow
                 key={cause.cause}
                 cause={cause}
-                busy={busyCause === cause.cause}
-                onRepair={repair}
+                busy={runningCause === cause.cause || missionBusyCause === cause.cause}
+                onRepair={(item) => onStartRepair(item.cause)}
                 onPrepareMission={prepareMission}
               />
             ))}

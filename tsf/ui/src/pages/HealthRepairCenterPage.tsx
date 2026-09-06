@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Stethoscope, Wrench } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/use-api'
@@ -6,7 +6,19 @@ import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/com
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ProjectHealthRepairCard } from '@/components/health-repair/ProjectHealthRepairCard'
-import type { ProjectHealthDiagnosis } from '@/lib/health-repair-types'
+import { overallRepairClass } from '@/lib/health-repair-types'
+import type {
+  BaselineCheckResult,
+  ProjectHealthDiagnosis,
+  RepairActionResult,
+  RepairSelectedResult
+} from '@/lib/health-repair-types'
+import {
+  listHealthRepairActivities,
+  startHealthRepairActivity,
+  subscribeHealthRepairActivities,
+  type HealthRepairActivity
+} from '@/lib/health-repair-activity'
 
 function FleetSummary({ projects }: { projects: ProjectHealthDiagnosis[] }) {
   const ready = projects.filter((p) => p.readyForWork).length
@@ -34,48 +46,128 @@ function FleetSummary({ projects }: { projects: ProjectHealthDiagnosis[] }) {
   )
 }
 
+// Recovered from a stranded uncommitted worktree: repairingSelected (a
+// single boolean, lost on navigation away from this page) is replaced by
+// health-repair-activity.ts's durable, concurrent activity tracking --
+// Repair/Run-baseline/Repair-selected now survive an unmount/remount and
+// can run for more than one project at once without one hiding another's
+// busy state.
 export function HealthRepairCenterPage() {
   const { data, loading, error, reload } = useApi(() => api.healthRepairScan(), [])
   const [projects, setProjects] = useState<ProjectHealthDiagnosis[] | null>(null)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [repairingSelected, setRepairingSelected] = useState(false)
+  const [activities, setActivities] = useState(listHealthRepairActivities)
   const [selectedError, setSelectedError] = useState<string | null>(null)
+  const appliedActivities = useRef(new Set<string>())
 
   const list = projects ?? data?.projects ?? null
 
-  function updateProject(updated: ProjectHealthDiagnosis) {
-    setProjects((current) =>
-      (current ?? data?.projects ?? []).map((p) =>
-        p.projectId === updated.projectId ? updated : p
-      )
-    )
-  }
+  useEffect(() => subscribeHealthRepairActivities(setActivities), [])
 
-  async function repairSelected() {
+  useEffect(() => {
+    if (!projects && !data?.projects) {
+      return
+    }
+    for (const activity of activities) {
+      if (activity.status === 'RUNNING' || appliedActivities.current.has(activity.operationId)) {
+        continue
+      }
+      appliedActivities.current.add(activity.operationId)
+      if (activity.status === 'FAILED') {
+        setSelectedError(activity.error ?? 'Health Repair failed.')
+        continue
+      }
+      if (activity.kind === 'REPAIR_SELECTED') {
+        const result = activity.result as RepairSelectedResult
+        const byId = Object.fromEntries(result.results.map((item) => [item.projectId, item]))
+        setProjects((current) =>
+          (current ?? data?.projects ?? []).map((project) => {
+            const item = byId[project.projectId]
+            return item?.ok && item.remainingCauses
+              ? {
+                  ...project,
+                  causes: item.remainingCauses,
+                  repairClass: overallRepairClass(item.remainingCauses),
+                  readyForWork: item.readyForWork ?? project.readyForWork
+                }
+              : project
+          })
+        )
+        continue
+      }
+      const projectId = activity.projectIds[0]
+      const result =
+        activity.kind === 'BASELINE'
+          ? (activity.result as BaselineCheckResult)
+          : (activity.result as RepairActionResult)
+      const causes =
+        activity.kind === 'BASELINE'
+          ? (result as BaselineCheckResult).causes
+          : (result as RepairActionResult).causesAfter
+      setProjects((current) =>
+        (current ?? data?.projects ?? []).map((project) =>
+          project.projectId === projectId
+            ? {
+                ...project,
+                causes,
+                repairClass: overallRepairClass(causes),
+                readyForWork: result.readyForWork
+              }
+            : project
+        )
+      )
+    }
+  }, [activities, data?.projects, projects])
+
+  function repairSelected() {
     const projectIds = Object.keys(selected).filter((id) => selected[id])
     if (projectIds.length === 0) {
       setSelectedError('Select at least one project first.')
       return
     }
-    setRepairingSelected(true)
     setSelectedError(null)
-    try {
-      const result = await api.healthRepairSelected(projectIds)
-      const byId = Object.fromEntries(result.results.map((r) => [r.projectId, r]))
-      setProjects((current) =>
-        (current ?? data?.projects ?? []).map((p) => {
-          const r = byId[p.projectId]
-          if (!r || !r.ok || !r.remainingCauses) {
-            return p
-          }
-          return { ...p, causes: r.remainingCauses, readyForWork: r.readyForWork ?? p.readyForWork }
-        })
-      )
-    } catch (err) {
-      setSelectedError(err instanceof Error ? err.message : 'Repair Selected failed.')
-    } finally {
-      setRepairingSelected(false)
-    }
+    startHealthRepairActivity({
+      kind: 'REPAIR_SELECTED',
+      projectIds,
+      run: () => api.healthRepairSelected(projectIds)
+    })
+  }
+
+  function startRepair(projectId: string, cause: string) {
+    setSelectedError(null)
+    startHealthRepairActivity({
+      kind: 'REPAIR',
+      projectIds: [projectId],
+      cause,
+      run: async () => {
+        const result = await api.healthRepairRepair(projectId, cause)
+        // BUG-05 (preserved from the pre-refactor repair()): a validation
+        // rejection (TIM_REQUIRED, not AUTO_REPAIR_SAFE) or a background-
+        // runner exception both settle as {ok:false}, the latter with no
+        // repairResult/causesAfter at all -- result.error covers that
+        // case, repairResult?.reason/.detail cover a real repair action
+        // that ran and failed. Thrown here (rather than returned) so
+        // startHealthRepairActivity's own catch records it durably.
+        if (!result.ok || !result.causesAfter) {
+          throw new Error(
+            result.error ??
+              result.repairResult?.reason ??
+              result.repairResult?.detail ??
+              'Repair failed.'
+          )
+        }
+        return result
+      }
+    })
+  }
+
+  function startBaseline(projectId: string) {
+    setSelectedError(null)
+    startHealthRepairActivity({
+      kind: 'BASELINE',
+      projectIds: [projectId],
+      run: () => api.healthRepairBaseline(projectId)
+    })
   }
 
   if (loading && !list) {
@@ -93,6 +185,19 @@ export function HealthRepairCenterPage() {
   }
 
   const selectedCount = Object.values(selected).filter(Boolean).length
+  const runningActivities = activities.filter((activity) => activity.status === 'RUNNING')
+  const repairingSelected = runningActivities.some(
+    (activity) => activity.kind === 'REPAIR_SELECTED'
+  )
+
+  function runningForProject(
+    projectId: string,
+    kind: HealthRepairActivity['kind']
+  ): HealthRepairActivity | undefined {
+    return runningActivities.find(
+      (activity) => activity.kind === kind && activity.projectIds.includes(projectId)
+    )
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
@@ -130,6 +235,14 @@ export function HealthRepairCenterPage() {
         </div>
       </header>
 
+      {runningActivities.length > 0 && (
+        <div className="mb-4 rounded-md border border-border bg-muted px-3 py-2 text-[12px] text-muted-foreground">
+          {runningActivities.length} Health Repair operation
+          {runningActivities.length === 1 ? '' : 's'} continuing in the background. You can leave
+          this page and return without interrupting them.
+        </div>
+      )}
+
       {selectedError && <p className="mb-4 text-[12px] text-destructive">{selectedError}</p>}
 
       {list.length === 0 ? (
@@ -145,7 +258,10 @@ export function HealthRepairCenterPage() {
               onToggleSelected={(checked) =>
                 setSelected((prev) => ({ ...prev, [project.projectId]: checked }))
               }
-              onChanged={updateProject}
+              runningCause={runningForProject(project.projectId, 'REPAIR')?.cause ?? null}
+              baselineRunning={!!runningForProject(project.projectId, 'BASELINE')}
+              onStartRepair={(cause) => startRepair(project.projectId, cause)}
+              onStartBaseline={() => startBaseline(project.projectId)}
             />
           ))}
         </div>

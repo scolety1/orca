@@ -86,6 +86,10 @@ test('a dispatch-worthy chat message with an explicit placement genuinely dispat
     // mission from adding a work item to an existing one -- this project
     // had no prior run, so "new mission" is the real, correct outcome.
     assert.match(body.text, /Started a new mission.*dispatched/s)
+    // Recovered from a stranded uncommitted worktree: names the real run
+    // and states the governance guarantee, layered onto BUG-06's text.
+    assert.match(body.text, new RegExp(body.tickResult.run.id))
+    assert.match(body.text, /Ready for Adoption/)
     assert.ok(
       body.planCapsule.repository.head.match(/^[0-9a-f]{40}$/),
       'a real HEAD was resolved, not fabricated'

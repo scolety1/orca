@@ -170,9 +170,12 @@ async function dispatchFromChat({ project, message, placement, selfRepairFromBra
   const missionPhrase = dispatch.freshlyCreated
     ? 'Started a new mission'
     : 'Added to the mission already running'
+  // Recovered from a stranded uncommitted worktree: names the actual Keep
+  // Going run and states the governance guarantee explicitly, layered onto
+  // BUG-06's missionPhrase rather than replacing it.
   const dispatchedText =
     items.length > 0
-      ? `${missionPhrase} for **${project.displayName}**: dispatched **${dispatch.candidateWorkItem.id}** (task ${items[0].taskId}) -- real Orca worker, no terminal opened by hand.`
+      ? `${missionPhrase} for **${project.displayName}** in Keep Going run **${dispatch.tickResult.run?.id ?? 'unknown'}**: dispatched **${dispatch.candidateWorkItem.id}** (task ${items[0].taskId}) -- real Orca worker, no terminal opened by hand. Work remains governed and stops at Ready for Adoption.`
       : `${missionPhrase} for **${project.displayName}**: ${dispatch.tickResult.action}.`
   return {
     intent,
@@ -569,6 +572,16 @@ export function createRequestHandler(options = {}) {
         // let any existing run, however stale, permanently shadow this
         // decision).
         const statusWorthy = isLiveRunRelevantFor(intent, liveRun)
+        // Recovered from a stranded uncommitted worktree: a bug report or
+        // critique should ground in whatever recorded project state exists
+        // -- including with NO live run at all -- rather than spending a
+        // live planner call on a message that isn't actually a question
+        // about live progress. Kept as a separate flag (not folded into
+        // statusWorthy/LIVE_RUN_INTENTS) so the providerLabel below can
+        // still say "the live Keep Going run" only when that's honestly
+        // true, and the more generic "recorded project state" otherwise.
+        const feedbackWorthy = ['FEEDBACK_BUG', 'CRITIQUE'].includes(intent)
+        const groundedResponseWorthy = statusWorthy || feedbackWorthy
 
         // Project detail's "Research for this project": the SAME real
         // research bridge Command's global scope already uses, just given
@@ -596,10 +609,12 @@ export function createRequestHandler(options = {}) {
             placement: body.placement,
             selfRepairFromBranch
           })
-        } else if (statusWorthy) {
+        } else if (groundedResponseWorthy) {
           result = {
             ...respond(project, message, liveRun, liveGap),
-            providerLabel: 'PLANNER_DEEP · grounded in the live Keep Going run, no live call made',
+            providerLabel: statusWorthy
+              ? 'PLANNER_DEEP · grounded in the live Keep Going run, no live call made'
+              : 'PLANNER_DEEP · grounded in recorded project state, no live call made',
             live: false
           }
         } else {
