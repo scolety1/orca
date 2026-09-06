@@ -6,12 +6,14 @@ import { api } from '@/lib/api'
 import { CapacityIndicator } from '@/components/CapacityIndicator'
 import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
 import { GlobalRunStatusIndicator } from '@/components/GlobalRunStatusIndicator'
+import { GlobalCommandDock } from '@/components/command/GlobalCommandDock'
 
 // Operator IA consolidation V1: normal navigation converges on these four
 // destinations (goals/durable objects, not implementation subsystems) --
 // Command, Agents, Evaluation, Fleet, and Health Repair Center remain real,
 // reachable routes (deep links + More's own links), just out of PRIMARY
-// nav. /command in particular is superseded by HQ's own embedded composer.
+// nav. Command itself is now primarily reached via the persistent Global
+// Command Dock (rendered below, every normal screen), not a nav item.
 const NAV = [
   { to: '/', label: 'HQ', icon: LayoutGrid, end: true },
   { to: '/work', label: 'Work', icon: Compass },
@@ -93,6 +95,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <GlobalCommandDock />
     </div>
   )
 }

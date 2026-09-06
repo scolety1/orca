@@ -18,6 +18,7 @@ import { MembershipPanel } from '@/components/projects/MembershipPanel'
 import { ProjectResearchPanel } from '@/components/research/ProjectResearchPanel'
 import { ProjectHealthTab } from '@/components/health-repair/ProjectHealthTab'
 import { resolveProjectDetailTab } from '@/lib/project-work-deep-link'
+import { useSetCommandDockRouteContext } from '@/lib/command-dock-context'
 import { humanizeConstant } from '@/lib/orchestration-terminology'
 import { writeLastViewedProject } from '@/lib/last-viewed-project'
 
@@ -58,6 +59,10 @@ export function ProjectDetailPage() {
 
 function ProjectDetailPageForId({ id }: { id?: string }) {
   const { data: project, loading, error, reload } = useApi(() => api.project(id!), [id])
+  // Global Command Dock V1: "Context: <project>" shown in the dock while
+  // open here -- a bounded hint only, never forced scope (see
+  // chat-route-context-fallback.mjs). Cleared automatically on unmount.
+  useSetCommandDockRouteContext(project ? { projectId: project.id, displayName: project.displayName } : null)
   // BUG-12 (bug-ledger.json): a Work/Home card's deep link (?tab=keep-going
   // etc., see project-work-deep-link.ts) now lands directly on the exact
   // surface instead of always the Overview tab. resolveProjectDetailTab

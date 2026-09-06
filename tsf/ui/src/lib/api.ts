@@ -137,7 +137,13 @@ export const api = {
     message: string,
     attachments: ChatAttachmentMeta[] = [],
     placement?: ChatPlacement,
-    selfRepair?: boolean
+    selfRepair?: boolean,
+    // Global Command Dock V1: the current route's project, if any -- a
+    // bounded fallback the server only consults when the message itself
+    // resolves to no project (see http-server.mjs's chat route). Only
+    // meaningful alongside projectId: null; ignored for an already
+    // project-scoped call.
+    contextProjectId?: string
   ) =>
     request<ChatResponse>('/chat', {
       method: 'POST',
@@ -146,7 +152,8 @@ export const api = {
         message,
         attachments,
         ...(placement ? { placement } : {}),
-        ...(selfRepair ? { selfRepair: true } : {})
+        ...(selfRepair ? { selfRepair: true } : {}),
+        ...(contextProjectId ? { contextProjectId } : {})
       })
     }),
   chatHistory: (projectId: string) =>

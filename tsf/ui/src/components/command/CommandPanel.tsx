@@ -10,6 +10,7 @@ import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { scrollTranscriptToBottom } from '@/lib/chat-transcript-scroll'
 import { extractAttachmentContext } from '@/lib/migration-context-attachments'
+import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import type { ChatMessage, ChatResponse } from '@/lib/types'
 
 type Attachment = {
@@ -34,7 +35,15 @@ type CommandMessage = ChatMessage & {
 // intentional scope cut for this pass; each turn IS still durably recorded
 // server-side per project (or under a shared command thread for fleet-wide
 // turns), same as any other chat turn.
-export function CommandPanel({ onActivity }: { onActivity?: () => void } = {}) {
+// routeContext (optional): the current page's project, if any (Global
+// Command Dock V1) -- shown back as a "Context: X" chip so Tim knows what
+// page he opened the dock from. Never forced into scope: it's threaded as
+// `contextProjectId`, a bounded FALLBACK the server-side resolution only
+// consults when the message itself resolves to no project and doesn't
+// read as a fleet-wide query -- an explicit named entity in the message
+// always wins (see http-server.mjs's chat route). No second Command
+// engine, no duplicated resolution logic.
+export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => void; routeContext?: { projectId: string; displayName: string } | null } = {}) {
   const [messages, setMessages] = useState<CommandMessage[]>([])
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -48,6 +57,8 @@ export function CommandPanel({ onActivity }: { onActivity?: () => void } = {}) {
   const [selfRepair, setSelfRepair] = useState(false)
   const viewportRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  useAutosizeTextarea(composerRef, draft, { minPx: 36, maxPx: 200 })
 
   useEffect(() => {
     scrollTranscriptToBottom(viewportRef.current)
@@ -80,7 +91,8 @@ export function CommandPanel({ onActivity }: { onActivity?: () => void } = {}) {
         text + attachmentNote,
         attachmentMeta,
         undefined,
-        selfRepair
+        selfRepair,
+        routeContext?.projectId
       )
       setProviderLabel(result.providerLabel)
       setLive(result.live ?? false)
@@ -143,6 +155,14 @@ export function CommandPanel({ onActivity }: { onActivity?: () => void } = {}) {
           <span>{providerLabel ? `Planner: ${providerLabel}` : 'Planner: PLANNER_DEEP'}</span>
         </div>
       </div>
+      {routeContext && (
+        <div className="flex items-center gap-1.5 border-b border-border px-4 py-1.5 text-[10px] text-muted-foreground">
+          <span className="rounded-full border border-border px-2 py-0.5">
+            Context: {routeContext.displayName}
+          </span>
+          <span>-- only used if your message doesn&apos;t name a project itself</span>
+        </div>
+      )}
       <ScrollArea className="tsf-scrollbar flex-1 px-4 py-3" viewportRef={viewportRef}>
         {messages.length === 0 ? (
           <div className="py-10 text-center text-xs text-muted-foreground">
@@ -266,6 +286,7 @@ export function CommandPanel({ onActivity }: { onActivity?: () => void } = {}) {
             <Paperclip className="size-4" />
           </Button>
           <Textarea
+            ref={composerRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -276,7 +297,7 @@ export function CommandPanel({ onActivity }: { onActivity?: () => void } = {}) {
             }}
             placeholder="What's running right now? Name a project to work on it..."
             rows={1}
-            className="min-h-9"
+            className="tsf-scrollbar max-h-[200px] min-h-9"
           />
           <Button
             size="icon-sm"

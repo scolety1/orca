@@ -30,7 +30,7 @@ import {
 import { invokeLivePlanner, providerLabel, fallbackLabel } from './live-planner.mjs'
 import { planAndDispatchFromChat, ensureWorktreeForDispatch } from './chat-dispatch-bridge.mjs'
 import { respondCommand, DISPATCH_WORTHY_INTENTS } from './command-responder.mjs'
-import { respondResearchCommandForProject } from './command-research-bridge.mjs'; import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
+import { respondResearchCommandForProject } from './command-research-bridge.mjs'; import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'; import { resolveRouteContextFallback } from './chat-route-context-fallback.mjs'
 
 // Configures which real, known project id actually IS TSF's own -- self-
 // repair (domain/self-repair-authority.mjs) can never be authorized for any
@@ -477,10 +477,11 @@ export function createRequestHandler(options = {}) {
           const resolution = resolveProjectsFromText(message, projects, {
             aliases: commandAliases
           })
+          const contextFallbackProject = resolution.matches.length === 0 ? await resolveRouteContextFallback({ message, contextProjectId: body.contextProjectId, map }) : null
           if (resolution.matches.length === 1 && resolution.matches[0].matchedOn !== 'fuzzy') {
             project = resolution.matches[0].project
             matchedOn = resolution.matches[0].matchedOn
-          } else {
+          } else if (contextFallbackProject) { project = contextFallbackProject; matchedOn = 'routeContext' } else {
             const commandResult = await respondCommand({
               message,
               projects,

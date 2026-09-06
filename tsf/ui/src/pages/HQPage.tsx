@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -7,6 +7,7 @@ import {
   Clock,
   Compass,
   FlaskConical,
+  MessageSquareText,
   PackageCheck,
   ShieldCheck,
   UserCheck,
@@ -28,8 +29,9 @@ import { Button } from '@/components/ui/button'
 import { CapacityIndicator } from '@/components/CapacityIndicator'
 import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
 import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
-import { CommandPanel } from '@/components/command/CommandPanel'
 import { ResearchMissionCard } from '@/components/research/ResearchMissionCard'
+import { useCommandDock, useReloadOnDockActivity } from '@/lib/command-dock-context'
+import { useForegroundPolling } from '@/lib/use-foreground-polling'
 
 function SectionTitle({ icon: Icon, children }: { icon: typeof Compass; children: React.ReactNode }) {
   return (
@@ -40,10 +42,10 @@ function SectionTitle({ icon: Icon, children }: { icon: typeof Compass; children
   )
 }
 
-// Operator IA consolidation V1: HQ replaces the Home/Command split -- the
-// Command composer lives directly here (CommandPanel, unmodified, same
-// component CommandPage.tsx already embedded), alongside the same
-// attention-first sections Home already had, now widened to include
+// Operator IA consolidation V1 + Global Command Dock V1: HQ replaces the
+// Home/Command split -- Command itself now lives in the persistent dock
+// (AppShell.tsx), reachable from here via "Ask Command" rather than an
+// embedded second composer. Attention-first sections widened to include
 // ResearchMissions (tsf/domain/work-feed-summary.mjs already buckets them
 // into the SAME active/needsYou/blocked/recentlyCompleted arrays -- no
 // second aggregation here). /command, /agents, /evaluation, /fleet, and
@@ -54,11 +56,20 @@ export function HQPage() {
   const { data: work, loading: wLoading, error: wError, reload: reloadWork } = useApi(() => api.work(), [])
   const [preparing, setPreparing] = useState(false)
   const [prepareResult, setPrepareResult] = useState<string | null>(null)
+  const { open: openCommandDock } = useCommandDock()
 
-  function reloadAll() {
+  const reloadAll = useCallback(() => {
     reloadPortfolio()
     reloadWork()
-  }
+  }, [reloadPortfolio, reloadWork])
+  // Real, live-discovered staleness bug: a Command-driven mutation (e.g.
+  // creating a ResearchMission) only refreshed once, immediately, while
+  // the mission was still invisible-by-design (phase CREATED) -- nothing
+  // ever re-checked once the fleet driver's own next tick actually moved
+  // it to EXECUTING. useReloadOnDockActivity covers the immediate case;
+  // useForegroundPolling is the bounded backstop for everything after.
+  useReloadOnDockActivity(reloadAll)
+  useForegroundPolling(reloadAll)
 
   if ((pLoading && !portfolio) || (wLoading && !work)) {
     return <LoadingState label="Loading HQ…" />
@@ -111,18 +122,21 @@ export function HQPage() {
     <div className="mx-auto max-w-6xl px-8 py-8">
       {pError && <RefreshFailedBanner message={pError} onRetry={reloadPortfolio} />}
       {wError && <RefreshFailedBanner message={wError} onRetry={reloadWork} />}
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">HQ</h1>
-        <p className="text-sm text-muted-foreground">
-          What&apos;s running, what&apos;s waiting, what needs you -- and a place to just ask.
-        </p>
+      <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">HQ</h1>
+          <p className="text-sm text-muted-foreground">
+            What&apos;s running, what&apos;s waiting, what needs you -- and a place to just ask.
+          </p>
+        </div>
+        {/* Global Command Dock V1: Command itself is now the persistent
+            dock (bottom-right, every normal screen) -- this just opens/
+            focuses it, rather than HQ maintaining its own second composer. */}
+        <Button size="sm" onClick={openCommandDock}>
+          <MessageSquareText className="size-4" />
+          Ask Command
+        </Button>
       </header>
-
-      {/* Command composer -- the one obvious place to type "research X",
-          name a project, or ask what's running, without navigating away. */}
-      <section className="mb-8 h-[420px]">
-        <CommandPanel onActivity={reloadAll} />
-      </section>
 
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Card>

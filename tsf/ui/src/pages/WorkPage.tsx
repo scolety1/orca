@@ -22,6 +22,8 @@ import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
 import { isResearchMissionWorkItem, type ProjectDetail, type RecentlyCompletedItem, type WorkItem } from '@/lib/types'
 import { ResearchMissionCard } from '@/components/research/ResearchMissionCard'
 import { cn } from '@/lib/cn'
+import { useReloadOnDockActivity } from '@/lib/command-dock-context'
+import { useForegroundPolling } from '@/lib/use-foreground-polling'
 
 type TypeFilter = 'ALL' | 'CODING' | 'RESEARCH'
 const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
@@ -58,6 +60,10 @@ function Section({
 // implementation.
 export function WorkPage() {
   const { data: work, loading, error, reload } = useApi(() => api.work(), [])
+  // Same staleness fix as HQ (see HQPage.tsx's own header) -- Work is the
+  // other primary surface a Command-driven mutation can go stale on.
+  useReloadOnDockActivity(reload)
+  useForegroundPolling(reload)
   const { data: portfolio } = useApi(() => api.portfolio(), [])
   const [missionOpen, setMissionOpen] = useState(false)
   const [overnightOpen, setOvernightOpen] = useState(false)
