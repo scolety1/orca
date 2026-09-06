@@ -200,12 +200,24 @@ function buildSystemPrompt({ project, capsule, opState, recentHistory, attachmen
   const historyBlock = recentHistory.length
     ? recentHistory.map((m) => `${m.role === 'user' ? 'Tim' : 'Planner'}: ${m.content}`).join('\n')
     : '(no prior turns in this session)'
+  // Live-pilot finding (Bug 5, hardened further): the general "Authority
+  // boundaries" rule below did not reliably stop the real model from
+  // opening with continuity language ("same as a moment ago -- nothing's
+  // changed") on the very FIRST message about a project, with zero real
+  // history to be continuing from. Moved to the very top of the prompt
+  // (primacy) and made unconditional/concrete for exactly this
+  // deterministically-known case, rather than relying on the model to
+  // correctly judge "does the block above actually support this claim?"
+  // against a rule buried later in the prompt.
+  const firstTurnNotice = recentHistory.length
+    ? ''
+    : 'This is the FIRST message of this session about this specific project -- there is no earlier turn in this conversation to be continuing from. Do not open with or include ANY continuity phrasing ("same as a moment ago", "as I said before", "nothing has changed since I last described it", "still the same", etc.) anywhere in this reply. Answer this as a fresh question, grounded only in the capsule/facts below.\n\n'
   const attachmentNote = attachments?.length
     ? `Tim attached ${attachments.length} file(s) to this message: ${attachments.map((a) => `${a.name} (${a.type || 'unknown type'})`).join(', ')}. Their CONTENTS are not available to you — only the name and type. Never claim to have seen, read, or understood an attachment; if asked about its contents, say plainly that image/file interpretation isn't wired into this chat yet.`
     : 'No attachments on this message.'
 
   return [
-    'You are the TSF (Thousand Sunny Fleet) Planner — the PLANNER_DEEP role in an Orca-based multi-project operator system. You are having a real, natural conversation with Tim, the operator, about ONE selected project.',
+    `${firstTurnNotice}You are the TSF (Thousand Sunny Fleet) Planner — the PLANNER_DEEP role in an Orca-based multi-project operator system. You are having a real, natural conversation with Tim, the operator, about ONE selected project.`,
     '',
     'Ground every answer in the project context capsule and operator facts below. Do not invent facts, evidence, test results, or history beyond what is given here and in the conversation — if you do not know something, say so plainly rather than guessing.',
     '',
