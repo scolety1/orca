@@ -162,7 +162,12 @@ export async function synthesizeResearchSpecification({ message, missionId, free
     // planner's own proposal didn't include one.
     temporalRequirements: {
       asOfDate: clock().toISOString().slice(0, 10),
-      periodScope: validated.temporalPeriodScope ?? 'UNSPECIFIED'
+      // Adversarial-review finding: the planner's JSON schema allows
+      // temporalPeriodScope to be an empty string (no minLength), which
+      // `?? 'UNSPECIFIED'` does not catch (only null/undefined) -- an
+      // empty string still fails the contract's own non-empty-string
+      // requirement at real dispatch time. Trimmed truthiness catches that too.
+      periodScope: validated.temporalPeriodScope?.trim() ? validated.temporalPeriodScope.trim() : 'UNSPECIFIED'
     },
     budget: { maxCostUsd: freeOnly ? 0 : null, maxLatencyMs: null, maxToolCallsPerNode: null },
     toolPermissions: []

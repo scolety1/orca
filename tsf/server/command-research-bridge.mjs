@@ -123,6 +123,39 @@ export function classifyResearchIntent(message) {
   return null
 }
 
+// Adversarial-review finding: RESEARCH_ARTIFACTS/RESEARCH_STATUS/
+// RESEARCH_COMPLETENESS/RESEARCH_CONFLICTS/RESEARCH_PAID_ADVISORY are
+// deliberately broad, everyday phrasings ("paste it here", "is it still
+// running?", "what's missing?") chosen to catch real research follow-ups
+// (Bug 2/3/4) -- but they are meaningless without an existing mission to
+// refer to, and command-responder.mjs's gate (classifyResearchIntent(message)
+// truthy) used to hijack the ENTIRE response into "There's no research
+// mission yet..." ahead of normal project/fleet routing, even for a fleet
+// that has never touched Research at all. RESEARCH_CREATE_OR_CONTINUE and
+// RESEARCH_PAID_GRANT are excluded from this guard: both require their own
+// much narrower, self-contained real-word triggers ("research"/"dataset",
+// or a provider name plus a real dollar amount) that are safe to intercept
+// regardless of whether a mission exists yet (CREATE explicitly doesn't
+// need one).
+const MISSION_CONTEXT_DEPENDENT_INTENTS = new Set([
+  'RESEARCH_ARTIFACTS',
+  'RESEARCH_STATUS',
+  'RESEARCH_COMPLETENESS',
+  'RESEARCH_CONFLICTS',
+  'RESEARCH_PAID_ADVISORY'
+])
+
+export function shouldRouteToResearchBridge(message, opState) {
+  const intent = classifyResearchIntent(message)
+  if (!intent) {
+    return false
+  }
+  if (MISSION_CONTEXT_DEPENDENT_INTENTS.has(intent) && Object.keys(opState.researchMissions ?? {}).length === 0) {
+    return false
+  }
+  return true
+}
+
 function isFreeOnlyRequest(message) {
   return /\bdon'?t spend (any )?money\b|\bno (new )?spend\b|\bfree only\b|\bwithout spending\b|\bno paid\b/i.test(
     message
@@ -563,10 +596,17 @@ export async function respondResearchCommand({ message, opState, clock = () => n
       const { remainingGap, paidRequestRaised } = await attemptProgressAndRaisePaidRequestIfNeeded(missionId, { freeOnly, clock })
       const strategyNote = synthesis.sourceStrategy ? ` Strategy: ${synthesis.sourceStrategy}.` : ''
       const gapNote = remainingGapNote({ remainingGap, paidRequestRaised, freeOnly })
-      const queuedNote =
-        remainingGap > 0 && freeOnly && !paidRequestRaised
-          ? ''
-          : ' Queued for autonomous progression -- I\'ll only interrupt you if it needs owner input or paid access.'
+      // Adversarial-review finding: a real gap blocked on Tim's owner
+      // decision (freeOnly false, a paid-research request open -- whether
+      // just raised now or already standing from before) is NOT "queued
+      // for autonomous progression"; the mission is genuinely
+      // WAITING_NEEDS_INPUT. Asserting both in the same reply was
+      // self-contradictory -- gapNote already states the blocking
+      // condition honestly, so queuedNote must stay silent here.
+      const blockedOnPaidDecision = remainingGap > 0 && !freeOnly
+      const queuedNote = blockedOnPaidDecision
+        ? ''
+        : ' Queued for autonomous progression -- I\'ll only interrupt you if it needs owner input or paid access.'
       return result({
         intent,
         decisionClass: 'RECOMMEND_AND_PROCEED',

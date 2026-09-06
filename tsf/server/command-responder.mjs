@@ -22,7 +22,7 @@ import { findAliasForAbsentProject, resolveAllProjectsQuantifier, resolveProject
 import { fleetNeedsYouStatus, fleetResearchStatus, fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
-import { classifyResearchIntent, respondResearchCommand } from './command-research-bridge.mjs'
+import { shouldRouteToResearchBridge, respondResearchCommand } from './command-research-bridge.mjs'
 import { advisorySafeProjects, buildGlobalAdvisoryText, classifyGlobalScope } from './command-scope-classifier.mjs'
 import { classifyContinueAction, classifyRunActionVerb, pauseProjectRun, resumeProjectRun } from './command-run-action-bridge.mjs'
 import { explainPriorAnswer } from './command-followup-context.mjs'
@@ -171,10 +171,12 @@ export async function respondCommand({
   // project-fleet intent/decision classification below, since a research
   // message is never about a registered TSF project (see
   // command-research-bridge.mjs's own header for why this layer is
-  // correct). classifyResearchIntent returning null means "not a research
-  // message at all" -- falls straight through to the unchanged logic
-  // below, so no existing fleet-chat behavior is affected.
-  if (classifyResearchIntent(message)) {
+  // correct). shouldRouteToResearchBridge returning false means "not a
+  // research message at all" (or a mission-context-dependent follow-up
+  // phrasing with no mission in this fleet to refer to -- adversarial-
+  // review finding, see its own header) -- falls straight through to the
+  // unchanged logic below, so no existing fleet-chat behavior is affected.
+  if (shouldRouteToResearchBridge(message, opState)) {
     const researchResult = await respondResearchCommand({ message, opState, clock })
     if (researchResult) return researchResult
   }

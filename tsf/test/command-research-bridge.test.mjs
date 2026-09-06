@@ -383,11 +383,14 @@ test('bridge: a reasonably-scoped research request synthesizes a real specificat
     // Bug 1 fix: creation must never say "ask me to continue it" -- a real
     // free-path attempt already ran, and since no free match exists for
     // this brand-new topic and freeOnly wasn't requested, a real scoped
-    // paid-research request is already raised (never a grant) and the
-    // mission is explicitly stated as queued for autonomous progression.
+    // paid-research request is already raised (never a grant).
     assert.doesNotMatch(reply.text, /ask me to continue/)
     assert.match(reply.text, /paid-research approval request/)
-    assert.match(reply.text, /Queued for autonomous progression/)
+    // Adversarial-review finding, fixed: a mission genuinely blocked on
+    // Tim's paid-research decision must never ALSO claim "Queued for
+    // autonomous progression" in the same breath -- that's self-
+    // contradictory. Only a genuinely unblocked mission gets that claim.
+    assert.doesNotMatch(reply.text, /Queued for autonomous progression/)
     // This request is NOT freeOnly and no free-path match exists for a
     // brand-new topic, so Command's own immediate free-path attempt
     // correctly finds a genuine gap and raises a real scoped paid
@@ -527,4 +530,43 @@ test('Gap 2: no prior research context and no missions at all -> bounded clarifi
   assert.equal(advice.researchMissionId, null)
   assert.doesNotMatch(advice.text, /more than one research mission/i, 'zero missions is not the ambiguous-multiple case')
   assert.match(advice.text, /no research mission yet/i)
+})
+
+// Adversarial-review finding, fixed: RESEARCH_ARTIFACTS/RESEARCH_STATUS/
+// RESEARCH_COMPLETENESS/RESEARCH_CONFLICTS/RESEARCH_PAID_ADVISORY are
+// deliberately broad, everyday phrasings (Bug 2/3/4's own fix) -- in a
+// fleet that has NEVER created any research mission, one of these phrases
+// used to permanently hijack the entire respondCommand reply into "no
+// research mission yet" ahead of normal project/fleet resolution, since
+// command-responder.mjs's gate ran before any project matching at all.
+test('adversarial-review fix: research-follow-up phrasing never hijacks an ordinary Command message when this fleet has no research missions at all', async () => {
+  await clearCommandThread()
+  await clearAllResearchMissions()
+  const noResearchOpState = freshOpState()
+  const projects = [{
+    id: 'build-project',
+    displayName: 'Build Project',
+    sourceClass: 'REAL',
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }]
+  for (const message of ['paste it here', 'is the build still running?', 'what did it find', 'how far along is it', 'show me the results']) {
+    const result = await respondCommand({ message, projects, opState: noResearchOpState, clock })
+    assert.ok(!result.researchMissionId, `"${message}" must never resolve to a research mission when none exist`)
+    assert.doesNotMatch(result.text, /no research mission yet/i, `"${message}" was wrongly hijacked into the research bridge's empty-fleet fallback`)
+  }
+})
+
+// Same phrasings, but now a real mission genuinely exists -- proves the
+// fix is precise: it suppresses the false positive without breaking the
+// real Bug 2/3/4 follow-up routing this session's other tests already
+// cover in depth.
+test('adversarial-review fix, control: the same research-follow-up phrasing STILL routes to the research bridge once a real mission exists', async () => {
+  await clearCommandThread()
+  await clearAllResearchMissions()
+  const missionId = 'mission:adversarial-review-control'
+  await createResearchMissionDurable(missionId, { projectId: 'test', specification: fieldSpec(['x']), expectedUniverse: universe('e1'), nodes: [] }, clock)
+  const result = await respondCommand({ message: 'paste it here', projects: [], opState: freshOpState(), clock })
+  assert.equal(result.researchMissionId, missionId)
 })

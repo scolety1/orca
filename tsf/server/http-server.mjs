@@ -792,6 +792,17 @@ export function startStandaloneServer(port = 4610, options = {}) {
   )
   server.listen(port, '127.0.0.1', () => {
     console.log(`TSF operator API listening on http://127.0.0.1:${port}`)
+    // Adversarial-review finding: gated on the listen SUCCESS callback, not
+    // fired unconditionally right after the (async, fallible) listen()
+    // call. A losing process in an EADDRINUSE restart-overlap race (the
+    // exact case server-process-lifecycle.mjs already treats as "a TSF
+    // server is likely already running") must never start its own driver
+    // interval -- two drivers ticking the same durable mission state is a
+    // real double-dispatch risk (up to and including a real paid provider
+    // call), not merely a redundant one. Only the one process that
+    // actually bound the fixed port can ever be this mission fleet's
+    // driver, on the same host.
+    bootstrapResearchMissionFleetDriverIfEnabled(server) // see research-mission-fleet-driver-bootstrap.mjs
   })
   // Real V1 live-use defect fix: reacquire any Prepare-for-Work operation
   // left RUNNING by a previous process instance that died mid-operation
@@ -816,7 +827,6 @@ export function startStandaloneServer(port = 4610, options = {}) {
     console.error('runtime metadata write failed:', error)
   })
   bootstrapKeepGoingFleetDriverIfEnabled(server) // see keep-going-fleet-driver-bootstrap.mjs
-  bootstrapResearchMissionFleetDriverIfEnabled(server) // see research-mission-fleet-driver-bootstrap.mjs
   return server
 }
 

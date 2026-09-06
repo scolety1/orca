@@ -218,3 +218,8 @@ test('mission-level: every node terminal -> CHECK_COMPLETE; a genuinely stuck-bu
   ])
   assert.deepEqual(decideNextMissionAction(stuck), { type: 'NOTHING_TO_DO', reason: 'no node is currently actionable' })
 })
+
+test('adversarial-review finding: a mission with ZERO nodes must never read as CHECK_COMPLETE -- Array.every on an empty array is vacuously true, and this exact gap let a 0-node draft-scaffold mission auto-complete with a fabricated "dataset ready" claim once a real driver was ever wired to run automatically', () => {
+  const zeroNodes = baseMission([])
+  assert.deepEqual(decideNextMissionAction(zeroNodes), { type: 'NOTHING_TO_DO', reason: 'no node is currently actionable' })
+})

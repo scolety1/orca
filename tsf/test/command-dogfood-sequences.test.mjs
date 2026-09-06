@@ -157,7 +157,13 @@ test('dogfood D: research request -> status -> completeness -> artifacts, all gr
     // has fields with no free-path match, so it honestly surfaces a
     // paid-research approval request instead of silently stalling.
     assert.match(created.text, /^Created the research mission/)
-    assert.match(created.text, /Queued for autonomous progression/)
+    // Adversarial-review finding, fixed: this fixture's "no money" phrasing
+    // doesn't match isFreeOnlyRequest's regex (only "don't spend any
+    // money"/"no spend"/etc. do), so this mission is NOT freeOnly and its
+    // real free-path gap genuinely blocks on a paid-research decision --
+    // "Queued for autonomous progression" must NOT appear alongside that.
+    assert.match(created.text, /paid-research approval request/)
+    assert.doesNotMatch(created.text, /Queued for autonomous progression/)
     const missionId = created.researchMissionId
     assert.ok(missionId)
 

@@ -195,7 +195,16 @@ export function decideNextMissionAction(mission, budget = DEFAULT_RESEARCH_RETRY
   // remaining node is PENDING on a dependency that will never resolve
   // (already reported honestly by the caller reading nodesByStatus, not
   // guessed here).
-  const allTerminal = mission.nodes.every((n) =>
+  // Adversarial-review finding (Round 3 bootstrap wave): Array.every on an
+  // EMPTY nodes array is vacuously true. A mission with zero nodes (e.g. a
+  // PLANNER_UNAVAILABLE draft scaffold never given nodes) must never read
+  // as "every node is terminal" -- that previously let a real dispatch
+  // driver auto-complete a 0-node mission with a fabricated "dataset
+  // ready" claim, directly contradicting Bug 4's anti-hallucination fix.
+  // This mattered only in theory before this session's bootstrap change:
+  // no automatic driver ever reached decideNextMissionAction without a
+  // human manually running the (previously companion-process-only) driver.
+  const allTerminal = mission.nodes.length > 0 && mission.nodes.every((n) =>
     ['COMPLETED', 'ADMITTED', 'CANCELLED', 'BLOCKED'].includes(n.status)
   )
   return allTerminal ? { type: 'CHECK_COMPLETE' } : { type: 'NOTHING_TO_DO', reason: 'no node is currently actionable' }
