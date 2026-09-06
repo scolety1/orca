@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { resolveCodexStandalonePackage } from './resolve-codex-standalone-package.mjs'
 
 const CANDIDATES = {
   'claude-code': [
@@ -25,6 +26,11 @@ const CANDIDATES = {
   ],
   codex: [
     { envOverride: 'TSF_PLANNER_CODEX_COMMAND' },
+    // Checked before the npm/PATH candidates: on the machines that still
+    // have it, the standalone installer is the current, preferred Windows
+    // distribution -- see resolve-codex-standalone-package.mjs for why its
+    // PATH-shim/fallbackCommand form is refused instead, below.
+    { standalonePackage: true },
     { npmPackage: '@openai/codex', relPath: ['bin', 'codex.js'], directExecutable: false },
     { fallbackCommand: 'codex' }
   ]
@@ -75,6 +81,13 @@ export function resolveAgentEntry(agentId, { homedirFn = homedir } = {}) {
         return { command: process.execPath, args: [value], viaShell: false }
       }
       return { command: value, args: [], viaShell: false }
+    }
+    if (candidate.standalonePackage) {
+      const entry = resolveCodexStandalonePackage({ homedirFn })
+      if (!entry) {
+        continue
+      }
+      return { command: entry, args: [], viaShell: false }
     }
     if (candidate.npmPackage) {
       const entry = npmGlobalCandidatePaths(

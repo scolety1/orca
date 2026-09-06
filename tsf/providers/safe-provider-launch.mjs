@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { ensureWindowsUserEnv } from '../adapters/windows-user-env.mjs'
+import { resolveCodexStandalonePackage } from './resolve-codex-standalone-package.mjs'
 
 // Real V1 stabilization finding: this is a genuinely separate process
 // entry point (Orca invokes it directly, not as a child of tsf/server),
@@ -102,9 +103,23 @@ function npmAgentEntry(packageName, entryName) {
 
 function resolveProviderCommand(provider) {
   if (provider === 'codex') {
+    // TSF_CODEX_ENTRY / npm-global still win first (operator override,
+    // and the older, still-real install method) -- checked before the
+    // standalone-package resolver so neither of those regresses.
     const entry = process.env.TSF_CODEX_ENTRY || npmAgentEntry('@openai/codex', 'bin/codex.js')
     if (entry && existsSync(entry)) {
       return { command: process.execPath, prefix: [entry] }
+    }
+    // Real, live-reproduced Windows bug: the PATH-shim codex.exe
+    // (AppData\Local\Programs\OpenAI\Codex\bin, a symlink chain) fails or
+    // hangs launching the Windows sandbox setup helper; the SAME binary's
+    // real, non-symlinked release-directory path works every time -- see
+    // resolve-codex-standalone-package.mjs. Tried before the win32
+    // PATH-command refusal below so a healthy standalone install is used
+    // directly rather than failing past a fixable case.
+    const standalone = resolveCodexStandalonePackage()
+    if (standalone) {
+      return { command: standalone, prefix: [] }
     }
     if (process.platform !== 'win32') {
       return { command: 'codex', prefix: [] }

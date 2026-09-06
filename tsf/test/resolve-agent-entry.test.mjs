@@ -6,7 +6,7 @@
 // reproduced root cause and tsf/test/planner-chat-arg-safety.test.mjs for
 // the direct proof of the corruption mechanism itself.
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -176,6 +176,30 @@ test('resolveAgentEntry: codex has the same no-runnable-entry-found safety on Wi
     })
   } finally {
     rmSync(emptyHome, { recursive: true, force: true })
+  }
+})
+
+// Codex Physical-Launcher Repair: a real standalone-installer layout
+// (current -> releases/<version>/bin/codex.exe, the CURRENT Windows
+// distribution method) resolves directly, ahead of the now-often-absent
+// npm-global candidate -- the real, live-reproduced fix for the PATH-shim
+// codex.exe hanging/failing to launch its own Windows sandbox helper.
+test('resolveAgentEntry: codex resolves the real standalone-package binary when present, ahead of npm', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'tsf-resolve-agent-codex-standalone-'))
+  try {
+    const releaseDir = path.join(home, '.codex', 'packages', 'standalone', 'releases', '0.148.0-x86_64-pc-windows-msvc')
+    mkdirSync(path.join(releaseDir, 'bin'), { recursive: true })
+    writeFileSync(path.join(releaseDir, 'bin', 'codex.exe'), 'fake')
+    symlinkSync(releaseDir, path.join(home, '.codex', 'packages', 'standalone', 'current'), 'junction')
+    withPlatform('win32', () => {
+      withEnv({ TSF_PLANNER_CODEX_COMMAND: undefined, APPDATA: undefined }, () => {
+        const entry = resolveAgentEntry('codex', { homedirFn: () => home })
+        assert.equal(entry.command, path.join(releaseDir, 'bin', 'codex.exe'))
+        assert.equal(entry.viaShell, false)
+      })
+    })
+  } finally {
+    rmSync(home, { recursive: true, force: true })
   }
 })
 
