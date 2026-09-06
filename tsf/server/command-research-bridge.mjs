@@ -68,8 +68,12 @@ const RESEARCH_INTENT_PATTERNS = [
       /\bpaste (it|that|this|the \S+(?:\s+\S+)?)( here| in chat)?\b/i.test(msg) ||
       /\bshow (me )?(what it found|the dataset|the results?)\b/i.test(msg) ||
       /\bwhere'?s the csv\b/i.test(msg) ||
-      /\bwhat did (it|the research) find\b/i.test(msg) ||
-      /\bwhat sources? did (it|the research) use\b/i.test(msg)
+      // Live proving-run finding: "what did the NFL salary cap research
+      // find" (topic named between "the" and "research") matched neither
+      // this nor the bare "the research" form -- (?:\S+\s+){0,4} tolerates
+      // a named topic in between without loosening the anchor words.
+      /\bwhat did (?:it|the (?:\S+\s+){0,4}research) find\b/i.test(msg) ||
+      /\bwhat sources? did (?:it|the (?:\S+\s+){0,4}research) use\b/i.test(msg)
   },
   // Deliberately narrower than bare /\bconflicts?\b/ -- "conflict" alone
   // is common, unrelated chat vocabulary in this codebase's own domain
@@ -84,7 +88,10 @@ const RESEARCH_INTENT_PATTERNS = [
     id: 'RESEARCH_COMPLETENESS',
     test: (msg) =>
       /\bhow complete\b|\bcompleteness\b|\bhow far along\b|\bwhat'?s missing\b|\bwhat is missing\b/i.test(msg) ||
-      /\bis (it|this|that|the research) (still )?(running|done|finished|complete)\b/i.test(msg) ||
+      // (?:\S+\s+){0,4} tolerates a named topic between "the" and
+      // "research" (e.g. "is the NFL salary cap research done") without
+      // loosening the "it/this/that/the research" anchor itself.
+      /\bis (?:it|this|that|the (?:\S+\s+){0,4}research) (still )?(running|done|finished|complete)\b/i.test(msg) ||
       /\bhow do i know (when|if)( it'?s| the .+ is)?\s*don[ew]\b/i.test(msg) ||
       /\bwhy isn'?t it done\b/i.test(msg)
   },

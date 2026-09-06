@@ -425,6 +425,20 @@ test('bridge: a genuinely under-specified research request asks ONE bounded clar
 })
 
 // Command architecture round 3: research follow-up gaps.
+// Real free-path research execution finding (live proving run): naming the
+// topic between the anchor words ("is the NFL salary cap research done?")
+// previously matched neither RESEARCH_COMPLETENESS nor RESEARCH_ARTIFACTS,
+// falling through to the bare "research" CREATE_OR_CONTINUE catch-all and
+// hallucinating a fresh clarifying question for a mission that already
+// exists and is already COMPLETE.
+test('classifyResearchIntent: a named topic between the anchor words still resolves to the status/artifacts intents, not CREATE_OR_CONTINUE', () => {
+  assert.equal(classifyResearchIntent('is the NFL salary cap research done?'), 'RESEARCH_COMPLETENESS')
+  assert.equal(classifyResearchIntent('is the research done?'), 'RESEARCH_COMPLETENESS')
+  assert.equal(classifyResearchIntent('what did the NFL salary cap research find?'), 'RESEARCH_ARTIFACTS')
+  assert.equal(classifyResearchIntent('what sources did the NFL salary cap research use?'), 'RESEARCH_ARTIFACTS')
+  assert.equal(classifyResearchIntent('is the build still running?'), null, 'a non-research topic must still never match')
+})
+
 test('classifyResearchIntent: the round-3 additions ("what\'s missing", "show me the evidence", "could Exa help?", "cancel it")', () => {
   assert.equal(classifyResearchIntent("what's missing?"), 'RESEARCH_COMPLETENESS')
   assert.equal(classifyResearchIntent('show me the evidence'), 'RESEARCH_ARTIFACTS')
