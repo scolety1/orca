@@ -115,6 +115,14 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
             // byte-for-byte unaffected.
             acquisitionMethod: snap.acquisitionMethod ?? null,
             modeEvidence: snap.modeEvidence ?? null,
+            // REQ-005: a typed, queryable rights/acquisition-mode field
+            // (domain/web-source-access-gate.mjs's own ACQUISITION_MODES/
+            // ACCESS_CLASSIFICATIONS taxonomy -- REQ-005's exact proposed
+            // naming) instead of only reachable nested inside modeEvidence.
+            // Additive/optional, defaults to null for every acquisition
+            // method that has no rights classification to report.
+            acquisitionMode: snap.acquisitionMode ?? null,
+            accessClassification: snap.accessClassification ?? null,
             admittedAt
           })
           wrote = true
@@ -168,7 +176,15 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
               // never fabricated as CONTEMPORANEOUS -- see
               // research-node.mjs's TEMPORAL_CLASSES.
               temporalClass: pc.temporalClass ?? 'UNKNOWN_TEMPORAL_STATUS',
-              missingnessType: 'NOT_PUBLICLY_AVAILABLE',
+              // REQ-004: was hardcoded to one literal regardless of real
+              // cause -- now caller-settable (additive, backward
+              // compatible: no existing ProposedClaim source sets
+              // pc.missingnessType, so every current caller's behavior is
+              // byte-for-byte unchanged) so a future worker can honestly
+              // distinguish e.g. a blocked/refused source from a genuine
+              // not-publicly-available field, feeding
+              // research-completeness.mjs's typedMissingnessByReason.
+              missingnessType: pc.missingnessType ?? 'NOT_PUBLICLY_AVAILABLE',
               reason: pc.providerReasoning ?? 'no value found by provider',
               admittedAt
             })

@@ -18,10 +18,23 @@ export function computeCompletenessMetrics(mission, clock) {
   const { expectedEntities, expectedCount } = mission.expectedUniverse
 
   let expectedEntityCoverage
+  let observedNotExpectedEntityIds = null
   if (expectedEntities.length > 0) {
     const presentIds = new Set(nodes.map((n) => n.targetEntity?.entityId).filter(Boolean))
     const matched = expectedEntities.filter((e) => presentIds.has(e.entityId)).length
     expectedEntityCoverage = ratio(matched, expectedEntities.length)
+    // REQ-004 (dataset-research-engine-v0 backlog): completeness was
+    // purely one-directional (expected -> present/absent only) -- an
+    // entity a worker actually researched that ISN'T in expectedEntities
+    // at all produced no signal anywhere. Only computable when a real,
+    // named expected-entity list exists (a count-only universe has
+    // nothing to compare an observed id against, so this stays null
+    // there -- never fabricated as "0 unexpected" when it's genuinely
+    // unknown).
+    const expectedEntityIds = new Set(expectedEntities.map((e) => e.entityId))
+    observedNotExpectedEntityIds = [
+      ...new Set(nodes.map((n) => n.targetEntity?.entityId).filter((id) => id && !expectedEntityIds.has(id)))
+    ]
   } else {
     expectedEntityCoverage = expectedCount > 0 ? Math.min(1, nodes.length / expectedCount) : null
   }
@@ -42,6 +55,7 @@ export function computeCompletenessMetrics(mission, clock) {
   let conflictCount = 0
   let unresolvedConflictCount = 0
   let typedMissingnessCount = 0
+  const typedMissingnessByReason = {}
   let identityReviewCount = 0
   let derivedFieldTotal = 0
   let derivedFieldReproducible = 0
@@ -129,6 +143,14 @@ export function computeCompletenessMetrics(mission, clock) {
     conflictCount += node.conflicts.length
     unresolvedConflictCount += node.conflicts.filter((c) => c.status === 'OPEN').length
     typedMissingnessCount += node.typedMissingness.length
+    // REQ-004: a flat count could not distinguish a genuine blocker from
+    // an expected non-answer -- broken down by the record's own
+    // missingnessType (defaults to 'NOT_PUBLICLY_AVAILABLE' today until a
+    // worker sets something more specific; the breakdown is honest about
+    // whatever variety actually exists, never invented here).
+    for (const tm of node.typedMissingness) {
+      typedMissingnessByReason[tm.missingnessType] = (typedMissingnessByReason[tm.missingnessType] ?? 0) + 1
+    }
     if (node.identityResolutionState) identityReviewCount += 1
   }
 
@@ -143,6 +165,9 @@ export function computeCompletenessMetrics(mission, clock) {
     conflictCount,
     unresolvedConflictCount,
     typedMissingnessCount,
+    typedMissingnessByReason,
+    observedNotExpectedEntityIds,
+    observedNotExpectedCount: observedNotExpectedEntityIds?.length ?? null,
     identityReviewCount,
     derivedFieldReproducibilityCoverage: ratio(derivedFieldReproducible, derivedFieldTotal),
     computedAt: isoNow(clock)

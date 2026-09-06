@@ -38,11 +38,22 @@ function fieldNames(request) {
 // stance the rest of this stack already applies to raw HTML: explicitly
 // re-nulled here even though this worker never opts into retention, so
 // this can never regress silently if that ever changes.
+// REQ-005 (dataset-research-engine-v0 backlog): acquisitionMode/
+// accessClassification already existed on the receipt (domain/web-source-
+// access-gate.mjs's ACQUISITION_MODES/ACCESS_CLASSIFICATIONS taxonomy,
+// REQ-005's own exact proposed naming) and reached durable admission
+// nested inside modeEvidence -- but REQ-005 specifically asked for a
+// typed, QUERYABLE field, not a value buried inside a raw receipt blob a
+// caller would have to know to reach into. Promoted to top-level here,
+// alongside modeEvidence (which still carries the full receipt verbatim
+// for anyone who needs the rest of it).
 function buildSourceSnapshot(receipt) {
   return {
     sourceRef: receipt.sourceUrl,
     contentHash: receipt.contentHash,
     acquisitionMethod: 'WEB_TABLE_STATIC_SOURCE_EXTRACTION',
+    acquisitionMode: receipt.acquisitionMode ?? null,
+    accessClassification: receipt.accessClassification ?? null,
     modeEvidence: { ...receipt, artifactRef: { ...receipt.artifactRef, rawHtml: null } }
   }
 }

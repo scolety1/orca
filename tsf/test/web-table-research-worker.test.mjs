@@ -117,6 +117,10 @@ test('dispatch+fetchResult produces a real SUCCEEDED result with genuine propose
   assert.equal(typeof snapshot.contentHash, 'string')
   assert.equal(snapshot.modeEvidence.decision, 'EXTRACTED')
   assert.equal(snapshot.modeEvidence.artifactRef.rawHtml, null, 'raw HTML is stripped even though this worker never opts into retention')
+  // REQ-005: the rights/acquisition-mode taxonomy must be a top-level,
+  // queryable field, not only reachable by reaching into modeEvidence.
+  assert.equal(snapshot.acquisitionMode, 'PUBLIC_WEB_SOURCE_EXTRACTION')
+  assert.equal(snapshot.accessClassification, 'PUBLIC_ALLOWED')
 })
 
 test('restart-safety: a fresh call to fetchResult using only the durably-shaped workerRunRef (no in-memory state) returns the identical result', async () => {
@@ -294,6 +298,8 @@ test('REAL DURABLE ADMISSION: a genuinely successful dispatch admits a real Sour
   assert.equal(snapshot.schemaVersion, 'TSF_SOURCE_SNAPSHOT_REFERENCE_V1')
   assert.equal(snapshot.sourceRef, 'https://example.com/1995-qb-stats')
   assert.equal(snapshot.acquisitionMethod, 'WEB_TABLE_STATIC_SOURCE_EXTRACTION')
+  assert.equal(snapshot.acquisitionMode, 'PUBLIC_WEB_SOURCE_EXTRACTION', 'REQ-005: the rights taxonomy is durably admitted as a top-level, queryable field')
+  assert.equal(snapshot.accessClassification, 'PUBLIC_ALLOWED')
   assert.equal(snapshot.modeEvidence.receiptHash, snapshot.modeEvidence.receiptHash, 'the verbatim receipt (hash-verifiable) is durably stored')
   assert.equal(snapshot.modeEvidence.artifactRef.rawHtml, null, 'raw HTML never reaches durable mission state')
 })

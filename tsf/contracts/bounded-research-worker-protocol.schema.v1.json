@@ -107,7 +107,9 @@
         "rawContentRef": { "type": ["string", "null"] },
         "inlineSnapshot": {},
         "acquisitionMethod": { "type": ["string", "null"] },
-        "modeEvidence": {}
+        "modeEvidence": {},
+        "acquisitionMode": { "type": ["string", "null"] },
+        "accessClassification": { "type": ["string", "null"] }
       }
     },
     "GapProposal": {

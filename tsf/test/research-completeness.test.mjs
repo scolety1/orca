@@ -197,3 +197,57 @@ test('requiredFieldCoverage applies the same required/optional split to temporal
   assert.equal(metrics.requiredFieldCoverage, 1, 'the required snapshot is resolved; the optional one being unresolved must not block it')
   assert.equal(metrics.fieldCoverage, 0.5)
 })
+
+// REQ-004 (dataset-research-engine-v0 backlog, filed against the real gap
+// that completeness was purely one-directional and typedMissingnessCount
+// was a flat aggregate with no reason breakdown).
+
+test('REQ-004: an entity researched but NOT in expectedUniverse.expectedEntities is surfaced, never silently invisible', () => {
+  const specification = buildNflQb2001Specification()
+  let mission = createResearchMission({ id: 'm', projectId: 'p', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:out-of-scope', targetEntity: { entityId: 'nfl:2001:qb:someone-not-expected', name: 'Someone Not Expected' }, requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  const metrics = computeCompletenessMetrics(mission, clock)
+  assert.deepEqual(metrics.observedNotExpectedEntityIds, ['nfl:2001:qb:someone-not-expected'])
+  assert.equal(metrics.observedNotExpectedCount, 1)
+})
+
+test('REQ-004: an entity that IS in expectedUniverse.expectedEntities never appears as unexpected', () => {
+  const specification = buildNflQb2001Specification()
+  let mission = createResearchMission({ id: 'm', projectId: 'p', specification, expectedUniverse: specification.expectedUniverse }, clock)
+  // 'nfl:2001:qb:tom-brady' is one of this fixture's own real expected
+  // entities -- confirms this isn't just "always empty by construction".
+  mission = addResearchNode(
+    mission,
+    { id: 'node:tom-brady', targetEntity: { entityId: 'nfl:2001:qb:tom-brady', name: 'Tom Brady' }, requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  const metrics = computeCompletenessMetrics(mission, clock)
+  assert.deepEqual(metrics.observedNotExpectedEntityIds, [], 'every observed entity was genuinely expected -- the unexpected list is honestly empty, not omitted')
+})
+
+test('REQ-004: observedNotExpectedCount is null (not 0) when the mission has no named expectedEntities at all -- not fabricated as "zero unexpected"', () => {
+  const specification = buildNflQb2001Specification()
+  const countOnlySpecification = { ...specification, expectedUniverse: { ...specification.expectedUniverse, expectedEntities: [] } }
+  let mission = createResearchMission({ id: 'm', projectId: 'p', specification: countOnlySpecification, expectedUniverse: countOnlySpecification.expectedUniverse }, clock)
+  mission = addResearchNode(mission, { id: 'node:x', targetEntity: { entityId: 'anything', name: 'Anything' }, requestedFields: [], requestedOutputSchema: {} }, clock)
+  const metrics = computeCompletenessMetrics(mission, clock)
+  assert.equal(metrics.observedNotExpectedEntityIds, null)
+  assert.equal(metrics.observedNotExpectedCount, null, 'no named expected-entity list exists to compare against -- genuinely unknown, never fabricated as 0')
+})
+
+test('REQ-004: typedMissingnessByReason breaks the flat count down by the record\'s own missingnessType, never blending distinct reasons into one bucket', () => {
+  let mission = baseMissionWithField([
+    { fieldName: 'blocked', valueType: 'string', required: false },
+    { fieldName: 'unavailable', valueType: 'string', required: false }
+  ])
+  mission = injectMissing(mission, 'blocked')
+  mission = { ...mission, nodes: [{ ...mission.nodes[0], typedMissingness: [...mission.nodes[0].typedMissingness, { ...mission.nodes[0].typedMissingness[0], id: 'missing:blocked:2', fieldName: 'blocked', missingnessType: 'SOURCE_ACCESS_BLOCKED' }] }] }
+  mission = injectMissing(mission, 'unavailable')
+  const metrics = computeCompletenessMetrics(mission, clock)
+  assert.equal(metrics.typedMissingnessCount, 3, 'the flat aggregate is preserved unchanged')
+  assert.deepEqual(metrics.typedMissingnessByReason, { NOT_PUBLICLY_AVAILABLE: 2, SOURCE_ACCESS_BLOCKED: 1 }, 'a genuine access-blocked reason must never be blended into the same bucket as an honest not-publicly-available gap')
+})
