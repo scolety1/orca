@@ -105,7 +105,9 @@
         "sourceRef": { "type": "string", "minLength": 1 },
         "contentHash": { "type": "string" },
         "rawContentRef": { "type": ["string", "null"] },
-        "inlineSnapshot": {}
+        "inlineSnapshot": {},
+        "acquisitionMethod": { "type": ["string", "null"] },
+        "modeEvidence": {}
       }
     },
     "GapProposal": {

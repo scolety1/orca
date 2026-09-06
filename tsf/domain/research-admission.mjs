@@ -107,6 +107,14 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
             contentHash: snap.contentHash,
             rawContentRef: snap.rawContentRef ?? null,
             retrievable: Boolean(snap.rawContentRef || snap.inlineSnapshot),
+            // Web Source Acquisition architecture reconciliation: additive,
+            // optional -- carries a mode-specific acquisition receipt
+            // verbatim (never a second, competing provenance authority)
+            // when a worker supplies one. Both default to prior behavior
+            // (null) so the pre-existing bulk-source-first path is
+            // byte-for-byte unaffected.
+            acquisitionMethod: snap.acquisitionMethod ?? null,
+            modeEvidence: snap.modeEvidence ?? null,
             admittedAt
           })
           wrote = true

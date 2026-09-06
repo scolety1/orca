@@ -28,6 +28,25 @@ function fieldNames(request) {
   return Object.keys(request.requestedOutputSchema?.properties ?? {})
 }
 
+// Architecture reconciliation finding: a web-table acquisition's rich
+// receipt (contentHash, robotsEvidence, transportEvidence, warnings) was
+// computed but only ever reachable inside providerRunId's opaque JSON
+// blob -- never admitted as a structured, durably queryable
+// SourceSnapshotReference, unlike every other acquisition method
+// (BULK_SOURCE_FIRST_HTTP already goes through admitSourceSnapshot).
+// Carries the receipt verbatim under modeEvidence, same defense-in-depth
+// stance the rest of this stack already applies to raw HTML: explicitly
+// re-nulled here even though this worker never opts into retention, so
+// this can never regress silently if that ever changes.
+function buildSourceSnapshot(receipt) {
+  return {
+    sourceRef: receipt.sourceUrl,
+    contentHash: receipt.contentHash,
+    acquisitionMethod: 'WEB_TABLE_STATIC_SOURCE_EXTRACTION',
+    modeEvidence: { ...receipt, artifactRef: { ...receipt.artifactRef, rawHtml: null } }
+  }
+}
+
 function emptyUsage() {
   return { requestCount: 0, tokensOrUnits: null, providerReportedCostUsd: 0 }
 }
@@ -120,6 +139,7 @@ async function computeResult(request, clock, acquireFn) {
   const proposedClaims = []
   const evidence = []
   const sourceReferences = []
+  const sourceSnapshots = []
   for (const url of request.preferredSources) {
     // eslint-disable-next-line no-await-in-loop -- bounded by the mission's own small preferredSources list; per-domain throttle already applies inside bounded-http-fetch
     const { receipt, extraction } = await attemptOneCandidate(url, request, clock, acquireFn)
@@ -138,6 +158,7 @@ async function computeResult(request, clock, acquireFn) {
     proposedClaims.push(...extraction.proposedClaims)
     evidence.push(...extraction.evidence)
     sourceReferences.push(...extraction.sourceReferences)
+    sourceSnapshots.push(buildSourceSnapshot(receipt))
   }
   if (proposedClaims.length === 0) {
     const result = baseResult(request, 'FAILED')
@@ -150,6 +171,7 @@ async function computeResult(request, clock, acquireFn) {
   result.proposedClaims = proposedClaims
   result.evidence = evidence
   result.sourceReferences = sourceReferences
+  result.sourceSnapshotsOrSnapshotRefs = sourceSnapshots
   result.warnings = warnings
   result.usage = { requestCount: request.preferredSources.length, tokensOrUnits: null, providerReportedCostUsd: 0 }
   return result
