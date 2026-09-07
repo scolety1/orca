@@ -51,8 +51,8 @@ uses, fully read-only).
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1. UI_DOGFOOD_AGENT_V0 | IMPLEMENTED (V0 adopted in feature worktree, not yet merged to `tsf/main`) | See below |
-| 2. PLANNER_CONTEXT_LIFECYCLE_V0 | NOT_STARTED | |
+| 1. UI_DOGFOOD_AGENT_V0 | **ADOPTED** — merged to `tsf/main` @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
+| 2. PLANNER_CONTEXT_LIFECYCLE_V0 | IN_PROGRESS | Worktree `planner-context-lifecycle-v0` created from `90d77e3a1c` |
 | 3. Deferred Research Platform Completion Wave | NOT_STARTED | |
 | 4. Cleanup V1 / Governed Destructive Automation | NOT_STARTED | |
 | 5. Larger Astra Follow-up Benchmark | NOT_STARTED | |
@@ -261,9 +261,26 @@ branches touched or read).
    clips. A human/future bounded task should decide whether mobile-width
    Settings support is in scope at all before any layout change is made.
 
+**Coordinator independent review (2026-09-06), before adoption:** re-ran all
+8 new/changed test files directly (24 in ui-dogfood-{contract,finding,
+surface-catalog}.test.mjs + 44 in {command-dogfood-bridge,dom-overflow-
+detector,eval-pack-registry,evaluation-pack,http-eval}.test.mjs) — 100%
+pass, matches the implementer's own count. `npx oxlint` re-run on every new
+file — 0 errors. Read `electron-target-launcher.mjs` (isolated throwaway
+`userDataDir` per launch, generic, no hardcoded target) and
+`command-dogfood-bridge.mjs` (chat-triggered runs are always a single
+bounded read-only PASS — no auto-fix ever applied from a live command;
+honest "not wired up yet" for any non-Orca target; fails closed if no
+built candidate exists) directly — both sound. Diffed
+`command-responder.mjs`/`eval-pack-registry.mjs`/`evaluation-pack.mjs` —
+confirmed purely additive, one bridge check inserted in the same position
+as the existing research bridge, no duplicate architecture. No
+corrections needed. **Merged to `tsf/main` @
+`90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main`
+(verified), worktree `ui-dogfood-agent-v0` retired.**
+
 ## Next intended action
 
-Phase 1 (`UI_DOGFOOD_AGENT_V0`) V0 is implemented and verified in worktree
-`ui-dogfood-agent-v0` (branch `tsf/feature/ui-dogfood-agent-v0`). Not yet
-merged to `tsf/main` — merge/adoption is an owner decision outside this
-worktree's scope. Phase 2 (`PLANNER_CONTEXT_LIFECYCLE_V0`) is next.
+Phase 1 is fully adopted and closed. Phase 2 (`PLANNER_CONTEXT_LIFECYCLE_V0`)
+is now in progress in worktree `planner-context-lifecycle-v0` (branch
+`tsf/feature/planner-context-lifecycle-v0`, forked from `90d77e3a1c`).
