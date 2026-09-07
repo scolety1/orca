@@ -1,0 +1,298 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { ATTENTION_CATEGORIES, buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
+import { createOvernightRun, markStalled, raiseNeedsYou, completeRun } from '../domain/keep-going.mjs'
+import {
+  addResearchNode,
+  createResearchMission,
+  raiseResearchNeedsYou,
+  transitionResearchMission
+} from '../domain/research-mission.mjs'
+import { recordDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
+import { createFinding, transitionFinding } from '../domain/self-improvement-finding.mjs'
+import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
+
+const clock = () => new Date('2026-09-07T12:00:00.000Z')
+
+function project(id, overrides = {}) {
+  return {
+    id,
+    displayName: id,
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] },
+    ...overrides
+  }
+}
+
+function newRun(id, projectId) {
+  return createOvernightRun({ id, projectId, originalGoal: 'Fix it.', acceptanceCriteria: ['X'] }, clock)
+}
+
+function baseMissionSpec() {
+  return {
+    schemaVersion: 'TSF_RESEARCH_SPECIFICATION_V1',
+    id: 'spec:x',
+    researchQuestion: 'q',
+    entityType: 'FIXTURE',
+    requestedFields: [],
+    sourcePolicy: {
+      preferredSources: [],
+      disallowedSources: [],
+      licensingConstraints: [],
+      freshnessPolicy: 'UNSPECIFIED',
+      requireIndependentSources: false,
+      minSourceCount: 0,
+      allowCrossMissionLibraryReuse: true
+    },
+    temporalRequirements: { asOfDate: '2026-09-07', periodScope: 'UNSPECIFIED' },
+    budget: { maxCostUsd: 0, maxLatencyMs: null, maxToolCallsPerNode: null },
+    toolPermissions: []
+  }
+}
+
+function baseMission(id, overrides = {}) {
+  return createResearchMission(
+    {
+      id,
+      projectId: 'test',
+      specification: baseMissionSpec(),
+      expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] },
+      ...overrides
+    },
+    clock
+  )
+}
+
+function rawFinding(overrides = {}) {
+  return {
+    sourceDetector: 'GOLDEN_PATH_EVAL',
+    severity: 'P2',
+    evidence: { caseId: 'case-1' },
+    reproduction: { command: 'node --test' },
+    affectedSurface: 'golden-path:platform',
+    confidence: 0.8,
+    verificationMethod: 'EVAL_PACK_RERUN',
+    ...overrides
+  }
+}
+
+test('empty everything -> empty array', () => {
+  assert.deepEqual(buildFleetAttentionItems({ projects: [], clock }), [])
+})
+
+test('NEEDS_OWNER: a PROJECT needsYou item is categorized correctly with a real changedAt and deepLink', () => {
+  let run = raiseNeedsYou(newRun('r1', 'p1'), { question: 'Which provider?' }, clock, 0)
+  const items = buildFleetAttentionItems({
+    projects: [project('p1', { displayName: 'Project One' })],
+    keepGoingRuns: { p1: run },
+    clock
+  })
+  assert.equal(items.length, 1)
+  const item = items[0]
+  assert.equal(item.category, 'NEEDS_OWNER')
+  assert.equal(item.severity, 'P1')
+  assert.deepEqual(item.project, { id: 'p1', displayName: 'Project One' })
+  assert.equal(item.reason, 'Which provider?')
+  assert.equal(item.changedAt, run.needsYou[0].raisedAt)
+  assert.deepEqual(item.deepLink, { kind: 'PROJECT', id: 'p1' })
+  assert.deepEqual(item.source, { kind: 'KEEP_GOING_RUN', id: 'p1' })
+})
+
+test('NEEDS_OWNER: a RESEARCH needsYou item resolves a real missionId deepLink via origin lookup', () => {
+  let mission = baseMission('mission:needs')
+  mission = raiseResearchNeedsYou(mission, { question: 'approve paid access?' }, clock, mission.revision)
+  const items = buildFleetAttentionItems({
+    projects: [],
+    researchMissions: { [mission.id]: mission },
+    clock
+  })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'NEEDS_OWNER')
+  assert.deepEqual(items[0].deepLink, { kind: 'RESEARCH_MISSION', id: mission.id })
+  assert.equal(items[0].changedAt, mission.needsYou[0].raisedAt)
+})
+
+test('NEEDS_OWNER: a PLANNER needsYou item never fabricates a project', async () => {
+  const { createPlannerMissionCheckpoint, raisePlannerNeedsYou } = await import('../domain/planner-mission-checkpoint.mjs')
+  let checkpoint = createPlannerMissionCheckpoint(
+    { missionId: 'planner-x', missionGoal: 'ship it', phase: 'BUILD', repoState: { branch: 'main', sha: 'a'.repeat(40) } },
+    clock
+  )
+  checkpoint = raisePlannerNeedsYou(checkpoint, { question: 'auth needed' }, clock)
+  const items = buildFleetAttentionItems({
+    projects: [],
+    plannerMissionRecords: { 'planner-x': { lease: null, checkpoint } },
+    clock
+  })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].project, null)
+  assert.deepEqual(items[0].deepLink, { kind: 'PLANNER_MISSION', id: 'planner-x' })
+  assert.equal(items[0].changedAt, checkpoint.needsYou[0].at)
+})
+
+test('FAILED_REQUIRES_ATTENTION: a STALLED run appears correctly categorized', () => {
+  const run = markStalled(newRun('r1', 'p1'), [], clock)
+  const items = buildFleetAttentionItems({
+    projects: [project('p1', { displayName: 'Project One' })],
+    keepGoingRuns: { p1: run },
+    clock
+  })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'FAILED_REQUIRES_ATTENTION')
+  assert.equal(items[0].severity, 'P1')
+  assert.match(items[0].reason, /STALLED/)
+})
+
+test('READY_FOR_ADOPTION: a COMPLETE run appears correctly categorized', () => {
+  const run = completeRun(newRun('r1', 'p1'), clock)
+  const items = buildFleetAttentionItems({
+    projects: [project('p1', { displayName: 'Project One' })],
+    keepGoingRuns: { p1: run },
+    clock
+  })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'READY_FOR_ADOPTION')
+  assert.equal(items[0].severity, 'P2')
+})
+
+test('BLOCKED_EXTERNAL: a legacy blocked project appears with an honest null changedAt (no real per-item timestamp exists)', () => {
+  const p = project('p1', { mission: { state: 'BLOCKED_SOMETHING', id: null, blockedReason: 'waiting on legal review' } })
+  const items = buildFleetAttentionItems({ projects: [p], clock })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'BLOCKED_EXTERNAL')
+  assert.equal(items[0].reason, 'waiting on legal review')
+  assert.equal(items[0].changedAt, null)
+})
+
+test('BLOCKED_EXTERNAL: a BLOCKED research mission appears with a real changedAt and reason from its own transitions', () => {
+  let mission = baseMission('mission:blocked')
+  mission = transitionResearchMission(mission, 'BLOCKED', { reason: 'no legal source found', expectedRevision: mission.revision }, clock)
+  const items = buildFleetAttentionItems({ projects: [], researchMissions: { [mission.id]: mission }, clock })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'BLOCKED_EXTERNAL')
+  assert.equal(items[0].reason, 'no legal source found')
+  assert.equal(items[0].changedAt, mission.updatedAt)
+  assert.deepEqual(items[0].deepLink, { kind: 'RESEARCH_MISSION', id: mission.id })
+})
+
+test('COMPLETED_RECENTLY: excludes legacy ADOPTED projects (Tim already knows -- operator-driven, not a real completion)', () => {
+  const adopted = project('p1', {
+    mission: { state: 'ADOPTED', id: 'm1', blockedReason: null },
+    receipts: { chain: [{ timestamp: '2026-08-01T00:00:00.000Z' }] }
+  })
+  const items = buildFleetAttentionItems({ projects: [adopted], clock })
+  assert.deepEqual(items, [])
+})
+
+test('COMPLETED_RECENTLY: includes a real research mission that reached COMPLETE', () => {
+  let mission = baseMission('mission:complete')
+  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = transitionResearchMission(mission, 'COMPLETE', { reason: 'done', expectedRevision: mission.revision }, clock)
+  const items = buildFleetAttentionItems({ projects: [], researchMissions: { [mission.id]: mission }, clock })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'COMPLETED_RECENTLY')
+  assert.equal(items[0].severity, 'P3')
+  assert.equal(items[0].changedAt, mission.updatedAt)
+})
+
+test('COMPLETED_RECENTLY: an EXECUTING (not yet complete) research mission does not appear', () => {
+  let mission = baseMission('mission:executing')
+  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = recordDispatchAttempt(mission, 'node:a', { taskFingerprint: 'a'.repeat(64) }, clock, mission.revision)
+  const items = buildFleetAttentionItems({ projects: [], researchMissions: { [mission.id]: mission }, clock })
+  assert.deepEqual(items, [])
+})
+
+test('self-improvement: NEEDS_OWNER via AUTOFIX_ELIGIBILITY_CLASSIFIED vs FAILED_REQUIRES_ATTENTION via REPAIR_RETRY_BUDGET_EXCEEDED split correctly', () => {
+  let eligibilityFinding = createFinding(rawFinding({ affectedSurface: 'eligibility-surface' }), clock)
+  eligibilityFinding = transitionFinding(eligibilityFinding, 'VERIFIED', { reason: 'x' }, clock)
+  eligibilityFinding = transitionFinding(eligibilityFinding, 'NEEDS_OWNER', { reason: 'AUTOFIX_ELIGIBILITY_CLASSIFIED' }, clock)
+
+  let repairFailedFinding = createFinding(rawFinding({ affectedSurface: 'repair-failed-surface' }), clock)
+  repairFailedFinding = transitionFinding(repairFailedFinding, 'VERIFIED', { reason: 'x' }, clock)
+  repairFailedFinding = transitionFinding(repairFailedFinding, 'ELIGIBLE_FOR_AUTOFIX', { reason: 'x' }, clock)
+  repairFailedFinding = transitionFinding(repairFailedFinding, 'FIX_MISSION_CREATED', { reason: 'x' }, clock)
+  repairFailedFinding = transitionFinding(repairFailedFinding, 'FIX_IN_PROGRESS', { reason: 'x' }, clock)
+  repairFailedFinding = transitionFinding(repairFailedFinding, 'NEEDS_OWNER', { reason: 'REPAIR_RETRY_BUDGET_EXCEEDED' }, clock)
+
+  const items = buildFleetAttentionItems({
+    projects: [],
+    selfImprovementFindings: {
+      [eligibilityFinding.findingId]: eligibilityFinding,
+      [repairFailedFinding.findingId]: repairFailedFinding
+    },
+    clock
+  })
+  assert.equal(items.length, 2)
+  const byId = Object.fromEntries(items.map((i) => [i.source.id, i]))
+  assert.equal(byId[eligibilityFinding.findingId].category, 'NEEDS_OWNER')
+  assert.equal(byId[repairFailedFinding.findingId].category, 'FAILED_REQUIRES_ATTENTION')
+})
+
+test('self-improvement: READY_FOR_ADOPTION status maps correctly, and a finding severity field wins over the default mapping', () => {
+  let finding = createFinding(rawFinding({ severity: 'P0', affectedSurface: 'ready-surface' }), clock)
+  finding = transitionFinding(finding, 'VERIFIED', { reason: 'x' }, clock)
+  finding = transitionFinding(finding, 'ELIGIBLE_FOR_AUTOFIX', { reason: 'x' }, clock)
+  finding = transitionFinding(finding, 'FIX_MISSION_CREATED', { reason: 'x' }, clock)
+  finding = transitionFinding(finding, 'FIX_IN_PROGRESS', { reason: 'x' }, clock)
+  finding = transitionFinding(finding, 'READY_FOR_ADOPTION', { reason: 'x' }, clock)
+  const items = buildFleetAttentionItems({ projects: [], selfImprovementFindings: { [finding.findingId]: finding }, clock })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'READY_FOR_ADOPTION')
+  assert.equal(items[0].severity, 'P0', 'the finding\'s own severity must win over the default P2 mapping')
+})
+
+test('self-improvement: a finding in a status not on the notify-worthy list (e.g. DETECTED) produces no item', () => {
+  const finding = createFinding(rawFinding(), clock)
+  const items = buildFleetAttentionItems({ projects: [], selfImprovementFindings: { [finding.findingId]: finding }, clock })
+  assert.deepEqual(items, [])
+})
+
+test('resource pressure: appears only at CRITICAL/EMERGENCY, never fabricates a per-mission entry', () => {
+  const healthy = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 8e9, availableBytes: 8e9 } }, clock)
+  const pressured = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 3e9, availableBytes: 3e9 } }, clock)
+  const critical = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 2e9, availableBytes: 2e9 } }, clock)
+  const emergency = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 1e9, availableBytes: 1e9 } }, clock)
+
+  assert.deepEqual(buildFleetAttentionItems({ projects: [], resourcePressureState: healthy, clock }), [])
+  assert.deepEqual(buildFleetAttentionItems({ projects: [], resourcePressureState: pressured, clock }), [])
+
+  const criticalItems = buildFleetAttentionItems({ projects: [], resourcePressureState: critical, clock })
+  assert.equal(criticalItems.length, 1)
+  assert.equal(criticalItems[0].category, 'WAITING_FOR_RESOURCES')
+  assert.equal(criticalItems[0].project, null)
+  assert.equal(criticalItems[0].id, 'resource-pressure:CRITICAL')
+
+  const emergencyItems = buildFleetAttentionItems({ projects: [], resourcePressureState: emergency, clock })
+  assert.equal(emergencyItems.length, 1)
+  assert.equal(emergencyItems[0].id, 'resource-pressure:EMERGENCY')
+})
+
+test('determinism: calling with the same input twice produces byte-identical output, including ids', () => {
+  let run = raiseNeedsYou(newRun('r1', 'p1'), { question: 'Which provider?' }, clock, 0)
+  const stalledRun = markStalled(newRun('r2', 'p2'), [], clock)
+  let mission = baseMission('mission:needs')
+  mission = raiseResearchNeedsYou(mission, { question: 'q' }, clock, mission.revision)
+  const finding = createFinding(rawFinding(), clock)
+
+  const input = {
+    projects: [project('p1'), project('p2')],
+    keepGoingRuns: { p1: run, p2: stalledRun },
+    researchMissions: { [mission.id]: mission },
+    selfImprovementFindings: { [finding.findingId]: finding },
+    clock
+  }
+  const first = buildFleetAttentionItems(input)
+  const second = buildFleetAttentionItems(input)
+  assert.deepEqual(first, second)
+  assert.deepEqual(first.map((i) => i.id).sort(), second.map((i) => i.id).sort())
+})
+
+test('every emitted category is a real member of ATTENTION_CATEGORIES', () => {
+  const run = markStalled(newRun('r1', 'p1'), [], clock)
+  const items = buildFleetAttentionItems({ projects: [project('p1')], keepGoingRuns: { p1: run }, clock })
+  for (const item of items) {
+    assert.ok(ATTENTION_CATEGORIES.includes(item.category))
+  }
+})

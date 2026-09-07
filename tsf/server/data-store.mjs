@@ -40,7 +40,8 @@ const DEFAULTS = {
   platformLearningLedger: null, // TSF_PLATFORM_LEARNING_LEDGER_V1 singleton, or null before first use (see tsf/domain/platform-learning-ledger.mjs)
   cleanupRequests: {}, // requestId -> TSF_CLEANUP_REQUEST_RECORD_V1 { recommendation, plan, authorization, executions[], receipts[] } (see tsf/server/cleanup-request-store.mjs)
   selfImprovementFindings: {}, // findingId -> TSF_SELF_IMPROVEMENT_FINDING_V1 (see tsf/domain/self-improvement-finding.mjs, tsf/server/self-improvement-finding-store.mjs)
-  selfImprovementReceipts: {} // missionId -> TSF_SELF_IMPROVEMENT_RECEIPT_V1[] hash-chained receipts (see tsf/domain/self-improvement-receipt-chain.mjs, tsf/server/self-improvement-receipt-store.mjs)
+  selfImprovementReceipts: {}, // missionId -> TSF_SELF_IMPROVEMENT_RECEIPT_V1[] hash-chained receipts (see tsf/domain/self-improvement-receipt-chain.mjs, tsf/server/self-improvement-receipt-store.mjs)
+  attentionNotificationEvents: {} // eventId -> TSF_ATTENTION_NOTIFICATION_EVENT_V1 (see tsf/domain/attention-notification-event.mjs, tsf/server/attention-notification-event-store.mjs)
   // Resource Pressure Governor leases are NOT stored here -- see
   // server/resource-pressure-lease-store.mjs: they must be host-wide
   // (shared across every worktree's own TSF server process), not scoped to

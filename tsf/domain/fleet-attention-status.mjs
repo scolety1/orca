@@ -1,0 +1,304 @@
+// Operator Attention V1, Phase 2: the ONE fleet-wide "what needs Tim's
+// attention" projection. Composes existing aggregators (fleet-work-status.mjs,
+// work-feed-summary.mjs, self-improvement findings, resource pressure) into a
+// single honest item list -- never a second, independently-derived truth
+// store. See tsf/docs/tsf/OPERATOR_ATTENTION_NOTIFICATIONS_V1_CHECKPOINT.md
+// for the locked reconciliation this implements.
+import { fleetNeedsYouStatus, fleetWorkStatus } from './fleet-work-status.mjs'
+import { summarizeWorkFromRuns } from './work-feed-summary.mjs'
+import { computeResearchMissionPhase } from './research-mission.mjs'
+
+export const ATTENTION_CATEGORIES = Object.freeze([
+  'NEEDS_OWNER',
+  'READY_FOR_ADOPTION',
+  'WAITING_FOR_RESOURCES',
+  'FAILED_REQUIRES_ATTENTION',
+  'BLOCKED_EXTERNAL',
+  'COMPLETED_RECENTLY'
+])
+
+const DEFAULT_SEVERITY_BY_CATEGORY = Object.freeze({
+  NEEDS_OWNER: 'P1',
+  FAILED_REQUIRES_ATTENTION: 'P1',
+  WAITING_FOR_RESOURCES: 'P1',
+  READY_FOR_ADOPTION: 'P2',
+  BLOCKED_EXTERNAL: 'P2',
+  COMPLETED_RECENTLY: 'P3'
+})
+
+function projectRef(displayNameById, projectId) {
+  if (!projectId) { return null }
+  return { id: projectId, displayName: displayNameById.get(projectId) ?? projectId }
+}
+
+// fleetNeedsYouStatus's own contract (fleet-work-status.mjs) is narrow and
+// reused verbatim -- it does not expose the real raisedAt/missionId a
+// notification needs, so those are recovered here by indexing the SAME raw
+// records fleetNeedsYouStatus itself reads, keyed by the needsYou entry's own
+// (content-hashed, effectively unique) id -- never a second guess at what
+// fleetNeedsYouStatus already computed.
+function indexNeedsYouOrigins(keepGoingRuns, researchMissions, plannerMissionRecords) {
+  const project = new Map() // entryId -> raisedAt
+  for (const run of Object.values(keepGoingRuns)) {
+    for (const entry of run.needsYou ?? []) { project.set(entry.id, entry.raisedAt) }
+  }
+  const research = new Map() // entryId -> { raisedAt, missionId }
+  for (const mission of Object.values(researchMissions)) {
+    for (const entry of mission.needsYou ?? []) {
+      research.set(entry.id, { raisedAt: entry.raisedAt, missionId: mission.id })
+    }
+  }
+  const planner = new Map() // entryId -> { at, missionId }
+  for (const [missionId, record] of Object.entries(plannerMissionRecords)) {
+    for (const entry of record?.checkpoint?.needsYou ?? []) {
+      planner.set(entry.id, { at: entry.at, missionId })
+    }
+  }
+  return { project, research, planner }
+}
+
+function needsYouItems(needsYou, origins, displayNameById) {
+  return needsYou.map((entry) => {
+    if (entry.source === 'PROJECT') {
+      return {
+        id: `needsyou:PROJECT:${entry.id}`,
+        category: 'NEEDS_OWNER',
+        severity: DEFAULT_SEVERITY_BY_CATEGORY.NEEDS_OWNER,
+        project: projectRef(displayNameById, entry.projectId),
+        label: entry.label,
+        reason: entry.question,
+        changedAt: origins.project.get(entry.id) ?? null,
+        deepLink: { kind: 'PROJECT', id: entry.projectId },
+        source: { kind: 'KEEP_GOING_RUN', id: entry.projectId }
+      }
+    }
+    if (entry.source === 'RESEARCH') {
+      const origin = origins.research.get(entry.id) ?? null
+      return {
+        id: `needsyou:RESEARCH:${entry.id}`,
+        category: 'NEEDS_OWNER',
+        severity: DEFAULT_SEVERITY_BY_CATEGORY.NEEDS_OWNER,
+        project: projectRef(displayNameById, entry.projectId),
+        label: entry.label,
+        reason: entry.question,
+        changedAt: origin?.raisedAt ?? null,
+        deepLink: { kind: 'RESEARCH_MISSION', id: origin?.missionId ?? null },
+        source: { kind: 'RESEARCH_MISSION', id: origin?.missionId ?? null }
+      }
+    }
+    // PLANNER -- no real project association exists on a planner checkpoint
+    // (repoState is branch/sha/worktreePath, not a project id), so project
+    // stays honestly null, matching fleetNeedsYouStatus's own convention.
+    const origin = origins.planner.get(entry.id) ?? null
+    return {
+      id: `needsyou:PLANNER:${entry.id}`,
+      category: 'NEEDS_OWNER',
+      severity: DEFAULT_SEVERITY_BY_CATEGORY.NEEDS_OWNER,
+      project: null,
+      label: entry.label,
+      reason: entry.question,
+      changedAt: origin?.at ?? null,
+      deepLink: { kind: 'PLANNER_MISSION', id: origin?.missionId ?? null },
+      source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: entry.id }
+    }
+  })
+}
+
+function stalledItems(stalled, displayNameById) {
+  return stalled.map((entry) => ({
+    id: `run:${entry.id}:stalled`,
+    category: 'FAILED_REQUIRES_ATTENTION',
+    severity: DEFAULT_SEVERITY_BY_CATEGORY.FAILED_REQUIRES_ATTENTION,
+    project: projectRef(displayNameById, entry.id),
+    label: entry.displayName,
+    reason: entry.liveWorkFeed?.reason ?? 'run is stalled',
+    changedAt: entry.lastCheckpointAt ?? null,
+    deepLink: { kind: 'PROJECT', id: entry.id },
+    source: { kind: 'KEEP_GOING_RUN', id: entry.id }
+  }))
+}
+
+// readyForAdoption mixes legacy (operator-adoption-candidate, no Keep Going
+// run) and run-sourced entries -- distinguished by the presence of `runId`,
+// the one field only run-sourced entries carry. Legacy entries have no real
+// per-item "became ready" timestamp anywhere in the project record (no
+// fabricated stand-in -- see module header), so changedAt is honestly null.
+function readyForAdoptionItems(readyForAdoption, displayNameById) {
+  return readyForAdoption.map((entry) => {
+    const isRunSourced = entry.runId !== undefined
+    return {
+      id: `run:${entry.id}:readyForAdoption`,
+      category: 'READY_FOR_ADOPTION',
+      severity: DEFAULT_SEVERITY_BY_CATEGORY.READY_FOR_ADOPTION,
+      project: projectRef(displayNameById, entry.id),
+      label: entry.displayName,
+      reason: isRunSourced
+        ? (entry.liveWorkFeed?.reason ?? 'ready for adoption')
+        : 'adoption candidate is ready for adoption',
+      changedAt: isRunSourced ? (entry.lastCheckpointAt ?? null) : null,
+      deepLink: { kind: 'PROJECT', id: entry.id },
+      source: isRunSourced
+        ? { kind: 'KEEP_GOING_RUN', id: entry.id }
+        : { kind: 'PROJECT_ADOPTION_CANDIDATE', id: entry.id }
+    }
+  })
+}
+
+// blocked mixes legacy (project.mission.state startsWith 'BLOCKED', no real
+// per-item timestamp available anywhere -- honestly null) and research-
+// mission-sourced entries (kind: 'RESEARCH_MISSION', real updatedAt).
+function blockedItems(blocked, researchMissions, displayNameById) {
+  return blocked.map((entry) => {
+    if (entry.kind === 'RESEARCH_MISSION') {
+      const mission = researchMissions[entry.missionId]
+      const reason = mission?.transitions?.at(-1)?.reason ?? 'research mission is blocked'
+      return {
+        id: `research:${entry.missionId}:blocked`,
+        category: 'BLOCKED_EXTERNAL',
+        severity: DEFAULT_SEVERITY_BY_CATEGORY.BLOCKED_EXTERNAL,
+        project: projectRef(displayNameById, entry.projectId),
+        label: entry.researchQuestion ?? entry.missionId,
+        reason,
+        changedAt: entry.updatedAt ?? null,
+        deepLink: { kind: 'RESEARCH_MISSION', id: entry.missionId },
+        source: { kind: 'RESEARCH_MISSION', id: entry.missionId }
+      }
+    }
+    return {
+      id: `legacy:${entry.id}:blocked`,
+      category: 'BLOCKED_EXTERNAL',
+      severity: DEFAULT_SEVERITY_BY_CATEGORY.BLOCKED_EXTERNAL,
+      project: projectRef(displayNameById, entry.id),
+      label: entry.displayName,
+      reason: entry.mission?.blockedReason ?? 'blocked',
+      changedAt: null,
+      deepLink: { kind: 'PROJECT', id: entry.id },
+      source: { kind: 'PROJECT_LEGACY_BLOCKED', id: entry.id }
+    }
+  })
+}
+
+// COMPLETED_RECENTLY is deliberately NOT read from summarizeWorkFromRuns's
+// own `.recentlyCompleted` -- that array merges real run/research completions
+// with legacy static-adoption entries (project.mission.state === 'ADOPTED',
+// operator-driven, Tim already knows) into one shape-identical list with no
+// field to tell them apart. Re-derived directly here from fleetWorkStatus's
+// live feed state (COMPLETED -- reserved by live-work-feed.mjs for a run
+// whose project has since been adopted; not currently emitted, but honestly
+// checked for forward-compatibility) and computeResearchMissionPhase, so a
+// legacy adoption can never masquerade as a real, notify-worthy completion.
+function completedRecentlyItems(projects, keepGoingRuns, researchMissions, clock, displayNameById) {
+  const items = []
+  for (const status of fleetWorkStatus(projects, keepGoingRuns, clock)) {
+    if (status.feed?.state !== 'COMPLETED') { continue }
+    items.push({
+      id: `run:${status.projectId}:completed`,
+      category: 'COMPLETED_RECENTLY',
+      severity: DEFAULT_SEVERITY_BY_CATEGORY.COMPLETED_RECENTLY,
+      project: projectRef(displayNameById, status.projectId),
+      label: status.displayName,
+      reason: status.feed.reason,
+      changedAt: status.lastCheckpointAt ?? null,
+      deepLink: { kind: 'PROJECT', id: status.projectId },
+      source: { kind: 'KEEP_GOING_RUN', id: status.projectId }
+    })
+  }
+  for (const mission of Object.values(researchMissions)) {
+    if (computeResearchMissionPhase(mission) !== 'COMPLETE') { continue }
+    items.push({
+      id: `research:${mission.id}:completed`,
+      category: 'COMPLETED_RECENTLY',
+      severity: DEFAULT_SEVERITY_BY_CATEGORY.COMPLETED_RECENTLY,
+      project: projectRef(displayNameById, mission.projectId),
+      label: mission.specification?.researchQuestion ?? mission.id,
+      reason: 'research mission reached COMPLETE',
+      changedAt: mission.updatedAt,
+      deepLink: { kind: 'RESEARCH_MISSION', id: mission.id },
+      source: { kind: 'RESEARCH_MISSION', id: mission.id }
+    })
+  }
+  return items
+}
+
+// Split by the SAME transition-reason distinction command-self-improvement-
+// bridge.mjs already establishes (lines ~95-125): a real repair attempt that
+// exhausted its retry budget is a genuine failure, distinct from eligibility
+// declining to attempt one at all.
+function selfImprovementItems(selfImprovementFindings, displayNameById) {
+  const items = []
+  for (const finding of Object.values(selfImprovementFindings)) {
+    const lastReason = finding.transitions?.at(-1)?.reason
+    let category = null
+    let reason = null
+    if (finding.status === 'NEEDS_OWNER' && lastReason === 'AUTOFIX_ELIGIBILITY_CLASSIFIED') {
+      category = 'NEEDS_OWNER'
+      reason = `Not eligible for autofix${finding.authorityRequired ? ` (${finding.authorityRequired})` : ''} -- needs your call.`
+    } else if (finding.status === 'NEEDS_OWNER' && lastReason === 'REPAIR_RETRY_BUDGET_EXCEEDED') {
+      category = 'FAILED_REQUIRES_ATTENTION'
+      reason = 'Automated repair attempts failed and exhausted the retry budget -- needs your review.'
+    } else if (finding.status === 'READY_FOR_ADOPTION') {
+      category = 'READY_FOR_ADOPTION'
+      reason = 'A fix is ready for your review and adoption.'
+    }
+    if (!category) { continue }
+    items.push({
+      id: `finding:${finding.findingId}`,
+      category,
+      severity: finding.severity ?? DEFAULT_SEVERITY_BY_CATEGORY[category],
+      project: projectRef(displayNameById, finding.projectId),
+      label: finding.affectedSurface,
+      reason,
+      changedAt: finding.updatedAt,
+      deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId },
+      source: { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId }
+    })
+  }
+  return items
+}
+
+// No durable per-mission "waiting for resources" signal exists anywhere in
+// this codebase (confirmed in the checkpoint doc's own Phase 1 sweep) -- a
+// per-mission wait list would be fabricated. The only honest signal is the
+// live, host-wide tier itself.
+function resourcePressureItem(resourcePressureState) {
+  if (!resourcePressureState) { return null }
+  if (!['CRITICAL', 'EMERGENCY'].includes(resourcePressureState.tier)) { return null }
+  return {
+    id: `resource-pressure:${resourcePressureState.tier}`,
+    category: 'WAITING_FOR_RESOURCES',
+    severity: DEFAULT_SEVERITY_BY_CATEGORY.WAITING_FOR_RESOURCES,
+    project: null,
+    label: 'Host resource pressure',
+    reason: resourcePressureState.admission?.reason ?? `host memory tier is ${resourcePressureState.tier}`,
+    changedAt: resourcePressureState.observedAt,
+    deepLink: { kind: 'RESOURCE_PRESSURE', id: null },
+    source: { kind: 'RESOURCE_PRESSURE_TIER', id: resourcePressureState.tier }
+  }
+}
+
+export function buildFleetAttentionItems({
+  projects,
+  keepGoingRuns = {},
+  researchMissions = {},
+  plannerMissionRecords = {},
+  selfImprovementFindings = {},
+  resourcePressureState = null,
+  clock = () => new Date()
+}) {
+  const displayNameById = new Map(projects.map((p) => [p.id, p.displayName]))
+  const origins = indexNeedsYouOrigins(keepGoingRuns, researchMissions, plannerMissionRecords)
+  const needsYou = fleetNeedsYouStatus(projects, keepGoingRuns, researchMissions, plannerMissionRecords)
+  const workSummary = summarizeWorkFromRuns(projects, keepGoingRuns, clock, researchMissions)
+
+  const items = [
+    ...needsYouItems(needsYou, origins, displayNameById),
+    ...stalledItems(workSummary.stalled, displayNameById),
+    ...readyForAdoptionItems(workSummary.readyForAdoption, displayNameById),
+    ...blockedItems(workSummary.blocked, researchMissions, displayNameById),
+    ...completedRecentlyItems(projects, keepGoingRuns, researchMissions, clock, displayNameById),
+    ...selfImprovementItems(selfImprovementFindings, displayNameById)
+  ]
+  const resourceItem = resourcePressureItem(resourcePressureState)
+  if (resourceItem) { items.push(resourceItem) }
+  return items
+}

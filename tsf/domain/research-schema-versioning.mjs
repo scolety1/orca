@@ -139,3 +139,19 @@ const selfImprovementFindingGuard = buildSchemaVersionGuard(
 export const SUPPORTED_SELF_IMPROVEMENT_FINDING_SCHEMA_VERSIONS = selfImprovementFindingGuard.supportedVersions
 export const assertSupportedSelfImprovementFindingSchemaVersion = selfImprovementFindingGuard.assertSupported
 export const migrateSelfImprovementFindingSchema = selfImprovementFindingGuard.migrate
+
+// Same guard, for Operator Attention V1's durable notification event record
+// (see attention-notification-event.mjs's createAttentionNotificationEvent,
+// schemaVersion 'TSF_ATTENTION_NOTIFICATION_EVENT_V1'). Wired into
+// attention-notification-event-store.mjs's listAttentionNotificationEvents/
+// withAttentionNotificationEvent -- same fail-closed discipline as every
+// guard above. Literal string re-declared here (not imported) to match this
+// module's own established convention for every guard above it.
+export const CURRENT_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSION = 'TSF_ATTENTION_NOTIFICATION_EVENT_V1'
+const attentionNotificationEventGuard = buildSchemaVersionGuard(
+  'attention notification event',
+  new Map([[CURRENT_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSION, (event) => event]])
+)
+export const SUPPORTED_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSIONS = attentionNotificationEventGuard.supportedVersions
+export const assertSupportedAttentionNotificationEventSchemaVersion = attentionNotificationEventGuard.assertSupported
+export const migrateAttentionNotificationEventSchema = attentionNotificationEventGuard.migrate
