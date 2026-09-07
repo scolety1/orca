@@ -54,8 +54,12 @@ uses, fully read-only).
 | 1. UI_DOGFOOD_AGENT_V0 | **ADOPTED** — merged to `tsf/main` @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **ADOPTED** — merged to `tsf/main` @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 3. Deferred Research Platform Completion Wave | **ADOPTED** — both waves merged: Wave 1 @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, Wave 2 @ `10e39227a7ebcdcee15689163c9707bbfc6866b5`, both pushed to `fork/tsf/main` (confirmed), both phase worktrees retired | See below |
-| 4. Cleanup V1 / Governed Destructive Automation | **CLEANUP_V1_IMPLEMENTED_READY_FOR_OWNER_ACTIVATION** — implemented, tested, dry-run/fixture-proven in worktree `cleanup-v1-governed-destructive-automation` (branch `tsf/feature/cleanup-v1-governed-destructive-automation`, forked from `10e39227a7`); real destructive execution stays behind the unset owner-authorization gate; NOT merged to `tsf/main`, NOT pushed, per this phase's explicit instruction | See below |
-| 5. Larger Astra Follow-up Benchmark | **ASTRA_MORE_EVIDENCE_NEEDED — investigated, not run; owner-gated on a real reachable model + authorized spend** | See below |
+| 4. Cleanup V1 / Governed Destructive Automation | **ADOPTED** — merged to `tsf/main` @ `32c5d05520cfa189ac602c12cf03ba1f1121f534`, pushed to `fork/tsf/main` (confirmed), phase worktree retired; state `CLEANUP_V1_IMPLEMENTED_READY_FOR_OWNER_ACTIVATION`, real destructive execution stays behind the still-unset owner-authorization gate | See below |
+| 5. Larger Astra Follow-up Benchmark | **ADOPTED** — merged to `tsf/main` @ `e91cc0deecbfaeeff75766d041f7a3d870a5f962`, pushed (confirmed), phase worktree retired; result `ASTRA_MORE_EVIDENCE_NEEDED` — investigated, not run; owner-gated on a real reachable model + authorized spend | See below |
+
+**PROGRAM COMPLETE — see "FINAL PROGRAM RECONCILIATION" section at the
+end of this document for the full closing report
+(`TSF_POST_CLEANUP_UPGRADE_PROGRAM_V1_COMPLETE`).**
 
 ### Phase 1 — UI_DOGFOOD_AGENT_V0
 
@@ -1755,3 +1759,254 @@ gate. Awaiting coordinator/owner review before any merge decision. Phase
 `ASTRA_MORE_EVIDENCE_NEEDED` — no real benchmark run, design ready in
 `ASTRA_LARGER_BENCHMARK_V2_DESIGN.md`, owner gates recorded above, not
 blocking other program work.
+
+**Coordinator independent review (2026-09-06), Phase 4 adoption:** re-ran
+124/125 new tests directly (1 confirmed pre-existing `node_modules`-gap
+failure). Read `cleanup-owner-authorization-gate.mjs` (real two-signal
+fail-closed gate — env marker AND flag file both required, neither ever
+set by this work), `cleanup-executor.mjs` (genuine RECOMMENDATION → PLAN →
+idempotency-check → gate-check → AUTHORIZATION → independent race-recheck
+→ EXECUTION pipeline, structurally the sole mutation entry point), and
+`cleanup-protected-registry(-defaults).mjs` (hardcoded real protected
+paths — `C:\TSF_ORCA`, `C:\NWR`, `C:\NWR_HISTORICAL_DATA` — additive-only
+merge, canonical branches always protected regardless of registry
+contents) directly. Confirmed the one lint finding
+(`http-server.mjs` max-lines, 611/600) is pre-existing debt the minimal
+6-line route-wiring addition unavoidably grew, not a new violation and no
+`max-lines` disable was added. No corrections needed. **Merged to
+`tsf/main` @ `32c5d05520cfa189ac602c12cf03ba1f1121f534`, pushed to
+`fork/tsf/main` (verified), worktree
+`cleanup-v1-governed-destructive-automation` retired.**
+
+**Coordinator independent review (2026-09-06), Phase 5 adoption:**
+confirmed the commit is docs-only (2 files, both under `tsf/docs/tsf/`,
+zero code/config changes, no executable benchmark harness). Read the
+design doc's cost-estimate section directly — honestly states "Unknown —
+no pricing data," explicitly declined to fabricate a number or make an
+external network call to price an unconfirmed model. No corrections
+needed. **Merged to `tsf/main` @
+`e91cc0deecbfaeeff75766d041f7a3d870a5f962`, pushed to `fork/tsf/main`
+(verified), worktree `astra-benchmark-v2-investigation` retired.**
+
+---
+
+# FINAL PROGRAM RECONCILIATION — `TSF_POST_CLEANUP_UPGRADE_PROGRAM_V1_COMPLETE`
+
+All five phases have reached GREEN (adopted), DEFERRED_WITH_EXPLICIT_REASON,
+or READY_FOR_OWNER_GATE. Canonical `tsf/main` verified clean, `fork/tsf/main`
+verified current, no abandoned temporary worktrees, no duplicate
+architecture introduced anywhere in this program, no historical TSF
+engineering lane reopened, NWR protected state and the 2025 sealed holdout
+both verified untouched throughout. This section is the summary report;
+per-phase blow-by-blow detail is above.
+
+## 1. Final Canonical Main
+
+`tsf/main` @ **`e91cc0deecbfaeeff75766d041f7a3d870a5f962`**, working tree
+clean, `fork/tsf/main` confirmed to resolve to the identical SHA (fetched
+and re-verified after every push in this program — no force-push, no
+history rewrite, every push preceded by a fetch + ancestor-check +
+dry-run). Program start baseline was `458f73b789b83ec27d46394a8a2562bb8dab709c`;
+9 commits landed across the program (2 feature + 1 docs for Phase 1's
+worktree cycle collapses to 1 feature commit each phase, plus one
+docs-only checkpoint commit opening each subsequent phase, plus Phase 3's
+two-wave split and the Phase 5/final docs commits).
+
+## 2. UI_DOGFOOD_AGENT_V0 (Phase 1)
+
+**ADOPTED** @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`. Generic (not
+NWR-hardcoded) UI dogfooding capability: reuses Playwright's existing
+Electron fixture pattern, a new console/network-capture helper, the
+existing `evaluation-pack.mjs` engine (+1 `UI_DOGFOOD` category), the
+existing settings-search-catalog surface idiom, and a new Command intent
+in `command-responder.mjs`. Golden run against Orca's own UI found 33 real
+mobile-viewport `CLIPPED_CONTENT` findings (correctly left recommend-only
+— architectural root cause, not silently redesigned). NWR dogfood pass
+correctly deferred (Streamlit app blocked by host Device Guard policy —
+not bypassed).
+
+## 3. PLANNER_CONTEXT_LIFECYCLE_V0 (Phase 2)
+
+**ADOPTED** @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`. Single-writer
+planner-mission lease (new sibling to the existing host-resource lease,
+reusing its underlying cross-process file-lock primitive), durable
+checkpoint/hydrate lifecycle, idempotent worker dispatch by task
+fingerprint, Resource Pressure Governor-gated session creation. Golden
+forced-rollover dogfood proven with genuinely separate in-process objects
+and a real two-OS-process race test: zero re-dispatch, zero lost state,
+Needs-You survives handoff, a stale planner is structurally refused
+further mutation after a successor takes over.
+
+## 4. Research Platform Completion Wave (Phase 3, both waves)
+
+**ADOPTED** — Wave 1 @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`
+(REQ-002 Platform Learning Ledger, epistemic separation enforced
+structurally — a lesson cannot carry fieldName/value/entityId, never
+overrides verified evidence; REQ-003 chain-of-custody wiring, evidence-
+gated tier upgrades, honest degradation-always-applied). Wave 2 @
+`10e39227a7ebcdcee15689163c9707bbfc6866b5` (3C owner-supplied local
+artifact + 3D authenticated official download, fixture-proven only, real
+`assertNoSecretLeakage` runtime guard against credential fields + 3E
+paywall/auth content classification, fail-closed + 3F additive snapshot
+metadata fields named by the actual deferred backlog doc + 3G a real
+`ResearchMission` driven through all three acquisition modes to genuine
+completion). Needs-You: the real Electron-session bridge for 3D and a
+real download transport are a product/UI decision, not built here.
+
+## 5. CLEANUP_V1 (Phase 4)
+
+**ADOPTED** @ `32c5d05520cfa189ac602c12cf03ba1f1121f534`, state
+`CLEANUP_V1_IMPLEMENTED_READY_FOR_OWNER_ACTIVATION`. Full governed
+destructive-action pipeline (recommendation → plan → authorization →
+execution, each a distinct durable, receipted stage) over the existing
+read-only Resource Auditor. Real destructive execution requires BOTH a
+real env-var marker AND a real flag file to agree — neither was ever set
+anywhere in this program. Protected-path registry hardcodes
+`C:\TSF_ORCA`/`C:\NWR`/`C:\NWR_HISTORICAL_DATA` as permanently
+unremovable, additive-only. All adversarial testing (dirty worktree,
+Windows file-lock, partial-failure recovery, race-recheck, stale-lease,
+idempotent replay) ran only against disposable fixtures in `os.tmpdir()`
+— independently confirmed nothing real was ever touched.
+
+## 6. Astra Follow-up (Phase 5)
+
+**`ASTRA_MORE_EVIDENCE_NEEDED`** @ `e91cc0deecbfaeeff75766d041f7a3d870a5f962`.
+Investigation (not a benchmark run) found: the directive's referenced
+prior "initial A-E benchmark" is not locatable anywhere in this
+repository or its git history; no "Astra"/`gpt-6-astra` routing option,
+provider adapter, or launch profile exists anywhere in the current TSF
+routing config (`provider-role-mappings.v1.json` defines exactly
+`CODEX_SAFE` and `CLAUDE_SAFE`, neither Astra); no already-authorized
+spend mechanism covers a model-comparison benchmark (the one paid-approval
+primitive that exists, `research-paid-approval.mjs`, is explicitly scoped
+to Exa/Parallel research-provider spend, a different subsystem). No real
+paid provider was called; no fabricated result was produced. A ready-to-run
+benchmark design (32 tasks, 8 categories, fair paired methodology, blind
+scoring) is preserved in `ASTRA_LARGER_BENCHMARK_V2_DESIGN.md` for when an
+owner supplies real model identity, pricing, and an authorized spend
+ceiling. Production routing was not touched.
+
+## 7. Test/Verification Ledger
+
+Every phase's tests were independently re-run by the coordinator (not
+just trusted from the implementing agent's report) before adoption:
+Phase 1 — 68 new/changed tests directly reproduced, 100% pass, `npx
+oxlint` clean. Phase 2 — 45 new tests directly reproduced (zero
+`node_modules` dependency — built-ins only), 100% pass, lint clean.
+Phase 3 Wave 1 — 23 new tests reproduced, 100% pass; lint's 4 findings
+`git blame`-verified pre-existing. Phase 3 Wave 2 — 63 new/changed tests
+reproduced across 8 files including the full 3G multi-mode proving set,
+100% pass; real-shared-state isolation independently confirmed. Phase 4 —
+124/125 new tests reproduced (1 pre-existing environment gap), including
+real adversarial fixtures (genuine spawned child process holding a
+Windows file lock; two real OS processes racing for a lease in Phase 2's
+own cross-process test). Phase 5 — docs-only, no test surface. Every
+phase's full-suite regression run showed all pre-existing failures
+confirmed via `git stash`/baseline comparison as unrelated to that
+phase's own change, zero new regressions introduced across the whole
+program.
+
+## 8. Adversarial Review Findings
+
+No corrected defects were required in any phase's implementation — every
+independent coordinator review before adoption found the work sound as
+delivered. Genuine findings surfaced and correctly handled without being
+treated as blockers: Phase 1's 33 real mobile-viewport clipping findings
+(recommend-only, not silently redesigned); Phase 3 Wave 2's own
+self-caught ESM-import-ordering bug (would have silently written to real
+shared dev state — found and fixed by the implementing agent's own
+testing before it ever reached coordinator review); Phase 4's disclosed
+pre-existing `http-server.mjs` max-lines debt (not suppressed, not hidden).
+The one standing process anomaly from earlier in this session (3
+initially-unexplained background agents) was resolved on investigation:
+they were the NWR preservation audit's own dispatched sub-workers, not
+stray or duplicate dispatches.
+
+## 9. Resource/Session History
+
+Host free memory ranged ~1.4GB–2.8GB across the program (16GB host,
+known shared-machine contention — corroborated mid-program by a new peer
+session, `nwr-historical-redraft-data-hq-1d`, appearing during a low-memory
+reading). Work was kept strictly sequential (one worker at a time) per
+resource discipline; Phase 3 was deliberately split into two waves partly
+for this reason. No process was ever killed by name; no giant test suite
+was run merely for impressive counts — targeted test files were the
+default, with two deliberate, bounded full-suite regression runs (Phase 4)
+justified by that phase's destructive-automation subject matter.
+
+## 10. Owner Gates Still Outstanding
+
+1. **NWR preservation remediation** (recorded at program start, not
+   program-created): push `tsf/feature/dataset-research-engine-v0` to a
+   durable remote; durably preserve 57 UNIQUE_AND_MUST_PRESERVE + resolve
+   29 UNCERTAIN artifacts (`raw_stats_2018_wk17.csv` most fragile);
+   confirm the 19-file platform-bookkeeping cluster's adoption status
+   with Main TSF HQ (likely already satisfied by the pre-program Dataset
+   Research reconciliation, not independently re-verified here).
+2. **Cleanup V1 real activation**: the owner-authorization gate
+   (`TSF_CLEANUP_V1_OWNER_AUTHORIZATION` env var + a real flag file, both
+   required) is implemented and tested but deliberately never set by this
+   program. Setting it is a genuine owner decision.
+3. **Phase 3's 3D real bridge**: a real Electron-authenticated-session
+   bridge and real download transport for `AUTHENTICATED_OFFICIAL_DOWNLOAD`
+   need a product/UI decision; the contract is fixture-proven only.
+4. **Astra benchmark**: needs the owner to supply real model
+   identity/pricing for whatever "gpt-6-astra" maps to today (if
+   anything) and an authorized spend ceiling before any real comparison
+   can run. The design is ready; nothing is blocked on this.
+
+None of the above blocked this program's own completion, per its explicit
+instruction that outstanding gates should be recorded and the program
+should continue past them.
+
+## 11. Deferred Future Roadmap
+
+- Wire Phase 1's dogfood capability's fix-relaunch-rescan auto-iterate
+  loop into a live Command-triggered multi-pass run (V0 is a single
+  bounded read-only pass from chat by design).
+- Wire Phase 2's `PlannerSessionLifecycle` into the live Command/Chat
+  dispatch path so a real planner session actually uses it end-to-end,
+  plus an automatic lease-renewal heartbeat (V0 exposes manual `renewLease()`).
+- Wire Phase 3's Learning Ledger `retrieveLessonGuidance` into a live
+  research-strategy decision (currently recorded but not consumed).
+- The four ported-but-still-unwired Dataset Research modules
+  (`identity-collision-resolution.mjs` and three others) — real
+  capabilities, confirmed not what REQ-003 itself asked for.
+- Fix Orca's Settings shell to support narrow-viewport (≤390px) layouts,
+  or make an explicit product decision that mobile-width Settings is out
+  of scope (Phase 1's own finding, never auto-applied).
+- Remediate the recurring empty-`node_modules`-per-fresh-worktree gap
+  that forced a partial-suite workaround in every phase of this program.
+
+## 12. Final Worktree Inventory
+
+Only two worktrees exist: `C:/TSF_ORCA` (`tsf/main` @
+`e91cc0deecbfaeeff75766d041f7a3d870a5f962`) and
+`C:/Users/codex-agent/orca/workspaces/TSF_ORCA/dataset-research-engine-v0`
+(`tsf/feature/dataset-research-engine-v0` @ `32b175fa9b`, held under
+`NWR_HISTORICAL_EVIDENCE_PRESERVATION_HOLD` — NOT program-created, not
+program-cleared; see Owner Gate #1). All 8 temporary phase worktrees this
+program itself created (`ui-dogfood-agent-v0`,
+`planner-context-lifecycle-v0`, `research-platform-completion-wave-v0`,
+`research-platform-completion-wave-v0-wave2`,
+`cleanup-v1-governed-destructive-automation`,
+`astra-benchmark-v2-investigation`, and this final-reconciliation
+worktree itself once its own commit lands) were retired immediately after
+each phase's adoption — none left abandoned.
+
+## 13. Recommended Next Platform Priorities
+
+In rough priority order: (1) resolve NWR preservation Owner Gate #1 — the
+compounding risk (76 unpushed commits, single local object store) makes
+this the most time-sensitive outstanding item, unrelated to TSF platform
+work but genuinely urgent on its own; (2) wire Phase 2's planner lifecycle
+into live Command dispatch — this is the actual "ZERO TIM RELAY" payoff,
+currently proven but not yet load-bearing; (3) a real product decision on
+Phase 3's authenticated-download bridge, since 3D otherwise stays
+permanently fixture-only; (4) supply real Astra model identity/pricing if
+that comparison still matters, or formally retire the idea if "Astra" no
+longer refers to anything reachable; (5) Cleanup V1 real activation,
+once the owner has reviewed the gated design and is ready to trust it
+against real disposable resources.
+
+**`TSF_POST_CLEANUP_UPGRADE_PROGRAM_V1_COMPLETE`**
