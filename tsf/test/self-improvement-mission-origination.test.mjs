@@ -132,4 +132,19 @@ test('a real concurrent double-origination for the identical finding never loses
   assert.equal(record.checkpoint.decisions.length, 1, 'the winning decision must not be silently overwritten by the loser')
 })
 
+// Wave D real gap: MISSION_ORIGINATED has existed in the receipt-chain
+// enum since Wave B but no code path ever wrote one.
+test('a real origination records a MISSION_ORIGINATED receipt', async () => {
+  const { readReceipts } = await import('../server/self-improvement-receipt-store.mjs')
+  const finding = eligibleFinding({ affectedSurface: 'tsf/domain/fixture-receipt-origination.mjs' })
+  const result = await originateRepairMission(finding, {
+    canonicalRepoPath: CANONICAL_REPO_PATH,
+    clock,
+    deps: { observeRepoState: () => FAKE_REPO_STATE, lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory } }
+  })
+  const receipts = readReceipts(result.missionId)
+  assert.equal(receipts.filter((r) => r.kind === 'MISSION_ORIGINATED').length, 1)
+  assert.equal(receipts[0].findingId, finding.findingId)
+})
+
 test.after(cleanupStateFile)

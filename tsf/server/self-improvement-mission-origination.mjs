@@ -19,6 +19,7 @@ import { transitionFinding } from '../domain/self-improvement-finding.mjs'
 import { assertScopeDoesNotOverlapForbidden, buildAuthorityEnvelope } from '../domain/self-improvement-authority-envelope.mjs'
 import { observeCanonicalRepoState } from './planner-mission-repo-state.mjs'
 import { withFinding } from './self-improvement-finding-store.mjs'
+import { recordSelfImprovementReceipt } from './self-improvement-receipt-store.mjs'
 
 export function computeRepairMissionId(findingId) {
   return `mission:selfimprove:${findingId.replace(/^finding:/, '')}`
@@ -88,6 +89,14 @@ export async function originateRepairMission(finding, { canonicalRepoPath, clock
   const nextFinding = await writeFinding(finding.findingId, (current) =>
     transitionFinding(current ?? finding, 'FIX_MISSION_CREATED', { reason: 'REPAIR_MISSION_ORIGINATED', evidence: [{ missionId }] }, clock)
   )
+
+  // Real gap found by Wave D's own golden proof: this receipt kind existed
+  // in the enum since Wave B but no code path ever wrote one -- the receipt
+  // chain's own documented purpose ("links finding -> mission ->
+  // implementation sha -> ...") started one hop short of the finding
+  // without it.
+  const recordReceipt = deps.recordSelfImprovementReceipt ?? recordSelfImprovementReceipt
+  await recordReceipt(missionId, { kind: 'MISSION_ORIGINATED', missionId, findingId: finding.findingId, detail: { affectedSurface: finding.affectedSurface } }, clock)
 
   return { created: true, missionId, checkpoint: lifecycle.getCheckpoint(), envelope, finding: nextFinding }
 }

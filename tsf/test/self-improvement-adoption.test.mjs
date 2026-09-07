@@ -11,12 +11,22 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { attemptRepairAdoption } from '../server/self-improvement-adoption.mjs'
-import { createIsolatedRepairWorktree } from '../server/self-improvement-worktree.mjs'
-import { ADOPTION_AUTHORIZATION_MARKER, defaultAdoptionAuthorizationFlagPath } from '../server/self-improvement-adoption-authorization-gate.mjs'
 
 const ROOT = mkdtempSync(path.join(tmpdir(), 'tsf-selfimprove-adoption-'))
+// Wave D: attemptRepairAdoption now records a real ADOPTION_DECISION
+// receipt -- isolates this suite's state file from the shared default
+// (same convention every other self-improvement test file already uses)
+// so it never collides with a concurrently-running suite. Set BEFORE the
+// dynamic imports below -- data-store.mjs captures TSF_UI_STATE_FILE into
+// a module-level const at import time, so a static top-of-file import
+// here would be too late.
+process.env.TSF_UI_STATE_FILE = path.join(ROOT, 'operator-state.json')
 test.after(() => rmSync(ROOT, { recursive: true, force: true }))
+
+const { attemptRepairAdoption } = await import('../server/self-improvement-adoption.mjs')
+const { createIsolatedRepairWorktree } = await import('../server/self-improvement-worktree.mjs')
+const { ADOPTION_AUTHORIZATION_MARKER, defaultAdoptionAuthorizationFlagPath } = await import('../server/self-improvement-adoption-authorization-gate.mjs')
+const { readReceipts } = await import('../server/self-improvement-receipt-store.mjs')
 
 function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -50,6 +60,13 @@ test('GATE CLOSED (real process.env, real default flag path): adoption is blocke
   assert.equal(result.adopted, false)
   assert.equal(result.reason, 'GATE_CLOSED')
   assert.equal(result.gateState.open, false)
+
+  // Wave D real gap: ADOPTION_DECISION existed in the receipt-chain enum
+  // since Wave B but no code path ever wrote one, for ANY outcome.
+  const receipts = readReceipts('mission:selfimprove:fixture')
+  assert.equal(receipts.length, 1)
+  assert.equal(receipts[0].kind, 'ADOPTION_DECISION')
+  assert.equal(receipts[0].detail.reason, 'GATE_CLOSED')
 })
 
 test('GATE OPEN (fabricated env + fabricated flag file only): real ff-only merge against a disposable fixture repo pair', async () => {

@@ -63,6 +63,7 @@ export async function advanceOneFinding(finding, { canonicalRepoPath, clock = ()
     branch: passing.detail.branch,
     canonicalRepoPath,
     verifierVerdict: passing.verdict,
+    clock,
     deps: deps.adoptionDeps ?? {}
   })
 
