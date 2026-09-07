@@ -32,8 +32,8 @@ import {
   verifyAndReconcileResearchNodeFieldDurable
 } from './research-mission-driver.mjs'
 import { readResearchMission, withResearchMission } from './research-mission-store.mjs'
-import { emptyPlatformLearningLedger, recordLessonsFromCompletedMission } from '../domain/platform-learning-ledger.mjs'
-import { withPlatformLearningLedger } from './platform-learning-ledger-store.mjs'
+import { emptyPlatformLearningLedger, recordLessonsFromCompletedMission, retrieveLessonGuidance } from '../domain/platform-learning-ledger.mjs'
+import { readPlatformLearningLedger, withPlatformLearningLedger } from './platform-learning-ledger-store.mjs'
 
 export const DEFAULT_TICK_INTERVAL_MS = 30_000
 // Same fleet-shape throttle keep-going-fleet-driver.mjs applies, for the
@@ -54,6 +54,28 @@ export const DEFAULT_MAX_CONCURRENT_TICKS = 2
 function isDispatchAdmitted(deps) {
   const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
   return classifyDispatchAdmission(readHostMemory(), 'newResearchWorkers')
+}
+
+// F3 (REQ-002 read side): the ONE live consumer of retrieveLessonGuidance --
+// advisory-only, surfaced on the dispatch result, never consulted by
+// isDispatchAdmitted/decideNextMissionAction so it can never gate, delay, or
+// re-route a real dispatch. PROVIDER_RELIABILITY_SIGNAL is filtered to
+// lessons that actually name the provider about to be used (a cross-mission
+// signal about a DIFFERENT provider would be noise, not guidance, per this
+// driver's own "no safe default" discipline elsewhere); RECURRING_DISPATCH_FAILURE
+// is only pulled on a retry, where this node's own retry is already real,
+// current evidence that the pattern is relevant here. Returns undefined
+// (never []) when nothing is real to report, matching the ledger's own
+// no-fabrication discipline -- a caller checking `if (advisories)` gets a
+// true no-op, not an empty-but-present field.
+function gatherDispatchAdvisories(providerId, isRetry, deps) {
+  const readLedger = deps.readPlatformLearningLedger ?? readPlatformLearningLedger
+  const ledger = readLedger()
+  const advisories = [
+    ...retrieveLessonGuidance(ledger, 'PROVIDER_RELIABILITY_SIGNAL').filter((lesson) => lesson.statement.includes(providerId)),
+    ...(isRetry ? retrieveLessonGuidance(ledger, 'RECURRING_DISPATCH_FAILURE') : [])
+  ]
+  return advisories.length > 0 ? advisories : undefined
 }
 
 async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
@@ -132,6 +154,10 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
   // DIFFERENT provider than deps.worker actually is (currently unreachable:
   // no bootstrap configures retryProviderId today).
   const providerId = node.retryCount > 0 && deps.retryProviderId ? deps.retryProviderId : deps.providerId ?? 'DEFAULT'
+  // Advisory-only lookback (see gatherDispatchAdvisories) -- computed before
+  // dispatch but never read by it; the dispatch call below runs identically
+  // whether or not any advisory exists.
+  const advisories = gatherDispatchAdvisories(providerId, isRetry, deps)
   // Paid providers remain default-OFF: dispatchResearchNodeWithApprovalDurable
   // itself refuses cleanly (NO_PAID_APPROVAL) with no dispatch attempted at
   // all when no scoped approval is currently active -- this driver never
@@ -141,7 +167,7 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
         pricingPolicy: deps.pricingPolicy
       })
     : await dispatchResearchNodeDurable(missionId, nodeId, providerId, deps.worker, clock)
-  return { missionId, nodeId, action: 'DISPATCHED', dispatchResult }
+  return { missionId, nodeId, action: 'DISPATCHED', dispatchResult, ...(advisories ? { advisories } : {}) }
 }
 
 // Whether this mission is a candidate the driver can act on at all this

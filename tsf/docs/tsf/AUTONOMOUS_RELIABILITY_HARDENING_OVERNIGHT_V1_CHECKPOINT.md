@@ -227,3 +227,119 @@ untouched, confirmed via before/after diff against the unmodified files).
 
 Adopted SHA: see the commit on `tsf/feature/f1-resource-governor-gating`
 that carries this section.
+
+## Finding F3: Platform Learning Ledger was write-only in production -- FIXED
+
+Worktree: `f3-learning-ledger-consumer`, branch
+`tsf/feature/f3-learning-ledger-consumer` (forked from `tsf/main` @
+`1a9876cafbd61af7eb379e52c0641b6436cc2ceb`).
+
+**Gap.** `tsf/domain/platform-learning-ledger.mjs`'s `recordLessonsFromCompletedMission`
+is real and wired (`research-mission-fleet-driver.mjs`'s `advanceOneMission`
+CHECK_COMPLETE branch calls it on every real mission completion, proven by
+`research-mission-fleet-driver-learning-ledger.test.mjs`). `retrieveLessonGuidance`
+had zero production callers -- lessons accumulated durably but nothing in the
+real research pipeline ever read them back into a live decision.
+
+**Reconciliation (Step 1).** Read `platform-learning-ledger.mjs` in full: 6
+`LESSON_CATEGORIES` (`PROVIDER_RELIABILITY_SIGNAL`, `RECURRING_DISPATCH_FAILURE`,
+`IDENTITY_AMBIGUITY_PATTERN`, `COMPLETENESS_GAP_PATTERN`, `SOURCE_RELIABILITY_SIGNAL`,
+`VERIFIED_CORRECTION_PATTERN`); `retrieveLessonGuidance(ledger, category, limit=5)`
+returns `{ statement, confidence, evidenceSummary, sourceMissionIds, recordedAt,
+advisoryOnly: true, neverOverridesVerifiedEvidence: true }[]`, structurally
+incapable of carrying `fieldName`/`value`/`entityId` (never mistakable for a
+Claim/CanonicalFact). `extractLessonsFromCompletedMission` derives
+`PROVIDER_RELIABILITY_SIGNAL` from real `node.rawResults[].result.{provider,status}`
+pairs and `RECURRING_DISPATCH_FAILURE` from nodes with 2+ real FAILED raw
+results before settling -- both are exactly the shape a DISPATCH/RETRY_DISPATCH
+decision already reasons about.
+
+Investigated the 3 suggested candidates against real code:
+- `research-mission.mjs`'s planning/admission functions (`addResearchNode`,
+  `transitionResearchMission`, `raiseResearchNeedsYou`, etc.) are pure state
+  transitions with no strategy branch point -- nowhere to hang an advisory
+  without inventing a new field threaded through unrelated callers.
+- A Command-surfaced "what should I watch out for" advisory would require a
+  NEW chat/Command surface reading the ledger ad hoc, disconnected from any
+  real in-flight decision -- closer to a second, parallel guidance mechanism
+  than "wiring the real one in," which the task explicitly forbids.
+- `research-mission-fleet-driver.mjs`'s `executeDispatchAction` (the one real
+  function that decides to actually call a provider, `DISPATCH`/`RETRY_DISPATCH`)
+  is the strongest fit: it already computes `providerId` right before
+  dispatching, `isRetry` is already true exactly when this node itself has a
+  real, current FAILED-dispatch history, and its own category set
+  (`PROVIDER_RELIABILITY_SIGNAL`, `RECURRING_DISPATCH_FAILURE`) is the SAME
+  category set `extractLessonsFromCompletedMission` populates from this exact
+  kind of event on other missions. No new categories, no new mechanism --
+  the real write side and the real read side finally meet at the one place
+  that already reasons about provider/retry.
+
+**Fix (Step 2).** `tsf/server/research-mission-fleet-driver.mjs`:
+- Imports `retrieveLessonGuidance` (domain) and `readPlatformLearningLedger`
+  (store, already used for the write side).
+- New `gatherDispatchAdvisories(providerId, isRetry, deps)`: reads the ledger
+  (test-injectable via `deps.readPlatformLearningLedger`, matching this
+  driver's own `deps.collectHostMemoryEvidence` injection convention),
+  filters `PROVIDER_RELIABILITY_SIGNAL` lessons to ones whose `statement`
+  actually names `providerId` (a lesson about a DIFFERENT provider is noise,
+  not guidance -- never surfaced), and includes `RECURRING_DISPATCH_FAILURE`
+  lessons unfiltered only when `isRetry` (this node's own retry is already
+  real evidence the pattern is relevant). Returns `undefined` -- never `[]`
+  -- when nothing real matches, so a caller doing `if (advisories)` gets a
+  true no-op, never a fabricated empty field.
+- `executeDispatchAction` calls it once, right after `providerId` is computed
+  and strictly BEFORE the real `dispatchResearchNodeDurable`/
+  `dispatchResearchNodeWithApprovalDurable` call -- computed but never read
+  by that call, so it cannot change what gets dispatched. The `DISPATCHED`
+  result gains an `advisories` field only when non-empty
+  (`...(advisories ? { advisories } : {})`).
+- `isDispatchAdmitted`/`decideNextMissionAction`/the Resource Pressure
+  Governor gate are completely untouched -- advisories are computed strictly
+  after admission already passed, so they can never gate, delay, or re-route
+  a real dispatch, matching this finding's own hard constraint.
+
+**Tests (Step 3).** New `tsf/test/research-mission-fleet-driver-dispatch-advisories.test.mjs`,
+4 tests, all against `advanceOneMission` (the real driver entry point, not
+`gatherDispatchAdvisories` in isolation):
+1. Empty ledger -> a real DISPATCH has no `advisories` key at all (silent
+   no-op, never a fabricated empty array).
+2. A lesson recorded through the REAL `recordLessonsFromCompletedMission`
+   path (via a first mission genuinely reaching COMPLETE through
+   `advanceOneMission`'s own CHECK_COMPLETE branch, never a hand-built
+   `LessonRecord` fixture) for provider `FLAKY_TEST_PROVIDER` surfaces as an
+   `advisories` entry on a second mission's real dispatch to that same
+   provider -- AND the real scripted dispatch still succeeds
+   (`dispatchResult.ok === true`, `action === 'DISPATCHED'`) despite the
+   lesson's negative history, proving the advisory never overrides real,
+   contradicting current evidence.
+3. A lesson recorded for an unrelated provider never contaminates a dispatch
+   to a different, clean provider -- no `advisories` key.
+4. A real `RECURRING_DISPATCH_FAILURE` lesson (from a different completed
+   mission with 2 real FAILED raw results before settling) surfaces on a
+   genuine `RETRY_DISPATCH` (a node left `FAILED` with `retryCount: 1`,
+   within budget) -- dispatch still proceeds and succeeds regardless.
+
+Result: `node --test tsf/test/research-mission-fleet-driver-dispatch-advisories.test.mjs`
+-- 4/4 pass. Regression sweep of every test file directly covering this
+decision point plus the ledger itself (`research-mission-fleet-driver.test.mjs`,
+`research-mission-fleet-driver-learning-ledger.test.mjs`,
+`research-mission-fleet-driver-bootstrap.test.mjs`, `platform-learning-ledger.test.mjs`,
+`platform-learning-ledger-store.test.mjs`, `research-mission-driver.test.mjs`,
+`research-resource-pressure-interaction.test.mjs`) -- 46/46 pass. Full-suite
+sweep: 2334 tests, 2328 pass, 6 fail; all 6 failures reproduce identically
+with this change's one modified file (`research-mission-fleet-driver.mjs`)
+stashed out (confirmed via isolated re-run against the unmodified file) --
+pre-existing, unrelated: 2 intent-classifier phrasing gaps and 1 Keep Going
+timing-sensitive test in `command-bare-imperative-dispatch.test.mjs` (the
+same file F18's checkpoint entry already documents as pre-existing-broken),
+1 real-host-load stall in `keep-going-autonomy-proof.test.mjs`, 1 Work-tab
+timing test in `http-work-summary.test.mjs`, and 1 race-condition test in
+`operator-state-adversarial.test.mjs` -- none touch research missions or the
+learning ledger.
+
+**Lint.** `npx oxlint tsf/server/research-mission-fleet-driver.mjs
+tsf/test/research-mission-fleet-driver-dispatch-advisories.test.mjs` -- clean,
+exit 0.
+
+Adopted SHA: see the commit on `tsf/feature/f3-learning-ledger-consumer`
+that carries this section.
