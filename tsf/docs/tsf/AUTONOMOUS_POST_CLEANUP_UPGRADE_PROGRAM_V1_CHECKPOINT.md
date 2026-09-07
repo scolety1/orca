@@ -55,7 +55,7 @@ uses, fully read-only).
 | 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **ADOPTED** — merged to `tsf/main` @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 3. Deferred Research Platform Completion Wave | **ADOPTED** — both waves merged: Wave 1 @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, Wave 2 @ `10e39227a7ebcdcee15689163c9707bbfc6866b5`, both pushed to `fork/tsf/main` (confirmed), both phase worktrees retired | See below |
 | 4. Cleanup V1 / Governed Destructive Automation | **CLEANUP_V1_IMPLEMENTED_READY_FOR_OWNER_ACTIVATION** — implemented, tested, dry-run/fixture-proven in worktree `cleanup-v1-governed-destructive-automation` (branch `tsf/feature/cleanup-v1-governed-destructive-automation`, forked from `10e39227a7`); real destructive execution stays behind the unset owner-authorization gate; NOT merged to `tsf/main`, NOT pushed, per this phase's explicit instruction | See below |
-| 5. Larger Astra Follow-up Benchmark | NOT_STARTED | |
+| 5. Larger Astra Follow-up Benchmark | **ASTRA_MORE_EVIDENCE_NEEDED — investigated, not run; owner-gated on a real reachable model + authorized spend** | See below |
 
 ### Phase 1 — UI_DOGFOOD_AGENT_V0
 
@@ -1614,6 +1614,132 @@ phase.
 worktree is left intact (not merged, not pushed, not retired) awaiting
 that review per the phase instructions' explicit "do not merge" scope.
 
+### Phase 5 — Larger Astra Follow-up Benchmark
+
+Worktree `astra-benchmark-v2-investigation` (branch
+`tsf/feature/astra-benchmark-v2-investigation`, forked from `tsf/main` @
+`32c5d05520`). Investigation-first per the phase instructions; no real
+paid model call was made or attempted.
+
+**STEP 1 — located the existing work (or didn't):**
+
+- **The prior "initial A-E benchmark" the directive summarizes has no
+  artifact anywhere in this repository.** Searched `tsf/docs/tsf/`,
+  `tsf/domain`, `tsf/server`, and git history/commit messages across all
+  branches for `astra`/`gpt-6`/`A-E benchmark`/`paired evaluation` and
+  variants. The only occurrence of "Astra" anywhere in the tracked tree,
+  before this phase, was this checkpoint's own Phase 5 status-table row
+  name. Every other apparent hit on a case-insensitive `astra` grep was a
+  substring false positive (e.g. `contrastRatio` contains `astRa`). The
+  directive's claimed result ("both baseline and Astra substantively
+  good, Astra showed positive long-horizon signal, sample too small") is
+  therefore **unverifiable from this codebase** — recorded as such, not
+  accepted at face value.
+- **No "Astra" concept exists anywhere in this codebase** — not a routing
+  option, not a model-selection config, not a provider adapter. The real,
+  committed routing config (`tsf/routing/provider-role-mappings.v1.json`,
+  `tsf/providers/launch-profiles.v1.json`, resolved by `domain/routing.mjs`'s
+  `resolveRole`) defines exactly two launch profiles: `CODEX_SAFE`
+  (`providerId: openai`, `agentId: codex`, status
+  `VALIDATED_WINDOWS_FIXTURE`) and `CLAUDE_SAFE` (`providerId: anthropic`,
+  `agentId: claude-code`, status **`CONFIGURED_RUNTIME_UNAVAILABLE`** in
+  this environment). Neither resolves to, aliases, or references
+  anything called Astra/gpt-6-astra. `provider-role-mappings.v1.json`'s
+  own `experimentalHypothesis` block (explicitly `contractual: false`)
+  loosely associates `workerBalanced` with "Codex / GPT-5.6 class" as a
+  descriptive hypothesis only — not a concrete model binding, and not
+  Astra. The one literal appearance of `gpt-5.6-sol` anywhere in the repo
+  (`tsf/programs/daily-driver-autonomy-v1/state.json`, wave 11) is a
+  narrative log entry describing a real, already-authenticated Codex CLI
+  dispatch from an unrelated prior program (M3 daily-driver-autonomy
+  dogfooding), not a benchmark mechanism and not evidence that a model
+  literally identified as "gpt-6-astra" exists or is reachable anywhere
+  in this environment.
+- **Eval-pack infrastructure reviewed** (`tsf/domain/evaluation-pack.mjs`,
+  `tsf/server/eval-pack-registry.mjs`, all 8 registered packs including
+  Phase 1's `UI_DOGFOOD`): a sound, reusable harness *shape*
+  (packId/cases/assertions/actualOutput), but every existing pack is
+  pure/synthetic — it asserts a real domain function's output against a
+  synthetic/fixture input and never dispatches a live model call.
+  `tsf/server/routing-eval-cases.mjs`/`routing-eval-runner.mjs` (the
+  closest-sounding "ROUTING" pack) only exercises `resolveRole` against
+  the real config to check provider-id resolution and role independence
+  — it never calls an actual model either. No separate "routing
+  benchmark"/"model comparison" harness exists anywhere else in the repo.
+
+**STEP 2 — cost/spend determination (the gate):**
+
+- Every real (non-eval-pack) model dispatch found in this codebase goes
+  through `tsf/providers/safe-provider-launch.mjs`, which launches the
+  user's own already-authenticated Codex or Claude Code CLI — there is no
+  generic "call any named external model string" path, so there is no
+  mechanism by which "gpt-6-astra" specifically could even be dispatched
+  today regardless of authorization.
+  `CLAUDE_SAFE`'s status (`CONFIGURED_RUNTIME_UNAVAILABLE`) further means
+  even the Anthropic path is not currently live in this environment.
+- The one paid-provider-approval mechanism in this codebase,
+  `tsf/domain/research-paid-approval.mjs`, is explicitly scoped to
+  Research-mission paid providers (Exa/Parallel) and requires an
+  explicit, per-mission owner grant naming one provider and one spend
+  ceiling — a different subsystem for a different concern, confirmed by
+  reading it directly, not assumed. It grants nothing for a model-routing
+  comparison. No env var, config flag, or Needs-You grant anywhere in
+  this repo authorizes spend on a model-comparison benchmark of any kind.
+- **Determination: running a real, larger paired benchmark against
+  "gpt-6-astra" would require new paid spend that is not already
+  authorized by anything in this codebase — and the model is not even a
+  reachable option regardless of authorization.** Per this program's own
+  operating contract (owner gate on new, not-already-authorized paid
+  spend) and the phase instructions' own explicit escape hatch ("if
+  gpt-6-astra ... is not actually available/reachable in this
+  environment at all, say so plainly ... do not simulate or fake a
+  comparison result"), **no real benchmark was run, and nothing was
+  built that could execute one.**
+
+**STEP 3 — report, not fabricate:**
+
+- Built `tsf/docs/tsf/ASTRA_LARGER_BENCHMARK_V2_DESIGN.md`: the findings
+  above plus a ready-to-run design (8 task categories × 4 tasks = 32
+  bounded tasks, paired/fair-conditions methodology, blind independent
+  scoring rubric, and an honest "unknown — no pricing data found, flag
+  for owner" cost line rather than a fabricated dollar figure) so a
+  future pass can execute immediately once (a) a real, reachable
+  provider/model exists for Astra (or its current equivalent) in
+  `launch-profiles.v1.json` and (b) the owner explicitly authorizes a
+  named spend ceiling, mirroring `research-paid-approval.mjs`'s existing
+  grant pattern. No harness code was written — extending the eval-pack
+  registry to dispatch a real paid model call is itself the gated
+  capability, not something to half-build ahead of authorization.
+- **No production routing changed.** `provider-role-mappings.v1.json` /
+  `launch-profiles.v1.json` are untouched by this phase.
+- **Result: `ASTRA_MORE_EVIDENCE_NEEDED`** — not because the sample would
+  be too small (that was the prior pass's own known limitation, taken as
+  given), but because the specific model this phase was asked to
+  evaluate is not a reachable option in this environment at all, and the
+  prior benchmark's own evidence cannot be located to corroborate the
+  directive's summary of it either.
+
+**Owner Gates Outstanding (Phase 5, recorded as a Needs-You item, not
+blocking other program work):**
+
+1. Confirm whether "gpt-6-astra"/"Astra" refers to a real, currently
+   available model/provider this environment should be configured to
+   reach at all — if so, supply the real provider + model identifier and
+   its real pricing (the design doc's cost estimate is honestly blank
+   pending this).
+2. If/when available, explicitly authorize a named spend ceiling for
+   this specific benchmark, the same way `research-paid-approval.mjs`
+   already requires for Exa/Parallel — this phase found no such grant
+   already covering a model-comparison benchmark.
+3. Independently confirm or locate the prior "initial A-E benchmark" —
+   this phase could not find it anywhere in this repository; if it exists
+   outside this codebase, that location should be recorded here for any
+   future Phase 5 continuation to reconcile against.
+
+**Coordinator independent review:** not yet performed — this is a
+freshly investigated, uncommitted-to-main worktree; no merge decision is
+in scope for an investigation-only phase with no code to adopt.
+
 ## Next intended action
 
 Phase 1, Phase 2, and Phase 3 (both waves) are all adopted and closed.
@@ -1625,4 +1751,7 @@ Phase 4 (Cleanup V1 / Governed Destructive Automation) has reached
 failure a pre-existing environment gap), dry-run/fixture-proven, real
 destructive execution gated behind the still-unset owner-authorization
 gate. Awaiting coordinator/owner review before any merge decision. Phase
-5 (Larger Astra Follow-up Benchmark) is NOT_STARTED.
+5 (Larger Astra Follow-up Benchmark) is investigated and returned
+`ASTRA_MORE_EVIDENCE_NEEDED` — no real benchmark run, design ready in
+`ASTRA_LARGER_BENCHMARK_V2_DESIGN.md`, owner gates recorded above, not
+blocking other program work.
