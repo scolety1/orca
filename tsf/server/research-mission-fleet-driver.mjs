@@ -19,7 +19,13 @@ import {
   decideNextMissionAction,
   DEFAULT_RESEARCH_RETRY_BUDGET
 } from '../domain/research-autonomy-policy.mjs'
-import { findResearchNode, escalateResearchNodeToNeedsYou, completeResearchMission, checkpointResearchMission } from '../domain/research-mission.mjs'
+import {
+  findResearchNode,
+  escalateResearchNodeToNeedsYou,
+  completeResearchMission,
+  checkpointResearchMission,
+  raiseResearchNeedsYou
+} from '../domain/research-mission.mjs'
 import { recordResearchNodeAttempt } from '../domain/research-node.mjs'
 import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
 import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
@@ -258,7 +264,20 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
   // OPTIONAL_ENRICHMENT field must never block COMPLETE (real free-path
   // research execution finding -- see research-completeness.mjs).
   const fieldsResolved = completeness.requiredFieldCoverage === null || completeness.requiredFieldCoverage === 1
-  if (fieldsResolved && completeness.unresolvedConflictCount === 0) {
+  // Phase 9 research-autonomy soak test (real generic gap): every node
+  // that WAS created can be fully resolved and terminal while the
+  // mission's OWN expectedUniverse still names entities that never
+  // became a node at all -- nothing upstream (no node, no claim, no
+  // conflict) ever raises a Needs You for an entity that was simply
+  // never researched. Left unguarded, this branch silently completed the
+  // mission anyway, and command-research-bridge.mjs's describeMissionCompletion
+  // then told Tim "all N expected items have sourced, verified data" using
+  // status.nodeCount (the nodes that exist) instead of the real expected
+  // count -- a false completeness claim. null/1 (no named universe, or a
+  // fully-covered one) is unaffected, matching fieldsResolved's own
+  // null-safe pattern.
+  const universeCovered = completeness.expectedEntityCoverage === null || completeness.expectedEntityCoverage === 1
+  if (fieldsResolved && universeCovered && completeness.unresolvedConflictCount === 0) {
     const completedMission = await withResearchMission(missionId, (m) => completeResearchMission(m, clock, m.revision))
     // REQ-002: the real wiring point -- every mission that actually reaches
     // COMPLETE here durably feeds the cross-mission Platform Learning
@@ -273,6 +292,31 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
       return result.ledger
     })
     return { missionId, action: 'COMPLETED', completeness, lessonsRecorded }
+  }
+  if (fieldsResolved && !universeCovered && completeness.unresolvedConflictCount === 0) {
+    // Every node that exists is done and every conflict is resolved -- the
+    // ONLY remaining reason is a genuinely uncovered expected universe, and
+    // nothing else will ever create the missing node(s) on its own. Escalate
+    // once (deduped, mirroring every other escalation in this driver) rather
+    // than silently reporting SKIPPED forever.
+    const expectedIds = new Set(mission.expectedUniverse.expectedEntities.map((e) => e.entityId))
+    const presentIds = new Set(mission.nodes.map((n) => n.targetEntity?.entityId).filter(Boolean))
+    const missingEntityIds = [...expectedIds].filter((id) => !presentIds.has(id))
+    const alreadyEscalated = mission.needsYou.some((entry) => entry.category === 'UNIVERSE_AMBIGUITY' && !entry.resolvedAt)
+    if (!alreadyEscalated) {
+      await withResearchMission(missionId, (m) =>
+        raiseResearchNeedsYou(
+          m,
+          {
+            question: `${missionId}: the expected universe names ${expectedIds.size} entities, but ${missingEntityIds.length} of them (${missingEntityIds.join(', ')}) never became a research node -- add the missing node(s) or confirm the universe was overstated.`,
+            category: 'UNIVERSE_AMBIGUITY'
+          },
+          clock,
+          m.revision
+        )
+      )
+    }
+    return { missionId, action: 'ESCALATED', reason: 'expected universe incompletely covered', completeness }
   }
   return {
     missionId,

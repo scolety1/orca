@@ -50,7 +50,8 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 14. Security / Authority Boundary Review | DONE | 1 real bug found, reproduced, fixed (Cleanup V1 protected-path registry canonicalization), 7 areas confirmed safe; see dedicated section below |
 | 11. Provider / Worker Resilience | DONE | Findings F22 (planner dispatch double-spend on crash-mid-dispatch) and F23 (unvalidated structured-response shape / codex schema-forwarding gap) fixed; see dedicated section below |
 | 12. Durable State / Restart Gauntlet | DONE | 11-category reconciliation; Finding F25 (Keep Going's own wave-dispatch double-spend on crash-mid-dispatch, real, reproduced, fixed) + Finding F26 (Resource Pressure Governor refusals vanished with zero durable trace for Keep Going and ResearchMission, real, fixed) + 2 new real cross-process SIGKILL crash-survival tests (Needs You, Verifier result) closing explicit-assertion gaps; see dedicated section below |
-| 3, 5, 8-9, 15-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 9. Research Autonomy Chaos / Soak Test | DONE | 10-scenario reconciliation (4 already well-covered, cited; 6 newly composed-mission-tested); 3 real generic bugs found, reproduced, fixed (**renumbered F27-F29 during adoption** -- this phase's own worktree independently assigned F25-F27, run in parallel with and unaware of Phase 12's own F25/F26; renumbered here to keep the finding ledger unique: F27 CHECK_COMPLETE silently ignored an uncovered expected universe, F28 identity-ambiguity reconciliation refusal never escalated -- both stranded the mission with no human-visible Needs You, F29 a verification-failure retry silently bypassed the retry budget forever, unbounded -- the same "READY bypasses the budget" class F5 fixed, on a different trigger); see dedicated section below |
+| 3, 5, 8, 15-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -3274,4 +3275,261 @@ store (`keep-going-run-store.mjs`, `research-mission-store.mjs`) and its
 existing CAS/checkpoint primitive.
 
 Adopted SHA: see the commit on `tsf/feature/phase12-durable-state-restart-gauntlet`
+## Phase 9: Research Autonomy Chaos / Soak Test -- 3 real generic bugs found (F27, F28, F29), reproduced and fixed; 10-scenario reconciliation
+
+Worktree: `phase9-research-autonomy-chaos`, branch
+`tsf/feature/phase9-research-autonomy-chaos` (forked from `tsf/main` @
+`1e71fbefd5f889f479c73d9718bb9226b5a96504`, i.e. after F24/Phase 8 above).
+
+**Mission.** Run several small, generic, disposable ResearchMissions
+(never NFL/NWR-shaped) exercising 10 named characteristics, verifying the
+full epistemic ladder and durability properties hold under adversarial
+conditions -- reconciling against F5/F6/Phase 13's existing coverage
+first, not re-proving what already holds, then going further on the
+genuinely under-tested scenarios.
+
+### Scenario table
+
+| # | Scenario | Status | Evidence |
+|---|---|---|---|
+| 1 | Simple public-web factual mission | ALREADY WELL COVERED, cited | `research-e2e-normal-mission.test.mjs` (canonical V0 end-to-end regression) + `research-completion-verification-proving-set.test.mjs`'s `node:public-web` case, both driving the real durable path to real claims/CanonicalFacts |
+| 2 | Conflicting sources | ALREADY WELL COVERED, cited | `research-e2e-normal-mission.test.mjs` step 9 (two disagreeing claims genuinely escalate to Needs You, never auto-resolved, reconciled only by an explicit human `RESOLVE_CONFLICT` decision); `research-golden-path-eval-runner.test.mjs`'s cross-provider-conflict case (Phase 13) drives this through the real autonomous driver to real `COMPLETE`. `detectResearchConflicts` never silently picks a value -- verified by reading `research-verification.mjs` in full |
+| 3 | Incomplete expected universe | **REAL BUG FOUND (F27), FIXED** | See below |
+| 4 | Owner-supplied-local fixture in a composed mission | ALREADY WELL COVERED, cited | `research-completion-verification-proving-set.test.mjs`'s `node:local-artifact` case drives `owner-supplied-local-artifact-research-worker.mjs` through the real autonomous driver (`driveOneCycle`) to real `COMPLETE`, with honest `ASSERTED_UNLOGGED`/`RED` chain-of-custody asserted explicitly -- not just this worker's own unit tests |
+| 5 | Paywall/auth fixture in a composed mission | ALREADY HOLDS UP; genuinely under-tested at the composed-mission level -- new coverage added, no fix needed | New `research-mission-paywall-source-blocked.test.mjs`: a real 200 response whose body matches `web-source-content-access-classifier.mjs`'s own `PAYWALL_PATTERN` is refused honestly (`{ok:false}`, reason `ACCESS_BLOCKED_POST_FETCH`, the real classifier text preserved), then driven through the real autonomous driver's retry-then-escalate machinery (F5's own mechanism, unmodified) to a real `NEEDS_YOU` -- never silently admitted, never a false `COMPLETE` |
+| 6 | Identity ambiguity | **REAL BUG FOUND (F28), FIXED** | See below |
+| 7 | Provider failure mid-mission (multi-node) | ALREADY HOLDS UP; genuinely under-tested at the composed, multi-tick level -- new coverage added, no fix needed | New `research-mission-multi-node-failure-isolation.test.mjs`: a real 2-node mission where one node cleanly fails every dispatch (F5's mechanism) while the other is healthy -- proves, through the REAL driver's tier-priority logic (not just the pure single-tick unit tests in `research-autonomy-policy.test.mjs`), that the healthy node's real dispatch/admission/verification/canonicalization completes BEFORE the failing node is ever even dispatched once, and that the failing node's entire retry/escalation history (byte-for-byte `deepEqual` snapshots after every tick) never mutates the healthy node's durable state |
+| 8 | Restart mid-mission | ALREADY WELL COVERED, cited; no meaningfully different timing found | Finding F6's own `research-mission-process-crash-survival.test.mjs` already proves a real killed-OS-process restart mid-dispatch. Investigated whether a restart during verification/reconciliation (rather than dispatch) would differ: `verifyAndReconcileResearchNodeFieldDurable`'s own durable-write sequencing (verify, THEN detect-conflicts, THEN reconcile-and-admit, each its own `withResearchMission` commit) is the SAME kind of crash-safe multi-step sequencing F6's own dispatch-time proof already covers generically (a crash between any two durable writes leaves exactly the last-committed state, and a fresh call is idempotent) -- no NEW mechanism exists at this boundary that F6's proof doesn't already generalize over. Not rebuilt |
+| 9 | Resource-pressure pause/resume | ALREADY WELL COVERED, cited | `research-resource-pressure-interaction.test.mjs` -- already proves CRITICAL/EMERGENCY honestly refuses new dispatch (`WAITING_FOR_RESOURCES`, node/mission untouched), recovery to HEALTHY resumes automatically with no special action, a MULTI-NODE mixed-work case where a resource-blocked dispatch never stalls a sibling node's cheap real verification work, and a restart-during-a-resource-wait case proving exactly one real dispatch happens, never duplicated |
+| 10 | Cross-provider latent-knowledge candidate task | ALREADY HOLDS UP (re-confirmed both structurally and empirically); genuinely under-tested at the sole-source level -- new coverage added, **and this investigation directly led to F29** | `research-golden-path-eval-runner.test.mjs` (Phase 13) already proves the two-provider conflict case. New `research-mission-latent-knowledge-sole-source.test.mjs` proves the stricter, previously-untested sole-source case through the real autonomous driver: the claim is admitted honestly (empty evidence/sourceReferences, `provenanceStrength: 'NONE'`), `verifyResearchClaim`'s own `linkedEvidence.length === 0 -> INCONCLUSIVE` rule structurally prevents it from ever reaching `VERIFIED`, and `verifyAndReconcileResearchNodeFieldDurable`'s `verifiedClaims.length !== 1` guard structurally prevents `ACCEPT_SINGLE_VERIFIED_CLAIM` from ever firing -- **never silently promoted to canonical/verified without independent verification, confirmed empirically, not just by reading the code**. Building this test's own tick loop is what surfaced F29 (below) |
+
+### Finding F27: CHECK_COMPLETE silently ignored an uncovered expected universe -- REPRODUCED and FIXED
+
+**Reproduction.** `research-mission-fleet-driver.mjs`'s `advanceOneMission`
+CHECK_COMPLETE branch gated completion on `requiredFieldCoverage` and
+`unresolvedConflictCount` only -- never `completeness.expectedEntityCoverage`
+(the real, already-computed metric for "did every entity the mission's own
+`expectedUniverse` names actually get a research node at all"). A mission
+whose `expectedUniverse` named 2 entities but only ever got 1 real node
+(e.g. a planner/spec-synthesis step that under-built the node set) reached
+real, durable `mission.state === 'COMPLETE'` once that 1 node's own field
+resolved -- confirmed by a probe script against unmodified code and by the
+new test's own pre-fix run (`git stash`): `lastTick.action === 'COMPLETED'`
+where the test asserts `notEqual`. Worse: `command-research-bridge.mjs`'s
+`describeMissionCompletion` then told Tim `"all N expected item(s) have
+sourced, verified data and the dataset is ready"` using `status.nodeCount`
+(the nodes that happen to exist, 1) instead of the real expected count (2)
+-- a literal false-completeness claim to the operator.
+
+**Root cause.** `expectedEntityCoverage` was already correctly computed by
+`computeCompletenessMetrics` (REQ-004's own established, honest metric --
+`null` when unknown, a real ratio when a named `expectedEntities` list
+exists) but was purely informational -- nothing gated mission completion on
+it, and nothing escalated when it was a known ratio less than 1.
+
+**Fix.** `research-mission-fleet-driver.mjs`: CHECK_COMPLETE now also
+requires `universeCovered` (`expectedEntityCoverage === null ||
+expectedEntityCoverage === 1`, mirroring `fieldsResolved`'s own null-safe
+pattern) before completing. When every node is terminal, fields are
+resolved, and conflicts are resolved, but the universe is genuinely
+uncovered, the driver raises a real Needs You (reusing
+`raiseResearchNeedsYou`, the SAME mechanism every other escalation in this
+codebase already uses) under the `UNIVERSE_AMBIGUITY` category --
+confirmed by grep to have existed in `RESEARCH_NEEDS_YOU_CATEGORIES`
+already but never actually raised by any real caller before this fix (dead
+vocabulary, exactly the shape `AMBIGUOUS_IDENTITY` was in before F28). The
+Needs You question names the specific missing entity id(s), computed
+directly from `mission.expectedUniverse`/`mission.nodes`, not a vague
+generic message. Dedup-guarded like every other escalation here.
+
+**Tests.** `research-mission-completion-honesty.test.mjs`'s `#3` test:
+real composed mission, 1 of 2 expected entities gets a node, driven
+through the real `advanceOneMission` -- never reaches `COMPLETED`,
+reaches real `NEEDS_YOU` with a `UNIVERSE_AMBIGUITY` entry naming
+`entity-b` by id, and the OTHER node's real progress (its 1 genuine
+`CanonicalFact`) survives untouched. Confirmed failing pre-fix via `git
+stash` (asserted `COMPLETED`, expected not-`COMPLETED`).
+
+### Finding F28: an identity-ambiguity reconciliation refusal never escalated to a human -- REPRODUCED and FIXED
+
+**Reproduction.** `admitReconciliationDecision` already mechanically
+refuses to canonicalize while a node's `identityResolutionState.status`
+isn't `RESOLVED` (`TSF_IDENTITY_AMBIGUOUS_CANNOT_CANONICALIZE`, a real,
+correct, already-tested guard from an earlier "GENERIC V0 ADOPTION
+READINESS" Phase 11 finding). But `verifyAndReconcileResearchNodeFieldDurable`
+(`research-mission-driver.mjs`) never caught that refusal -- it propagated
+as an uncaught throw straight out of the real autonomous driver
+(`advanceOneMission`). A probe against unmodified code proved the real
+consequence: called directly, the throw is uncaught; called (as production
+always does) through `driveOneCycle`'s own try/catch, the throw is
+swallowed into a generic `{action:'ERROR'}` once, and every subsequent
+tick silently returns `{action:'SKIPPED', reason:'...likely a BLOCKED node
+awaiting a human decision'}` forever -- a message that is actively
+MISLEADING here, since no node is ever actually `BLOCKED` in this case.
+`mission.needsYou` stayed `[]` the entire time: the mission was silently,
+permanently stuck ACTIVE with zero human-visible signal of why.
+`AMBIGUOUS_IDENTITY` (confirmed by grep) already existed in
+`RESEARCH_NEEDS_YOU_CATEGORIES` -- dead vocabulary, exactly like
+`UNIVERSE_AMBIGUITY` in F27.
+
+**Fix.** `research-mission-driver.mjs`'s `verifyAndReconcileResearchNodeFieldDurable`
+now checks `node.identityResolutionState.status !== 'RESOLVED'` (right
+after conflict detection, before ever attempting reconciliation) and
+raises a real, dedup-guarded Needs You under `AMBIGUOUS_IDENTITY` --
+mirroring the function's own existing `openConflict` escalation shape
+exactly, same file, same mechanism, no new admission/verification
+mechanism invented.
+
+**Second-order gap found while proving the RECOVERY path.** Once identity
+is later resolved and the Needs You is resolved, the mission correctly
+returns to `ACTIVE` -- but `decideVerificationAction`
+(`research-autonomy-policy.mjs`) previously returned `null` ("nothing
+further to do") for ANY field with a PASS-verified, non-conflicting claim,
+silently ASSUMING canonicalization already happened. That assumption was
+only ever true because canonicalization used to be unconditional in that
+exact state -- no longer true once a real escalation (F28 itself) can
+leave a PASS-verified claim genuinely still uncanonicalized. Without a
+further fix, a field blocked by identity ambiguity would never be
+automatically retried even after a human resolved the identity, dead
+forever. Fixed: this branch now returns `VERIFY_AND_RECONCILE_FIELD`
+again (safe -- fully idempotent, and the `alreadyCanonical` check at the
+top of the same loop already short-circuits the normal, common case where
+canonicalization genuinely did already succeed).
+
+**Tests.** `research-mission-completion-honesty.test.mjs`'s `#6` test:
+real composed mission with a real `AMBIGUOUS` identity, driven through
+the real `advanceOneMission` repeatedly -- never throws uncaught, never
+canonicalizes, reaches real `NEEDS_YOU` with an `AMBIGUOUS_IDENTITY`
+entry naming the exact node; then identity is genuinely resolved
+(`recordIdentityResolutionState` + `resolveResearchNeedsYou`, both real
+domain calls) and the SAME node completes normally through the SAME real
+driver, proving the escalation is recoverable, not a dead end.
+`research-autonomy-policy.test.mjs` gained a dedicated unit test for the
+`decideVerificationAction` fallback fix, plus its own pre-existing
+"resolved field has nothing further to do" test was corrected to use a
+realistic fixture (a `RECONCILED` claim always co-occurs with a real
+`canonicalFacts` entry in production; the old fixture omitted it, which
+is what made the old, less-defensive `null`-on-any-PASS behavior look
+safe). Confirmed failing pre-fix via `git stash` (uncaught
+`TSF_IDENTITY_AMBIGUOUS_CANNOT_CANONICALIZE` propagating out of
+`advanceOneMission`).
+
+### Finding F29: a verification-failure retry silently bypassed the retry budget forever -- REPRODUCED and FIXED (the phase's most significant finding)
+
+**How this was found.** Building the scenario #10 sole-source
+latent-knowledge test (a claim that fails independent verification and
+must retry-then-escalate) surfaced a tick sequence that never converged:
+12 real ticks, every one `DISPATCHED`, `mission.state` never leaving
+`ACTIVE`. Reproduced independently with a completely generic, plain
+`deterministic-fake-research-worker` claim rejected by contradicting
+evidence (no latent-knowledge worker involved at all) -- confirming this
+is a GENERIC bug in the retry-budget machinery itself, not specific to
+any one worker/provider.
+
+**Root cause, traced precisely.** A claim that is the sole, non-conflicting
+claim for a field but fails independent verification (REJECTED via
+contradicting evidence, or stays `INCONCLUSIVE` with zero evidence)
+correctly triggers `decideRetryOrEscalate` -> `RETRY_DISPATCH`. But
+`recordResearchNodeAttempt`'s own `'RETRY'` branch (`research-node.mjs`,
+unrelated to this program's own earlier changes) unconditionally sets the
+node's execution status back to `READY` -- the SAME status a
+never-before-attempted node starts from. `decideNextNodeAction`
+(`research-autonomy-policy.mjs`) treated EVERY `READY` node identically:
+a fresh, unconditional `DISPATCH`, never consulting `retryCount`/budget at
+all. So from the SECOND retry onward, `retryCount` froze (only the
+`RETRY_DISPATCH` code path increments it, and `READY`'s branch never
+returns that type), and `ESCALATE` was structurally unreachable --
+confirmed by direct trace: `retryCount` stuck at `1` through 10+ real
+ticks, each one a real re-`DISPATCH` attempt (a harmless no-op today only
+because the taskFingerprint collides with the already-fulfilled first
+attempt -- `research-mission-fleet-driver.mjs`'s own comment already
+disclosed that collision as "by design," but did not realize it also
+meant the mission would never escalate). This is the SAME "READY bypasses
+the retry budget" class Finding F5 fixed -- F5's own trigger was a clean
+DISPATCH failure; this is the SAME structural gap on a genuinely
+different trigger F5 never covered (a FAILED VERIFICATION on an otherwise
+successfully-DISPATCHED-and-ADMITTED node). Given this retry path is
+reachable by ANY worker/provider whose sole claim for a field is
+independently rejected or stays inconclusive -- not a rare edge case --
+this is assessed as the single most consequential finding of this phase.
+
+**Fix.** `research-autonomy-policy.mjs`'s `decideNextNodeAction`: the
+`READY` branch now checks `node.retryCount > 0` and, when true, routes
+through the SAME `decideRetryOrEscalate` a `FAILED` node already uses
+(returns `RETRY_DISPATCH` while budget remains, `ESCALATE` once
+exhausted) instead of an unconditional fresh `DISPATCH`. A genuinely
+fresh node (`retryCount` 0, the overwhelming common case) is completely
+unaffected -- same `{type:'DISPATCH'}` as before. `research-mission.mjs`'s
+`NODE_ALLOWED` table gained `READY -> BLOCKED` (a node needing to reach
+`BLOCKED` from `READY` directly -- its own dispatch never failed, only
+its verification did, so it never legitimately passes through `FAILED`
+first), mirroring F5's own precedent of adding exactly the missing
+transition edge with a comment explaining why.
+
+**Tests.** New `research-mission-verification-retry-budget.test.mjs`, 2
+tests (REJECTED via contradicting evidence; INCONCLUSIVE via zero
+evidence) -- both drive a real composed mission through the real
+`advanceOneMission` repeatedly, asserting `retryCount` actually
+accumulates past 1 (the exact point the bug froze it), real `ESCALATE`
+is reached within a bounded number of ticks, `mission.state` reaches real
+`NEEDS_YOU`, the rejected/inconclusive value is never canonicalized, and
+ticks after escalation are true no-ops (`retryCount` never increments
+again). `research-autonomy-policy.test.mjs` gained a dedicated
+`READY`-with-`retryCount`-greater-than-0 unit test (retries within budget,
+escalates once exhausted -- the exact FAILED-node test's own shape,
+proven for READY too). Confirmed failing pre-fix via `git stash` on all 4
+affected source files together (`research-autonomy-policy.mjs`,
+`research-mission.mjs`, `research-mission-driver.mjs`,
+`research-mission-fleet-driver.mjs`): both new tests failed exactly as
+predicted (`retryCount` stuck at 1 / never reaching `ESCALATED`).
+
+### Regression sweep
+
+`node --test tsf/test/research-*.test.mjs`: 328 tests, 328 pass, 0 fail
+(includes every new/changed file from this phase plus every pre-existing
+research test). Full whole-repo sweep (`node --test tsf/test/*.test.mjs`):
+2408 tests, 2402 pass, 6 fail -- all 6 are the SAME candidate set this
+program's own F1/F3/F4/F8/F11 checkpoint entries already document as
+pre-existing, real-host-load-sensitive, and unrelated to any file this
+phase touched (`command-bare-imperative-dispatch.test.mjs`'s
+"QUERY/STATUS"/"IDIOM"/"WorldForge" phrasing gaps,
+`http-work-summary.test.mjs`'s dispatch-tick timing test,
+`keep-going-autonomy-proof.test.mjs`'s long-running autonomy proof,
+`operator-state-adversarial.test.mjs`'s "STALE ACTION RACE") -- confirmed
+by exact test-name match against Phase 8's own checkpoint entry
+(`2399 tests, 2393 pass, 6 fail`, same 6 names). None of the 6 touch
+`research-mission.mjs`, `research-mission-driver.mjs`,
+`research-mission-fleet-driver.mjs`, `research-autonomy-policy.mjs`, or
+any research test file.
+
+**Lint.** `npx oxlint` on every changed/new file (`research-autonomy-policy.mjs`,
+`research-mission.mjs`, `research-mission-driver.mjs`,
+`research-mission-fleet-driver.mjs`,
+`research-mission-completion-honesty.test.mjs`,
+`research-mission-latent-knowledge-sole-source.test.mjs`,
+`research-mission-multi-node-failure-isolation.test.mjs`,
+`research-mission-verification-retry-budget.test.mjs`,
+`research-mission-paywall-source-blocked.test.mjs`,
+`research-autonomy-policy.test.mjs`) -- clean, exit 0. Every pre-existing
+`curly` finding reported on the 4 changed source files falls entirely
+outside this phase's own edited line ranges (confirmed by diffing hunk
+line numbers against oxlint's reported line numbers before leaving any of
+them untouched, matching this program's established convention); every
+`curly` finding on this phase's own newly-added lines (all 5 new test
+files) was fixed, not left. All new/changed `.mjs` files stay well under
+the 600-line cap (`research-mission-driver.mjs`, the largest, is 582 raw
+lines, comfortably under after `skipBlankLines`/`skipComments`).
+
+Astra: not touched, not referenced. NWR data: not touched -- every new
+test uses small, disposable, generic fixtures (`mission:completion-honesty-*`,
+`mission:multi-node-failure-isolation`, `mission:latent-sole-source`,
+`mission:verification-retry-budget-*`, `mission:paywall-source-blocked`),
+each in its own isolated `TSF_UI_STATE_FILE`. No paid provider was
+enabled -- the latent-knowledge worker test uses its own established
+`invokeLiveStructuredAnalysisFn` injection seam (a fake, never a live
+call), gated by the same `TSF_RESEARCH_LATENT_KNOWLEDGE_DISPATCH_ENABLED`
+env var Phase 13's golden-path eval already established the convention
+for.
+
+Adopted SHA: see the commit on `tsf/feature/phase9-research-autonomy-chaos`
 that carries this section.

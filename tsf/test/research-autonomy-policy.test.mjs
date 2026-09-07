@@ -43,6 +43,22 @@ test('an explicit READY node dispatches regardless of the isReady flag', () => {
   assert.deepEqual(decideNextNodeAction(baseNode({ status: 'READY' }), false), { type: 'DISPATCH', nodeId: 'node:x' })
 })
 
+// Phase 9 research-autonomy soak test: a READY node with retryCount > 0
+// (recordResearchNodeAttempt's own RETRY branch sets status back to READY,
+// not just PENDING/first-attempt READY) must go through the SAME
+// budget-tracked path a FAILED node does -- reproduced generically (a
+// plain rejected/inconclusive claim, no specific provider) as an
+// unbounded-retry gap before this fix: retryCount froze at 1 forever and
+// ESCALATE was structurally unreachable.
+test('a READY node with retryCount > 0 retries while budget remains, escalates once exhausted -- never a fresh, unbudgeted DISPATCH again', () => {
+  const underBudget = decideNextNodeAction(baseNode({ status: 'READY', retryCount: 1 }), false)
+  assert.deepEqual(underBudget, { type: 'RETRY_DISPATCH', nodeId: 'node:x' })
+
+  const exhausted = decideNextNodeAction(baseNode({ status: 'READY', retryCount: 2 }), false)
+  assert.equal(exhausted.type, 'ESCALATE')
+  assert.equal(exhausted.category, 'SOURCE_UNAVAILABLE')
+})
+
 test('a DISPATCHED node polls', () => {
   assert.deepEqual(decideNextNodeAction(baseNode({ status: 'DISPATCHED' }), false), { type: 'POLL', nodeId: 'node:x' })
 })
@@ -82,12 +98,44 @@ test('an ADMITTED node whose field is already canonical or typed-missing has not
 })
 
 test('an ADMITTED node with a resolved (PASS-verified, non-conflicting) field has nothing further to do', () => {
+  // canonicalFacts is real production state here, not incidental -- a
+  // RECONCILED claim is always accompanied by its CanonicalFact (the SAME
+  // durable admitReconciliationDecision write creates both). Phase 9
+  // research-autonomy soak test finding: the "already canonical" check at
+  // the TOP of decideVerificationAction (not the PASS-verdict inference
+  // this test used to rely on alone) is what actually makes this null --
+  // see the sibling test below for the real, previously-unhandled case
+  // this distinction matters for.
   const node = baseNode({
     status: 'ADMITTED',
     claims: [{ id: 'c1', fieldName: 'value', status: 'RECONCILED', proposedValue: 1 }],
-    verifications: [{ claimId: 'c1', verdict: 'PASS' }]
+    verifications: [{ claimId: 'c1', verdict: 'PASS' }],
+    canonicalFacts: [{ fieldName: 'value', value: 1 }]
   })
   assert.equal(decideNextNodeAction(node, false), null)
+})
+
+// Phase 9 research-autonomy soak test (real generic gap): a claim can be
+// independently PASS-verified with no open conflict yet STILL not be
+// canonical -- e.g. admitReconciliationDecision refused because the node's
+// OWN identity is recorded AMBIGUOUS/UNRESOLVED (research-reconciliation.mjs's
+// TSF_IDENTITY_AMBIGUOUS_CANNOT_CANONICALIZE guard). The OLD behavior
+// (return null, "nothing further to do") silently gave up on this field
+// forever, even after identity was later resolved -- nothing would ever
+// re-attempt it. verifyAndReconcileResearchNodeFieldDurable is fully
+// idempotent, so asking it again is always safe and is what actually
+// converges once genuinely unblocked.
+test('an ADMITTED node with a PASS-verified, non-conflicting field that is STILL not canonical asks to verify-and-reconcile again, never silently gives up', () => {
+  const node = baseNode({
+    status: 'ADMITTED',
+    claims: [{ id: 'c1', fieldName: 'value', status: 'UNVERIFIED', proposedValue: 1 }],
+    verifications: [{ claimId: 'c1', verdict: 'PASS' }]
+  })
+  assert.deepEqual(decideNextNodeAction(node, false), {
+    type: 'VERIFY_AND_RECONCILE_FIELD',
+    nodeId: 'node:x',
+    fieldName: 'value'
+  })
 })
 
 test('REQUIRED PROOF: an ADMITTED node with an open conflict on its field needs verify-and-reconcile (escalation happens inside that call, never guessed here)', () => {

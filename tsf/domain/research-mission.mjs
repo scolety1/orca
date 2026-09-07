@@ -74,7 +74,14 @@ const NODE_ALLOWED = Object.freeze({
   // at READY forever and decideNextNodeAction (research-autonomy-policy.mjs)
   // kept re-issuing it as a fresh DISPATCH every tick, never RETRY_DISPATCH,
   // bypassing retryCount/budget entirely.
-  READY: ['DISPATCHED', 'CANCELLED', 'ADMITTED', 'FAILED'],
+  // READY -> BLOCKED (Phase 9 research-autonomy soak test): a node whose
+  // sole, non-conflicting claim keeps failing independent verification
+  // retries through READY (recordResearchNodeAttempt's own RETRY branch,
+  // not a fresh dispatch) -- once its retry budget is genuinely exhausted,
+  // escalateResearchNodeToNeedsYou needs to reach BLOCKED directly from
+  // READY, never routed back through FAILED first (this node's dispatch
+  // itself never failed; its verification did).
+  READY: ['DISPATCHED', 'CANCELLED', 'ADMITTED', 'FAILED', 'BLOCKED'],
   DISPATCHED: ['RESULT_RECEIVED', 'READY', 'FAILED'],
   RESULT_RECEIVED: ['ADMITTED', 'FAILED'],
   // A node stays open to further dispatch cycles after one result is

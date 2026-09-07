@@ -356,6 +356,25 @@ export async function verifyAndReconcileResearchNodeFieldDurable(missionId, node
   next = await withResearchMission(missionId, (m) => detectResearchConflicts(m, nodeId, clock, m.revision))
   node = findResearchNode(next, nodeId)
 
+  // Phase 9 research-autonomy soak test (real generic gap): admitReconciliationDecision
+  // already mechanically refuses to canonicalize while identityResolutionState isn't
+  // RESOLVED (TSF_IDENTITY_AMBIGUOUS_CANNOT_CANONICALIZE, research-reconciliation.mjs's
+  // Phase 11 guard) -- but nothing upstream ever turned that hard block into a real,
+  // human-visible escalation. Left uncaught, the throw here stranded the mission ACTIVE
+  // forever (the fleet driver's CHECK_COMPLETE fallback keeps returning a silent SKIPPED
+  // every tick, never NEEDS_YOU). Escalates using AMBIGUOUS_IDENTITY -- the SAME Needs You
+  // category the reconciliation guard's own error message already names -- mirroring the
+  // openConflict escalation immediately below (same dedup-guard shape).
+  if (node.identityResolutionState && node.identityResolutionState.status !== 'RESOLVED') {
+    const alreadyEscalatedIdentity = next.needsYou.some((entry) => entry.nodeId === nodeId && entry.category === 'AMBIGUOUS_IDENTITY' && !entry.resolvedAt)
+    if (!alreadyEscalatedIdentity) {
+      next = await withResearchMission(missionId, (m) =>
+        raiseResearchNeedsYou(m, { question: `Cannot canonicalize ${nodeId}.${fieldName} -- the node's target-entity identity is recorded ${node.identityResolutionState.status}, not RESOLVED.`, nodeId, category: 'AMBIGUOUS_IDENTITY' }, clock, m.revision)
+      )
+    }
+    return { ok: true, escalated: true, mission: next }
+  }
+
   const openConflict = node.conflicts.find((c) => c.fieldName === fieldName && c.status === 'OPEN')
   if (openConflict) {
     // Independent-verification finding: raiseResearchNeedsYou itself never

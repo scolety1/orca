@@ -98,10 +98,24 @@ function decideVerificationAction(node, budget) {
         `field "${field.fieldName}" produced ${claimsForField.length} claim(s), none independently verified as PASS`
       )
     }
-    // At least one claim passed verification, no open conflict --
-    // verifyAndReconcileResearchNodeFieldDurable already canonicalized it
-    // (or would on the next call, a safe idempotent no-op) -- nothing
-    // further for THIS field; check the next one.
+    // At least one claim passed verification, no open conflict, and (per
+    // the alreadyCanonical/alreadyMissing guard at the top of this loop)
+    // the field is STILL not resolved -- ask verifyAndReconcileResearchNodeFieldDurable
+    // again rather than silently assuming it already succeeded. Phase 9
+    // research-autonomy soak test finding: that assumption was true only
+    // because canonicalization used to be unconditional whenever exactly
+    // one claim was independently PASS-verified with no open conflict --
+    // no longer true now that the driver can legitimately escalate instead
+    // of canonicalizing (e.g. a genuinely AMBIGUOUS/UNRESOLVED node
+    // identity) without ever leaving a claim UNVERIFIED or a conflict OPEN.
+    // Falling through to null here left a field permanently unresolved
+    // even after its real blocker (e.g. identity) was fixed -- nothing
+    // would ever re-attempt it. Safe to call again: verifyAndReconcileResearchNodeFieldDurable
+    // is fully idempotent (its own claim/conflict-dedup checks, plus every
+    // escalation's own dedup guard), and this converges in exactly one
+    // more tick once genuinely unblocked (the next tick's alreadyCanonical
+    // check above then skips this field entirely).
+    return { type: 'VERIFY_AND_RECONCILE_FIELD', nodeId: node.id, fieldName: field.fieldName }
   }
   return null
 }
@@ -128,6 +142,21 @@ export function decideNextNodeAction(node, isReady, budget = DEFAULT_RESEARCH_RE
   // READY (e.g. a caller-driven flow that marked it ready without
   // dispatching yet).
   if (node.status === 'READY' || (node.status === 'PENDING' && isReady)) {
+    // Phase 9 research-autonomy soak test (real generic gap, reproduced with
+    // a plain DeterministicFakeResearchWorker, independent of any one
+    // provider): a node whose sole, non-conflicting claim fails independent
+    // verification (REJECTED, or stays INCONCLUSIVE) reaches READY via
+    // recordResearchNodeAttempt's own RETRY branch -- the SAME status a
+    // never-attempted node starts from. Treating every READY node
+    // identically silently bypassed retryCount/budget from the second retry
+    // onward (only RETRY_DISPATCH increments retryCount, and this branch
+    // always returned a fresh, unconditional DISPATCH) -- retryCount froze
+    // at 1, ESCALATE was structurally unreachable, the node retried forever.
+    // Same "READY bypasses the retry budget" class F5 fixed, different
+    // trigger. A genuinely fresh node (retryCount 0) is unaffected.
+    if ((node.retryCount ?? 0) > 0) {
+      return decideRetryOrEscalate(node, budget, `dispatch retried ${node.retryCount} time(s), still not independently verified`)
+    }
     return { type: 'DISPATCH', nodeId: node.id }
   }
   // PENDING-but-blocked-on-a-dependency, COMPLETED, BLOCKED, CANCELLED,
