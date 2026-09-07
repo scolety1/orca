@@ -33,6 +33,7 @@ import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { shouldRouteToResearchBridge, respondResearchCommand } from './command-research-bridge.mjs'
 import { shouldRouteToDogfoodBridge, respondDogfoodCommand } from './command-dogfood-bridge.mjs'
+import { shouldRouteToSelfImprovementBridge, respondSelfImprovementCommand } from './command-self-improvement-bridge.mjs'
 import {
   advisorySafeProjects,
   buildGlobalAdvisoryText,
@@ -238,6 +239,19 @@ export async function respondCommand({
     })
     if (dogfoodResult) {
       return dogfoodResult
+    }
+  }
+  // Native Self-Improvement Controlled Live Pilot V1, Phase 8: same layer
+  // as the two bridges above -- "what did TSF find?" is never about a
+  // registered fleet project either. Pure read over the durable finding
+  // store, no mutation, no loop-enable authority.
+  if (shouldRouteToSelfImprovementBridge(message)) {
+    const selfImprovementResult = await respondSelfImprovementCommand({
+      message,
+      deps: deps.selfImprovement ?? {}
+    })
+    if (selfImprovementResult) {
+      return selfImprovementResult
     }
   }
   const intent = classifyIntent(message)

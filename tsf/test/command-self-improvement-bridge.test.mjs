@@ -1,0 +1,175 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {
+  classifySelfImprovementIntent,
+  respondSelfImprovementCommand,
+  shouldRouteToSelfImprovementBridge
+} from '../server/command-self-improvement-bridge.mjs'
+import { createFinding, transitionFinding } from '../domain/self-improvement-finding.mjs'
+import { applyAutofixEligibility } from '../domain/self-improvement-autofix-eligibility.mjs'
+
+const CLOCK = () => new Date('2026-09-07T00:00:00.000Z')
+
+function rawFinding(overrides = {}) {
+  return {
+    sourceDetector: 'GOLDEN_PATH_EVAL',
+    severity: 'P1',
+    affectedSurface: 'platform-golden-path',
+    evidence: [{ note: 'test fixture' }],
+    reproduction: { command: 'node --test tsf/test/example.test.mjs' },
+    confidence: 0.9,
+    verificationMethod: 'REPRODUCED_VIA_TEST',
+    candidateFixScope: { kind: 'BOUNDED_CODE_DEFECT', description: 'example bounded defect', filesHint: ['tsf/server/example.mjs'] },
+    ...overrides
+  }
+}
+
+test('classifySelfImprovementIntent recognizes the real trigger phrasings', () => {
+  assert.equal(classifySelfImprovementIntent('what did TSF find?'), 'SELF_IMPROVEMENT_ALL_FINDINGS')
+  assert.equal(classifySelfImprovementIntent('what is it fixing?'), 'SELF_IMPROVEMENT_IN_PROGRESS')
+  assert.equal(classifySelfImprovementIntent('what fixed itself successfully?'), 'SELF_IMPROVEMENT_RESOLVED')
+  assert.equal(classifySelfImprovementIntent('what is ready for adoption?'), 'SELF_IMPROVEMENT_READY_FOR_ADOPTION')
+  assert.equal(classifySelfImprovementIntent("why wasn't this auto-fixed?"), 'SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED')
+  assert.equal(classifySelfImprovementIntent('what failed verification?'), 'SELF_IMPROVEMENT_FAILED_VERIFICATION')
+})
+
+test('classifySelfImprovementIntent does not hijack ordinary chat', () => {
+  assert.equal(classifySelfImprovementIntent("what's the status?"), null)
+  assert.equal(classifySelfImprovementIntent('what did the research find?'), null)
+})
+
+test('shouldRouteToSelfImprovementBridge mirrors classifySelfImprovementIntent', () => {
+  assert.equal(shouldRouteToSelfImprovementBridge('what did TSF find?'), true)
+  assert.equal(shouldRouteToSelfImprovementBridge('hello'), false)
+})
+
+test('respondSelfImprovementCommand returns null for a non-matching message (falls through to normal chat)', async () => {
+  assert.equal(await respondSelfImprovementCommand({ message: 'what is running right now?' }), null)
+})
+
+test('REQUIRED PROOF: an empty store is reported honestly, never fabricated', async () => {
+  const result = await respondSelfImprovementCommand({ message: 'what did TSF find?', deps: { readAllFindings: () => ({}) } })
+  assert.match(result.text, /No self-improvement findings recorded yet/)
+  assert.equal(result.live, true)
+})
+
+test('REQUIRED PROOF: each of the 6 real questions reads the correct real finding-store slice', async () => {
+  const detected = createFinding(rawFinding({ affectedSurface: 'surface-detected' }), CLOCK)
+
+  const verified = transitionFinding(
+    createFinding(rawFinding({ affectedSurface: 'surface-in-progress' }), CLOCK),
+    'VERIFIED',
+    { reason: 'REPRODUCED' },
+    CLOCK
+  )
+  const eligible = applyAutofixEligibility(verified, CLOCK)
+  assert.equal(eligible.status, 'ELIGIBLE_FOR_AUTOFIX')
+  const inProgress = transitionFinding(eligible, 'FIX_MISSION_CREATED', { reason: 'MISSION_ORIGINATED' }, CLOCK)
+
+  const readyBase = applyAutofixEligibility(
+    transitionFinding(createFinding(rawFinding({ affectedSurface: 'surface-ready' }), CLOCK), 'VERIFIED', { reason: 'REPRODUCED' }, CLOCK),
+    CLOCK
+  )
+  const ready = transitionFinding(
+    transitionFinding(
+      transitionFinding(readyBase, 'FIX_MISSION_CREATED', { reason: 'MISSION_ORIGINATED' }, CLOCK),
+      'FIX_IN_PROGRESS',
+      { reason: 'FIRST_REPAIR_ATTEMPT_DISPATCHED' },
+      CLOCK
+    ),
+    'READY_FOR_ADOPTION',
+    { reason: 'VERIFIER_PASSED' },
+    CLOCK
+  )
+
+  const resolved = transitionFinding(
+    (() => {
+      const readyForResolve = applyAutofixEligibility(
+        transitionFinding(createFinding(rawFinding({ affectedSurface: 'surface-resolved' }), CLOCK), 'VERIFIED', { reason: 'REPRODUCED' }, CLOCK),
+        CLOCK
+      )
+      return transitionFinding(
+        transitionFinding(
+          transitionFinding(readyForResolve, 'FIX_MISSION_CREATED', { reason: 'MISSION_ORIGINATED' }, CLOCK),
+          'FIX_IN_PROGRESS',
+          { reason: 'FIRST_REPAIR_ATTEMPT_DISPATCHED' },
+          CLOCK
+        ),
+        'READY_FOR_ADOPTION',
+        { reason: 'VERIFIER_PASSED' },
+        CLOCK
+      )
+    })(),
+    'RESOLVED',
+    { reason: 'OWNER_ADOPTED' },
+    CLOCK
+  )
+
+  // Eligibility-level rejection -- low confidence, never dispatched a repair worker.
+  const notEligible = applyAutofixEligibility(
+    transitionFinding(
+      createFinding(rawFinding({ affectedSurface: 'surface-not-eligible', confidence: 0.2 }), CLOCK),
+      'VERIFIED',
+      { reason: 'REPRODUCED' },
+      CLOCK
+    ),
+    CLOCK
+  )
+  assert.equal(notEligible.status, 'NEEDS_OWNER')
+  assert.equal(notEligible.authorityRequired, 'LOW_CONFIDENCE')
+
+  // Retry-budget-exhausted escalation -- a real repair was attempted and kept
+  // failing verification. Its own distinct affectedSurface, not `eligible`'s
+  // -- findingId is content-addressed from sourceDetector/affectedSurface/
+  // reproduction only (never status), so reusing `eligible` here would
+  // silently collide with `inProgress`'s own findingId in the store below.
+  const eligibleForFailedVerification = applyAutofixEligibility(
+    transitionFinding(
+      createFinding(rawFinding({ affectedSurface: 'surface-failed-verification' }), CLOCK),
+      'VERIFIED',
+      { reason: 'REPRODUCED' },
+      CLOCK
+    ),
+    CLOCK
+  )
+  const failedVerification = transitionFinding(
+    transitionFinding(eligibleForFailedVerification, 'FIX_MISSION_CREATED', { reason: 'MISSION_ORIGINATED' }, CLOCK),
+    'NEEDS_OWNER',
+    { reason: 'REPAIR_RETRY_BUDGET_EXCEEDED', evidence: [{ missionId: 'repair:example', attemptsSoFar: 3 }] },
+    CLOCK
+  )
+
+  const store = {
+    [detected.findingId]: detected,
+    [inProgress.findingId]: inProgress,
+    [ready.findingId]: ready,
+    [resolved.findingId]: resolved,
+    [notEligible.findingId]: notEligible,
+    [failedVerification.findingId]: failedVerification
+  }
+  const deps = { readAllFindings: () => store }
+
+  const all = await respondSelfImprovementCommand({ message: 'what did TSF find?', deps })
+  assert.equal(all.text.split('\n').filter((l) => l.startsWith('-')).length, 6)
+
+  const fixing = await respondSelfImprovementCommand({ message: 'what is it fixing?', deps })
+  assert.match(fixing.text, /surface-in-progress/)
+  assert.doesNotMatch(fixing.text, /surface-ready/)
+
+  const selfFixed = await respondSelfImprovementCommand({ message: 'what fixed itself successfully?', deps })
+  assert.match(selfFixed.text, /surface-resolved/)
+  assert.doesNotMatch(selfFixed.text, /surface-in-progress/)
+
+  const readyForAdoption = await respondSelfImprovementCommand({ message: 'what is ready for adoption?', deps })
+  assert.match(readyForAdoption.text, /surface-ready/)
+  assert.match(readyForAdoption.text, /adoption gate is closed/)
+
+  const whyNot = await respondSelfImprovementCommand({ message: "why wasn't this auto-fixed?", deps })
+  assert.match(whyNot.text, /surface-not-eligible/)
+  assert.match(whyNot.text, /LOW_CONFIDENCE/)
+  assert.doesNotMatch(whyNot.text, /surface-in-progress/)
+
+  const failedVerif = await respondSelfImprovementCommand({ message: 'what failed verification?', deps })
+  assert.match(failedVerif.text, /surface-failed-verification/)
+  assert.doesNotMatch(failedVerif.text, /surface-not-eligible/)
+})
