@@ -167,7 +167,11 @@ export class PlannerSessionLifecycle {
     this._requireLease(readPlannerMissionRecord(this.missionId))
     const dispatched = await this.deps.dispatchWorker({ taskId, kind, taskFingerprint })
     if (!dispatched?.workerId) { throw new Error('dispatchWorker did not return a workerId') }
-    const next = await this._mutate((current, clock) => registerDispatchedWorker(current, { workerId: dispatched.workerId, kind, taskFingerprint }, clock))
+    // providerId/agentId (Phase 5, additive): forwarded only when the real
+    // dispatcher happens to report them -- never guessed when it doesn't.
+    const next = await this._mutate((current, clock) =>
+      registerDispatchedWorker(current, { workerId: dispatched.workerId, kind, taskFingerprint, providerId: dispatched.providerId ?? null, agentId: dispatched.agentId ?? null }, clock)
+    )
     return { alreadyDispatched: false, worker: next.workers[dispatched.workerId] }
   }
 

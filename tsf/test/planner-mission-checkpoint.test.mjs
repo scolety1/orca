@@ -81,6 +81,23 @@ test('workers: registerDispatchedWorker is discoverable by taskFingerprint and r
   )
 })
 
+// Phase 5 regression: providerId/agentId is additive/optional -- an
+// existing caller that never supplies it (the test above) must keep
+// getting an honest null, never a fabricated/guessed identity, and a
+// caller that DOES supply it must have it recorded verbatim.
+test('workers: registerDispatchedWorker\'s providerId/agentId is additive -- absent stays honestly null, supplied is recorded verbatim', () => {
+  let c = createPlannerMissionCheckpoint({ missionId: 'm1', missionGoal: 'g', phase: 'BUILD', repoState }, clock)
+  c = registerDispatchedWorker(c, { workerId: 'w-no-identity', kind: 'FIXTURE', taskFingerprint: 'task-no-identity' }, clock)
+  const withoutIdentity = findWorkerByTaskFingerprint(c, 'task-no-identity')
+  assert.equal(withoutIdentity.providerId, null, 'never guessed when the caller does not know')
+  assert.equal(withoutIdentity.agentId, null)
+
+  c = registerDispatchedWorker(c, { workerId: 'w-with-identity', kind: 'RESEARCH', taskFingerprint: 'task-with-identity', providerId: 'openai', agentId: 'codex' }, clock)
+  const withIdentity = findWorkerByTaskFingerprint(c, 'task-with-identity')
+  assert.equal(withIdentity.providerId, 'openai')
+  assert.equal(withIdentity.agentId, 'codex')
+})
+
 test('recordWorkerResult transitions a known worker to COMPLETED/FAILED and rejects an unknown worker', () => {
   let c = createPlannerMissionCheckpoint({ missionId: 'm1', missionGoal: 'g', phase: 'BUILD', repoState }, clock)
   c = registerDispatchedWorker(c, { workerId: 'w1', kind: 'FIXTURE', taskFingerprint: 'task-1' }, clock)

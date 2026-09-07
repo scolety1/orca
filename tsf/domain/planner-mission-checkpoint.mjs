@@ -143,7 +143,12 @@ export function findWorkerByTaskFingerprint(checkpoint, taskFingerprint) {
   return Object.values(checkpoint.workers).find((w) => w.taskFingerprint === taskFingerprint) ?? null
 }
 
-export function registerDispatchedWorker(checkpoint, { workerId, kind, taskFingerprint }, clock) {
+// providerId/agentId (additive, optional): which real provider/agent
+// actually executed this dispatch, so it becomes queryable later -- e.g. by
+// a research worker that resolves its own provider generically (routing.mjs's
+// resolveRole/invokeLiveStructuredAnalysis) and wants that identity durably
+// recorded. Defaults to null/null so no existing caller needs to change.
+export function registerDispatchedWorker(checkpoint, { workerId, kind, taskFingerprint, providerId = null, agentId = null }, clock) {
   if (!workerId || !kind || !taskFingerprint) { throw new Error('a dispatched worker requires workerId, kind, and taskFingerprint') }
   if (checkpoint.workers[workerId]) {
     const error = new Error(`worker ${workerId} is already registered -- refusing to duplicate-dispatch`)
@@ -151,7 +156,7 @@ export function registerDispatchedWorker(checkpoint, { workerId, kind, taskFinge
     throw error
   }
   const dispatchedAt = isoNow(clock)
-  const worker = { workerId, kind, taskFingerprint, status: 'DISPATCHED', dispatchedAt, completedAt: null, result: null }
+  const worker = { workerId, kind, taskFingerprint, providerId, agentId, status: 'DISPATCHED', dispatchedAt, completedAt: null, result: null }
   return touch({ ...checkpoint, workers: { ...checkpoint.workers, [workerId]: worker } }, clock)
 }
 
