@@ -20,6 +20,7 @@
 import { classifyIntent, classifyDecision } from './chat-responder.mjs'
 import {
   findAliasForAbsentProject,
+  isAllProjectsQuantified,
   resolveAllProjectsQuantifier,
   resolveProjectsFromText
 } from './project-name-resolver.mjs'
@@ -323,8 +324,24 @@ export async function respondCommand({
   const runActionVerb = classifyRunActionVerb(message)
   if (runActionVerb) {
     const namedExact = exactMatches.length === 1 ? exactMatches[0].project : null
+    // Real dogfood finding (Phase 7): bulk pause/resume ("pause everything
+    // except X") was never built (see command-responder.test.mjs's own
+    // pinned "not built this round" test) -- but without this check, a
+    // quantified message with NO named exact match fell straight through to
+    // the back-reference resolver below, which happily resolved to whatever
+    // project a PRIOR, unrelated turn happened to reference and silently
+    // paused/resumed only that ONE project while claiming success -- a real
+    // "acted on the wrong target and said so was correct" bug, not merely an
+    // unbuilt feature (the existing pinned test only covers the
+    // no-prior-context case, where the back-reference lookup already
+    // returns null and the honest fallback was reached by coincidence).
+    // Matches dispatchAndRespond's own documented ordering below
+    // ("a quantifier is a stronger, more explicit signal than conversational
+    // history") -- a quantifier here must win over a stale back-reference
+    // too, never silently be dropped in favor of it.
+    const quantified = !namedExact && isAllProjectsQuantified(message)
     const backReferenceProjectId =
-      !namedExact && resolution.matches.length === 0
+      !namedExact && !quantified && resolution.matches.length === 0
         ? lastReferencedProjectId(opState, projects)
         : null
     const backReferenceProject = backReferenceProjectId

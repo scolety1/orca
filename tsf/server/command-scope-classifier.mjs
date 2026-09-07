@@ -127,7 +127,14 @@ function deterministicScopeFallback(message) {
   if (/\bwhat needs me\b|\bwhat am i blocking\b|\bwhat'?s blocked on me\b|\bwhat decisions? (are|do i have) (pending|outstanding|waiting)\b/i.test(message)) {
     return 'NEEDS_YOU_QUERY'
   }
-  if (/\b(what'?s (running|going on)|status|catch me up|update me|where are we)\b/i.test(message)) {
+  // Phase 7 dogfood finding: kept in sync with chat-responder.mjs's own
+  // STATUS pattern gap fix (same root cause -- "what's" required the
+  // apostrophe literally, missing Tim's own uncontracted "What is
+  // running?"). This function is a SEPARATE fallback used only when
+  // chat-responder.mjs's own STATUS pattern didn't already match (see
+  // UNROUTED_QUESTION_INTENTS in command-responder.mjs), so the same
+  // vocabulary gap here is independently reachable and independently fixed.
+  if (/\b(what(?:'?s| is) (running|going on)|status|catch me up|update me|where are we)\b/i.test(message)) {
     return 'GLOBAL_STATUS'
   }
   // Adversarial-corpus findings, two real gaps closed:

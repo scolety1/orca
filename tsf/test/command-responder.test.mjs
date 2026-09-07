@@ -475,6 +475,29 @@ test('multi-project: "pause everything" (no exclusions) really pauses every real
   assert.match(result.text, /couldn't tell which project/i)
 })
 
+// Phase 7 dogfood finding: real, reproduced via respondCommand against a
+// live fixture fleet with genuine prior conversational context (the
+// no-prior-context test above only proves the coincidental case where the
+// back-reference lookup already returns null). With a real prior turn on
+// record, "pause everything except X" used to silently fall through to
+// classifyRunActionVerb's back-reference resolver, which resolved to
+// whatever project that EARLIER, unrelated turn happened to reference --
+// pausing only that one project (ignoring the quantifier and the exclusion
+// entirely) while still claiming success ("Paused **Alpha Widgets**").
+// A quantifier must win over a stale back-reference here exactly like it
+// already does for dispatch (dispatchAndRespond's own documented ordering).
+test('Phase 7 fix: "pause everything except X" with a stale prior back-reference honestly declines instead of pausing the wrong (back-referenced) project', async () => {
+  const result = await respondCommand({
+    message: 'pause everything except alpha-gadgets',
+    projects,
+    opState: opStateWithLastTurn(['alpha-widgets']), // a real, unrelated prior turn referenced alpha-widgets
+    clock
+  })
+  assert.match(result.text, /couldn't tell which project/i)
+  assert.deepEqual(result.resolvedProjectIds, [])
+  assert.doesNotMatch(result.text, /^Paused/, 'must never claim a pause happened against the wrong (back-referenced) target')
+})
+
 test('multi-project: "everything" quantified with EVERY project excluded dispatches to nothing, honestly', async () => {
   const result = await respondCommand({
     message: 'run everything except alpha-widgets and except alpha-gadgets',

@@ -44,7 +44,8 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 2. Background Task Truthfulness | INVESTIGATED, NO GAP | See dedicated section below -- no fix warranted |
 | 4. UI Self-Dogfood (UI_DOGFOOD_AGENT_V0) | DONE | Finding F8 reconciled and fixed; see dedicated section below |
 | 6. Global Operator State / Needs You Audit | DONE | Finding F19 fixed; see dedicated section below |
-| 3, 5, 7-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 7. Command Control-Surface Dogfood | DONE | Findings F20 (STATUS/FINISHED vocabulary gap), F21 (quantified pause/resume mis-targeting) fixed; see dedicated section below |
+| 3, 5, 8-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -1394,4 +1395,301 @@ with or without this phase's change, not caused by it.
 
 Adopted SHA: see the commit on
 `tsf/feature/phase6-global-operator-state-audit` that carries this
+section.
+
+## Phase 7: Command Control-Surface Dogfood -- Findings F20, F21 FIXED
+
+Worktree: `phase7-command-control-surface-dogfood`, branch
+`tsf/feature/phase7-command-control-surface-dogfood` (forked from
+`tsf/main` @ `57e88a55b2de38f8a2664c0ef4921c9f75538208`, i.e. after F18/F19
+and Phases 1-6 above).
+
+**Method.** Not a test-suite-trusting pass. Built a disposable, throwaway
+driver script (`node`, not committed) reusing `command-dogfood-sequences
+.test.mjs`'s own established isolated-state-file + `turn()` convention
+(`TSF_UI_STATE_FILE` pointed at a fresh per-process file, planner CLIs
+stubbed to a nonexistent path so `classifyGlobalScope` runs its real,
+honestly-labeled `DETERMINISTIC_FALLBACK` path rather than making a live,
+billable call) and drove every command from this phase's own list through
+the REAL `respondCommand` entry point against 4 disposable
+`sourceClass: 'FIXTURE'` projects with varied real durable state, seeded
+through the REAL domain/store functions (`createOvernightRun`,
+`completeRun`, `withKeepGoingRun` -- never a hand-typed response fixture):
+
+- `dogfood7-active` -- a real `ACTIVE` Keep Going run, no wave dispatched
+  yet.
+- `dogfood7-blocked` -- a real `NEEDS_YOU` run with one real open question
+  ("Which export schema should dogfood7-blocked use?").
+- `dogfood7-done` -- a real run driven to `COMPLETE` via the real
+  `completeRun` domain transition.
+- `dogfood7-idle` -- no run at all.
+
+A 5th, `the-average-rainfall-in-portland-...`, was created live through the
+real research bridge (`respondCommand({message:'Research the average
+rainfall...'})`), not hand-built, to prove that path end-to-end too. Every
+response below was read in full and cross-checked against the real durable
+store after the turn (`readKeepGoingRun`, `readResearchMissionStatus`), not
+just checked for "didn't throw."
+
+### Per-command results
+
+- **"What is running?"** -- REAL GAP FOUND (F20, below). After the fix:
+  correctly returns real, grounded fleet-wide status naming all 4 fixture
+  projects with their real, current per-project states (`PLANNING`,
+  `NEEDS_YOU`, `READY_FOR_ADOPTION`/"reached COMPLETE", "no Keep Going
+  run"), `scope: 'FLEET'`, `resolvedProjectIds: []` (correct -- no single
+  project referent).
+- **"What finished?"** -- REAL GAP FOUND (F20, below, same root cause).
+  After the fix: `intent: 'FINISHED'`, reuses the same real
+  `fleetWorkStatus`/`fleetResearchStatus` grounding as "What is running?"
+  (an existing, deliberate, pre-Phase-7 design choice shared by every
+  `STATUS_LIKE_INTENTS` member -- see disclosed cosmetic note below).
+- **"What needs me?"** -- HOLDS UP, no gap. `intent: 'NEEDS_YOU_QUERY'`,
+  correctly surfaced only `dogfood7-blocked`'s real open question, with the
+  real question text verbatim, `resolvedProjectIds: ['dogfood7-blocked']`
+  (real deep-link, F19's own fix from Phase 6 confirmed still working end
+  to end against a fresh fixture, not just its own dedicated test file).
+- **"Why is this blocked?"** (a real follow-up to the "what needs me?"
+  answer above) -- HOLDS UP. `intent: 'FOLLOW_UP_EXPLANATION'`, correctly
+  re-explained `dogfood7-blocked`'s real open question (Phase 6's
+  `explainPriorAnswer` NEEDS_YOU_QUERY-first ordering fix confirmed live).
+- **"Pause dogfood7-active." / "Continue dogfood7-active."** -- HOLDS UP,
+  real actions with real, verified side effects. `readKeepGoingRun`
+  confirmed `state: 'PAUSED'` then `state: 'ACTIVE'` after each turn --
+  not just the response text claiming it.
+- **"Pause everything except project X"** -- REAL GAP FOUND (F21, below).
+  Not a merely-unbuilt capability (that part was already known and pinned
+  in `command-responder.test.mjs`) -- a real, reproducible wrong-target
+  bug: with genuine prior conversational context on record (a completely
+  ordinary, expected condition in a real Command session), this silently
+  paused/resumed the WRONG single project (a stale back-reference from an
+  earlier, unrelated turn) while claiming success, ignoring the quantifier
+  and the exclusion entirely. Fixed to honestly decline instead (see F21).
+- **"Dogfood this project." / "Dogfood dogfood7-active."** -- HOLDS UP,
+  real bridge routing confirmed, not a stub. Routed to the real
+  `UI_DOGFOOD_AGENT_V0` bridge (`respondDogfoodCommand` via
+  `command-responder.mjs`'s own `deps.dogfood` passthrough) with injected
+  fake Electron/capture deps (mirroring `command-dogfood-bridge.test.mjs`'s
+  own `REQUIRED PROOF` test) -- returned `live: true` and a real
+  `dogfoodRun` summary, proving `deps.dogfood` genuinely reaches
+  `runDogfoodPass`, not a placeholder. "Dogfood this project." (never
+  naming an actual project) still correctly dogfoods Orca's own UI --
+  matches this bridge's own disclosed V0 scope (only Orca's own UI is a
+  real, launchable target today), not a silent no-op.
+- **"Research this question." / "Research the average rainfall in
+  Portland..."** -- HOLDS UP, real bridge routing confirmed. Both created a
+  real, durable `ResearchMission` (`readResearchMissionStatus(missionId)
+  .phase === 'DRAFT'`, matching the honestly-reported "couldn't reach the
+  live planner (SPAWN_ERROR)" text -- the planner CLI was deliberately
+  stubbed for test isolation, same convention as every other test file in
+  this suite) -- never a fabricated "created" claim with no real record
+  behind it.
+- **"What changed overnight?"** -- CONFIRMED: no real mechanism exists
+  (matches Phase 6 area 4's own prior finding on "changed since I last
+  looked" exactly -- this is the same gap, a different phrasing of it).
+  Honest generic fallback, never a fabricated diff.
+- **"Which workers are using memory?"** -- CONFIRMED: no real per-worker
+  memory-usage surface exists anywhere in Command (the Resource Pressure
+  Governor's host-memory evidence gates dispatch admission internally, per
+  Phase 1's F1, but is never exposed as an answerable Command query).
+  Honest generic fallback.
+- **"Which work can safely continue?"** -- CONFIRMED: no real mechanism.
+  Distinct from `GLOBAL_ADVISORY` ("what's safe to test/experiment on," a
+  disposable-project concept `command-scope-classifier.mjs` already
+  implements) -- this phrasing asks about resumability of blocked/paused
+  work, which has no real classifier or answer path. Honest generic
+  fallback, not conflated with the unrelated `GLOBAL_ADVISORY` capability.
+- **"Show me failures from today."** -- CONFIRMED: no real per-day
+  failure-history surface exists. Honest generic fallback.
+- **Error handling / ambiguous / nonsensical** -- HOLDS UP. Pure gibberish
+  (`"asdkfj laksjdf qpwoei"`) and a message whose only shared token with
+  every fixture project ("dogfood7") falls below the fuzzy-confidence floor
+  (`0.5 < 0.6`) both got the same honest "couldn't tell which project"
+  refusal, never a guess. A message naming two projects by their exact
+  displayName phrase dispatched to both, honestly, with a REAL
+  `TSF_REPOSITORY_NOT_REGISTERED` refusal per project (these fixtures have
+  no real repo root) -- confirming dispatch never fabricates a success
+  claim for a project it can't actually act on. (The pre-existing,
+  already-tested ambiguous-multi-fuzzy-match refusal path --
+  `command-responder.test.mjs`'s "alpha-widgets"/"alpha-gadgets" tests --
+  was independently re-confirmed passing after this phase's fixes, not
+  re-derived from scratch.)
+
+### Finding F20: STATUS/FINISHED intent vocabulary gap for Tim's own uncontracted phrasing -- REAL, REPRODUCED, FIXED
+
+Same shape as F18: a real vocabulary gap in a deterministic pattern, not a
+design decision, silently swallowing a natural, project-less status
+question into the generic "couldn't tell which project" non-answer.
+
+**"What is running?"** (this phase's own command list, verbatim) --
+`classifyIntent` returned `QUESTION` (the interrogative-catch-all), not
+`STATUS`: `chat-responder.mjs`'s `STATUS` pattern required the apostrophe
+contraction (`what'?s running`/`what'?s going on`) and had no `what is`
+alternative at all -- confirmed live via a direct `classifyIntent('What is
+running?')` call against the unmodified code, returning `'QUESTION'`.
+Because `QUESTION` is one of `command-responder.mjs`'s
+`UNROUTED_QUESTION_INTENTS`, the message still reached
+`classifyGlobalScope` -- but `command-scope-classifier.mjs`'s own,
+SEPARATE `deterministicScopeFallback` GLOBAL_STATUS pattern had the
+identical `what'?s`-only gap, so it fell through the fallback too and hit
+the generic non-answer. A live planner (when genuinely available and asked
+to classify the same, unresolved-scope message) might get this right
+regardless -- but the deterministic fallback is the safety net for
+exactly the case where it is NOT available, and it failed on Tim's own
+listed phrasing.
+
+**"What finished?"** (also this phase's own list, verbatim) had a
+distinct, second gap: `FINISHED`'s pattern only covered "is (this/it)
+(actually) done/finished/ready" and "are we done" -- no bare "what
+finished" form at all, so it never even reached the vocabulary-gap
+territory the STATUS fix above closes; it needed its own new alternative.
+
+**Fix.** `tsf/server/chat-responder.mjs`: `STATUS`'s pattern gained
+`what(?:'?s| is) going on` / `what(?:'?s| is) running` (apostrophe-optional
+preserved, so the existing `whats running` no-apostrophe match this file's
+own test suite already pins keeps passing); `FINISHED`'s pattern gained
+`what finished` (its own grammatical shape -- "finished" as the main verb)
+and `what(?:'?s| is) done` (the predicate-adjective form), as two separate
+alternatives rather than forcing one fragment to cover two different
+sentence shapes. `tsf/server/command-scope-classifier.mjs`'s
+`deterministicScopeFallback` GLOBAL_STATUS pattern got the identical
+`what(?:'?s| is)` fix, kept explicitly in sync (own comment references the
+sibling fix) since it is a second, independently-reachable copy of the
+same vocabulary, the same class of drift this codebase has already been
+bitten by more than once (`PROHIBITION_MARKERS` vs. `EXCLUSION_PREFIX`,
+noted in `chat-responder.mjs`/`project-name-resolver.mjs`'s own comments).
+No new classification mechanism -- both are the exact same regex-fragment
+class of fix, applied to the exact two pre-existing patterns that already
+own this vocabulary.
+
+**Tests.** `tsf/test/chat-responder.test.mjs`: new test asserts
+`classifyIntent('What is running?') === 'STATUS'`,
+`classifyIntent('what is going on?') === 'STATUS'`,
+`classifyIntent('What finished?') === 'FINISHED'`,
+`classifyIntent('what is done') === 'FINISHED'`, and pins the honest,
+disclosed residual gap (`classifyIntent("what's finished") === 'GENERAL'`
+-- only the bare-verb and "is done" shapes are covered, not every FINISHED
+synonym; not fixed further here, since neither this phase's command list
+nor any real reproduction named that specific phrasing). Existing
+apostrophe-optional `whats running` test in the same file re-confirmed
+passing (proves no regression from the `'?s` fix).
+
+### Finding F21: quantified pause/resume silently mis-targeted a stale back-referenced project -- REAL, REPRODUCED, FIXED
+
+**Not the same gap as the already-known "bulk pause/resume was never
+built."** `command-responder.test.mjs` already had a real, deliberately
+pinned test (`'multi-project: "pause everything" (no exclusions) really
+pauses every real project with a run'`) proving that with NO prior
+conversational context, `"pause everything"` honestly falls through to the
+generic "couldn't tell which project" refusal -- `classifyRunActionVerb`'s
+PAUSE branch was documented as a single-target-only mechanism, bulk pause
+explicitly deferred ("real, valuable follow-up work, not built this
+round"). That test and its own reasoning are correct and untouched here.
+
+**What that test never covered, and what this phase's real, scripted,
+multi-turn dogfood sequence exposed:** in a REAL Command session there is
+almost always a prior turn on record. With genuine prior context (e.g. a
+just-completed `"Continue dogfood7-active."` turn, which durably records
+`resolvedProjectIds: ['dogfood7-active']` in `chatThreads.__command__`,
+exactly like `http-server.mjs`'s own real chat-save plumbing does), a
+follow-up `"Pause everything except dogfood7-idle."` did NOT reach the
+honest fallback at all. `resolveProjectsFromText` correctly excludes the
+named-but-excluded project from `resolution.matches` (`isExcludedNear`
+already worked correctly, confirmed) -- but with zero matches AND no named
+exact project, `classifyRunActionVerb`'s PAUSE branch fell through to
+`lastReferencedProjectId(opState, projects)`, which resolved to
+`dogfood7-active` (the STALE, unrelated prior turn's project) and silently
+paused ONLY that one project, reporting `"Paused **Dogfood7 Active**
+(resolved from the prior turn)."` -- while `dogfood7-blocked` (which
+should also have been paused under "everything except idle") was left
+untouched, and the operator was given no indication anything was
+incomplete or mistargeted. Confirmed real and reproducible via the real
+durable store (`readKeepGoingRun` after the turn: `dogfood7-active` was
+genuinely `PAUSED`, `dogfood7-blocked` was still `NEEDS_YOU`) -- not a
+theoretical trace, an actual wrong mutation with a false-success response.
+This is exactly the "claims an action happened correctly when it silently
+did the wrong thing" failure mode this phase's brief named as the primary
+target, not a mere unbuilt-feature gap.
+
+**Fix.** `tsf/server/command-responder.mjs`: imported
+`isAllProjectsQuantified` (already exported by `project-name-resolver.mjs`,
+already used by the sibling dispatch quantifier machinery -- no new
+mechanism). The PAUSE/RESUME branch now computes `quantified = !namedExact
+&& isAllProjectsQuantified(message)` and folds it into the
+back-reference-eligibility guard (`!namedExact && !quantified && ...`), so
+a quantified pause/resume message with no named exact match NEVER falls
+through to the back-reference resolver -- it reaches the same, honest,
+already-tested "couldn't tell which project" fallback the no-context case
+already got, for the SAME reason `dispatchAndRespond`'s own quantifier
+check is already documented as checked before its back-reference fallback
+("a quantifier is a stronger, more explicit signal than conversational
+history"). Deliberately NOT an attempt to build real bulk pause/resume
+execution in this pass -- that remains the same disclosed, deferred
+follow-up work `command-responder.test.mjs`'s own pinned comment already
+named; this fix only closes the silent-wrong-target/false-success path,
+consistent with this program's "bounded, low-risk, reuse existing
+mechanisms" discipline.
+
+**Tests.** `tsf/test/command-responder.test.mjs`: new test builds a real
+prior-turn back-reference via the file's own existing
+`opStateWithLastTurn(['alpha-widgets'])` helper, then sends `"pause
+everything except alpha-gadgets"` and asserts the honest fallback text,
+`resolvedProjectIds: []`, and that the response text never starts with
+`"Paused"` -- the exact shape of the false-success bug this fix closes.
+The existing no-prior-context "pause everything" test (above) re-confirmed
+passing unchanged.
+
+### Disclosed, not fixed: fleet-status header text is question-agnostic
+
+Every `STATUS_LIKE_INTENTS` member (`STATUS`, `NEXT_ACTION`, `FINISHED`,
+`HEALTH`) that falls through to `respondNoProjectResolved`'s fleet-wide
+fallback shares the SAME `formatFleetStatusText` output, headed
+`"Here's what's really running right now:"` -- including for `"What
+finished?"`, whose answer is headed by a sentence about what's "running,"
+even though every LINE beneath it is real, honestly-labeled, per-project
+state (a `COMPLETE` run is explicitly labeled `READY_FOR_ADOPTION`/"run
+reached COMPLETE via independently-verified acceptance criteria," never
+disguised as still-running). This is a pre-existing, deliberate design
+choice (all 4 intents already shared this exact fallback before Phase 7;
+F20's fix only makes `"What finished?"` REACH it, not a new sharing
+decision) with real test coverage pinning the exact header text across
+multiple files. Not a grounding/honesty violation -- no fact stated is
+false or invented -- but a real, minor framing mismatch, confirmed and
+disclosed rather than silently left unmentioned. Not fixed: making the
+header intent-aware would touch a shared formatter used by 4 different
+question shapes across many already-pinned tests, disproportionate to a
+cosmetic nit for this phase's bounded, low-risk mandate. Recorded as a
+real, open, low-priority polish item for a future phase.
+
+**Lint.** `npx oxlint tsf/server/chat-responder.mjs
+tsf/server/command-responder.mjs tsf/server/command-scope-classifier.mjs
+tsf/test/chat-responder.test.mjs tsf/test/command-responder.test.mjs` --
+clean, exit 0.
+
+**Tests.** `node --test tsf/test/command-responder.test.mjs
+tsf/test/chat-responder.test.mjs` -- 67/67 pass (2 new tests covering F20 +
+F21). Regression sweep of every `command-*`/`chat-responder`/
+`fleet-work-status`/`http-command*`/`self-update-scenarios`/
+`update-safety`/`golden-path-operator-flow`/`work-feed-summary` test file
+(18 files, 338 tests): 335 pass, 3 fail -- all 3 independently confirmed
+(via `git stash`/`git stash pop`) to fail IDENTICALLY against the
+unmodified baseline (`command-bare-imperative-dispatch.test.mjs` x2,
+`command-operator-integration-adversarial.test.mjs` x1) -- the exact
+pre-existing, already-documented `classifyIntent(...) === 'GENERAL'` vs.
+`QUESTION`/`FEEDBACK_BUG` phrasing gap F18's own checkpoint entry names
+explicitly, not caused by this phase. Full whole-repo sweep (`node --test
+tsf/test/*.test.mjs`): 2356 tests, 2350 pass, 6 fail -- the exact 6-test
+fail set matches, name-for-name, the pre-existing baseline F1/F3/F4/
+Phase 6's own checkpoint entries above already documented on this host
+(2 intent-classifier phrasing gaps + 1 WorldForge-scenario phrasing gap in
+`command-bare-imperative-dispatch.test.mjs`/`command-operator-integration-
+adversarial.test.mjs`, 1 Work-tab timing test in `http-work-summary
+.test.mjs`, 1 real-host-load stall in `keep-going-autonomy-proof.test.mjs`,
+1 race-condition test in `operator-state-adversarial.test.mjs`'s "STALE
+ACTION RACE") -- none touch `command-responder.mjs`, `chat-responder.mjs`,
+or `command-scope-classifier.mjs`, and 3 of the 6 were independently
+re-confirmed pre-existing via `git stash` above.
+
+Adopted SHA: see the commit on
+`tsf/feature/phase7-command-control-surface-dogfood` that carries this
 section.

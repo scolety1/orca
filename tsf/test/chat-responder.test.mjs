@@ -61,6 +61,22 @@ test('classifyIntent recognizes Command\'s "what\'s running (right now)?" as STA
   assert.equal(classifyIntent('whats running'), 'STATUS')
 })
 
+// Phase 7 dogfood finding: real, reproduced via respondCommand against a
+// live fixture fleet -- Tim's own uncontracted phrasing ("What is running?",
+// this phase's own command list, verbatim) fell through to QUESTION and got
+// Command's generic "couldn't tell which project" reply instead of the real
+// fleet status, for the exact same missing-contraction reason the comment
+// above already documents for "what's running". "What finished?" had the
+// identical gap: FINISHED's own pattern only covered "is it done"-shaped
+// phrasing, never a bare "what finished" question.
+test('Phase 7: uncontracted "What is running?"/"What finished?" are recognized (STATUS/FINISHED), not swallowed by QUESTION', () => {
+  assert.equal(classifyIntent('What is running?'), 'STATUS')
+  assert.equal(classifyIntent('what is going on?'), 'STATUS')
+  assert.equal(classifyIntent('What finished?'), 'FINISHED')
+  assert.equal(classifyIntent("what's finished"), 'GENERAL') // disclosed: only the bare-verb + "is done" shapes are covered, not every FINISHED synonym
+  assert.equal(classifyIntent('what is done'), 'FINISHED')
+})
+
 test('DISPATCH_REQUEST classifies as RECOMMEND_AND_PROCEED, same tier as FIX_REQUEST', () => {
   assert.equal(classifyDecision('go ahead', 'DISPATCH_REQUEST'), 'RECOMMEND_AND_PROCEED')
   assert.equal(classifyDecision('build that', 'DISPATCH_REQUEST'), 'RECOMMEND_AND_PROCEED')

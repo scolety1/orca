@@ -173,10 +173,26 @@ const INTENTS = [
     // Phase 7) -- a real gap found live: it did not match any pattern here
     // and fell through to a "couldn't tell which project" reply even for a
     // deliberately project-less, fleet-wide question.
+    // Phase 7 dogfood finding: "what's" above required an apostrophe or
+    // "is" -- Tim's own uncontracted phrasing ("What is running?", straight
+    // off this phase's own command list) fell through the exact same way
+    // "what's running" originally did, for the exact same reason (a
+    // vocabulary gap, not a design decision to exclude it). `what(?:'?s|
+    // is)` covers "what's"/"whats"/"what is" all three, preserving the
+    // original apostrophe-optional "whats running" match this file's own
+    // test suite already pins.
     pattern:
-      /\b(what'?s going on|status|where are we|update me|catch me up|what (is|'s) it doing|what'?s running)\b/i
+      /\b(what(?:'?s| is) going on|status|where are we|update me|catch me up|what (is|'s) it doing|what(?:'?s| is) running)\b/i
   },
-  { id: 'FINISHED', pattern: /\b(is (this|it) (actually )?(done|finished|ready)|are we done)\b/i },
+  // Phase 7 dogfood finding: "What finished?" (this phase's own command
+  // list, and a natural fleet-wide phrasing) matched none of the alternatives
+  // above -- fell through to QUESTION's generic non-answer instead of the
+  // real fleet status these `what...` forms are for. "what finished" is its
+  // own grammatical shape (finished as the main verb, "what [x] finished"),
+  // distinct from "what's/what is done" (predicate-adjective form) -- both
+  // added as separate alternatives rather than forcing one regex fragment to
+  // cover two different sentence shapes.
+  { id: 'FINISHED', pattern: /\b(is (this|it) (actually )?(done|finished|ready)|are we done|what finished|what(?:'?s| is) done)\b/i },
   // M3: the affirmative "go do real work" phrasings Tim's own north star
   // names ("go ahead," "build that," "do the recommended next step") --
   // deliberately a SEPARATE intent from FIX_REQUEST (which stays scoped to
