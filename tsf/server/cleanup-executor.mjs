@@ -45,7 +45,7 @@ import {
   putRecommendation,
   readCleanupRequestRecord
 } from './cleanup-request-store.mjs'
-import { recoverIncompleteQuarantine } from './cleanup-quarantine-store.mjs'
+import { findQuarantineManifestByRequestId, recoverIncompleteQuarantine } from './cleanup-quarantine-store.mjs'
 import { executeRetireSession } from './cleanup-session-retirement-action.mjs'
 import {
   executeDeleteBranchWithUniqueUnpushedCommits,
@@ -182,6 +182,12 @@ export async function runGovernedCleanupAction({
     return { status: 'EXECUTION_FAILED', requestId, plan, authorization, execution }
   }
   execution = recordExecutionStep(execution, { name: 'RACE_RECHECK', status: 'PASSED' }, clock)
+  // Durably persist the PENDING -> IN_PROGRESS transition BEFORE the actual
+  // mutate() call -- the same "write evidence before the risky step" rule
+  // moveToQuarantine's own manifest follows. Without this, a real crash
+  // mid-mutate leaves the durable record stuck at PENDING, which
+  // recoverStalledCleanupExecution below does not treat as recoverable.
+  await appendExecution(requestId, execution)
 
   const mutate = ACTION_EXECUTORS[actionClass]
   try {
@@ -224,7 +230,15 @@ export function recoverStalledCleanupExecution(requestId) {
   if (!previous || previous.status !== 'IN_PROGRESS') {
     return { status: previous?.status ?? 'NO_EXECUTION', requiresOwnerReview: false }
   }
-  return recoverIncompleteQuarantine(requestId)
+  // quarantineId is minted fresh inside moveToQuarantine per attempt and is
+  // never itself the requestId -- look it up via the manifest's own
+  // requestId field (findQuarantineManifestByRequestId), never assume the
+  // two ids coincide.
+  const manifest = findQuarantineManifestByRequestId(requestId)
+  if (!manifest) {
+    return { status: 'NO_MANIFEST', requiresOwnerReview: false }
+  }
+  return recoverIncompleteQuarantine(manifest.quarantineId)
 }
 
 function describeSteps(actionClass) {

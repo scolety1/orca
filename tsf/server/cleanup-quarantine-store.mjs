@@ -60,6 +60,28 @@ export function readQuarantineManifest(quarantineRoot, quarantineId) {
   }
 }
 
+// Crash recovery only knows the cleanup requestId (quarantineId is a
+// randomUUID minted inside moveToQuarantine and never durably recorded on
+// the request-store execution record until AFTER a successful mutate() call
+// returns) -- scans manifests for the one this requestId actually wrote,
+// via the requestId field every manifest already carries. Null means no
+// quarantine attempt for this requestId ever reached its first real write.
+export function findQuarantineManifestByRequestId(requestId, { quarantineRoot = defaultQuarantineRoot() } = {}) {
+  if (!existsSync(quarantineRoot)) {
+    return null
+  }
+  for (const entry of readdirSync(quarantineRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue
+    }
+    const manifest = readQuarantineManifest(quarantineRoot, entry.name)
+    if (manifest?.requestId === requestId) {
+      return manifest
+    }
+  }
+  return null
+}
+
 // Same-volume rename first (atomic); EXDEV (cross-device) falls back to a
 // verified copy-then-delete. Returns { ok, movedByRename } -- callers use
 // `ok` for success and never need to know which strategy ran.

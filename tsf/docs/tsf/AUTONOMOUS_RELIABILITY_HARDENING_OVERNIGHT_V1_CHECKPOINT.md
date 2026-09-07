@@ -45,8 +45,10 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 4. UI Self-Dogfood (UI_DOGFOOD_AGENT_V0) | DONE | Finding F8 reconciled and fixed; see dedicated section below |
 | 6. Global Operator State / Needs You Audit | DONE | Finding F19 fixed; see dedicated section below |
 | 7. Command Control-Surface Dogfood | DONE | Findings F20 (STATUS/FINISHED vocabulary gap), F21 (quantified pause/resume mis-targeting) fixed; see dedicated section below |
+| 10. Cleanup V1 Destructive Safety Gauntlet | DONE | 16-scenario reconciliation (14 already covered, 2 genuinely new); 1 real crash-recovery bug found, reproduced, fixed (requestId/quarantineId mismatch); capstone stacked-blocker adversarial passed with no fix needed; see dedicated section below |
 | 13. Evaluation / Regression Quality | DONE | 2 real acceptance-level gaps confirmed and closed (TSF_PLATFORM_GOLDEN_PATH_EVAL, TSF_RESEARCH_GOLDEN_PATH_EVAL); Cleanup V1 investigated, already adequate; see dedicated section below |
-| 3, 5, 8-12, 14-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 14. Security / Authority Boundary Review | DONE | 1 real bug found, reproduced, fixed (Cleanup V1 protected-path registry canonicalization); see dedicated section below |
+| 3, 5, 8-9, 11-12, 15-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -2383,3 +2385,215 @@ that a real repro or a real code trace did not confirm.
 
 Adopted SHA: see the commit on
 `tsf/feature/phase14-security-authority-review` that carries this section.
+
+## Phase 10: Cleanup V1 Destructive Safety Gauntlet -- 1 real crash-recovery bug found, reproduced, fixed; capstone stacked-blocker adversarial passed with no fix needed
+
+Worktree: `phase10-cleanup-v1-safety-gauntlet`, branch
+`tsf/feature/phase10-cleanup-v1-safety-gauntlet` (forked from `tsf/main` @
+`fcd43b6864b48c62f51d3babe3a1dcea1aa08995`, i.e. immediately after Phase
+14's protected-path registry fix). RECONCILE FIRST, per this phase's own
+instruction: read every `cleanup-*.test.mjs` file (15 files, 132 tests) in
+full before writing anything, to determine exactly which of the mission's
+16 named adversarial fixtures already have real, non-mocked proof and which
+were genuinely missing.
+
+### 16-scenario reconciliation table
+
+| # | Scenario | Status | Citation |
+|---|---|---|---|
+| 1 | Clean merged worktree | Already covered | `cleanup-executor-worktree-adversarial.test.mjs` "HAPPY PATH" (worktree removal) + "CLEAN FULLY-MERGED WORKTREE/BRANCH fixture" (branch deletion) |
+| 2 | Dirty worktree | Already covered | `cleanup-executor-worktree-adversarial.test.mjs` "DIRTY WORKTREE fixture" -- `git status --porcelain` dirty (including plain untracked files) -> `AUTHORIZATION_REFUSED`, untouched |
+| 3 | Untracked unique artifact | Already covered | Two existing tests together prove both halves: "HAPPY PATH" proves a gitignored/untracked file is preserved via the quarantine COPY step before `git worktree remove` runs; "DIRTY WORKTREE fixture" proves a genuinely untracked-and-not-ignored file blocks the action outright (never silently lost) since `isWorktreeClean` treats any porcelain output, including `??` untracked entries, as dirty |
+| 4 | Unique unpushed commit | Already covered | `cleanup-executor-worktree-adversarial.test.mjs` "UNIQUE UNPUSHED COMMIT fixture" (STANDARD tier refuses) + the following test (ELEVATED `DELETE_BRANCH_WITH_UNIQUE_UNPUSHED_COMMITS` succeeds, proving the tier distinction is structural) |
+| 5 | Sleeping unfinished mission | Already covered | `cleanup-active-mission-check.test.mjs` "SLEEPING LANE fixture" (expired lease, mission still ACTIVE, still blocks -- "Sleep != complete") + `cleanup-executor-worktree-adversarial.test.mjs`'s own "SLEEPING LANE fixture" through the full governed pipeline |
+| 6 | Completed sleeping mission | Already covered | `cleanup-active-mission-check.test.mjs` "a COMPLETE mission no longer blocks -- completion, not lease expiry, is what releases the protection" |
+| 7 | Active worker | Already covered | `cleanup-active-mission-check.test.mjs` "an ACTIVE mission whose checkpoint.repoState.branch matches the target BLOCKS" + `cleanup-executor-worktree-adversarial.test.mjs` "ACTIVE WORKER fixture" |
+| 8 | Stale worker | Already covered | `checkActiveMissionReference` (`server/cleanup-active-mission-check.mjs`, read in full) deliberately never consults worker/lease liveness at all -- only `missionState !== 'COMPLETE'` plus a branch/worktreePath match, by design ("regardless of whether its lease is currently live"). A worker gone stale (dead process, expired lease) and a "sleeping" mission are therefore the exact SAME evidence shape to this check -- already proven by the SLEEPING LANE fixture (scenario 5): a lease deliberately expired via `acquirePlannerLease(..., pastClock, {ttlMs:1000})` still blocks |
+| 9 | Worktree path junction | Already covered | `cleanup-revalidation.test.mjs` "PATH-ALIAS/JUNCTION fixture" (candidate side) + the Phase 14 "SECURITY" regression test (registry side) -- both against a real Windows junction |
+| 10 | Windows file lock | Already covered | `cleanup-quarantine-store.test.mjs` "WINDOWS FILE-LOCK fixture" -- a real live child process holding the target directory as its cwd |
+| 11 | Partial deletion failure | Already covered | `cleanup-quarantine-store.test.mjs` "PARTIAL-DELETION-FAILURE fixture" -- both copy and original present -> `QUARANTINE_SOURCE_STILL_PRESENT`, owner review required |
+| 12 | Crash mid-cleanup | **Genuinely missing -- built, and building it surfaced a real bug (see below)** | New `cleanup-executor-crash-recovery-adversarial.test.mjs`. The existing `recoverIncompleteQuarantine` IN_PROGRESS-manifest tests in `cleanup-quarantine-store.test.mjs` only ever call that function directly with a hand-supplied `quarantineId` -- none exercised the REAL, HTTP-wired production entry point (`recoverStalledCleanupExecution(requestId)`, `server/cleanup-executor.mjs`) against a genuinely crashed execution |
+| 13 | Duplicate cleanup request | Already covered | `cleanup-executor-worktree-adversarial.test.mjs` "IDEMPOTENCY fixture" + `cleanup-quarantine-store.test.mjs` "DUPLICATE-REQUEST fixture" (idempotent restore) |
+| 14 | Changed state between audit and execution (race) | Already covered | `cleanup-executor-worktree-adversarial.test.mjs` "RACE-BETWEEN-AUDIT-AND-EXECUTION fixture" -- a 3-call-counting `revalidate` stub proves the third, independent race-recheck (not the earlier two) is what catches it |
+| 15 | Protected canonical branch | Already covered | `cleanup-executor-worktree-adversarial.test.mjs` "PROTECTED CANONICAL-MAIN fixture" + `cleanup-protected-registry.test.mjs` "canonical branch names are always protected" |
+| 16 | Restore from quarantine | Already covered | `cleanup-executor-artifact-adversarial.test.mjs` "QUARANTINE_ARTIFACT then RESTORE_QUARANTINE: full round trip" + `cleanup-quarantine-store.test.mjs`'s own MOVE/COPY/duplicate-restore tests |
+
+Result: 14 of 16 already had real, non-mocked, adversarial-fixture proof
+(several -- 5, 9, 13, 16 -- proven at BOTH the domain/store level and the
+full governed-pipeline level). No redundant coverage was built for these
+14. 1 (#12) was genuinely missing and, once built, immediately surfaced a
+real production bug (below). #8 required no new test -- it collapses onto
+an already-proven mechanism by the check's own deliberate design, disclosed
+in the table rather than silently skipped.
+
+### Real finding: `recoverStalledCleanupExecution` could never actually recover a crashed quarantine-backed execution -- REPRODUCED, FIXED
+
+Building scenario #12's fixture (a real crash simulated by reconstructing
+`runGovernedCleanupAction`'s own real pipeline stages up through the
+durable EXECUTION-begun persist, then calling the real `moveToQuarantine`
+directly -- exactly what the real mutate function does -- without ever
+reaching `completeCleanupExecution`, modeling "the process died right
+here") surfaced two compounding gaps in `server/cleanup-executor.mjs`,
+neither previously exercised by any test:
+
+1. **The durable execution record never advanced past `PENDING` before the
+   risky mutate() call ran.** `recordExecutionStep` computes the
+   `PENDING -> IN_PROGRESS` transition in memory (on the RACE_RECHECK-passed
+   step), but `runGovernedCleanupAction` never persisted it via
+   `appendExecution` before calling `mutate(...)` -- only after
+   `beginCleanupExecution` (PENDING) and again after `completeCleanupExecution`/
+   `failCleanupExecution`. A real crash during the mutate call itself (the
+   actual highest-risk window -- mid quarantine-move, mid `git worktree
+   remove`) left the durable record stuck at `PENDING`, not `IN_PROGRESS`.
+2. **`recoverStalledCleanupExecution(requestId)` called
+   `recoverIncompleteQuarantine(requestId)` -- passing the wrong id.**
+   `quarantineId` is a fresh `randomUUID()` minted inside `moveToQuarantine`
+   per attempt (the manifest lives at `quarantineRoot/<quarantineId>/
+   manifest.json`) and is never equal to `requestId` (a deterministic hash
+   of `actionClass`+`targetIdentity`). `quarantineId` is only ever recorded
+   durably on `execution.result.quarantineId` -- set at `COMPLETED`, which a
+   crashed execution by definition never reaches. There was structurally no
+   way, as coded, to find the manifest a crashed execution left behind.
+
+Reproduced live with a small standalone script driving the real production
+functions in sequence (before writing the permanent test): confirmed
+`recoverStalledCleanupExecution(requestId)` returned `{status:'PENDING',
+requiresOwnerReview:false}` for a genuinely crashed, real, mid-flight
+quarantine attempt -- silently reporting nothing needs attention when a
+real quarantine manifest was sitting in `QUARANTINE_IN_PROGRESS`. Not a
+data-loss bug in itself (every real filesystem step this touches --
+`renameSync`, or `cpSync`-then-`rmSync` with an integrity check in between
+-- is already structurally safe against a crash, per `moveToQuarantine`'s
+own "write manifest before the risky step" discipline, independently
+re-verified here) but a real, disclosed **recovery-honesty** bug: the one
+production entry point wired to `POST /api/cleanup/recover` could never
+tell an operator or automated recovery check the truth about a genuinely
+stuck cleanup, defeating the entire purpose of scenario #12/#16
+(crash-mid-cleanup, restore-from-quarantine) for the two quarantine-backed
+action classes (`QUARANTINE_ARTIFACT`, `REMOVE_DISPOSABLE_WORKTREE`) --
+exactly the mission's own "receipts and recovery/restore behavior are
+correct where relevant" requirement.
+
+**Fix** (minimal, reuses existing mechanisms, no new cleanup-truth
+mechanism):
+- `server/cleanup-executor.mjs`: added one `await appendExecution(requestId,
+  execution)` call immediately after the RACE_RECHECK-passed transition and
+  strictly before `mutate(...)` is invoked -- durably persists `IN_PROGRESS`
+  before the risky step, matching the same "write evidence before the risky
+  step" rule already established by `moveToQuarantine`'s own manifest
+  write and this codebase's schema-version-guard/lease conventions
+  elsewhere.
+- `server/cleanup-quarantine-store.mjs`: added
+  `findQuarantineManifestByRequestId(requestId, {quarantineRoot})`, which
+  scans `quarantineRoot`'s subdirectories for the one manifest whose
+  already-present `requestId` field matches (every manifest has always
+  carried this field; nothing new stored, no new file format).
+- `recoverStalledCleanupExecution` now calls
+  `findQuarantineManifestByRequestId` to resolve the real `quarantineId`,
+  then passes THAT to `recoverIncompleteQuarantine` -- never assumes
+  `requestId === quarantineId`. Behavior for non-quarantine-backed action
+  classes (`RETIRE_SESSION`, `CLEAR_SAFE_GENERATED_CACHE`,
+  `DELETE_LOCAL_MERGED_BRANCH`, `REMOVE_STALE_TEMPORARY_STATE`,
+  `DELETE_BRANCH_WITH_UNIQUE_UNPUSHED_COMMITS`) is unchanged: no manifest
+  ever exists for them, so the lookup still correctly resolves to
+  `NO_MANIFEST`.
+
+**Tests.** New `tsf/test/cleanup-executor-crash-recovery-adversarial.test.mjs`,
+3 tests, every stage built from the real, exported `cleanup-lifecycle.mjs`/
+`cleanup-request-store.mjs`/`cleanup-quarantine-store.mjs` functions (never
+a second/parallel implementation):
+1. Crash strictly after a real `moveToQuarantine` move finishes but before
+   `completeCleanupExecution` runs: `recoverStalledCleanupExecution`
+   correctly finds the real (UUID, provably not equal to `requestId`)
+   manifest and reconciles to `QUARANTINED`, content byte-for-byte intact.
+2. Crash strictly mid-move (both the quarantine copy and the original
+   present, modeling the EXDEV copy-then-delete fallback's real
+   intermediate state): reconciles to `QUARANTINE_SOURCE_STILL_PRESENT`,
+   `requiresOwnerReview: true`, nothing lost in either location.
+3. Crash BEFORE the durable IN_PROGRESS persist (still `PENDING`, mutate
+   never invoked): correctly reports `PENDING`, never fabricates a manifest
+   lookup or a false "nothing to review."
+
+Verified both ways per this program's established discipline: ran against
+`git stash` of both changed source files (fix removed, tests kept) --
+tests 1 and 2 fail exactly as predicted (`NO_MANIFEST` instead of
+`QUARANTINED`/`QUARANTINE_SOURCE_STILL_PRESENT`); test 3 passes either way
+(the PENDING-precondition path was never broken). Restored the fix: all 3
+pass.
+
+### Capstone (own-initiative, not from the mission's own list): stacked simultaneous hazards
+
+Read `domain/cleanup-safety-blockers.mjs`'s `evaluateCleanupBlockers` in
+full hunting for exactly the failure mode the mission's capstone prompt
+describes -- a "first blocking reason found" short-circuit that stacked
+conditions could confuse into a false allow. **Finding: the concern does
+not apply by construction.** There is no early return anywhere in the
+function body; every field (`protectedPath`, `protectedBranch`,
+`isMainWorktree`, `git.clean`, `activeMissionReferenced`, `sessionLive`,
+`fileLocked`, evidence staleness) is independently evaluated and
+unconditionally appended to a shared `blockers` array, and `blocked`/`tier`
+are computed by scanning that COMPLETE array afterward
+(`blockers.some(...)`) -- never by stopping at the first match. Stacking
+hazards can only ever make a refusal MORE certain, never mask one hazard
+behind another.
+
+Proven with two new tests in
+`tsf/test/cleanup-stacked-blockers-adversarial.test.mjs`:
+1. A real worktree fixture with TWO genuinely independent, simultaneous
+   real hazards on the SAME target -- a real dirty/uncommitted file AND a
+   real, durable, non-COMPLETE planner mission referencing the same branch
+   -- run through the full `runGovernedCleanupAction` pipeline (every
+   existing adversarial test only ever stacks ONE hazard onto an otherwise-
+   perfect fixture). Refused, worktree completely untouched, and BOTH
+   `DIRTY_WORKTREE` and `ACTIVE_MISSION_REFERENCE` codes are present in the
+   returned `blockers` array -- neither masks the other.
+2. A direct, maximally adversarial call to `evaluateCleanupBlockers` with
+   all 7 blockable fields forced hazardous simultaneously: `blocked===true`,
+   `tier==='PROTECTED'`, and all 7 expected codes present with none dropped
+   or double-counted (`blockers.length === 7`). Removing the single
+   highest-priority-sounding hazard (`protectedPath`) leaves exactly 6
+   blockers, not zero -- proving this is genuine accumulation, not a
+   priority ladder that stops once one match is found.
+
+**Capstone outcome: no fix needed.** The blocker-evaluation design already
+holds up against deliberate stacking; this was a real, honest negative
+result, not manufactured.
+
+### Tests and lint
+
+New files: `tsf/test/cleanup-executor-crash-recovery-adversarial.test.mjs`
+(150 lines, 3 tests), `tsf/test/cleanup-stacked-blockers-adversarial.test.mjs`
+(127 lines, 2 tests) -- both well under the 600-line `.mjs` cap. Changed:
+`tsf/server/cleanup-executor.mjs` (266 lines), `tsf/server/cleanup-
+quarantine-store.mjs` (250 lines).
+
+`node --test tsf/test/cleanup-*.test.mjs`: 137/137 pass (132 pre-existing +
+5 new). Full whole-repo sweep (`node --test tsf/test/*.test.mjs`): 2368
+tests, 2361 pass, 7 fail -- all 7 are the same pre-existing, already-
+documented host-load-sensitive fail set this program's own F1/F4/Phase 13
+checkpoint entries repeatedly cite on this host (2 intent-classifier
+phrasing gaps + 1 WorldForge-scenario phrasing gap in
+`command-bare-imperative-dispatch.test.mjs`/`command-operator-integration-
+adversarial.test.mjs`, 1 bounded-timeout retry test in
+`health-repair-io.test.mjs`, 1 Work-tab timing test in
+`http-work-summary.test.mjs`, 1 autonomy-proof stall in `keep-going-
+autonomy-proof.test.mjs`, 1 race-condition test in `operator-state-
+adversarial.test.mjs`) -- none touch `cleanup-executor.mjs`, `cleanup-
+quarantine-store.mjs`, or any other file this phase modified.
+
+**Lint.** `npx oxlint tsf/server/cleanup-executor.mjs tsf/server/cleanup-
+quarantine-store.mjs tsf/test/cleanup-executor-crash-recovery-
+adversarial.test.mjs tsf/test/cleanup-stacked-blockers-adversarial.test.mjs`
+-- clean, exit 0.
+
+**Nothing real was ever touched.** Every fixture in this phase's new tests
+runs under `os.tmpdir()`/this worktree's own isolated `.local-state`
+directories; the real global `TSF_CLEANUP_V1_OWNER_AUTHORIZATION` env var
+and flag file were never set or read (every governed-pipeline call used the
+established fake `gateCheck` injection); no code outside `tsf/server/
+cleanup-executor.mjs` and `tsf/server/cleanup-quarantine-store.mjs` was
+modified; `C:\TSF_ORCA`, `C:\NWR`, and every other real worktree were never
+read or written.
+
+Adopted SHA: see the commit on
+`tsf/feature/phase10-cleanup-v1-safety-gauntlet` that carries this section.
