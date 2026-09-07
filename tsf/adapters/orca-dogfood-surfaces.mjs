@@ -68,9 +68,20 @@ async function openSettingsPane(page, pane) {
     store.getState().openSettingsTarget({ pane: paneId, repoId: null })
     store.getState().openSettingsPage()
   }, pane)
-  // Why: settings sections render lazily behind the search filter; give the
-  // real pane content a moment to mount before the caller starts detecting.
-  await page.waitForTimeout(200)
+  // Why: wait for the real navigation to actually land (activeView flips to
+  // 'settings') instead of a fixed sleep -- matches tests/e2e/helpers/
+  // orca-app.ts's own `waitForFunction(() => store.getState()....)` idiom.
+  // `settingsNavigationTarget` is deliberately NOT part of this condition:
+  // it's a one-shot signal Settings.tsx's own effect consumes and clears
+  // (`clearSettingsTarget()`) as soon as it reacts to it, so polling for it
+  // to still equal `paneId` races that same-tick clear and can miss it
+  // entirely. Which pane actually rendered is detectOrcaSettingsRenderFindings's
+  // separate concern.
+  await page.waitForFunction(
+    () => window.__store?.getState().activeView === 'settings',
+    null,
+    { timeout: 5000 }
+  )
 }
 
 function settingsSurface(pane) {
@@ -92,7 +103,12 @@ const MAIN_SHELL_SURFACE = {
   coreFlow: true,
   open: async (page) => {
     await page.evaluate(() => window.__store?.getState().closeSettingsPage?.())
-    await page.waitForTimeout(100)
+    // Why: wait for the real navigation away from Settings (activeView
+    // actually leaves 'settings') instead of a fixed sleep -- same
+    // condition-based idiom as openSettingsPane above.
+    await page.waitForFunction(() => window.__store?.getState().activeView !== 'settings', null, {
+      timeout: 5000
+    })
   }
 }
 

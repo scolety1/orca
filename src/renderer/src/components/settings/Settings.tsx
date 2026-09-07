@@ -1194,7 +1194,18 @@ function Settings(): React.JSX.Element {
   return (
     <div
       ref={setSettingsRootNode}
-      className="settings-view-shell flex min-h-0 flex-1 overflow-hidden bg-background"
+      // Why: below `sm` (e.g. a 390px mobile-emulator viewport), the fixed
+      // 280px sidebar leaves too little width for the content pane and its
+      // un-shrinkable flex children overflow past the shell's overflow-hidden
+      // edge (Finding F8). Stacking sidebar-above-content at that width gives
+      // the content pane its own full row instead of squeezing it. The shell
+      // itself stays overflow-hidden with a bounded height (unchanged from
+      // desktop) -- the sidebar caps its own height and scrolls internally
+      // (below) so the content pane's own min-h-0/flex-1 scroll chain, which
+      // some panes (e.g. Shortcuts) depend on for a real measured height,
+      // is never altered. Desktop/laptop (>=640px) keeps the original
+      // side-by-side row untouched.
+      className="settings-view-shell flex min-h-0 flex-1 flex-col overflow-hidden bg-background sm:flex-row"
     >
       <SettingsSidebar
         settings={settings}
@@ -1211,7 +1222,7 @@ function Settings(): React.JSX.Element {
         onSelectSection={scrollToSection}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div
           ref={setContentScrollNode}
           className={cn(

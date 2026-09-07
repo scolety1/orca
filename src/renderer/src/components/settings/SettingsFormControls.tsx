@@ -60,7 +60,11 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        'flex gap-4',
+        // Why: below `sm`, a fixed-width control (Finding F8) can't fit
+        // beside the label on one line -- wrap the control onto its own
+        // full-width row instead of forcing the row past the viewport.
+        // Desktop/laptop (>=640px) keeps the original single-line row.
+        'flex gap-4 max-sm:flex-wrap',
         description ? 'py-3' : 'py-2',
         alignTop ? 'items-start' : 'items-center justify-between',
         className
@@ -74,7 +78,7 @@ export function SettingsRow({
           <p className="select-text text-xs text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      <div className="shrink-0">{control}</div>
+      <div className="shrink-0 max-sm:w-full">{control}</div>
     </div>
   )
 }
@@ -147,7 +151,10 @@ export function SettingsSegmentedControl<T extends string | number>({
       role="radiogroup"
       aria-label={ariaLabel}
       className={cn(
-        'inline-flex items-center rounded-md border border-border bg-background/50 p-0.5',
+        // Why: below `sm`, a multi-option segmented control (Finding F8) can
+        // be wider than the viewport -- let options wrap onto more than one
+        // line there instead of overflowing. Desktop/laptop unaffected.
+        'inline-flex items-center rounded-md border border-border bg-background/50 p-0.5 max-sm:w-full max-sm:flex-wrap',
         equalWidth && 'w-full'
       )}
     >
@@ -241,12 +248,14 @@ export function SettingsSubsectionHeader({
   className
 }: SettingsSubsectionHeaderProps): React.JSX.Element {
   return (
-    <div className={cn('flex items-start justify-between gap-3', className)}>
+    // Why: below `sm`, a fixed-width action (Finding F8) can't fit beside
+    // the title on one line -- wrap it onto its own full-width row.
+    <div className={cn('flex items-start justify-between gap-3 max-sm:flex-wrap', className)}>
       <div className="space-y-1">
         <h3 className="text-sm font-semibold">{title}</h3>
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="shrink-0 max-sm:w-full">{action}</div> : null}
     </div>
   )
 }

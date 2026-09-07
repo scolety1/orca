@@ -43,10 +43,13 @@ function ToolchainStatusRow({
       <ToolchainStatusIcon ok={ok} />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="text-sm font-medium text-foreground">{title}</div>
-        <div className="flex min-w-0 items-center gap-3">
+        {/* Why: below `sm` (Finding F8), shrink-0 actions can't fit beside
+            detail text on one line -- wrap them onto their own row instead
+            of pushing off-screen. Desktop/laptop keeps the single-line row. */}
+        <div className="flex min-w-0 items-center gap-3 max-sm:flex-wrap">
           <div className="min-w-0 flex-1 break-words text-xs text-muted-foreground">{detail}</div>
           {actions ? (
-            <div className="flex shrink-0 flex-wrap justify-end gap-1">{actions}</div>
+            <div className="flex shrink-0 flex-wrap justify-end gap-1 max-sm:w-full">{actions}</div>
           ) : null}
         </div>
       </div>

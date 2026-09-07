@@ -124,7 +124,10 @@ export function ManageSessionsTable({
         </div>
       ) : (
         <div className="max-h-[360px] overflow-y-auto scrollbar-sleek">
-          <table className="w-full text-xs">
+          {/* Why: below `sm` (Finding F8), auto table-layout grows column
+              widths to fit unbroken content (paths/ids) past the viewport --
+              table-fixed forces the table to actually honor `w-full` there. */}
+          <table className="w-full text-xs max-sm:table-fixed">
             <tbody>
               {sessions.map((session) => {
                 const dotClass = session.isAlive ? 'bg-emerald-500' : 'bg-muted-foreground/40'
@@ -155,7 +158,13 @@ export function ManageSessionsTable({
                       />
                     </td>
                     <td className="px-3 py-1.5">
-                      <span className="truncate font-mono font-medium">
+                      {/* Why: below `sm` (Finding F8), an unbounded workspace
+                          path forces this auto-layout table wider than the
+                          viewport -- `truncate` only takes effect once the
+                          span has a concrete width, unlike the session-id
+                          column's own `block max-w-[...]` a few rows down.
+                          Desktop/laptop keeps the untruncated span. */}
+                      <span className="truncate font-mono font-medium max-sm:block max-sm:max-w-[140px]">
                         {formatWorkspace(session)}
                       </span>
                     </td>

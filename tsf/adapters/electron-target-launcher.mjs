@@ -31,7 +31,10 @@ export function createElectronLaunchFn({ appPath, extraArgs = [], env = {} }) {
         ORCA_E2E_HEADLESS: env.ORCA_E2E_HEADLESS ?? '1'
       }
     })
-    const page = await app.firstWindow()
+    // Why: matches tests/e2e/helpers/orca-app.ts's own hardened convention
+    // (120s -- real Electron cold start on this host can be slow, especially
+    // with an isolated userDataDir); no bare default timeout.
+    const page = await app.firstWindow({ timeout: 120_000 })
     return {
       page,
       close: async () => {

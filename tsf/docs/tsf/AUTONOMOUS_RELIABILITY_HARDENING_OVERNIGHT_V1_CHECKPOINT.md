@@ -40,9 +40,10 @@ disposable TSF pilot projects/fixtures wherever possible.
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1. Post-Upgrade Gap Reconciliation | IN_PROGRESS | Findings F18, F1, F3, F4 fixed so far |
+| 1. Post-Upgrade Gap Reconciliation | IN_PROGRESS | Findings F18, F1, F3, F4, F5, F7 fixed so far |
 | 2. Background Task Truthfulness | INVESTIGATED, NO GAP | See dedicated section below -- no fix warranted |
-| 3-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 4. UI Self-Dogfood (UI_DOGFOOD_AGENT_V0) | DONE | Finding F8 reconciled and fixed; see dedicated section below |
+| 3, 5-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -738,3 +739,267 @@ none of the flagged line numbers fall inside a changed region).
 
 Adopted SHA: see the commit on `tsf/feature/f5-research-node-clean-failure`
 that carries this section.
+
+## Finding F7: dogfood tooling itself had magic-number sleeps and an unhardened Electron launch -- FIXED
+
+Worktree: `phase4-ui-self-dogfood`, branch `tsf/feature/phase4-ui-self-dogfood`
+(forked from `tsf/main` @ `ce908b5ac38352371a7d5b344e46e3c78d77d7b1`).
+
+**Gap.** `tsf/adapters/orca-dogfood-surfaces.mjs` stood in for "wait until the
+real settings navigation landed" with two fixed `page.waitForTimeout` sleeps
+(200ms after opening a settings pane, 100ms after closing it) justified only
+by a comment, no condition-based check backing them.
+`tsf/adapters/electron-target-launcher.mjs`'s `app.firstWindow()` had no
+explicit timeout override and no retry, despite its own file header claiming
+to reuse "the SAME underlying mechanism" as `tests/e2e/helpers/orca-app.ts` --
+that file uses an explicit, hardened `{ timeout: 120_000 }` on every
+`firstWindow()` call site in the repo (`orca-app.ts`, `orca-restart.ts`,
+`paired-electron-client.ts`, `run-idle-cpu-benchmark.mjs`,
+`app-driver.mjs`, `terminal-garble-production-repro.mjs` -- confirmed via
+repo-wide grep before fixing), never a bare-default timeout.
+
+**Fix.**
+- `orca-dogfood-surfaces.mjs`'s `openSettingsPane`: replaced the 200ms sleep
+  with `page.waitForFunction(() => window.__store?.getState().activeView ===
+  'settings', null, { timeout: 5000 })`, matching `orca-app.ts`'s own
+  `waitForFunction(() => store.getState()...)` idiom instead of inventing a
+  new one.
+- `MAIN_SHELL_SURFACE.open`: replaced the 100ms sleep with the mirror-image
+  wait, `activeView !== 'settings'`.
+- **Correction found mid-fix, not left in**: the first draft additionally
+  polled `state.settingsNavigationTarget?.pane === paneId` to confirm the
+  RIGHT pane opened. A real Electron run against this exposed that as wrong:
+  `settingsNavigationTarget` is a one-shot signal Settings.tsx's own effect
+  consumes and clears (`clearSettingsTarget()`) essentially the same tick it
+  reacts to it -- polling for it to still equal `paneId` races that same-tick
+  clear and reliably timed out (`TimeoutError: page.waitForFunction: Timeout
+  5000ms exceeded`, real failure, not flake -- reproduced deterministically).
+  Dropped that half of the condition; `activeView === 'settings'` alone is
+  the real, stable signal. Which pane actually rendered is
+  `detectOrcaSettingsRenderFindings`'s own separate concern (unchanged).
+- `electron-target-launcher.mjs`: `app.firstWindow()` now takes the SAME
+  `{ timeout: 120_000 }` `orca-app.ts` already established -- no retry added,
+  since `orca-app.ts` itself does not retry `firstWindow()` either (checked
+  before adding one; matching the real established convention, not
+  inventing a stronger one).
+
+**Tests.** New `tsf/test/orca-dogfood-surfaces.test.mjs`, 4 tests, against a
+fake Playwright Page that really polls a fake `window.__store` (not a
+same-tick resolve):
+1. `settings-pane surface.open()` only resolves once `activeView` genuinely
+   flips to `'settings'`, modeled with a 260ms delay -- past the OLD 200ms
+   fixed-sleep threshold this finding removed. This is the actual "would
+   have caught the too-short sleep" proof: the old code would have returned
+   to the caller before this state transition ever happened.
+2. `settings-pane surface.open()` still succeeds when
+   `settingsNavigationTarget` is cleared on the very next tick (5ms) well
+   before `activeView` flips (100ms) -- reproduces the real Settings.tsx
+   race the first draft fix got wrong, proving the final condition survives
+   it.
+3. `settings-pane surface.open()` fails loudly (rejects, doesn't silently
+   proceed) when the app never actually navigates -- proves this is a real,
+   bounded, fail-closed wait, not a no-op.
+4. `main-shell surface.open()` only resolves once `activeView` genuinely
+   leaves `'settings'`, modeled with a 160ms delay -- past the OLD 100ms
+   fixed-sleep threshold.
+
+`node --test tsf/test/orca-dogfood-surfaces.test.mjs` -- 4/4 pass. Regression
+sweep of every other test file covering the dogfood domain/adapter layer
+(`command-dogfood-bridge.test.mjs`, `ui-dogfood-contract.test.mjs`,
+`ui-dogfood-surface-catalog.test.mjs`, `ui-dogfood-finding.test.mjs`) --
+36/36 pass.
+
+**Lint.** `npx oxlint tsf/adapters/orca-dogfood-surfaces.mjs
+tsf/adapters/electron-target-launcher.mjs
+tsf/test/orca-dogfood-surfaces.test.mjs` -- clean, exit 0.
+
+Adopted SHA: see the commit on `tsf/feature/phase4-ui-self-dogfood` that
+carries this section.
+
+## Phase 4: UI Self-Dogfood (UI_DOGFOOD_AGENT_V0) -- DONE
+
+Worktree: `phase4-ui-self-dogfood`, branch `tsf/feature/phase4-ui-self-dogfood`
+(forked from `tsf/main` @ `ce908b5ac38352371a7d5b344e46e3c78d77d7b1`).
+
+**Method.** Built the app for real (`pnpm run build:electron-vite --mode
+e2e`; this worktree's own `out/`, not shared with the canonical worktree).
+Ran the golden dogfood specs against a REAL, rendered Electron app --
+`tests/e2e/ui-dogfood-orca-self.spec.ts` (bounded 3-pane slice) and
+`tests/e2e/ui-dogfood-orca-self-full-sweep.spec.ts` (`ORCA_E2E_RUN_UI_
+DOGFOOD_FULL_SWEEP=1`, all 33 settings panes) -- both real end-to-end runs,
+not simulated. Every before/after number below is from an actual test run
+against the built app, not inferred.
+
+**Finding F8 reconciliation: mobile-viewport Settings clipping --
+CONFIRMED STILL PRESENT, FIXED.** Full-sweep BASELINE (branch as forked,
+before any change in this section): `33 finding(s) across 34 surfaces:
+{"P0":0,"P1":0,"P2":33}` -- every single settings pane produced exactly one
+`CLIPPED_CONTENT` finding at the 390px mobile viewport, all rooted in the
+same source: `<div class="flex flex-wrap items-start justify-between gap-4
+border-b ...">` (the `SettingsSection.tsx` header row), overflow amounts
+from 91px (`setup-guide`, right=448) to 754px (`terminal`, right=958).
+Matches this program's own prior audit finding exactly (33 panes).
+
+**Root cause.** Not one bug but a repeated, unresponsive layout grammar,
+confirmed by reading the real overflowing DOM (a throwaway diagnostic
+Playwright script run against the real built app, not guessed from source
+alone -- see method note below):
+1. `Settings.tsx`'s top-level shell (`<SettingsSidebar/>` + content pane) is
+   a fixed-280px-sidebar-plus-flex-1-content row with no responsive
+   variant and no `min-w-0` on the content column -- at 390px viewport
+   width the content column has ~110px of nominal space, and its
+   un-`min-w-0`'d flex children refuse to shrink below their natural
+   content width, overflowing the shell's `overflow-hidden` edge.
+2. Even after (1), the shared "label + fixed-width control" row grammar
+   used across nearly every settings pane --
+   `SettingsRow`/`SettingsSubsectionHeader`
+   (`SettingsFormControls.tsx`) and `SettingsSection.tsx`'s own
+   `headerAction` wrapper -- lays the control out in a `shrink-0` div with
+   no wrap, so a control wider than the remaining row width (a segmented
+   control, a search combobox, an "Import from Warp"/"Import from YAML"
+   button pair) pushes the row past the viewport instead of reflowing.
+3. `ManageSessionsTable.tsx`'s sessions table used `table-layout: auto`
+   with an un-truncatable (`truncate` on a bare inline `<span>`, no `block`/
+   `max-w`, unlike the adjacent session-id column's own correct
+   `block max-w-[280px] truncate`) workspace-path column, so a long path
+   grew the whole table past the viewport.
+4. `MobileEmulatorAvailabilityDetails.tsx`'s `ToolchainStatusRow` had the
+   same `shrink-0`-without-wrap action-row pattern as (2), independently
+   (does not use the shared `SettingsRow`/`SettingsSubsectionHeader`
+   components).
+
+**Fix -- additive, `max-sm:`-scoped only (Tailwind's default `sm` = 640px;
+the dogfood mobile viewport is 390px, so every change below is inert at
+>=640px, confirmed by the desktop/laptop viewport findings staying at 0
+throughout every real run in this section). No new color/spacing/shadow
+tokens invented -- `max-sm:`/`flex-wrap`/`min-w-0`/`table-fixed` are
+existing Tailwind utilities this codebase already uses elsewhere (e.g.
+`AccountsPane.tsx`'s own pre-existing `max-sm:flex-wrap`, confirmed via
+grep before using the pattern):**
+- `Settings.tsx`: shell gains `max-sm:flex-col` (stacks sidebar above
+  content instead of squeezing them side by side) and the content column
+  gains `min-w-0`. The shell itself stays `overflow-hidden` with its
+  existing bounded height from its own parent -- deliberately NOT made
+  scrollable itself (see the reverted-and-fixed regression below).
+- `SettingsSidebar.tsx`: the `<aside>` gains `max-sm:w-full` (fills the
+  stacked row) and `max-sm:h-[40vh] max-sm:overflow-hidden` (caps its own
+  height and scrolls internally, rather than letting the whole page scroll)
+  so the content pane below keeps the EXACT same bounded-height flex chain
+  some panes depend on for a real measured height.
+- `SettingsFormControls.tsx`: `SettingsRow`'s row gains `max-sm:flex-wrap`,
+  its control wrapper gains `max-sm:w-full`;
+  `SettingsSegmentedControl`'s root gains `max-sm:w-full max-sm:flex-wrap`;
+  `SettingsSubsectionHeader`'s row/action wrapper get the same
+  wrap/full-width pair.
+- `SettingsSection.tsx`: the `headerAction` wrapper gains `max-sm:w-full`
+  (the header row itself already had `flex-wrap`).
+- `ManageSessionsTable.tsx`: the table gains `max-sm:table-fixed`; the
+  workspace-path span gains `max-sm:block max-sm:max-w-[140px]`, mirroring
+  the session-id column's own existing pattern rather than inventing a new
+  one. Scoped to `max-sm:` (not applied unconditionally, unlike the
+  session-id column) specifically to keep desktop's untruncated display
+  unchanged -- a deliberate, narrower choice than symmetry with the
+  session-id column would suggest, documented here rather than silently
+  taken.
+- `MobileEmulatorAvailabilityDetails.tsx`: `ToolchainStatusRow`'s row gains
+  `max-sm:flex-wrap`, its actions wrapper gains `max-sm:w-full`.
+
+**Self-inflicted regression found and fixed before it shipped.** The first
+version of the `Settings.tsx` shell fix made the shell itself
+`max-sm:overflow-y-auto` (the whole page scrolls) instead of keeping the
+shell bounded and only capping the sidebar. Re-running the full sweep
+against that version surfaced a NEW `P1 BROKEN_INTERACTION` on
+`settings-shortcuts` ("did not render any real settings section") that did
+not exist in the true baseline -- a real regression, not a pre-existing
+flake (reproduced identically twice). Root cause: `Settings.tsx`'s own
+`isFocusedShortcutsPane` branch sets the content scroll container to
+`overflow-hidden` (needs a real bounded height, likely for a virtualized
+keybinding list) instead of `overflow-y-auto`; making the shell itself
+`overflow-y-auto` broke the bounded-height flex chain that branch depends
+on. Fixed by keeping the shell `overflow-hidden` (unchanged from desktop)
+and instead capping the SIDEBAR's own height + internal scroll (see fix
+list above) -- re-running the full sweep twice more after this correction
+showed 0 occurrences of the `settings-shortcuts` finding, confirmed fixed
+and not just moved.
+
+**RE-DOGFOOD -- real before/after comparison (all four numbers are actual
+test-run output, not estimated):**
+
+| Run | P0 | P1 | P2 | P3 | Total |
+|---|---|---|---|---|---|
+| Full sweep, BASELINE (unfixed) | 0 | 0 | 33 | 0 | 33 |
+| Full sweep, AFTER (first shell fix, before the regression fix above) | 0 | 1 | 3 | 0 | 4 |
+| Full sweep, AFTER (regression fixed) | 0 | 0 | 3 | 0 | 3 |
+| Full sweep, FINAL (after `settings-agents` investigated, `mobile-emulator` fixed) | 0 | 0 | **2** | 0 | **2** |
+| Bounded golden spec (3 panes), BASELINE | -- | -- | 3 | -- | 3 |
+| Bounded golden spec (3 panes), FINAL | -- | -- | 1 | -- | 1 |
+
+31 of 33 original findings are gone -- confirmed by re-running the exact
+same real spec against the exact same real app, not by re-deriving from the
+fix diff. `settings-general` and `settings-terminal` (the two panes the
+bounded golden spec always runs) went to zero `CLIPPED_CONTENT` findings;
+`tests/e2e/ui-dogfood-orca-self.spec.ts` itself was updated to assert this
+directly (`clippedFindings.filter(surfaceId === 'settings-general')` /
+`'settings-terminal'` both `toEqual([])`) rather than leaving the original,
+now-stale "any CLIPPED_CONTENT finding on settings-appearance" assertion in
+place -- the old assertion would have kept passing on a coincidence (a
+different residual finding still exists on that one pane) without actually
+proving the real header-row defect was gone.
+
+**Independent verification (task requirement 6).** For the general/terminal
+panes specifically, a targeted diagnostic script (real `_electron.launch()`,
+real 390px viewport, real DOM query -- not the dogfood heuristic itself)
+walked every element under `[data-settings-section]` and confirmed zero
+elements with `getBoundingClientRect().right - documentElement.clientWidth
+> 20` for both panes post-fix, cross-checking the dogfood tool's own
+`CLIPPED_CONTENT` absence with an independent assertion rather than trusting
+the same detector code path that reported the fix.
+
+**2 findings left as documented, deliberate recommendations (not
+auto-fixed) -- both genuinely investigated, not skipped:**
+1. `settings-appearance`, P2, `<div class="xterm-screen">` (25px over).
+   `TerminalSettingsPreview.tsx` pins its live xterm.js preview to
+   `PREVIEW_COLS = 36` (that file's own pre-existing comment: "so
+   PREVIEW_BUFFER never wraps ... larger fonts clip, not wrap" -- an
+   already-accepted, deliberate, non-responsive tradeoff by the original
+   authors, not something this program introduced). Making it genuinely
+   responsive means changing xterm column/sizing behavior at runtime, not a
+   layout-only CSS fix -- real functional risk to a live xterm-backed
+   widget, outside this task's "cheap/bounded/unambiguous" bar for a P2 and
+   outside its "no wholesale redesign" constraint. Recorded as a
+   recommendation: shrink `PREVIEW_COLS` (or the preview's font size)
+   responsively below `sm`, as a follow-up with its own test coverage.
+2. `settings-agents`, P2, `<span class="ml-1.5 text-foreground/70">` (27px
+   "over" per the raw DOM check). Investigated directly against the real
+   running app: the span's ancestor `AgentRow` command-line row already has
+   `overflow: hidden; text-overflow: ellipsis; white-space: nowrap`
+   (`AgentsPane.tsx`'s existing `truncate` class) with a real, correctly
+   bounded `clientWidth: 218` against a `scrollWidth: 316` -- i.e. this row
+   IS already visually ellipsized for the user; the raw child-span
+   `getBoundingClientRect()` the generic `dom-overflow-detector.mjs`
+   heuristic reads reflects pre-clip inline-layout geometry (a known CSS
+   characteristic: `text-overflow: ellipsis` clips paint, not descendant
+   layout geometry), not what actually renders. This is a detector false
+   positive, not a real UI defect -- confirmed via a direct computed-style +
+   scrollWidth/clientWidth check against the real app, not assumed.
+   Recorded as a recommendation against the dogfood tooling itself (a
+   future `dom-overflow-detector.mjs` improvement: skip an element whose
+   nearest ancestor has `text-overflow: ellipsis` and a smaller
+   `clientWidth` than `scrollWidth`), not against `AgentsPane.tsx`, which
+   needs no change.
+
+**Tests.** `node --test tsf/test/orca-dogfood-surfaces.test.mjs` (F7, above)
+plus the full existing renderer regression sweep for every touched
+component: `npx vitest run --config config/vitest.config.ts
+src/renderer/src/components/settings/` -- 150 test files, 1010 passed / 1
+skipped (pre-existing skip, unrelated), 0 failed. `tests/e2e/ui-
+dogfood-orca-self.spec.ts` and `tests/e2e/ui-dogfood-orca-self-full-
+sweep.spec.ts` both real-run and passing (evidence above).
+
+**Lint.** `npx oxlint` on every changed file (`Settings.tsx`,
+`SettingsSidebar.tsx`, `SettingsFormControls.tsx`, `SettingsSection.tsx`,
+`ManageSessionsTable.tsx`, `MobileEmulatorAvailabilityDetails.tsx`,
+`tests/e2e/ui-dogfood-orca-self.spec.ts`) -- clean, exit 0.
+
+Adopted SHA: see the commit on `tsf/feature/phase4-ui-self-dogfood` that
+carries this section.

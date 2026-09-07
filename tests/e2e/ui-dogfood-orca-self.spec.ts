@@ -8,13 +8,21 @@
  * dogfood capability is proven against a real, rendered app instead of
  * fakes (unit coverage for the pure domain logic lives in tsf/test/).
  *
- * This asserts a REAL, specific finding -- not "zero or more, whatever
- * happens": a full sweep of every Orca settings pane at a 390px mobile
- * viewport (tests/e2e/ui-dogfood-orca-self-full-sweep.spec.ts, run
- * manually -- see its own header) found that SettingsSection.tsx's header
- * row consistently overflows the mobile viewport across every pane. The
- * appearance pane is asserted here as the fast, deterministic proof that
- * this real, reproducible defect is still detected.
+ * This asserts REAL, specific findings -- not "zero or more, whatever
+ * happens". Phase 4 reconciliation (Finding F8): a full sweep of every Orca
+ * settings pane at a 390px mobile viewport originally found that the
+ * SettingsRow/SettingsSubsectionHeader/SettingsSection.tsx "label + fixed-
+ * width control" row grammar consistently overflowed the mobile viewport
+ * across every pane. That row grammar now wraps below `sm`
+ * (src/renderer/src/components/settings/SettingsFormControls.tsx,
+ * SettingsSection.tsx) -- general and terminal are asserted clean below.
+ * Appearance keeps exactly one known, deliberately-not-auto-fixed residual:
+ * TerminalSettingsPreview.tsx pins its live xterm preview to 36 columns
+ * (see that file's own PREVIEW_COLS comment -- "larger fonts clip, not
+ * wrap" is an existing, intentional tradeoff) so its rendered width doesn't
+ * shrink at narrow viewports; making it responsive means changing xterm
+ * sizing/column behavior, not a layout-only fix, so it's recorded as a
+ * recommendation rather than auto-fixed.
  */
 import path from 'node:path'
 import { test, expect } from './helpers/orca-app'
@@ -77,18 +85,26 @@ test.describe('UI dogfood (Phase 1 UI_DOGFOOD_AGENT_V0)', () => {
     expect(run.viewports).toEqual(['desktop', 'mobile'])
     expect(run.screenshots.length).toBe(8)
 
-    // REQUIRED PROOF this finds something real, not manufactured: the
-    // known, reproducible mobile-viewport header overflow on a real
-    // settings pane.
-    const appearanceMobileOverflow = run.findings.find(
-      (f) => f.surfaceId === 'settings-appearance' && f.category === 'CLIPPED_CONTENT'
-    )
+    // REQUIRED PROOF Finding F8's row-grammar fix actually holds: the
+    // general and terminal panes' mobile-viewport header/row overflow is
+    // gone, not just the one originally-asserted pane.
+    const clippedFindings = run.findings.filter((f) => f.category === 'CLIPPED_CONTENT')
     expect(
-      appearanceMobileOverflow,
-      'expected a real CLIPPED_CONTENT finding on settings-appearance at mobile width'
-    ).toBeTruthy()
-    expect(appearanceMobileOverflow.severity).toBe('P2')
-    expect(appearanceMobileOverflow.autoFixEligible).toBe(true)
+      clippedFindings.filter((f) => f.surfaceId === 'settings-general'),
+      'settings-general should have no CLIPPED_CONTENT findings after the F8 row-grammar fix'
+    ).toEqual([])
+    expect(
+      clippedFindings.filter((f) => f.surfaceId === 'settings-terminal'),
+      'settings-terminal should have no CLIPPED_CONTENT findings after the F8 row-grammar fix'
+    ).toEqual([])
+
+    // REQUIRED PROOF this still finds something real, not manufactured: the
+    // one known, deliberately-not-auto-fixed xterm-preview residual (see
+    // this file's own header) on settings-appearance -- and nothing else.
+    const appearanceClipped = clippedFindings.filter((f) => f.surfaceId === 'settings-appearance')
+    expect(appearanceClipped.length).toBe(1)
+    expect(appearanceClipped[0].severity).toBe('P2')
+    expect(appearanceClipped[0].description).toMatch(/xterm-screen/)
 
     // Every finding this real run actually produced must be well-formed.
     for (const finding of run.findings) {

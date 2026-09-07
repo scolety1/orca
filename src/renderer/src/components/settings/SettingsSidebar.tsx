@@ -178,7 +178,13 @@ export function SettingsSidebar({
 
   return (
     <aside
-      className="flex w-[280px] shrink-0 flex-col border-r border-worktree-sidebar-border bg-worktree-sidebar"
+      // Why: below `sm`, Settings.tsx stacks this sidebar above the content
+      // pane (Finding F8) -- go full-width there instead of the fixed 280px
+      // desktop rail. Capped to its own height + internal scroll (rather
+      // than letting the shell itself scroll) so the content pane below
+      // keeps the exact same bounded-height flex chain some panes (e.g.
+      // Shortcuts) depend on for a real measured height.
+      className="flex w-[280px] shrink-0 flex-col border-r border-worktree-sidebar-border bg-worktree-sidebar max-sm:h-[40vh] max-sm:w-full max-sm:shrink max-sm:overflow-hidden max-sm:border-r-0 max-sm:border-b sm:h-auto sm:shrink-0"
       style={leftSidebarStyle}
     >
       <div className="border-b border-worktree-sidebar-border px-3 py-3">

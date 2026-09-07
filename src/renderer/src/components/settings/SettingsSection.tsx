@@ -77,7 +77,10 @@ export function SettingsSection({
           </h2>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
         </div>
-        {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
+        {/* Why: below `sm`, a fixed-width header action (Finding F8) can't fit
+            beside the title -- the header row above is already flex-wrap;
+            go full-width so it wraps onto its own row instead of overflowing. */}
+        {headerAction ? <div className="shrink-0 max-sm:w-full">{headerAction}</div> : null}
       </div>
       {/* Why: body content sits in a visually distinct band — a soft card with
           rounded corners and tight inner padding — so each row group reads as
