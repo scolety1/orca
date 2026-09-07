@@ -52,8 +52,8 @@ uses, fully read-only).
 | Phase | Status | Notes |
 |---|---|---|
 | 1. UI_DOGFOOD_AGENT_V0 | **ADOPTED** — merged to `tsf/main` @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
-| 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **V0 COMPLETE, NOT YET ADOPTED** — committed in worktree `planner-context-lifecycle-v0`, not merged to `tsf/main`, not pushed | See below |
-| 3. Deferred Research Platform Completion Wave | NOT_STARTED | |
+| 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **ADOPTED** — merged to `tsf/main` @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
+| 3. Deferred Research Platform Completion Wave | IN_PROGRESS | Worktree `research-platform-completion-wave-v0` created from `7521e4de87` |
 | 4. Cleanup V1 / Governed Destructive Automation | NOT_STARTED | |
 | 5. Larger Astra Follow-up Benchmark | NOT_STARTED | |
 
@@ -550,13 +550,32 @@ manually); remediating this worktree's empty `node_modules` (pre-existing,
 unrelated to this phase, same class of gap Phase 1 already flagged for
 `C:\TSF_ORCA`).
 
+**Coordinator independent review (2026-09-06), before adoption:** re-ran
+all 45 new test files directly (planner-mission-{checkpoint,lease,store},
+planner-handoff-trigger, planner-session-lifecycle-{golden-rollover,
+resource-governance}, planner-mission-lease-cross-process) — 100% pass,
+no `node_modules` required (built-ins only). `npx oxlint` re-run on every
+new file — 0 errors. Read `planner-mission-lease.mjs` (correctly rejected
+reusing `resource-pressure-governor.mjs`'s heavy-task lease — a different
+concern — while genuinely reusing its underlying cross-process-file-lock
+primitive; sound grant/renew/relinquish/stale-reclaim semantics) and
+`planner-session-lifecycle.mjs` (every mutation re-checks the live lease
+holder from disk, never a cached in-memory belief; dispatch is idempotent
+by task fingerprint — this is the actual mechanism behind "no
+re-dispatch after rollover," not just a policy comment) directly — both
+sound. Diffed `data-store.mjs` — confirmed the single additive line
+claimed. No corrections needed. **Merged to `tsf/main` @
+`7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main`
+(verified), worktree `planner-context-lifecycle-v0` retired.**
+
 ## Next intended action
 
-Phase 1 and Phase 2 are complete in their respective worktrees. Phase 2
-(`PLANNER_CONTEXT_LIFECYCLE_V0`) is implemented and committed in worktree
-`planner-context-lifecycle-v0` (branch
-`tsf/feature/planner-context-lifecycle-v0`) but has **not** been merged to
-`tsf/main` or pushed — that adoption decision (mirroring Phase 1's own
-independent-review-then-merge gate) is outstanding for whoever picks this
-program up next. Phase 3 (Deferred Research Platform Completion Wave) has
-not been started.
+Phase 1 and Phase 2 are both adopted and closed. Phase 3 (Deferred
+Research Platform Completion Wave) is now in progress in worktree
+`research-platform-completion-wave-v0` (branch
+`tsf/feature/research-platform-completion-wave-v0`, forked from
+`7521e4de87`). Observed at Phase 3 start: free memory ~1.38GB (tighter
+than prior phases) with a new peer session
+(`nwr-historical-redraft-data-hq-1d`) active — consistent with this
+host's known shared-machine contention, not attributed to this program
+alone.
