@@ -323,6 +323,23 @@ export function stripSchemaMetaKeys(jsonSchema) {
   return rest
 }
 
+// Phase 11 finding: a syntactically-valid-but-wrong-shape response was
+// previously indistinguishable from a real, conformant answer -- claude-code's
+// own --json-schema flag validates server-side, but codex (PLANNER_DEEP's
+// documented fallbackProfile) has no schema-constraint flag at all (see
+// buildArgs below), so a fallback response was trusted verbatim. This is
+// intentionally NOT a full JSON-Schema validator (tsf/contracts/*.mjs's own
+// header discloses this repo takes no such dependency) -- only the same
+// top-level `required` list every real caller of invokeLiveStructuredAnalysis
+// already declares in its own schema (onboarding, wbs-generation,
+// field-source-reconciliation, command-scope-classifier,
+// command-research-spec-synthesis, llm-latent-knowledge-research-worker).
+export function conformsToRequiredShape(parsed, jsonSchema) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { return false }
+  const required = Array.isArray(jsonSchema?.required) ? jsonSchema.required : []
+  return required.every((key) => key in parsed)
+}
+
 function buildArgs({ agentId, prompt, systemPrompt, resumeSessionId, jsonSchema }) {
   if (agentId === 'claude-code') {
     const args = [
@@ -347,7 +364,21 @@ function buildArgs({ agentId, prompt, systemPrompt, resumeSessionId, jsonSchema 
   if (agentId === 'codex') {
     // Best-effort fallback shape; codex is PLANNER_DEEP's documented
     // fallbackProfile, not the primary path this mission targets.
-    const args = ['exec', '--json', `${systemPrompt}\n\n${prompt}`]
+    //
+    // Phase 11 finding: codex exec has no --json-schema-equivalent flag, so
+    // (unlike claude-code above) the schema was previously dropped entirely
+    // on this branch -- a structured caller whose own systemPrompt relies on
+    // --json-schema to constrain shape (e.g. command-scope-classifier.mjs,
+    // which never describes its JSON shape in prose) had genuinely no way to
+    // get a conformant answer through this fallback. Appending the same
+    // schema every claude-code call already carries, as an explicit prose
+    // instruction, is the only transport codex exec offers -- reuses the
+    // exact stripSchemaMetaKeys the claude-code branch already applies
+    // rather than a second stripping mechanism.
+    const schemaInstruction = jsonSchema
+      ? `\n\nRespond with ONLY a single JSON object (no prose, no markdown fences) matching exactly this JSON Schema:\n${JSON.stringify(stripSchemaMetaKeys(jsonSchema))}`
+      : ''
+    const args = ['exec', '--json', `${systemPrompt}\n\n${prompt}${schemaInstruction}`]
     if (resumeSessionId) {
       args.push('resume', resumeSessionId)
     }
@@ -679,6 +710,21 @@ export async function invokeLiveStructuredAnalysis({
         detail: 'structured output was not valid JSON',
         attempted: preferredAgent
       }
+    }
+  }
+  if (!conformsToRequiredShape(parsed, jsonSchema)) {
+    // Same reason/no-further-fallback treatment as the JSON.parse failure
+    // above (RETRYABLE_REASONS already deliberately excludes MALFORMED_RESPONSE
+    // -- a shape mismatch would reproduce identically on the same input) --
+    // never silently accepted as ok:true just because it happened to parse.
+    const required = Array.isArray(jsonSchema?.required) ? jsonSchema.required : []
+    const missing = required.filter((key) => !(parsed && typeof parsed === 'object' && !Array.isArray(parsed) && key in parsed))
+    return {
+      ok: false,
+      role: 'PLANNER_DEEP',
+      reason: 'MALFORMED_RESPONSE',
+      detail: `structured output did not match the requested schema shape (missing required field(s): ${missing.join(', ') || 'response was not an object'})`,
+      attempted: preferredAgent
     }
   }
 

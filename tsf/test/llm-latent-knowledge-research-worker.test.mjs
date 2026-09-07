@@ -12,6 +12,7 @@ import {
   LLM_LATENT_KNOWLEDGE_PROVIDER_ID
 } from '../adapters/llm-latent-knowledge-research-worker.mjs'
 import { validateBoundedResearchResult } from '../contracts/validate-research-contracts.mjs'
+import { invokeLiveStructuredAnalysis } from '../server/live-planner.mjs'
 
 const ENV_VAR = 'TSF_RESEARCH_LATENT_KNOWLEDGE_DISPATCH_ENABLED'
 const clock = () => new Date('2026-09-06T12:00:00.000Z')
@@ -229,6 +230,34 @@ test('every produced result conforms to the shared BoundedResearchResult contrac
     assert.doesNotThrow(() => validateBoundedResearchResult(fetchedP.result))
     assert.equal(fetchedP.result.status, 'PARTIAL')
   })
+})
+
+// Phase 11: end-to-end proof through the REAL invokeLiveStructuredAnalysis
+// (every other test in this file injects a fake) -- proves the generic
+// shape-validation fix in live-planner.mjs actually closes a real
+// mislabeling risk for THIS worker specifically: before that fix, a
+// provider response missing the 'answers' key entirely (e.g. a fallback
+// provider drifting from the requested shape) would parse as valid JSON,
+// pass through invokeLiveStructuredAnalysis as ok:true, then land here as
+// `Array.isArray(live.data?.answers)` === false -- indistinguishable from
+// every field genuinely being MODEL_REPORTED_UNKNOWN_FOR_ALL_FIELDS. Now it
+// is caught upstream and surfaces as the honestly distinct MALFORMED_RESPONSE.
+test('end-to-end: a wrong-shaped real provider response (missing the required "answers" key) surfaces as MALFORMED_RESPONSE, never mislabeled as a genuine model UNKNOWN', async () => {
+  const STUB = path.join(import.meta.dirname, 'fixtures', 'stub-planner-cli.mjs')
+  await withEnv(
+    {
+      [ENV_VAR]: '1',
+      TSF_PLANNER_CLAUDE_COMMAND: STUB,
+      STUB_MODE: 'wrong-shape'
+    },
+    async () => {
+      const worker = createLlmLatentKnowledgeResearchWorker({ clock, invokeLiveStructuredAnalysisFn: invokeLiveStructuredAnalysis })
+      const dispatched = await worker.dispatch(baseRequest())
+      assert.equal(dispatched.ok, false)
+      assert.equal(dispatched.reason, 'MALFORMED_RESPONSE', 'must be distinguishable from MODEL_REPORTED_UNKNOWN_FOR_ALL_FIELDS')
+      assert.notEqual(dispatched.reason, 'MODEL_REPORTED_UNKNOWN_FOR_ALL_FIELDS')
+    }
+  )
 })
 
 test('usage.providerReportedCostUsd reflects the real reported cost, never coerced to 0 when unknown', async () => {

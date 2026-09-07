@@ -43,6 +43,27 @@ if (mode === 'provider-error') {
   process.exit(0)
 }
 
+// Phase 11: a genuine provider quirk -- valid JSON, but not the shape the
+// caller's jsonSchema actually required (e.g. a fallback provider with no
+// schema-constraint flag drifting from the prose-described shape). Distinct
+// from 'malformed' (not valid JSON at all) and 'provider-error' (is_error
+// true) -- this response is well-formed and honestly reported ok by the
+// provider itself, which is exactly what makes an unvalidated caller wrong
+// to trust it verbatim.
+if (mode === 'wrong-shape') {
+  process.stdout.write(
+    JSON.stringify({
+      is_error: false,
+      result: JSON.stringify({ unexpectedTopLevelKey: 'not the requested shape' }),
+      structured_output: null,
+      session_id: sessionId,
+      total_cost_usd: 0.001,
+      modelUsage: { [model]: { canonicalModel: model } }
+    })
+  )
+  process.exit(0)
+}
+
 // Fails once (a real PROVIDER_ERROR shape), then succeeds on the very next
 // call — proves invokeLiveStructuredAnalysis's one bounded retry recovers
 // from a one-off provider hiccup without ever falling back to a different
@@ -70,8 +91,22 @@ if (resume && resume !== sessionId) {
   process.exit(1)
 }
 
-const prompt = argValue('-p') || ''
-const jsonSchema = argValue('--json-schema')
+// Codex's real buildArgs shape (live-planner.mjs) is positional, not
+// -p-flagged: ['exec', '--json', `${systemPrompt}\n\n${prompt}`] -- falls
+// back to that combined positional arg so a Claude-unavailable/Codex-
+// fallback test can drive this same stub honestly as either agent, matching
+// each agent's own real invocation shape rather than only ever exercising
+// claude-code's.
+const prompt = argValue('-p') || (args[0] === 'exec' ? args[2] ?? '' : '')
+// codex's real buildArgs has no --json-schema flag -- live-planner.mjs
+// forwards the schema by appending it as prose after this exact marker
+// instead (Phase 11 fix). Mirrors that transport so a Claude-unavailable/
+// Codex-fallback structured-analysis test can prove the schema is actually
+// honored through the fallback, not just that codex is reachable at all.
+const CODEX_SCHEMA_MARKER = 'matching exactly this JSON Schema:\n'
+const jsonSchema =
+  argValue('--json-schema') ??
+  (prompt.includes(CODEX_SCHEMA_MARKER) ? prompt.slice(prompt.indexOf(CODEX_SCHEMA_MARKER) + CODEX_SCHEMA_MARKER.length) : null)
 
 // When --json-schema is passed (structured one-shot analysis calls), emit
 // a result shaped for WHICHEVER schema was actually requested -- inspected

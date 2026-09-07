@@ -43,6 +43,7 @@ export function createPlannerMissionCheckpoint(input, clock) {
     blockers: [],
     needsYou: [],
     workers: {},
+    dispatchAttempts: [],
     verifierResults: [],
     completedTasks: [],
     outstandingTasks: [],
@@ -141,6 +142,66 @@ export function resolvePlannerNeedsYou(checkpoint, needsYouId, resolution, clock
 // already-dispatched work.
 export function findWorkerByTaskFingerprint(checkpoint, taskFingerprint) {
   return Object.values(checkpoint.workers).find((w) => w.taskFingerprint === taskFingerprint) ?? null
+}
+
+// Phase 11 finding: findWorkerByTaskFingerprint alone only covers a CLEAN
+// rollover (a prior attempt fully committed registerDispatchedWorker before
+// retiring, proven by planner-session-lifecycle-golden-rollover.test.mjs).
+// It says nothing about a crash BETWEEN a real external dispatchWorker()
+// call returning and registerDispatchedWorker() committing -- that window
+// left no durable trace at all, so a successor session would blindly call
+// dispatchWorker() again: a real double-dispatch. Mirrors
+// research-dispatch-bookkeeping.mjs's recordDispatchAttempt/
+// resolveDispatchAttempt/classifyDispatchDeliveryGuarantee pattern
+// (REUSE_PATTERN, same file-header convention as the rest of this module)
+// rather than inventing a new mechanism. Call BEFORE the real dispatcher.
+export function recordDispatchAttempt(checkpoint, taskFingerprint, clock) {
+  const attempts = checkpoint.dispatchAttempts ?? []
+  const id = sha256({ taskFingerprint, attemptSeq: attempts.length, kind: 'PlannerDispatchAttempt' })
+  return touch(
+    {
+      ...checkpoint,
+      dispatchAttempts: [
+        ...attempts,
+        { id, taskFingerprint, outcome: 'UNKNOWN', attemptedAt: isoNow(clock), resolvedAt: null }
+      ]
+    },
+    clock
+  )
+}
+
+// Call immediately after the real dispatcher call returns (CONFIRMED) or
+// cleanly, synchronously rejects (FAILED_CLEAN). Never call for a crash --
+// an attempt left UNKNOWN by construction IS the durable crash signal.
+// Resolves the oldest still-UNKNOWN attempt for this taskFingerprint.
+export function resolveDispatchAttempt(checkpoint, taskFingerprint, outcome, clock) {
+  if (outcome !== 'CONFIRMED' && outcome !== 'FAILED_CLEAN') {
+    throw new Error(`unknown planner dispatch attempt outcome: ${outcome}`)
+  }
+  const attempts = checkpoint.dispatchAttempts ?? []
+  const idx = attempts.findIndex((a) => a.taskFingerprint === taskFingerprint && a.outcome === 'UNKNOWN')
+  if (idx === -1) { return checkpoint }
+  const next = [...attempts]
+  next[idx] = { ...next[idx], outcome, resolvedAt: isoNow(clock) }
+  return touch({ ...checkpoint, dispatchAttempts: next }, clock)
+}
+
+// Pure classification, never guesses: an unresolved (UNKNOWN) attempt with
+// no registered worker means TSF's own durable state cannot say whether the
+// real dispatcher was actually reached -- ambiguous, requires a human to
+// check the external dispatcher's own record before redispatching.
+export function classifyPlannerDispatchAmbiguity(checkpoint, taskFingerprint) {
+  const attempts = (checkpoint.dispatchAttempts ?? []).filter((a) => a.taskFingerprint === taskFingerprint)
+  if (attempts.length === 0) { return null }
+  const unresolvedCount = attempts.filter((a) => a.outcome === 'UNKNOWN').length
+  if (unresolvedCount > 0) {
+    return {
+      taskFingerprint,
+      ambiguous: true,
+      reason: `${unresolvedCount} planner dispatch attempt(s) for this task never durably resolved -- the external dispatcher may or may not have received them. A human must check its own run history before redispatching.`
+    }
+  }
+  return { taskFingerprint, ambiguous: false }
 }
 
 // providerId/agentId (additive, optional): which real provider/agent

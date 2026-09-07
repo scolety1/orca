@@ -47,8 +47,9 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 7. Command Control-Surface Dogfood | DONE | Findings F20 (STATUS/FINISHED vocabulary gap), F21 (quantified pause/resume mis-targeting) fixed; see dedicated section below |
 | 10. Cleanup V1 Destructive Safety Gauntlet | DONE | 16-scenario reconciliation (14 already covered, 2 genuinely new); 1 real crash-recovery bug found, reproduced, fixed (requestId/quarantineId mismatch); capstone stacked-blocker adversarial passed with no fix needed; see dedicated section below |
 | 13. Evaluation / Regression Quality | DONE | 2 real acceptance-level gaps confirmed and closed (TSF_PLATFORM_GOLDEN_PATH_EVAL, TSF_RESEARCH_GOLDEN_PATH_EVAL); Cleanup V1 investigated, already adequate; see dedicated section below |
-| 14. Security / Authority Boundary Review | DONE | 1 real bug found, reproduced, fixed (Cleanup V1 protected-path registry canonicalization); see dedicated section below |
-| 3, 5, 8-9, 11-12, 15-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 14. Security / Authority Boundary Review | DONE | 1 real bug found, reproduced, fixed (Cleanup V1 protected-path registry canonicalization), 7 areas confirmed safe; see dedicated section below |
+| 11. Provider / Worker Resilience | DONE | Findings F22 (planner dispatch double-spend on crash-mid-dispatch) and F23 (unvalidated structured-response shape / codex schema-forwarding gap) fixed; see dedicated section below |
+| 3, 5, 8-9, 12, 15-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -2597,3 +2598,309 @@ read or written.
 
 Adopted SHA: see the commit on
 `tsf/feature/phase10-cleanup-v1-safety-gauntlet` that carries this section.
+## Phase 11: Provider / Worker Resilience -- Findings F22 and F23, both FIXED
+
+Worktree: `phase11-provider-worker-resilience`, branch
+`tsf/feature/phase11-provider-worker-resilience` (forked from `tsf/main` @
+`fcd43b6864b48c62f51d3babe3a1dcea1aa08995`).
+
+**Reconciliation (read in full before testing further).**
+`tsf/domain/routing.mjs` (`resolveRole`/`resolveUsageMode`/
+`assertRoutingConfiguration`) and `tsf/server/live-planner.mjs`
+(`invokeLiveStructuredAnalysis`/`invokeLivePlanner`/`runOnce`/`spawnAgent`)
+are the one generic provider-invocation path. Existing coverage
+(`tsf/test/live-planner.test.mjs`, 26 tests; `tsf/test/routing-eval-runner.test.mjs`,
+5 tests) already proved: honest typed failures for
+`PROVIDER_UNAVAILABLE`/`SPAWN_ERROR`/`TIMEOUT`/`PROVIDER_ERROR`/
+`MALFORMED_RESPONSE`-on-invalid-JSON, a bounded single retry for transient
+reasons only, session-affinity switch boundaries, and
+`PLANNER_DEEP -> anthropic` resolving against the real committed config. It
+did NOT prove: a genuinely SUCCESSFUL Claude-unavailable -> Codex fallback
+(every existing failure-mode test makes both agents fail, by design, to
+avoid a real codex process firing mid-test) for either live entrypoint, or
+what happens to a syntactically-valid-but-wrong-shape structured response.
+
+**Real, current routing config re-verified directly (not trusted from a
+stale summary):** `provider-role-mappings.v1.json` --
+`PLANNER_DEEP`: preferred `CLAUDE_SAFE` (anthropic/claude-code), fallback
+`CODEX_SAFE` (openai/codex). `WORKER_CHEAP`/`WORKER_BALANCED`/`WORKER_DEEP`:
+preferred `CODEX_SAFE`, fallback `CLAUDE_SAFE` (`WORKER_CHEAP` has NO
+fallback -- `fallbackProfile: null`, by design). `VERIFIER_INDEPENDENT`:
+preferred `CLAUDE_SAFE`, fallback `CODEX_SAFE`,
+`mustDifferFromWorkerWhenAvailable: true`. `launch-profiles.v1.json` defines
+exactly 2 profiles total, one per real vendor (anthropic/claude-code,
+openai/codex) -- no second same-vendor profile exists anywhere in the
+current config.
+
+### Item-by-item results
+
+1. **Both providers available, correct preference.** CONFIRMED SAFE.
+   `routing-eval-runner.test.mjs`'s `REQUIRED PROOF` case resolves
+   `PLANNER_DEEP` to the real `anthropic` provider against the actual
+   committed config (not a fabricated one); no fix needed.
+2. **Claude unavailable -> falls back to Codex, honest identity.** REAL GAP:
+   no existing test exercised a successful cross-provider fallback for
+   EITHER `invokeLivePlanner` or `invokeLiveStructuredAnalysis` -- closed,
+   see F23 below (which also covers item 3, Codex unavailable -> falls back
+   to Claude, by the same generic mechanism -- `invokeLivePlanner`'s
+   existing 'a rejected/stale resumed session falls back to a fresh session'
+   test already proves the reverse-direction PROVIDER_FAILURE switch
+   boundary for the preferred-agent-resume case; the fallback-PROFILE
+   mechanism itself is agent-symmetric code, not a Claude-specific branch).
+3. **Codex unavailable -> falls back to Claude, honest identity.** Same
+   generic fallback mechanism as item 2 (`invokeLivePlanner`/
+   `invokeLiveStructuredAnalysis` never branch on WHICH agent is preferred
+   when trying the fallback profile) -- covered by the same fix and the same
+   class of test, just mirrored. No separate gap found.
+4. **Provider timeout.** CONFIRMED SAFE. `spawnAgent`'s `setTimeout` ->
+   `child.kill('SIGTERM')` -> typed `TIMEOUT` result, already proven by
+   `live-planner.test.mjs`'s "provider timeout is treated as a failure
+   within the configured budget, not a hang" (asserts real elapsed time
+   `<4000ms` against a 5s stub sleep with a 200ms budget) -- re-read, no
+   fix needed.
+5. **Malformed structured response (valid JSON, wrong shape).** REAL GAP,
+   FIXED -- see F23.
+6. **Valid prose but invalid schema.** Same mechanism/fix as item 5 (F23) --
+   free-form prose that fails `JSON.parse` already produced
+   `MALFORMED_RESPONSE` before this phase; JSON that parses but doesn't
+   match the schema's own `required` fields did NOT, until F23.
+7. **Resource pressure during a provider call (Finding F1).** Light
+   re-verification per this phase's own scope instruction (not a full
+   re-test of F1's own suite): `node --test` across the 6 test files F1's
+   own checkpoint entry names (`command-research-spec-synthesis`,
+   `command-scope-classifier`, `field-source-reconciliation`,
+   `wbs-generation`, `onboarding`, `onboarding-orca-resilience`) --
+   88/88 pass, matching F1's own documented count exactly. F1's fix is real
+   and complete; no regression.
+8. **Planner rollover during a provider call.** REAL GAP, FIXED -- see F22.
+   `findWorkerByTaskFingerprint`/`registerDispatchedWorker`
+   (`planner-mission-checkpoint.mjs`) only covered a CLEAN rollover (a prior
+   session fully committed the registration before retiring, proven by the
+   existing golden-rollover test) -- it said nothing about a crash BETWEEN
+   the real external dispatch call returning and that commit landing.
+9. **Retry/idempotency double-spend.** Same underlying mechanism as item 8 --
+   F22's fix is exactly this: a durable pre-flight attempt record, keyed by
+   `taskFingerprint`, written BEFORE the real dispatcher call (mirroring
+   `research-dispatch-bookkeeping.mjs`'s already-proven
+   `recordDispatchAttempt`/`AMBIGUOUS_REQUIRES_RECONCILIATION` pattern for
+   research-node dispatch), so a crash-then-resume can never blindly
+   redispatch -- it refuses honestly instead.
+10. **Capacity exhaustion (no provider reachable at all).** CONFIRMED SAFE.
+    `resolveAgentEntry` returning `null` for every candidate (no CLI found
+    on this host) or a real spawn failure both produce a typed
+    `PROVIDER_UNAVAILABLE`/`SPAWN_ERROR` result; neither `invokeLivePlanner`
+    nor `invokeLiveStructuredAnalysis` reads any cache or stored fallback
+    value on failure -- the caller (e.g. `onboarding.mjs`'s
+    `fallbackLabel`) explicitly labels the degraded state
+    ("Planner unavailable — using recorded project-state fallback"),
+    never silently substituting a stale live answer. Already proven by the
+    existing "unavailable provider produces an honest fallback signal, not
+    a fabricated answer" test; re-confirmed, no fix needed.
+
+### Finding F22: planner dispatch could double-spend a real external call on crash-mid-dispatch -- REPRODUCED and FIXED
+
+**Gap.** `PlannerSessionLifecycle.dispatchWorkerForTask`
+(`tsf/server/planner-session-lifecycle.mjs`) called the real
+`this.deps.dispatchWorker(...)` FIRST, and only committed the durable
+idempotency record (`registerDispatchedWorker`) AFTER it returned. A crash
+between those two points left NO durable trace the call was ever attempted
+-- `findWorkerByTaskFingerprint` would find nothing, and a successor session
+would call the real external dispatcher a second time for the identical
+task: a genuine double-spend of dispatch capacity (and, for a real
+provider-backed dispatcher, a real second billable/counted call). The
+existing `planner-session-lifecycle-golden-rollover.test.mjs` only proved
+the CLEAN-rollover case (a prior session fully committed before retiring)
+-- it never exercised this window. `research-mission-driver.mjs`'s
+otherwise-analogous `dispatchResearchNodeDurable` already has the correct
+ordering (`recordDispatchAttempt` durably BEFORE `worker.dispatch()`, via
+`research-dispatch-bookkeeping.mjs`'s `AMBIGUOUS_REQUIRES_RECONCILIATION`
+classification) -- this newer Planner Context Lifecycle mechanism had
+drifted from that already-proven sibling pattern.
+
+**Reproduction.** New `tsf/test/planner-session-lifecycle-crash-mid-dispatch.test.mjs`:
+patches `_mutate` to fail on exactly its second call within one
+`dispatchWorkerForTask` invocation (modeling a real process crash between
+the real dispatcher returning and the post-dispatch commit landing) --
+confirmed against the unmodified code (`git stash`) that the real dispatcher
+fires a SECOND time for a successor session's identical taskFingerprint
+(the double-spend, reproduced directly, not hypothesized) before the fix;
+after the fix, the successor throws `TSF_PLANNER_DISPATCH_AMBIGUOUS` and the
+real dispatcher call count stays at 1.
+
+**Fix.** `tsf/domain/planner-mission-checkpoint.mjs`: new
+`recordDispatchAttempt`/`resolveDispatchAttempt`/
+`classifyPlannerDispatchAmbiguity`, mirroring
+`research-dispatch-bookkeeping.mjs`'s pattern (REUSE_PATTERN, not a new
+mechanism) adapted to this file's own no-CAS/`touch()` convention. New
+checkpoints now initialize `dispatchAttempts: []`
+(old durable checkpoints missing the field are read as `?? []`, no schema-
+version bump needed -- purely additive). `dispatchWorkerForTask` now:
+records an UNKNOWN attempt durably BEFORE calling the real dispatcher;
+resolves it to `FAILED_CLEAN` (same mutate call as the thrown/no-workerId
+error path) or `CONFIRMED`+`registerDispatchedWorker` (one atomic write) on
+return; and refuses (`TSF_PLANNER_DISPATCH_AMBIGUOUS`) rather than
+redispatching when an unresolved attempt is found for a taskFingerprint with
+no registered worker.
+
+**Tests.** `tsf/test/planner-mission-checkpoint.test.mjs`: 5 new unit tests
+for the ledger's pure functions. `tsf/test/planner-session-lifecycle-crash-mid-dispatch.test.mjs`:
+4 tests, including the break-it-and-confirm-it-catches proof above. Full
+regression: `planner-mission-checkpoint`, `planner-session-lifecycle-golden-rollover`,
+`planner-session-lifecycle-resource-governance`,
+`planner-session-lifecycle-crash-mid-dispatch` -- 33/33 pass.
+
+### Finding F23: `invokeLiveStructuredAnalysis` never validated response shape; Codex fallback silently dropped the schema entirely -- FIXED
+
+**Gap, part A (shape validation).** `invokeLiveStructuredAnalysis`
+(`live-planner.mjs`) parsed a provider's structured response
+(`result.structuredOutput ?? JSON.parse(result.text)`) but never checked it
+against the caller's own `jsonSchema`. A syntactically-valid JSON object
+missing the schema's `required` fields entirely (e.g. `{unexpectedKey:true}`
+instead of `{answers:[...]}`) was returned as `ok:true` -- indistinguishable
+from a real, conformant answer. Traced the concrete downstream harm for
+this program's own central subject file,
+`tsf/adapters/llm-latent-knowledge-research-worker.mjs`: such a response
+collapses into `Array.isArray(live.data?.answers) === false`, which the
+worker (correctly, given what it can see) reports as
+`MODEL_REPORTED_UNKNOWN_FOR_ALL_FIELDS` -- an HONEST "the model genuinely
+doesn't know" is a materially different, less alarming condition than
+"the provider's response didn't conform to the requested contract at all,"
+and the two were indistinguishable before this fix.
+
+**Gap, part B (Codex fallback drops the schema).** `buildArgs`'s
+`codex` branch never forwarded `jsonSchema` at all (codex `exec` has no
+`--json-schema`-equivalent flag) -- callers whose own `systemPrompt` relies
+entirely on `--json-schema` to constrain shape (e.g.
+`command-scope-classifier.mjs`'s `SCOPE_SYSTEM_PROMPT`, which never
+describes its JSON shape in prose) had genuinely no way to get a conformant
+answer through the documented `PLANNER_DEEP -> CODEX_SAFE` fallback --
+confirmed by reading each of the 5 real callers'
+own system prompts, not assumed.
+
+**Fix.** `conformsToRequiredShape(parsed, jsonSchema)` (new, exported):
+checks `parsed` is a real object (not null/array) and every name in
+`jsonSchema.required` (if present) is a key of `parsed` -- intentionally NOT
+a full JSON-Schema validator (`tsf/contracts/validate-research-contracts.mjs`'s
+own header discloses this repo takes no such dependency); every real caller
+of `invokeLiveStructuredAnalysis` already declares a top-level `required`
+list, confirmed by reading all 5 (onboarding, wbs-generation,
+field-source-reconciliation, command-scope-classifier,
+command-research-spec-synthesis) before relying on it. A shape mismatch now
+returns `MALFORMED_RESPONSE` with the missing field names named in
+`detail`, matching the EXISTING (deliberate) no-further-retry/no-fallback
+treatment `MALFORMED_RESPONSE` already had for invalid JSON (a shape
+mismatch reproduces identically on the same input, same reasoning as the
+pre-existing `RETRYABLE_REASONS` exclusion). `buildArgs`'s codex branch now
+appends the same schema (`stripSchemaMetaKeys`-stripped, reusing the exact
+function claude-code's branch already applies -- not a second stripping
+mechanism) as an explicit prose instruction after the prompt, the only
+transport `codex exec` offers.
+
+**Tests.** `tsf/test/live-planner-provider-fallback.test.mjs` (new,
+split out of `live-planner.test.mjs` to stay under the 600-line cap
+per CLAUDE.md's max-lines rule): `conformsToRequiredShape` pure-function
+edge cases; a wrong-shape response rejected as `MALFORMED_RESPONSE`
+(confirmed real via `if (false && ...)` neutralization -- without the
+check, `result.ok` was `true` for a wrong-shape response); a genuinely
+successful `invokeLivePlanner` Claude-unavailable -> Codex fallback with
+honest `agentId:'codex'`/`providerId:'openai'` (never the originally-
+preferred claude-code/anthropic); a genuinely successful
+`invokeLiveStructuredAnalysis` Claude-unavailable -> Codex fallback where
+the schema is proven to have actually reached the codex invocation (direct
+assertion on the real transmitted positional argv, not just that the
+answer happened to be right-shaped). `tsf/test/fixtures/stub-planner-cli.mjs`
+gained `STUB_MODE=wrong-shape` and codex-shaped positional-argument/embedded-
+schema parsing (additive; no existing test's behavior changed).
+`tsf/test/llm-latent-knowledge-research-worker.test.mjs` gained one
+end-to-end test through the REAL `invokeLiveStructuredAnalysis` (every other
+test in that file injects a fake) proving the fix closes the
+mislabeling risk described in part A above: `dispatched.reason` is
+`MALFORMED_RESPONSE`, never `MODEL_REPORTED_UNKNOWN_FOR_ALL_FIELDS`, for a
+response missing the required `answers` key.
+
+### Verification checklist (explicit, per the mission's own list)
+
+- **Honest provider identity always recorded, never defaulted to the
+  intended provider.** Confirmed by direct code read (`agentUsed`/
+  `AGENT_PROVIDER_ID[agentUsed]` used at every return point in both live
+  entrypoints, never the originally-`preferredAgent`) and now also by the
+  new fallback-success tests above (previously untested).
+- **No same-vendor-family false independence.** `launch-profiles.v1.json`
+  currently defines exactly 2 profiles, one per real vendor -- there is
+  structurally no second same-vendor profile for anything to conflate.
+  `VERIFIER_INDEPENDENT`'s `mustDifferFromWorkerWhenAvailable` is checked
+  via `routing-eval-runner.test.mjs`'s real `verifierDiffersFromWorker`
+  case against the real config. Separately confirmed `VERIFIER_INDEPENDENT`
+  has no live-dispatch production call site at all yet (only
+  `resolveUsageMode`'s static resolution and eval/fixture code reference
+  it) -- the theoretical risk (both a worker and the verifier genuinely
+  falling back to the same vendor when the other is down) is not currently
+  reachable in production; flagged for re-check if/when this role is
+  wired to a real live call.
+- **No implicit paid API path silently taken.** Not touched by this
+  phase's changes (`TSF_RESEARCH_LATENT_KNOWLEDGE_DISPATCH_ENABLED`,
+  `TSF_RESEARCH_LIVE_DISPATCH_ENABLED`, and F1's resource-pressure gates
+  are all outside the diff -- confirmed via `git diff --stat`, only
+  `live-planner.mjs`, `planner-mission-checkpoint.mjs`,
+  `planner-session-lifecycle.mjs`, and test/fixture files changed).
+- **Fallback rules match the real, current config.** Re-verified directly
+  against `provider-role-mappings.v1.json` (see above), not a stale
+  summary -- the checkpoint's own record of `PLANNER_DEEP`'s
+  `CLAUDE_SAFE -> CODEX_SAFE` pair matches what this phase actually tested.
+- **No silent model substitution where identity matters for provenance.**
+  `llm-latent-knowledge-research-worker.mjs`'s
+  `buildLatentKnowledgeSnapshot` already records `live.providerId`/
+  `live.agentId`/`live.model` verbatim (never hardcoded) -- re-confirmed
+  by its own existing "provider identity is reported honestly per real
+  invocation" test, unmodified and still passing.
+- **Provenance preserved through retries/fallbacks.** `agentUsed` is
+  reassigned only on a genuinely successful fallback result, never
+  speculatively; F22's fix additionally makes the DISPATCH boundary itself
+  (not just the answer) durably attributable -- `providerId`/`agentId` are
+  forwarded into `registerDispatchedWorker` from whatever the real
+  dispatcher reports, unchanged by this phase.
+
+### Test results and lint
+
+New/changed test files: `planner-mission-checkpoint.test.mjs` (+5 tests),
+`planner-session-lifecycle-crash-mid-dispatch.test.mjs` (new, 4 tests, 1
+top-level with 4 sub-tests), `live-planner-provider-fallback.test.mjs` (new,
+split from `live-planner.test.mjs`, 4 tests),
+`llm-latent-knowledge-research-worker.test.mjs` (+1 test),
+`tsf/test/fixtures/stub-planner-cli.mjs` (shared fixture, additive only).
+`live-planner.test.mjs` itself is byte-identical to its pre-phase content
+(`git diff` shows no changes) after the split.
+
+Targeted sweep (all Phase 11 files together): 80/80 pass. F1 light
+re-verification (6 files named in F1's own checkpoint entry): 88/88 pass,
+matching F1's documented count exactly. Full-suite sweep
+(`node --test tsf/test/*.test.mjs`) run 3 times total on this shared,
+concurrently-loaded host (this session's own memory already flags many
+concurrent Claude Code sessions running on this box): 2378 tests each time,
+2371-2373 pass, 5-7 fail. The failing set each time is a SUBSET of the same
+7 known candidates: `command-bare-imperative-dispatch.test.mjs`'s "IDIOM"/
+"QUERY/STATUS"/"WorldForge" phrasing gaps, `operator-state-adversarial.test.mjs`'s
+"STALE ACTION RACE", `http-work-summary.test.mjs`'s dispatch-tick timing
+test, `keep-going-autonomy-proof.test.mjs`'s long-running autonomy proof,
+and `health-repair-io.test.mjs`'s `runBaselineVerification` -- every one of
+these is already named in this program's own F1/F4 checkpoint entries as
+pre-existing, real-host-load-sensitive, not caused by any change in this
+program, and a direct `git stash`-baseline comparison run this phase
+reproduced the identical candidate set (same names, same files) with this
+phase's changes stashed out. None of the 7 touch
+`live-planner.mjs`/`planner-mission-checkpoint.mjs`/
+`planner-session-lifecycle.mjs` or any file this phase changed.
+
+`npx oxlint` on every changed/new file (`planner-mission-checkpoint.mjs`,
+`live-planner.mjs`, `planner-session-lifecycle.mjs`, `stub-planner-cli.mjs`,
+`live-planner-provider-fallback.test.mjs`,
+`llm-latent-knowledge-research-worker.test.mjs`,
+`planner-mission-checkpoint.test.mjs`,
+`planner-session-lifecycle-crash-mid-dispatch.test.mjs`) -- clean, exit 0
+(fixed 3 `curly` findings on newly-added lines rather than leaving them).
+
+Astra: not touched, not referenced, per this program's explicit
+instruction. NWR data: not touched.
+
+Adopted SHA: see the commit on
+`tsf/feature/phase11-provider-worker-resilience` that carries this section.

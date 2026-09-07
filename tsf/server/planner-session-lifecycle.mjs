@@ -13,14 +13,17 @@ import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.
 import {
   advancePhase as advancePhaseCheckpoint,
   assertRepoStateContinuity,
+  classifyPlannerDispatchAmbiguity,
   completePlannerMission,
   createPlannerMissionCheckpoint,
   findWorkerByTaskFingerprint,
   raisePlannerNeedsYou,
   recordDecision as recordDecisionCheckpoint,
+  recordDispatchAttempt,
   recordVerifierResult as recordVerifierResultCheckpoint,
   recordWorkerResult as recordWorkerResultCheckpoint,
   registerDispatchedWorker,
+  resolveDispatchAttempt,
   resolvePlannerNeedsYou,
   setLastAction,
   setNextIntendedAction
@@ -156,6 +159,17 @@ export class PlannerSessionLifecycle {
   // this is what "no re-dispatch after rollover" and "no double-spend of
   // dispatch capacity" actually means at the mechanism level, not just a
   // policy statement.
+  //
+  // Phase 11 finding (real gap, fixed): a durable dispatch-attempt record is
+  // now written BEFORE the real deps.dispatchWorker() call, exactly like
+  // research-mission-driver.mjs's dispatchResearchNodeDurable already does
+  // via research-dispatch-bookkeeping.mjs. Previously the ONLY durable
+  // record was registerDispatchedWorker(), committed AFTER the real call
+  // returned -- a crash/rollover in that window left no trace the call was
+  // ever attempted, so a successor saw no worker for this taskFingerprint
+  // and would call the real dispatcher a second time. Now that window
+  // leaves an UNKNOWN attempt behind, and a successor refuses to guess
+  // (TSF_PLANNER_DISPATCH_AMBIGUOUS) instead of redispatching blindly.
   async dispatchWorkerForTask({ taskId, kind, taskFingerprint = taskId }) {
     const checkpoint = this.getCheckpoint()
     if (!checkpoint) { throw new Error(`mission ${this.missionId} has no checkpoint yet -- call startMission or acquireLeaseAndHydrate first`) }
@@ -163,15 +177,35 @@ export class PlannerSessionLifecycle {
     if (existing) {
       return { alreadyDispatched: true, worker: existing }
     }
+    const ambiguity = classifyPlannerDispatchAmbiguity(checkpoint, taskFingerprint)
+    if (ambiguity?.ambiguous) {
+      const error = new Error(`dispatch for task ${taskId} is ambiguous: ${ambiguity.reason}`)
+      error.code = 'TSF_PLANNER_DISPATCH_AMBIGUOUS'
+      throw error
+    }
     if (!this.deps.dispatchWorker) { throw new Error('no dispatchWorker dependency configured') }
     this._requireLease(readPlannerMissionRecord(this.missionId))
-    const dispatched = await this.deps.dispatchWorker({ taskId, kind, taskFingerprint })
-    if (!dispatched?.workerId) { throw new Error('dispatchWorker did not return a workerId') }
+    await this._mutate((current, clock) => recordDispatchAttempt(current, taskFingerprint, clock))
+
+    let dispatched
+    try {
+      dispatched = await this.deps.dispatchWorker({ taskId, kind, taskFingerprint })
+    } catch (error) {
+      await this._mutate((current, clock) => resolveDispatchAttempt(current, taskFingerprint, 'FAILED_CLEAN', clock))
+      throw error
+    }
+    if (!dispatched?.workerId) {
+      await this._mutate((current, clock) => resolveDispatchAttempt(current, taskFingerprint, 'FAILED_CLEAN', clock))
+      throw new Error('dispatchWorker did not return a workerId')
+    }
     // providerId/agentId (Phase 5, additive): forwarded only when the real
     // dispatcher happens to report them -- never guessed when it doesn't.
-    const next = await this._mutate((current, clock) =>
-      registerDispatchedWorker(current, { workerId: dispatched.workerId, kind, taskFingerprint, providerId: dispatched.providerId ?? null, agentId: dispatched.agentId ?? null }, clock)
-    )
+    // Resolving the attempt and registering the worker in ONE atomic
+    // checkpoint write minimizes the durable-but-unresolved window further.
+    const next = await this._mutate((current, clock) => {
+      const resolved = resolveDispatchAttempt(current, taskFingerprint, 'CONFIRMED', clock)
+      return registerDispatchedWorker(resolved, { workerId: dispatched.workerId, kind, taskFingerprint, providerId: dispatched.providerId ?? null, agentId: dispatched.agentId ?? null }, clock)
+    })
     return { alreadyDispatched: false, worker: next.workers[dispatched.workerId] }
   }
 
