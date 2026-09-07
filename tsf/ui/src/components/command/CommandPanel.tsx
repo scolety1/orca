@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Markdown from 'react-markdown'
 import { AlertTriangle, Paperclip, SendHorizontal, ShieldAlert, Sparkles, X } from 'lucide-react'
@@ -24,6 +24,79 @@ type CommandMessage = ChatMessage & {
   resolvedProjectIds?: string[]
   scope?: ChatResponse['scope']
 }
+
+// Memoized so typing in the composer (draft/attachments/selfRepair state,
+// all local to CommandPanel) never re-renders the transcript -- without
+// this, every keystroke re-ran react-markdown's parse over EVERY past
+// assistant message, real, measurable lag that grows with the
+// conversation's length. Props only change when messages/sending actually
+// do (a new send, a response landing), never on composer input.
+export const CommandTranscript = memo(function CommandTranscript({
+  messages,
+  sending
+}: {
+  messages: CommandMessage[]
+  sending: boolean
+}) {
+  if (messages.length === 0) {
+    return (
+      <div className="py-10 text-center text-xs text-muted-foreground">
+        Ask about your fleet, name a project to work on it, or name several to act on them
+        together -- e.g. &quot;what&apos;s running right now?&quot; or &quot;get NWR and WorldForge
+        ready for work.&quot;
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {messages.map((message, i) => (
+        <div
+          key={i}
+          className={cn(
+            'flex flex-col gap-1',
+            message.role === 'user' ? 'items-end' : 'items-start'
+          )}
+        >
+          <div
+            className={cn(
+              'max-w-[85%] overflow-hidden rounded-lg px-3 py-2 text-[13px] leading-relaxed [&_p]:m-0 [&_p+p]:mt-2',
+              message.role === 'user'
+                ? 'whitespace-pre-wrap bg-primary/15 text-foreground'
+                : 'bg-muted text-foreground'
+            )}
+          >
+            {message.role === 'assistant' ? <Markdown>{message.content}</Markdown> : message.content}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {message.decisionClass && <DecisionBadge decisionClass={message.decisionClass} />}
+            {message.role === 'assistant' &&
+              message.resolvedProjectIds &&
+              message.resolvedProjectIds.length > 0 && (
+                <span className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                  Targeting:
+                  {message.resolvedProjectIds.map((id) => (
+                    <Link
+                      key={id}
+                      to={`/projects/${id}`}
+                      className="rounded-full border border-border px-1.5 py-0.5 hover:border-primary/50 hover:text-foreground"
+                    >
+                      {id}
+                    </Link>
+                  ))}
+                </span>
+              )}
+            {message.role === 'assistant' &&
+              message.scope === 'FLEET' &&
+              (!message.resolvedProjectIds || message.resolvedProjectIds.length === 0) && (
+                <span className="text-[10px] text-muted-foreground">No specific project</span>
+              )}
+          </div>
+        </div>
+      ))}
+      {sending && <div className="text-[11px] text-muted-foreground">Command is thinking…</div>}
+    </div>
+  )
+})
 
 // Generalized from PlannerChatPanel.tsx: same message/attachment/sending
 // state shape, but no projectId prop at all -- target project(s) are
@@ -164,67 +237,7 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
         </div>
       )}
       <ScrollArea className="tsf-scrollbar flex-1 px-4 py-3" viewportRef={viewportRef}>
-        {messages.length === 0 ? (
-          <div className="py-10 text-center text-xs text-muted-foreground">
-            Ask about your fleet, name a project to work on it, or name several to act on them
-            together -- e.g. &quot;what&apos;s running right now?&quot; or &quot;get NWR and
-            WorldForge ready for work.&quot;
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {messages.map((message, i) => (
-              <div
-                key={i}
-                className={cn(
-                  'flex flex-col gap-1',
-                  message.role === 'user' ? 'items-end' : 'items-start'
-                )}
-              >
-                <div
-                  className={cn(
-                    'max-w-[85%] overflow-hidden rounded-lg px-3 py-2 text-[13px] leading-relaxed [&_p]:m-0 [&_p+p]:mt-2',
-                    message.role === 'user'
-                      ? 'whitespace-pre-wrap bg-primary/15 text-foreground'
-                      : 'bg-muted text-foreground'
-                  )}
-                >
-                  {message.role === 'assistant' ? (
-                    <Markdown>{message.content}</Markdown>
-                  ) : (
-                    message.content
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {message.decisionClass && <DecisionBadge decisionClass={message.decisionClass} />}
-                  {message.role === 'assistant' &&
-                    message.resolvedProjectIds &&
-                    message.resolvedProjectIds.length > 0 && (
-                      <span className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
-                        Targeting:
-                        {message.resolvedProjectIds.map((id) => (
-                          <Link
-                            key={id}
-                            to={`/projects/${id}`}
-                            className="rounded-full border border-border px-1.5 py-0.5 hover:border-primary/50 hover:text-foreground"
-                          >
-                            {id}
-                          </Link>
-                        ))}
-                      </span>
-                    )}
-                  {message.role === 'assistant' &&
-                    message.scope === 'FLEET' &&
-                    (!message.resolvedProjectIds || message.resolvedProjectIds.length === 0) && (
-                      <span className="text-[10px] text-muted-foreground">No specific project</span>
-                    )}
-                </div>
-              </div>
-            ))}
-            {sending && (
-              <div className="text-[11px] text-muted-foreground">Command is thinking…</div>
-            )}
-          </div>
-        )}
+        <CommandTranscript messages={messages} sending={sending} />
       </ScrollArea>
       {error && (
         <div className="border-t border-border px-4 py-2 text-[11px] text-destructive">{error}</div>

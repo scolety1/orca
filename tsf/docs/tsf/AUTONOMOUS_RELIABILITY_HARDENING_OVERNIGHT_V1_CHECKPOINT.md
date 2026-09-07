@@ -55,7 +55,8 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 16. Self-Improvement Loop V0 Reconciliation | DONE | 5-link honest reconciliation (detection/mission-creation/verification/adoption/re-dogfood) -- all 4 non-trivial links PARTIALLY_REAL, none REAL_AND_COMPOSABLE end-to-end without a human/external coordinator; no new orchestrator built; one real, small, still-open residual-gap bug (chat-responder.mjs FINISHED-intent vocabulary gap, previously pinned as disclosed-not-fixed in Phase 7) fixed and verified as a bounded READY_FOR_ADOPTION-level proof; see dedicated section below |
 | 3. Resource-Aware Execution Hardening | DONE | 6-area investigation; 3 real gaps found and fixed (F30 UI Dogfood's real Electron launch never consulted the governor at all, F31 a real Electron-instance leak on an attachCapture exception before any try/finally existed, F32 PRESSURED tier's own documented "serialize" language was never actually enforced for concurrent heavyweight LLM-CLI dispatch); 3 areas confirmed sound by design with cited evidence (worker residency, planner rollover residency via an existing Phase 8 test, starvation-by-construction); see dedicated section below |
 | 5. Browser/Screenshot Reliability | DONE | Scoping finding: TSF's own UI Dogfood has ZERO dependency on Claude-in-Chrome or any ChatGPT/Codex Chrome native-host bridge (confirmed by reading the code) -- the mission's "third-party infrastructure" framing does not apply here. CDP timing, stale-page/context, and resource-pressure gating all confirmed already sound (with real-Electron evidence). 1 real gap found and fixed: `deps.captureScreenshot` had zero try/catch, so one transient CDP hiccup aborted the WHOLE multi-surface pass; see dedicated section below |
-| 15, 17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 15. Performance / Responsiveness Pass | DONE | 6-area measured investigation; 1 real high-impact fix (CommandPanel.tsx's transcript re-rendered/re-parsed markdown for every past message on every composer keystroke -- memoized, proven with a real render-count test); 5 areas confirmed already fine with real measurements (fleet driver idle ticks ~1.3ms/~0.015ms on a 30s interval, data-store.mjs round trip <3ms at its real 652KB production size, git/FS scans all bounded/on-demand/non-redundant, no `*Sync` call reachable from a live HTTP handler); see dedicated section below |
+| 17 | NOT_STARTED | Final Platform Dogfood -- the closing phase, run after all other adopted fixes |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -4376,3 +4377,212 @@ mechanism already established by Finding F7 and Phase 3's F30/F31.
 
 Adopted SHA: see the commit on `tsf/feature/phase5-browser-screenshot-
 reliability` that carries this section.
+## Phase 15: Performance / Responsiveness Pass -- 1 real high-impact fix (CommandPanel transcript re-render), 5 areas confirmed fine with real measurements
+
+Mission's own instruction, verbatim: "Do not micro-optimize without
+measurements. Fix obvious high-impact regressions only." This section
+covers all 6 investigation areas. Every number below is a real
+measurement taken in the phase worktree (or, where noted, a read-only
+measurement against the canonical worktree's own real production
+`operator-state.json` -- read, never written).
+
+### 1. Unnecessary polling -- CONFIRMED FINE
+
+- `tsf/ui/src/lib/use-foreground-polling.ts`: 15s interval, only runs
+  while `document.visibilityState === 'visible'`, stops on unmount.
+  Already exactly the "bounded, foreground-only, capped interval" shape
+  the mission asks for.
+- `tsf/server/keep-going-fleet-driver.mjs` /
+  `research-mission-fleet-driver.mjs`: both use `DEFAULT_TICK_INTERVAL_MS
+  = 30_000`, `timer.unref()` (never keeps the process alive on its own),
+  and an `inProgress` guard so an overlapping cycle is skipped rather than
+  stacked.
+- Idle-tick cost, measured directly in this worktree (`node -e` timing
+  loop, `projectsById()`/`loadState()` from `tsf/server/project-catalog.mjs`
+  and `data-store.mjs`, 50-200 iteration averages):
+  - Keep Going driver's `listEligibleProjectIds` (`projectsById()`, which
+    reads 4 real pilot dirs + fixture + onboarded-project projection +
+    receipt verification, every tick regardless of active-run count):
+    **~1.30ms/call**.
+  - Research mission driver's `listEligibleMissionIds` (`loadState()`
+    only): **~0.015ms/call**.
+  - Against a 30,000ms interval that's 0.004%/0.00005% duty even at zero
+    active runs -- not "obvious high-impact," no fix.
+
+### 2. Repeated expensive git scans -- CONFIRMED FINE
+
+Checked every real `execFile('git', ...)` site in `tsf/server`:
+`resource-auditor-git-object-store.mjs` (single `git count-objects -vH`,
+concurrency-capped at 2, only called from one HTTP route, one invocation
+per request), `cleanup-git-worktree-inventory.mjs` (each exported function
+runs exactly one git subcommand; `cleanup-executor-worktree-actions.mjs`'s
+two action-class executors each call `isBranchCheckedOutAnywhere` once,
+never both in the same execution), `repository-identity.mjs`
+(`resolveRepositoryIdentity` batches its 3 independent git reads via
+`Promise.all`, not sequentially, and `chat-dispatch-bridge.mjs` calls it
+from exactly one call site per dispatch -- its own header comment
+discloses this is deliberate, "runs on every chat dispatch... never
+trusting a client-supplied value," not an oversight). No site re-runs the
+same git command redundantly within one request. Separately,
+`Cleanup V1`'s owner-authorization gate remains deliberately unset in
+production (Owner Gates Outstanding #2), so the worktree/branch-action git
+surface here sees ~zero real invocations today regardless.
+
+### 3. Repeated filesystem walks -- CONFIRMED FINE
+
+Every `readdirSync`/recursive-walk site in `tsf/server`:
+`portfolio-projection.mjs` (4 real, fixed pilot directories -- not a
+growing set), `repo-inspector.mjs` (`BOUNDED_SCAN_LIMIT = 3000`, called
+once per onboarding analysis -- a deliberate, low-frequency operator
+action, not a hot path, and `onboarding.mjs`'s `gatherRepositoryFacts`
+consolidates the scan into one call shared by all 3 callers rather than
+each re-scanning), `onboarding-http-routes.mjs` (single top-level
+`readdirSync` for a directory-browse route, `.slice(0, 500)`-bounded),
+`cleanup-quarantine-store.mjs` (linear manifest scan, but Cleanup V1's
+gate is unset, so ~zero real quarantine entries exist today). No walk is
+invoked more than once per request, and none is unbounded.
+
+### 4. Oversized payloads -- CONFIRMED FINE (with real production numbers)
+
+Mission specifically asked to check `data-store.mjs`'s durable-state
+collections (`evalRuns`, `cleanupRequests`, `plannerMissions`) against the
+Phase 1 precedent (unbounded state-file growth for a completed program).
+Read-only measurement against the **canonical worktree's own real
+production** `tsf/server/.local-state/operator-state.json` (never written
+to -- `node -e` read + `JSON.parse`/`JSON.stringify` only):
+
+- Real file size: **651,967 bytes (~652KB)**.
+- Per-collection breakdown: `onboardedProjects` 323,369 bytes (15 real
+  onboarded projects -- by far the largest single collection, but bounded
+  by the operator's real portfolio size, not per-request growth),
+  `keepGoingRuns` 81,604 bytes, `prepareForWorkOperations` 48,113 bytes,
+  `chatThreads` 34,065 bytes, `portfolio` 5,136 bytes, `plannerSessions`
+  2,384 bytes, `evalRuns` **772 bytes** (a single packId's history),
+  everything else ≤102 bytes. `cleanupRequests` and `plannerMissions` do
+  not even appear as keys in the real file -- never touched in this
+  worktree's real usage.
+- Round-trip cost at this real size: `JSON.parse` **~0.87ms**,
+  `JSON.stringify(..., null, 2)` **~1.26ms** (500-iteration average) --
+  under 3ms total for the full `loadState()`+`saveState()` pair
+  `data-store.mjs` runs on every mutation.
+- `evalRuns` is explicitly append-only by disclosed design
+  (`eval-http-routes.mjs`'s own header: "per acceptance item 8 'historical
+  eval results remain inspectable'"), not an oversight; `cleanupRequests`
+  sees ~zero real growth because Cleanup V1's gate is unset (see area 2);
+  `plannerMissions`/`onboardedProjects` are bounded by real, human-paced
+  cardinality (one entry per real mission/project), not per-request churn.
+  `GET /api/fleet/status` returns `fleetWorkStatus(projects, ...)` --
+  same real, portfolio-bounded project map, not a separately-growing list.
+
+Conclusion: even projecting 10x growth (6.5MB), the round trip stays
+under ~50ms -- not obvious/high-impact today, and fixing the currently-
+tiny `evalRuns`/`cleanupRequests` would either violate a disclosed
+acceptance requirement or spend effort on a presently-dormant feature. No
+fix made; noted here as a latent, worth-revisiting-later concern if
+`evalRuns` or `cleanupRequests` growth is ever observed to actually
+matter in a real deployment.
+
+### 5. Blocking synchronous operations -- CONFIRMED FINE
+
+Only two files in `tsf/server` use `execSync`/`execFileSync`/`spawnSync`:
+- `planner-mission-repo-state.mjs` (`observeCanonicalRepoState`, 2
+  `execFileSync` git calls). Traced every caller
+  (`planner-session-lifecycle.mjs`'s `PlannerSessionLifecycle`): it is
+  referenced only from that module's own file and from `tsf/test/*` --
+  grep confirms **no HTTP route in `tsf/server` instantiates
+  `PlannerSessionLifecycle`**, so this synchronous call is not currently
+  reachable from a live request handler. Per the mission's own explicit
+  rule ("a `*Sync` call in test/CLI-only code is not a finding"), no fix.
+- `platform-golden-path-eval-runner.mjs` (fixture-repo `git init`/`commit`
+  for the eval pack). Reachable only via the deliberately manual,
+  low-frequency `POST /api/eval/:packId/run` route, against a tiny
+  throwaway scratch repo -- not a hot path, and the eval itself already
+  does much heavier async work (real provider dispatch) in the same
+  request.
+
+No other `*Sync` FS/process call was found reachable from a live HTTP
+handler outside these two (already-fine) cases.
+
+### 6. UI rerender churn / Command response list latency -- 1 REAL FIX
+
+Full Electron app was not launched for this (disproportionate for a
+bounded phase per the mission's own fallback clause); did a real,
+evidence-based code read of `tsf/ui/src/components/command/CommandPanel.tsx`
+(Command's response list), `tsf/ui/src/pages/WorkPage.tsx` (mission
+status/project list), and `tsf/ui/src/pages/HQPage.tsx` -- no
+`useMemo`/`memo`/`useCallback` existed anywhere in `CommandPanel.tsx` or
+`WorkPage.tsx` before this fix.
+
+**Real finding**: `CommandPanel.tsx` kept the composer's `draft` state
+(`useState`, updated on every keystroke) in the SAME component as the
+`messages` transcript render, which mapped every past message through
+`<Markdown>{message.content}</Markdown>` (`react-markdown`) inline, with
+no memoization anywhere in between. Every keystroke in the composer
+re-rendered the whole component tree, including re-invoking
+`react-markdown`'s parser for **every** historical assistant message in
+the conversation -- real, measurable lag that grows with conversation
+length, exactly the "Command response list latency" the mission named.
+
+**Fix** (`tsf/ui/src/components/command/CommandPanel.tsx`): extracted the
+transcript rendering into its own component, `CommandTranscript`, wrapped
+in `React.memo`, taking only `messages`/`sending` as props -- these never
+change on composer input (`draft`/`attachments`/`selfRepair` state stays
+local to `CommandPanel`), so React's default shallow-prop-compare bails
+out on every keystroke instead of re-rendering/re-parsing history.
+
+**Proof, before/after, real render-count assertions**
+(`tsf/ui/src/components/command/CommandPanel.test.tsx`, new): a minimal
+harness component (composer `useState` + `<CommandTranscript>`, mirroring
+`CommandPanel`'s own shape) with `react-markdown` mocked to a call
+counter, driven through `react-dom/client`'s real reconciler (not a
+snapshot/shallow renderer). Simulated 5 keystrokes via the native
+`HTMLInputElement.value` setter + `input` event (the same mechanism
+`fireEvent` uses, so `onChange` genuinely fires):
+- **Before the fix** (temporarily un-memoized to confirm the test is
+  sensitive, then restored): render count went from 1 -> **6** across the
+  5 keystrokes -- exactly one extra `react-markdown` invocation per
+  keystroke, confirming the regression is real and the test catches it.
+- **After the fix**: render count stays at **1** across all 5 keystrokes.
+- `npx oxlint` clean on `CommandPanel.tsx`/`CommandPanel.test.tsx`/
+  `vitest.config.ts`. Existing `tsf/ui` regression sweep (`node --test
+  src/**/*.test.ts`, 105 tests) passes unchanged -- none of those files
+  import `CommandPanel`, so this was a from-scratch component test, not
+  an extension of an existing one.
+
+**Environment note (disclosed, not a performance finding)**: this
+worktree's own `tsf/ui/node_modules` was not part of the junctioned
+dependency set (only the repo-root `node_modules` was junctioned in per
+the phase's own setup), and mixing that local install with
+`@testing-library/react`/`react-router-dom` (which only exist in the
+root's pnpm store, pulling a second, incompatible `react-dom` copy)
+crashes with "Invalid hook call." The final test therefore imports only
+`react`/`react-dom/client` directly (both resolve to this package's own
+matched local pair) and avoids `@testing-library/react`/
+`react-router-dom` entirely -- a real, working render-count test, not a
+DOM-free approximation. A temporary read-only junction
+(`tsf/ui/node_modules` -> the canonical worktree's own `tsf/ui/node_modules`,
+mirroring the root junction the phase setup already made) was used only to
+verify `npx vite build`/the test actually run end-to-end, then removed
+before finishing this phase -- the canonical worktree's own files were
+never written to (verified: `tsf/ui/node_modules/react/package.json`
+still present and unmodified there). A normal `pnpm install` in `tsf/ui`
+(out of scope for this phase) would give any future run of this suite a
+real local `tsf/ui/node_modules` with no junction needed. Separately (and
+unrelated to this phase's own change): `npx tsc -b --noEmit` and `npx vite
+build` in `tsf/ui` both fail on pre-existing environment drift
+(`tsconfig.json`'s `baseUrl` against a much newer `typescript` in the
+shared `node_modules`; a `react-router-dom` resolution gap under
+`rolldown-vite` instead of the pinned `vite@^6.2.0`) -- confirmed
+pre-existing via `git stash`/rerun before touching any files, not
+introduced or fixed by this phase.
+
+**Files changed this phase**:
+`tsf/ui/src/components/command/CommandPanel.tsx` (extracted+memoized
+`CommandTranscript`, exported for testability),
+`tsf/ui/src/components/command/CommandPanel.test.tsx` (new),
+`tsf/ui/vitest.config.ts` (new -- scoped to `src/**/*.test.tsx`, doesn't
+touch the existing `node --test` `.test.ts` sweep).
+
+Adopted SHA: see the commit on
+`tsf/feature/phase15-performance-responsiveness` that carries this
+section.
