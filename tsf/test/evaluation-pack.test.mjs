@@ -76,10 +76,19 @@ test('normalizeEvalPack accepts and returns a well-formed pack unchanged in shap
   assert.equal(normalized.cases.length, 2)
 })
 
-test('EVAL_CATEGORIES covers all 7 required capability categories', () => {
+test('EVAL_CATEGORIES covers all 8 required capability categories', () => {
   assert.deepEqual(
     [...EVAL_CATEGORIES].sort(),
-    ['AUTONOMY', 'ESTIMATOR', 'MEMORY', 'PLANNER', 'ROUTING', 'VERIFIER', 'WORKER'].sort()
+    [
+      'AUTONOMY',
+      'ESTIMATOR',
+      'MEMORY',
+      'PLANNER',
+      'ROUTING',
+      'UI_DOGFOOD',
+      'VERIFIER',
+      'WORKER'
+    ].sort()
   )
 })
 

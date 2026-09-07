@@ -55,11 +55,11 @@ async function get(base, urlPath) {
   return { status: res.status, body: await res.json() }
 }
 
-test('GET /api/eval lists all 7 real, registered eval packs', async () => {
+test('GET /api/eval lists all 8 real, registered eval packs', async () => {
   await withServer(async (base) => {
     const res = await get(base, '/api/eval')
     assert.equal(res.status, 200)
-    assert.equal(res.body.packs.length, 7)
+    assert.equal(res.body.packs.length, 8)
   })
 })
 

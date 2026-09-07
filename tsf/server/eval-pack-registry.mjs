@@ -18,6 +18,8 @@ import { AUTONOMY_BASICS_PACK } from './autonomy-eval-cases.mjs'
 import { runAutonomyEvalPack } from './autonomy-eval-runner.mjs'
 import { ESTIMATOR_BASICS_PACK } from './estimator-eval-cases.mjs'
 import { runEstimatorEvalPack } from './estimator-eval-runner.mjs'
+import { UI_DOGFOOD_BASICS_PACK } from './ui-dogfood-eval-cases.mjs'
+import { runUiDogfoodEvalPack } from './ui-dogfood-eval-runner.mjs'
 import { normalizeEvalPack } from '../domain/evaluation-pack.mjs'
 
 const REGISTRY = {
@@ -48,6 +50,10 @@ const REGISTRY = {
   [ESTIMATOR_BASICS_PACK.packId]: {
     pack: normalizeEvalPack(ESTIMATOR_BASICS_PACK),
     run: async (pack) => runEstimatorEvalPack(pack)
+  },
+  [UI_DOGFOOD_BASICS_PACK.packId]: {
+    pack: normalizeEvalPack(UI_DOGFOOD_BASICS_PACK),
+    run: async (pack) => runUiDogfoodEvalPack(pack)
   }
 }
 

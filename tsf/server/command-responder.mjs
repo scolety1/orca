@@ -18,13 +18,31 @@
 // guessing which project(s) to act on. Status/question answers (read-only,
 // no action taken) may still use fuzzy matches informationally.
 import { classifyIntent, classifyDecision } from './chat-responder.mjs'
-import { findAliasForAbsentProject, resolveAllProjectsQuantifier, resolveProjectsFromText } from './project-name-resolver.mjs'
-import { fleetNeedsYouStatus, fleetResearchStatus, fleetWorkStatus } from '../domain/fleet-work-status.mjs'
+import {
+  findAliasForAbsentProject,
+  resolveAllProjectsQuantifier,
+  resolveProjectsFromText
+} from './project-name-resolver.mjs'
+import {
+  fleetNeedsYouStatus,
+  fleetResearchStatus,
+  fleetWorkStatus
+} from '../domain/fleet-work-status.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { shouldRouteToResearchBridge, respondResearchCommand } from './command-research-bridge.mjs'
-import { advisorySafeProjects, buildGlobalAdvisoryText, classifyGlobalScope } from './command-scope-classifier.mjs'
-import { classifyContinueAction, classifyRunActionVerb, pauseProjectRun, resumeProjectRun } from './command-run-action-bridge.mjs'
+import { shouldRouteToDogfoodBridge, respondDogfoodCommand } from './command-dogfood-bridge.mjs'
+import {
+  advisorySafeProjects,
+  buildGlobalAdvisoryText,
+  classifyGlobalScope
+} from './command-scope-classifier.mjs'
+import {
+  classifyContinueAction,
+  classifyRunActionVerb,
+  pauseProjectRun,
+  resumeProjectRun
+} from './command-run-action-bridge.mjs'
 import { explainPriorAnswer } from './command-followup-context.mjs'
 
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
@@ -54,7 +72,9 @@ function lastReferencedProjectId(opState, projects) {
     const entry = thread[i]
     if (entry.role === 'assistant' && entry.resolvedProjectIds?.length === 1) {
       const id = entry.resolvedProjectIds[0]
-      if (known.has(id)) return id
+      if (known.has(id)) {
+        return id
+      }
     }
   }
   return null
@@ -93,7 +113,8 @@ export function formatFleetStatusText(statuses, researchStatuses = []) {
     .map((s) => `- **${s.displayName}** — ${s.feed.state} (run \`${s.runId}\`) — ${s.feed.reason}.`)
   const idleProjects = statuses.filter((s) => !s.hasRun)
   const researchLines = researchStatuses.map(
-    (r) => `- **Research ${r.missionId}** — ${r.phase}${r.phase === 'WAITING_NEEDS_INPUT' ? ' (needs a decision)' : ''}.`
+    (r) =>
+      `- **Research ${r.missionId}** — ${r.phase}${r.phase === 'WAITING_NEEDS_INPUT' ? ' (needs a decision)' : ''}.`
   )
   const idleLines = idleProjects.map((s) => `- **${s.displayName}** — no Keep Going run.`)
 
@@ -121,13 +142,24 @@ export function formatFleetStatusText(statuses, researchStatuses = []) {
   return `Here's what's really running right now:\n${sections.join('\n')}`
 }
 
-function respondNoProjectResolved(message, intent, projects, keepGoingRuns, researchMissions, clock, aliases) {
+function respondNoProjectResolved(
+  message,
+  intent,
+  projects,
+  keepGoingRuns,
+  researchMissions,
+  clock,
+  aliases
+) {
   const aliasHint = findAliasForAbsentProject(message, projects, aliases)
   if (aliasHint) {
     return `"${aliasHint.alias}" resolves to \`${aliasHint.canonicalProjectId}\`, but that project isn't available in this catalog.`
   }
   if (STATUS_LIKE_INTENTS.has(intent)) {
-    return formatFleetStatusText(fleetWorkStatus(projects, keepGoingRuns, clock), fleetResearchStatus(researchMissions))
+    return formatFleetStatusText(
+      fleetWorkStatus(projects, keepGoingRuns, clock),
+      fleetResearchStatus(researchMissions)
+    )
   }
   return 'I couldn\'t tell which project this is about -- name a project (by id or display name), or ask "what\'s running right now?" for a fleet-wide status.'
 }
@@ -178,7 +210,24 @@ export async function respondCommand({
   // unchanged logic below, so no existing fleet-chat behavior is affected.
   if (shouldRouteToResearchBridge(message, opState)) {
     const researchResult = await respondResearchCommand({ message, opState, clock })
-    if (researchResult) return researchResult
+    if (researchResult) {
+      return researchResult
+    }
+  }
+  // Phase 1 (UI_DOGFOOD_AGENT_V0), 1D: same reasoning as the research
+  // bridge above -- "dogfood the app"/"review Orca's UI" is never a
+  // registered-project fleet message, checked ahead of intent/project
+  // resolution for the same reason.
+  if (shouldRouteToDogfoodBridge(message)) {
+    const dogfoodResult = await respondDogfoodCommand({
+      message,
+      opState,
+      clock,
+      deps: deps.dogfood ?? {}
+    })
+    if (dogfoodResult) {
+      return dogfoodResult
+    }
   }
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
@@ -201,7 +250,12 @@ export async function respondCommand({
   // never two independently-maintained copies of how a dispatch result is
   // reported.
   async function dispatchAndRespond(targetProjects) {
-    const dispatch = await planAndDispatchFromCommand({ projects: targetProjects, message, clock, deps })
+    const dispatch = await planAndDispatchFromCommand({
+      projects: targetProjects,
+      message,
+      clock,
+      deps
+    })
     // BUG-06 (bug-ledger.json): r.detail already states the real outcome
     // (e.g. "new mission started, task X dispatched" vs. "added to running
     // mission: WAVE_DISPATCHED") -- a "dispatched:" prefix here read as a
@@ -260,7 +314,9 @@ export async function respondCommand({
   if (runActionVerb) {
     const namedExact = exactMatches.length === 1 ? exactMatches[0].project : null
     const backReferenceProjectId =
-      !namedExact && resolution.matches.length === 0 ? lastReferencedProjectId(opState, projects) : null
+      !namedExact && resolution.matches.length === 0
+        ? lastReferencedProjectId(opState, projects)
+        : null
     const backReferenceProject = backReferenceProjectId
       ? projects.find((p) => p.id === backReferenceProjectId)
       : null
@@ -355,7 +411,8 @@ export async function respondCommand({
           decisionClass,
           text: explanation.text,
           plannerRole: 'PLANNER_DEEP',
-          providerLabel: 'PLANNER_DEEP · fresh explanation from current canonical state, no live call made',
+          providerLabel:
+            'PLANNER_DEEP · fresh explanation from current canonical state, no live call made',
           live: false,
           resolvedProjectIds: explanation.resolvedProjectIds,
           researchMissionId: explanation.researchMissionId,
@@ -367,14 +424,19 @@ export async function respondCommand({
     // an informational answer -- no action is ever taken here.
     if (resolution.matches.length === 0 && BACK_REFERENCE_PATTERN.test(message)) {
       const backReferenceId = lastReferencedProjectId(opState, projects)
-      const backReferenceProject = backReferenceId ? projects.find((p) => p.id === backReferenceId) : null
+      const backReferenceProject = backReferenceId
+        ? projects.find((p) => p.id === backReferenceId)
+        : null
       if (backReferenceProject) {
         return {
           intent,
           decisionClass,
-          text: formatFleetStatusText(fleetWorkStatus([backReferenceProject], opState.keepGoingRuns, clock)),
+          text: formatFleetStatusText(
+            fleetWorkStatus([backReferenceProject], opState.keepGoingRuns, clock)
+          ),
           plannerRole: 'PLANNER_DEEP',
-          providerLabel: 'PLANNER_DEEP · grounded in real state (resolved from the prior turn), no live call made',
+          providerLabel:
+            'PLANNER_DEEP · grounded in real state (resolved from the prior turn), no live call made',
           live: false,
           resolvedProjectIds: [backReferenceProject.id],
           scope: 'PROJECT'
@@ -396,7 +458,10 @@ export async function respondCommand({
         return {
           intent: 'GLOBAL_STATUS',
           decisionClass,
-          text: formatFleetStatusText(fleetWorkStatus(projects, opState.keepGoingRuns, clock), fleetResearchStatus(opState.researchMissions)),
+          text: formatFleetStatusText(
+            fleetWorkStatus(projects, opState.keepGoingRuns, clock),
+            fleetResearchStatus(opState.researchMissions)
+          ),
           plannerRole: 'PLANNER_DEEP',
           providerLabel:
             classification.source === 'LIVE_PLANNER'
@@ -458,7 +523,9 @@ export async function respondCommand({
         // is the belt-and-suspenders path for a genuine research ask
         // phrased without those exact words.
         const researchResult = await respondResearchCommand({ message, opState, clock })
-        if (researchResult) return researchResult
+        if (researchResult) {
+          return researchResult
+        }
       }
       // PROJECT_REQUIRED / UNCLEAR / a RESEARCH_REQUEST the bridge itself
       // still couldn't make a real topic out of -- falls through to the
@@ -470,7 +537,15 @@ export async function respondCommand({
       decisionClass,
       text:
         resolution.matches.length === 0
-          ? respondNoProjectResolved(message, intent, projects, opState.keepGoingRuns, opState.researchMissions, clock, aliases)
+          ? respondNoProjectResolved(
+              message,
+              intent,
+              projects,
+              opState.keepGoingRuns,
+              opState.researchMissions,
+              clock,
+              aliases
+            )
           : formatFleetStatusText(
               fleetWorkStatus(
                 resolution.matches.map((m) => m.project),
@@ -516,7 +591,8 @@ export async function respondCommand({
               decisionClass,
               text: 'Every project is excluded -- nothing left to act on.',
               plannerRole: 'PLANNER_DEEP',
-              providerLabel: 'PLANNER_DEEP · dispatch withheld -- exclusions covered the entire catalog',
+              providerLabel:
+                'PLANNER_DEEP · dispatch withheld -- exclusions covered the entire catalog',
               live: false,
               resolvedProjectIds: [],
               scope: 'FLEET'
@@ -535,7 +611,9 @@ export async function respondCommand({
       decisionClass,
       text: respondNoConfidentMatch(
         resolution.matches.map((m) => m.project),
-        resolution.matches.length === 0 ? findAliasForAbsentProject(message, projects, aliases) : null
+        resolution.matches.length === 0
+          ? findAliasForAbsentProject(message, projects, aliases)
+          : null
       ),
       plannerRole: 'PLANNER_DEEP',
       providerLabel: 'PLANNER_DEEP · dispatch withheld -- no confidently-identified project',

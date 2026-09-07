@@ -12,7 +12,11 @@ export const EVAL_CATEGORIES = Object.freeze([
   'ROUTING',
   'MEMORY',
   'AUTONOMY',
-  'ESTIMATOR'
+  'ESTIMATOR',
+  // Phase 1 (UI_DOGFOOD_AGENT_V0): scores the dogfood rubric (finding
+  // taxonomy/severity/auto-fix-eligibility/dedup) -- see
+  // tsf/domain/ui-dogfood-finding.mjs.
+  'UI_DOGFOOD'
 ])
 
 const ASSERTION_TYPES = new Set(['EQUALS', 'CONTAINS', 'NOT_CONTAINS', 'MATCHES', 'GTE', 'LTE'])

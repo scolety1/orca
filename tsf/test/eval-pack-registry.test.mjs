@@ -11,12 +11,21 @@ process.env.STUB_WBS_MULTI = '1'
 const { listEvalPacks, getEvalPackEntry } = await import('../server/eval-pack-registry.mjs')
 const { runEvalPack } = await import('../domain/evaluation-pack.mjs')
 
-test('listEvalPacks names all 7 required M9 categories, each with a real, non-empty pack', () => {
+test('listEvalPacks names all 8 required categories (M9 + Phase 1 UI_DOGFOOD), each with a real, non-empty pack', () => {
   const packs = listEvalPacks()
-  assert.equal(packs.length, 7)
+  assert.equal(packs.length, 8)
   assert.deepEqual(
     packs.map((p) => p.category).sort(),
-    ['AUTONOMY', 'ESTIMATOR', 'MEMORY', 'PLANNER', 'ROUTING', 'VERIFIER', 'WORKER'].sort()
+    [
+      'AUTONOMY',
+      'ESTIMATOR',
+      'MEMORY',
+      'PLANNER',
+      'ROUTING',
+      'UI_DOGFOOD',
+      'VERIFIER',
+      'WORKER'
+    ].sort()
   )
   for (const p of packs) {
     assert.ok(p.caseCount > 0)
