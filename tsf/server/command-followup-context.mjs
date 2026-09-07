@@ -66,14 +66,24 @@ function explainProjectState(project, keepGoingRuns, clock) {
   return `**${project.displayName}** is ${status.feed.state}: ${status.feed.reason}. ${judgment}.`
 }
 
-function explainNeedsYou(projects, keepGoingRuns, researchMissions) {
-  const items = fleetNeedsYouStatus(projects, keepGoingRuns, researchMissions)
+// Phase 6 fix: plannerMissions is now a real 4th argument -- see
+// fleet-work-status.mjs's own header on why a planner-raised Needs You
+// item was previously invisible even to this "why?" follow-up.
+function explainNeedsYou(projects, keepGoingRuns, researchMissions, plannerMissions) {
+  const items = fleetNeedsYouStatus(projects, keepGoingRuns, researchMissions, plannerMissions)
   if (items.length === 0) {
-    return "There's nothing actually blocking on you right now -- the fleet-wide check came back empty."
+    return { text: "There's nothing actually blocking on you right now -- the fleet-wide check came back empty.", resolvedProjectIds: [] }
   }
   const [first, ...rest] = items
   const restNote = rest.length > 0 ? ` (${rest.length} more open item(s) besides this one.)` : ''
-  return `**${first.label}** -- ${first.question}${restNote}`
+  // Real deep link when the single most-relevant item names a real
+  // project (matches command-responder.mjs's own NEEDS_YOU_QUERY chip
+  // wiring) -- honestly omitted for a RESEARCH/PLANNER item with no
+  // project association.
+  return {
+    text: `**${first.label}** -- ${first.question}${restNote}`,
+    resolvedProjectIds: first.projectId ? [first.projectId] : []
+  }
 }
 
 function explainGlobalAdvisory(projects) {
@@ -115,6 +125,24 @@ export function explainPriorAnswer({ message, opState, projects, clock = () => n
     return { text: "There's nothing recent to explain -- ask me something first, or name a project directly.", resolvedProjectIds: [], researchMissionId: null, scope: 'FLEET' }
   }
 
+  // Phase 6 fix, ordering: checked BEFORE the generic resolvedProjectIds
+  // branches below. A NEEDS_YOU_QUERY answer now legitimately carries a
+  // real resolvedProjectIds (deep-link fix, fleet-work-status.mjs) when
+  // exactly one project-sourced item was open -- without this check first,
+  // "why is that blocked?" would fall into the generic single-project
+  // branch and explain the project's overall run state instead of the
+  // actual open Needs You question the prior turn was about. answerType is
+  // the more specific, correct signal of what "that" refers to here.
+  if (summary.answerType === 'NEEDS_YOU_QUERY') {
+    const explanation = explainNeedsYou(projects, opState.keepGoingRuns ?? {}, opState.researchMissions ?? {}, opState.plannerMissions ?? {})
+    return {
+      text: explanation.text,
+      resolvedProjectIds: explanation.resolvedProjectIds,
+      researchMissionId: null,
+      scope: explanation.resolvedProjectIds.length > 0 ? 'PROJECT' : 'FLEET'
+    }
+  }
+
   // Ambiguous prior answer (more than one project, or a fleet-wide answer
   // with no single project/mission referent) -- refuse rather than guess
   // which one "that" means.
@@ -132,10 +160,6 @@ export function explainPriorAnswer({ message, opState, projects, clock = () => n
 
   if (summary.researchMissionId) {
     return { text: explainResearchMission(summary.researchMissionId), resolvedProjectIds: [], researchMissionId: summary.researchMissionId, scope: 'RESEARCH' }
-  }
-
-  if (summary.answerType === 'NEEDS_YOU_QUERY') {
-    return { text: explainNeedsYou(projects, opState.keepGoingRuns ?? {}, opState.researchMissions ?? {}), resolvedProjectIds: [], researchMissionId: null, scope: 'FLEET' }
   }
 
   if (summary.answerType === 'GLOBAL_ADVISORY') {

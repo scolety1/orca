@@ -506,11 +506,22 @@ export async function respondCommand({
         }
       }
       if (classification.scope === 'NEEDS_YOU_QUERY') {
-        const items = fleetNeedsYouStatus(projects, opState.keepGoingRuns, opState.researchMissions)
+        // Phase 6 fix: plannerMissions (opState.plannerMissions) is now a
+        // real 4th source -- see fleet-work-status.mjs's own header for why
+        // it was missing. resolvedProjectIds/scope are no longer hardcoded
+        // to empty/FLEET -- every item with a real, known projectId (a
+        // Keep Going run's owning project, or a ResearchMission's own
+        // recorded projectId) is surfaced as a real "Targeting" deep link,
+        // reusing CommandPanel.tsx's existing chip-rendering, never a new
+        // UI mechanism. A PLANNER item's projectId is honestly null (no
+        // reliable project association exists on that record), so it never
+        // contributes a fabricated link.
+        const items = fleetNeedsYouStatus(projects, opState.keepGoingRuns, opState.researchMissions, opState.plannerMissions)
         const text =
           items.length === 0
             ? 'Nothing needs you right now -- no open decisions across any project or research mission.'
             : `${items.length} thing(s) need you:\n${items.map((i) => `- **${i.label}** -- ${i.question}`).join('\n')}`
+        const linkedProjectIds = [...new Set(items.map((i) => i.projectId).filter(Boolean))]
         return {
           intent: 'NEEDS_YOU_QUERY',
           decisionClass,
@@ -521,8 +532,8 @@ export async function respondCommand({
               ? 'PLANNER_DEEP · real scope classification, grounded in real outstanding Needs You state, no dispatch'
               : 'PLANNER_DEEP · deterministic fallback scope classification (live planner unavailable), grounded in real outstanding Needs You state',
           live: false,
-          resolvedProjectIds: [],
-          scope: 'FLEET'
+          resolvedProjectIds: linkedProjectIds,
+          scope: scopeFor(linkedProjectIds)
         }
       }
       if (classification.scope === 'RESEARCH_REQUEST') {

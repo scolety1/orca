@@ -4,6 +4,7 @@ import { fleetNeedsYouStatus, fleetResearchStatus, fleetWorkStatus } from '../do
 import { createOvernightRun, dispatchWave, checkpointRun } from '../domain/keep-going.mjs'
 import { addResearchNode, createResearchMission, raiseResearchNeedsYou } from '../domain/research-mission.mjs'
 import { markResearchNodeReady, recordResearchNodeDispatch } from '../domain/research-node.mjs'
+import { createPlannerMissionCheckpoint, raisePlannerNeedsYou } from '../domain/planner-mission-checkpoint.mjs'
 
 const clock = () => new Date('2026-08-25T00:00:00.000Z')
 
@@ -151,4 +152,59 @@ test('fleetNeedsYouStatus: aggregates open Needs You across projects AND researc
 
 test('fleetNeedsYouStatus: empty when nothing is actually outstanding', () => {
   assert.deepEqual(fleetNeedsYouStatus([], {}, {}), [])
+  assert.deepEqual(fleetNeedsYouStatus([], {}, {}, {}), [])
+})
+
+// Phase 6 finding (F18 follow-up): Planner Context Lifecycle's own
+// checkpoint.needsYou (raised via raisePlannerNeedsYou) was never wired
+// into this aggregator at all -- a real planner-raised Needs You item was
+// structurally invisible to "what needs me?". Fixed by adding
+// plannerMissionRecords as a 4th source, read from the SAME { lease,
+// checkpoint } shape server/planner-mission-store.mjs's
+// readAllPlannerMissionRecords already returns (opState.plannerMissions).
+test('fleetNeedsYouStatus: a real Planner Context Lifecycle needsYou entry is now a real 4th source, alongside PROJECT and RESEARCH', () => {
+  const run = { needsYou: [{ id: 'q1', question: 'Real question A', resolvedAt: null }] }
+  let mission = baseMission('mission:needs')
+  mission = raiseResearchNeedsYou(mission, { question: 'Real research question B' }, clock, mission.revision)
+  let checkpoint = createPlannerMissionCheckpoint(
+    { missionId: 'planner-x', missionGoal: 'ship it', phase: 'BUILD', repoState: { branch: 'main', sha: 'a'.repeat(40) } },
+    clock
+  )
+  checkpoint = raisePlannerNeedsYou(checkpoint, { question: 'Real planner question C', category: 'AUTHORITY_REQUIRED' }, clock)
+  const plannerMissionRecords = { 'planner-x': { lease: null, checkpoint } }
+
+  const items = fleetNeedsYouStatus(
+    [project('proj-a', { displayName: 'Project A' })],
+    { 'proj-a': run },
+    { [mission.id]: mission },
+    plannerMissionRecords
+  )
+  assert.equal(items.length, 3)
+  assert.deepEqual(items.map((i) => i.source).sort(), ['PLANNER', 'PROJECT', 'RESEARCH'])
+  const plannerItem = items.find((i) => i.source === 'PLANNER')
+  assert.match(plannerItem.label, /planner-x/)
+  assert.equal(plannerItem.question, 'Real planner question C')
+  // No reliable project association exists on a planner checkpoint --
+  // honestly null, never fabricated.
+  assert.equal(plannerItem.projectId, null)
+  // PROJECT/RESEARCH items now carry a real projectId too, for deep-linking.
+  const projectItem = items.find((i) => i.source === 'PROJECT')
+  assert.equal(projectItem.projectId, 'proj-a')
+  const researchItem = items.find((i) => i.source === 'RESEARCH')
+  assert.equal(researchItem.projectId, 'test')
+})
+
+test('fleetNeedsYouStatus: a resolved planner needsYou entry is excluded, matching PROJECT/RESEARCH resolved-entry handling', () => {
+  let checkpoint = createPlannerMissionCheckpoint(
+    { missionId: 'planner-y', missionGoal: 'ship it', phase: 'BUILD', repoState: { branch: 'main', sha: 'b'.repeat(40) } },
+    clock
+  )
+  checkpoint = raisePlannerNeedsYou(checkpoint, { question: 'resolved already' }, clock)
+  checkpoint = { ...checkpoint, needsYou: checkpoint.needsYou.map((n) => ({ ...n, resolvedAt: clock().toISOString() })) }
+  const items = fleetNeedsYouStatus([], {}, {}, { 'planner-y': { lease: null, checkpoint } })
+  assert.deepEqual(items, [])
+})
+
+test('fleetNeedsYouStatus: a planner mission record with no checkpoint yet (lease-only) never throws', () => {
+  assert.deepEqual(fleetNeedsYouStatus([], {}, {}, { 'planner-z': { lease: {}, checkpoint: null } }), [])
 })

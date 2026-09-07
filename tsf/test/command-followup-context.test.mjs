@@ -22,6 +22,8 @@ const { createOvernightRun } = await import('../domain/keep-going.mjs')
 const { createResearchMissionDurable, readResearchMissionStatus } = await import('../server/research-mission-driver.mjs')
 const { raiseResearchNeedsYou } = await import('../domain/research-mission.mjs')
 const { withResearchMission } = await import('../server/research-mission-store.mjs')
+const { withPlannerMissionRecord } = await import('../server/planner-mission-store.mjs')
+const { createPlannerMissionCheckpoint, raisePlannerNeedsYou, resolvePlannerNeedsYou } = await import('../domain/planner-mission-checkpoint.mjs')
 const { loadState } = await import('../server/data-store.mjs')
 
 function cleanupStateFile() {
@@ -130,6 +132,47 @@ test('explanatory follow-up: Needs You result -> "what\'s blocking it?" explains
   })
   assert.match(result.text, /Followup NeedsYou Project/)
   assert.match(result.text, /A real decision is pending/)
+})
+
+// Phase 6 finding, F18 follow-up: a real Planner Context Lifecycle
+// needsYou item (raised via the real durable withPlannerMissionRecord +
+// raisePlannerNeedsYou path, not a hand-built stub) is now discoverable
+// through the SAME "why?"/"what's blocking it?" follow-up query
+// explainNeedsYou uses, proving the fix reaches this second real call
+// site too, not just command-responder.mjs's own NEEDS_YOU_QUERY branch.
+test('explanatory follow-up: Needs You result -> "what\'s blocking it?" explains a real Planner Context Lifecycle needsYou item', async () => {
+  const missionId = 'followup-planner-mission'
+  let raisedId
+  await withPlannerMissionRecord(missionId, (current) => {
+    let checkpoint = current?.checkpoint ?? createPlannerMissionCheckpoint(
+      { missionId, missionGoal: 'ship the followup fix', phase: 'BUILD', repoState: { branch: 'main', sha: 'c'.repeat(40) } },
+      clock
+    )
+    checkpoint = raisePlannerNeedsYou(checkpoint, { question: 'A real planner decision is pending', category: 'AUTHORITY_REQUIRED' }, clock)
+    raisedId = checkpoint.needsYou.at(-1).id
+    return { ...(current ?? { lease: null }), checkpoint }
+  })
+  try {
+    const result = await respondCommand({
+      message: "what's blocking it?",
+      projects: [],
+      opState: opStateWithLastTurn({ intent: 'NEEDS_YOU_QUERY', scope: 'FLEET' }),
+      clock
+    })
+    assert.match(result.text, /A real planner decision is pending/)
+    // Honest: no project association exists on a planner checkpoint, so no
+    // deep link is fabricated for this item.
+    assert.deepEqual(result.resolvedProjectIds, [])
+  } finally {
+    // Resolve before this test ends -- this file's durable state accumulates
+    // across tests (same on-disk state file, real store writes), and the
+    // later "nothing actually open" test below depends on no OTHER test
+    // leaving a real unresolved Needs You item behind.
+    await withPlannerMissionRecord(missionId, (current) => ({
+      ...current,
+      checkpoint: resolvePlannerNeedsYou(current.checkpoint, raisedId, { note: 'test cleanup' }, clock)
+    }))
+  }
 })
 
 test('explanatory follow-up: Needs You result with nothing actually open -> honest empty explanation', async () => {

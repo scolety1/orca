@@ -43,7 +43,8 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 1. Post-Upgrade Gap Reconciliation | IN_PROGRESS | Findings F18, F1, F3, F4, F5, F6, F7 fixed so far |
 | 2. Background Task Truthfulness | INVESTIGATED, NO GAP | See dedicated section below -- no fix warranted |
 | 4. UI Self-Dogfood (UI_DOGFOOD_AGENT_V0) | DONE | Finding F8 reconciled and fixed; see dedicated section below |
-| 3, 5-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 6. Global Operator State / Needs You Audit | DONE | Finding F19 fixed; see dedicated section below |
+| 3, 5, 7-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -1138,3 +1139,259 @@ own `waitFor` helper) rather than leaving them; clean, exit 0 after.
 
 Adopted SHA: see the commit on `tsf/feature/f6-research-mission-crash-test`
 that carries this section.
+## Phase 6: Global Operator State / Needs You Audit -- Finding F19 FIXED
+
+Worktree: `phase6-global-operator-state-audit`, branch
+`tsf/feature/phase6-global-operator-state-audit` (forked from `tsf/main` @
+`4be97520cf8a36edcba6ea982580fd782b3a59c4`, i.e. after F18/F1/F3/F4/F5/F7/
+Phase 2/Phase 4 above).
+
+Goal: with F18 fixed (global "what needs me?" questions now actually reach
+`classifyGlobalScope`), does the real fleet-wide aggregation those
+questions read from actually cover every real Needs-You source? Read the
+real code, not doc summaries, across 5 investigation areas.
+
+### 1-2. Coverage: does `fleetNeedsYouStatus`/`fleetWorkStatus` aggregate
+every real source? -- REAL GAP FOUND (Planner Context Lifecycle), FIXED
+
+Traced the real call graph: `command-responder.mjs`'s `respondCommand`
+(`NEEDS_YOU_QUERY` branch, `~line 508`) and `command-followup-context.mjs`'s
+`explainNeedsYou` (the "why?"/"what's blocking it?" follow-up) are the ONLY
+two production callers of `domain/fleet-work-status.mjs`'s
+`fleetNeedsYouStatus`. Before this fix, its signature was
+`fleetNeedsYouStatus(projects, keepGoingRuns, researchMissions)` -- exactly
+2 sources (Keep Going runs' own `needsYou[]`, ResearchMission's own
+`needsYou[]`). Planner Context Lifecycle's own durable
+`checkpoint.needsYou[]` (raised via `planner-mission-checkpoint.mjs`'s
+`raisePlannerNeedsYou`, persisted via `planner-mission-store.mjs`'s
+`withPlannerMissionRecord` into `opState.plannerMissions` -- the SAME
+opState-collection convention `keepGoingRuns`/`researchMissions` already
+use, confirmed by reading `data-store.mjs`'s own default-shape comment)
+was **never read by either call site** -- neither passed
+`opState.plannerMissions` in at all. A planner-raised Needs You item was
+durably persisted, correctly raised, and structurally invisible to every
+real "what needs me?" query. This is a real, grounded, reproducible gap,
+not a manufactured one -- confirmed by writing a failing-first proof (a
+real `respondCommand({message:'what needs me?', ...})` call against an
+`opState.plannerMissions` fixture returned the honest-empty "nothing needs
+you" text before this fix).
+
+`fleetWorkStatus` ("what's running") was separately confirmed to have NO
+Planner Context Lifecycle awareness either -- it iterates `projects` and
+looks up `keepGoingRuns[project.id]` only; ResearchMission's "is it active"
+question is answered by a SEPARATE function, `fleetResearchStatus`
+(`ACTIVE_RESEARCH_PHASES`-gated), not by `fleetWorkStatus` itself. There is
+no third `fleetPlannerStatus`-shaped function for planner missions, and
+none was added here -- deliberately out of scope for this pass (see "Not
+fixed" below): unlike ResearchMission's `computeResearchMissionPhase`
+(a real, established EXECUTING/WAITING_NEEDS_INPUT/COMPLETE/BLOCKED
+vocabulary this codebase already treats as the "is it really active"
+signal), a planner mission's own checkpoint only carries a binary
+`missionState: 'ACTIVE'|'COMPLETE'` -- inventing a richer "is a planner
+mission genuinely doing something right now" classification from that
+alone would be guessing at semantics the domain layer itself has not
+established, not "extending the existing aggregation" the way wiring in an
+already-real, already-typed `needsYou[]` array is.
+
+**Fix.** `tsf/domain/fleet-work-status.mjs`'s `fleetNeedsYouStatus` gained
+a 4th parameter, `plannerMissionRecords = {}` (the exact
+`opState.plannerMissions` shape, `{ missionId: { lease, checkpoint } }`),
+looping over `record?.checkpoint?.needsYou ?? []` exactly like the existing
+PROJECT/RESEARCH loops (`source: 'PLANNER', label: 'Planner ' + missionId,
+id, question`) -- same resolved-entry filter (`entry.resolvedAt` skips it),
+same shape family, no new mechanism. Both real call sites now pass
+`opState.plannerMissions` through:
+`command-responder.mjs`'s `NEEDS_YOU_QUERY` branch and
+`command-followup-context.mjs`'s `explainNeedsYou`.
+
+Additionally, every item gained a `projectId` field (`PROJECT` items
+already had it in scope, just weren't returning it; `RESEARCH` items now
+report the mission's own real `projectId` field; `PLANNER` items honestly
+report `projectId: null` -- a planner checkpoint's `repoState` is
+branch/sha/worktreePath, not a project id, and this fix does not guess
+one). See area 5 below for what this enabled.
+
+**Tests.** `tsf/test/fleet-work-status.test.mjs`: 3 new tests -- a real
+Planner Context Lifecycle needsYou entry (built via the real
+`createPlannerMissionCheckpoint`/`raisePlannerNeedsYou` domain functions,
+not a hand-typed fixture) is now a real 4th source alongside PROJECT/
+RESEARCH, with the new `projectId` fields verified per-source; a resolved
+planner entry is excluded (matches PROJECT/RESEARCH); a lease-only record
+with no checkpoint yet never throws. `tsf/test/command-responder.test.mjs`:
+1 new test proves a planner-raised needsYou item is discoverable through
+the REAL `respondCommand({message:'what needs me?'})` entry point (not the
+domain function in isolation) -- the exact path Tim's own message reaches.
+`tsf/test/command-followup-context.test.mjs`: 1 new test proves the same
+through the real durable `withPlannerMissionRecord` + `raisePlannerNeedsYou`
+path via the "what's blocking it?" follow-up (`explainNeedsYou`'s own real
+call site), with test-end cleanup (`resolvePlannerNeedsYou`) so this
+file's cumulative on-disk state doesn't leak an unresolved item into the
+later "nothing actually open" test in the same file.
+
+Result: `node --test tsf/test/fleet-work-status.test.mjs
+tsf/test/command-responder.test.mjs tsf/test/command-followup-context.test.mjs`
+-- 61/61 pass. Regression sweep of every test file that imports
+`fleet-work-status.mjs`, `command-responder.mjs`, or
+`command-followup-context.mjs` (14 files: `command-adversarial-corpus`,
+`command-authority-regression-matrix`, `command-dogfood-sequences`,
+`command-research-bridge`, `command-research-completion-watch`,
+`command-research-zero-relay-autonomy`, `command-run-action-bridge`,
+`command-target-resolution-blocker`, `golden-path-operator-flow`,
+`self-update-scenarios`, `update-safety`, `work-feed-summary`,
+`chat-responder`, plus the 3 above) -- 286/286 pass.
+
+### 3. Resource Pressure Governor refusals -- CONFIRMED disclosed gap, NOT fixed (out of scope)
+
+Traced every F1-added `RESOURCE_PRESSURE_REFUSED` refusal site
+(`command-research-spec-synthesis.mjs`, `command-scope-classifier.mjs`,
+`field-source-reconciliation.mjs`, `onboarding.mjs` x2,
+`wbs-generation.mjs`) forward: none of them write a durable record
+anywhere. `resource-pressure-governor.mjs`'s own
+`buildResourcePressureState` DOES have a `missionsWaitingForResources`
+field, but it is caller-supplied input only (`sanitizeWaitingList`), never
+populated from a real durable store -- confirmed via
+`resource-pressure-governor-http-routes.mjs` (`missionsWaitingForResources:
+body?.missionsWaitingForResources`, honestly `[]` on a bare GET) and this
+module's OWN pre-existing header/doc disclosure
+(`docs/tsf/TSF_RESOURCE_PRESSURE_GOVERNOR_V0.md`: "`missionsWaitingForResources`
+population needs Orca's ... no real [context] yet"). One refusal (onboarding's
+`analyzeRepository`/`retryDirectionAnalysis`) IS surfaced to the operator in
+the moment -- `AddProjectReviewStep.tsx` renders
+`analysis.direction.unavailableReason` inline -- but this is ephemeral,
+in-response-only text, never written anywhere Tim could recover later via
+"what needs me?" or a fleet-status view. The other 4 refusal sites
+(`{ok:false, reason:'RESOURCE_PRESSURE_REFUSED', ...}`) are caller-facing
+return values with no confirmed UI surface read at all in this repo (not
+traced further -- out of this phase's scope to audit every caller).
+
+**Conclusion: real, but already-honestly-disclosed, gap -- not fixed here.**
+This is not "extend an existing aggregation" (the mechanism
+`missionsWaitingForResources` needs -- a durable, host-wide
+"which mission asked and is still waiting" record, populated from Orca's
+own process/mission context -- does not exist anywhere in this codebase to
+extend; the pre-existing doc explicitly names Orca-core work as the
+blocker). Building one would be inventing new durable state and a new
+Orca-core bridge, which is out of this phase's "extend existing surfaces,
+don't invent new subsystems" mandate. Recorded here as a real, open,
+disclosed gap for a future phase, not silently dropped.
+
+### 4. "What changed since I last looked" -- CONFIRMED: no such mechanism exists, not fixed (out of scope)
+
+`grep -rn` across all of `tsf/` for `lastViewed`/`lastSeen`/`seenAt`/"since
+your last"/"changed since"/`changedSince`/`diffSince`/`updatedSince`
+(case-sensitive and semantic variants) found zero real per-operator
+"last viewed" state or timestamp-diff mechanism anywhere in the server,
+domain, or UI layers. Every surface (`fleetWorkStatus`'s
+`lastCheckpointAt`, a research mission's `updatedAt`, a planner
+checkpoint's `updatedAt`) exposes a real, honest "when did this last
+change" FACT per item, but nothing compares that fact against a
+per-operator "when did I last look" baseline to produce a "3 things
+changed since you checked" answer. Tim genuinely has to remember state
+himself today. This is real and confirmed, but building this mechanism
+means new durable per-operator state (a "last viewed at" record) plus new
+UI/Command surface to consume it -- a genuinely new subsystem, explicitly
+out of this phase's scope ("do not create a new top-level subsystem").
+Recorded as an open, real, disclosed gap, not fixed.
+
+### 5. Navigation / deep-linking -- REAL GAP FOUND (PROJECT-sourced items had zero deep link despite the id being available), FIXED for the source that safely supports it
+
+Read `tsf/ui/src/components/command/CommandPanel.tsx` in full: it already
+has a real, working, tested deep-link mechanism -- `message.resolvedProjectIds`
+renders as `<Link to={/projects/${id}}>` "Targeting" chips (used correctly
+by every other intent branch in `command-responder.mjs`). But the
+`NEEDS_YOU_QUERY` branch hardcoded `resolvedProjectIds: [], scope: 'FLEET'`
+UNCONDITIONALLY -- even when a returned item's source project id was right
+there in scope inside `fleetNeedsYouStatus`'s own loop
+(`for (const [projectId, run] of Object.entries(keepGoingRuns))`), it was
+simply never carried through to the response. So "what needs me?" gave Tim
+prose with ZERO clickable path to the actual project, even though the
+exact same UI machinery that deep-links every other Command answer was
+sitting right there, unused, for this one. Confirmed this is real (not
+speculative) by reading the actual response shape in
+`command-responder.mjs` before this fix.
+
+**Fix.** With `projectId` now on every `fleetNeedsYouStatus` item (area
+1-2's fix), `command-responder.mjs`'s `NEEDS_YOU_QUERY` branch now computes
+`resolvedProjectIds` as the deduped set of real, known project ids among
+the returned items and reuses this file's own existing `scopeFor(ids)`
+helper (already used by the multi-project dispatch branch) for `scope` --
+no new UI mechanism, no new response field, reuses the exact chip-rendering
+CommandPanel.tsx already has and already tests. `command-followup-context.mjs`'s
+`explainNeedsYou` (the "why?" follow-up) got the same treatment.
+
+**Self-inflicted regression found and fixed before it shipped.**
+`command-followup-context.mjs`'s `explainPriorAnswer` checked
+"exactly one resolved project" BEFORE checking "was the prior answer type
+NEEDS_YOU_QUERY" -- harmless before this fix, since a NEEDS_YOU_QUERY
+answer never carried a resolved project id. Once it legitimately could (a
+single project-sourced Needs You item), "why is that blocked?" started
+resolving through the generic per-project state explainer instead of the
+Needs-You explainer -- a real regression, caught by the existing
+`command-dogfood-sequences.test.mjs` dogfood-A scenario (NOT a new test
+written to paper over it): the explanation text changed from the specific
+open question ("A real decision is pending...") to a generic run-state
+summary. Fixed by reordering `explainPriorAnswer` to check
+`answerType === 'NEEDS_YOU_QUERY'` first -- `answerType` is a more precise
+signal of what "that" refers to than an incidental resolved-project-id
+count, and this also improves the 2+-project case (previously an ambiguous
+"which one do you mean?" refusal; now correctly explains the actual
+Needs-You list, which already handles multiplicity via its own "N more
+open item(s)" note). Re-ran the full dogfood-sequences suite + the
+followup-context suite after the reorder: all pass.
+
+**Not fixed, disclosed:** `RESEARCH`/`PLANNER`-sourced items still have no
+navigable target -- `CommandPanel.tsx` (and no other UI surface, confirmed
+via `grep` for a `/research`-shaped route) has zero link mechanism for a
+mission id at all, only for a project id. Wiring one up means designing
+and building a real mission-detail route in the UI, a materially bigger
+change than reusing an existing, already-tested mechanism -- out of this
+phase's scope. `RESEARCH`/`PLANNER` items' `projectId` is real when known
+(RESEARCH) or honestly `null` (PLANNER, no association exists) so a future
+fix has the data already; only the UI link is missing.
+
+### Not fixed / explicitly out of scope, summary
+
+- Resource Pressure Governor wait-state durability (area 3) -- needs
+  Orca-core work, already disclosed pre-existing.
+- "Changed since I last looked" (area 4) -- would be a new subsystem.
+- RESEARCH/PLANNER deep-linking in the UI (area 5) -- would need a new
+  route; the domain data (`projectId` per item) is ready for it.
+- A `fleetPlannerStatus`-equivalent to `fleetResearchStatus` for "is a
+  planner mission running" (area 2) -- the domain layer has no established
+  vocabulary for this yet (only a binary ACTIVE/COMPLETE `missionState`),
+  so adding one now would mean inventing semantics rather than extending
+  established ones.
+
+None of these were silently dropped -- each is recorded here as a real,
+confirmed, disclosed gap for a future phase to pick up with proper design
+work, per this program's own "no manufactured fixes, no silently dropped
+findings" discipline.
+
+**Lint.** `npx oxlint` on every changed file
+(`tsf/domain/fleet-work-status.mjs`, `tsf/server/command-responder.mjs`,
+`tsf/server/command-followup-context.mjs`, `tsf/test/fleet-work-status.test.mjs`,
+`tsf/test/command-responder.test.mjs`, `tsf/test/command-followup-context.test.mjs`)
+-- every reported finding matches the exact pre-existing baseline
+(confirmed via `git stash` before/after diff); one genuinely new `curly`
+finding on a newly-added line (`fleet-work-status.mjs`'s new PLANNER loop)
+was fixed rather than left, per this repo's own established convention.
+
+Full whole-repo sweep (`node --test tsf/test/*.test.mjs`): 2353 tests,
+2347 pass, 6 fail -- all 6 match the EXACT pre-existing fail set this
+program's own F1/F3/F4 checkpoint entries above already documented on this
+host (2 intent-classifier phrasing gaps + 1 WorldForge-scenario phrasing
+gap in `command-bare-imperative-dispatch.test.mjs`, 1 Work-tab timing test
+in `http-work-summary.test.mjs`, 1 real-host-load stall in
+`keep-going-autonomy-proof.test.mjs`, 1 race-condition test in
+`operator-state-adversarial.test.mjs`'s "STALE ACTION RACE"). The race
+condition was independently re-verified here specifically (not just cited
+from an earlier entry): re-ran `operator-state-adversarial.test.mjs` in
+total isolation against the true unmodified baseline (`git stash` before
+running, `git stash pop` after) -- all 9 tests including "STALE ACTION
+RACE" passed cleanly (330s total, this host under concurrent-session
+load), confirming it is a full-suite-concurrency artifact reproducible
+with or without this phase's change, not caused by it.
+
+Adopted SHA: see the commit on
+`tsf/feature/phase6-global-operator-state-audit` that carries this
+section.

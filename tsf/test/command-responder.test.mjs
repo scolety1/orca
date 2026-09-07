@@ -384,6 +384,8 @@ test('alias UX: a genuinely unrecognized name still gets the honest generic fail
 test('NEEDS_YOU_QUERY: "what needs me?" surfaces real outstanding Needs You across the fleet, honest empty state otherwise', async () => {
   const empty = await respondCommand({ message: 'what needs me?', projects: [], opState, clock })
   assert.match(empty.text, /nothing needs you/i)
+  assert.deepEqual(empty.resolvedProjectIds, [])
+  assert.equal(empty.scope, 'FLEET')
 
   const withOpenItem = {
     keepGoingRuns: { 'alpha-widgets': { needsYou: [{ id: 'q1', question: 'A real decision is pending', resolvedAt: null }] } }
@@ -391,6 +393,58 @@ test('NEEDS_YOU_QUERY: "what needs me?" surfaces real outstanding Needs You acro
   const result = await respondCommand({ message: 'what needs me?', projects: [project('alpha-widgets', 'Alpha Widgets')], opState: withOpenItem, clock })
   assert.match(result.text, /Alpha Widgets/)
   assert.match(result.text, /A real decision is pending/)
+  // Phase 6 fix: a real project-sourced Needs You item now deep-links back
+  // to its own project (CommandPanel.tsx's existing "Targeting" chip),
+  // instead of the previously-hardcoded empty/FLEET.
+  assert.deepEqual(result.resolvedProjectIds, ['alpha-widgets'])
+  assert.equal(result.scope, 'PROJECT')
+})
+
+// Phase 6 finding, F18 follow-up: Planner Context Lifecycle's own
+// checkpoint.needsYou (planner-mission-checkpoint.mjs's raisePlannerNeedsYou)
+// previously never reached this real "what needs me?" query path at all --
+// fleetNeedsYouStatus had no 4th source. Proven here against the SAME real
+// respondCommand entry point Tim's own "what needs me?" message reaches,
+// not against the domain function in isolation.
+test('NEEDS_YOU_QUERY: a real Planner Context Lifecycle needsYou item is now discoverable via the same "what needs me?" query', async () => {
+  const opStateWithPlannerNeedsYou = {
+    keepGoingRuns: {},
+    researchMissions: {},
+    plannerMissions: {
+      'planner-mission-1': {
+        lease: null,
+        checkpoint: {
+          schemaVersion: 'TSF_PLANNER_MISSION_CHECKPOINT_V1',
+          missionId: 'planner-mission-1',
+          revision: 1,
+          missionState: 'ACTIVE',
+          missionGoal: 'ship it',
+          phase: 'BUILD',
+          repoState: { branch: 'main', sha: 'a'.repeat(40), worktreePath: null },
+          decisions: [],
+          blockers: [],
+          needsYou: [{ id: 'pq1', question: 'Planner needs an authority grant', category: 'AUTHORITY_REQUIRED', at: clock().toISOString(), resolvedAt: null, resolution: null }],
+          workers: {},
+          verifierResults: [],
+          completedTasks: [],
+          outstandingTasks: [],
+          resourceState: null,
+          authority: { grants: [] },
+          lessons: [],
+          lastAction: null,
+          nextIntendedAction: null,
+          createdAt: clock().toISOString(),
+          updatedAt: clock().toISOString()
+        }
+      }
+    }
+  }
+  const result = await respondCommand({ message: 'what needs me?', projects: [], opState: opStateWithPlannerNeedsYou, clock })
+  assert.match(result.text, /Planner needs an authority grant/)
+  assert.match(result.text, /planner-mission-1/)
+  // No reliable project association on a planner checkpoint -- honestly no
+  // deep link fabricated for this item.
+  assert.deepEqual(result.resolvedProjectIds, [])
 })
 
 // Multi-project actions round 3: the "everything"/"all projects" quantifier.

@@ -28,15 +28,35 @@ export function fleetResearchStatus(researchMissions = {}) {
     .filter((entry) => ACTIVE_RESEARCH_PHASES.has(entry.phase))
 }
 
-// "What needs me?" (Command architecture round 2): a real, fleet-wide
-// aggregation of every outstanding owner decision -- both a Keep Going
-// run's own needsYou (real per-project coding work) and a ResearchMission's
-// (real per-mission research work), read from the exact same durable
-// arrays Work/Flight Recorder/Research status already read, never a
-// second, independently-tracked "pending decisions" list. Bounded, honest
-// human-readable labels only -- never a raw run/mission id standing in for
-// a project's real displayName when one is known.
-export function fleetNeedsYouStatus(projects, keepGoingRuns = {}, researchMissions = {}) {
+// "What needs me?" (Command architecture round 2, extended Phase 6): a
+// real, fleet-wide aggregation of every outstanding owner decision -- a
+// Keep Going run's own needsYou (real per-project coding work), a
+// ResearchMission's (real per-mission research work), AND a Planner
+// Context Lifecycle mission's own needsYou (real per-planner-mission
+// work, raised via planner-mission-checkpoint.mjs's raisePlannerNeedsYou)
+// -- read from the exact same durable arrays Work/Flight Recorder/
+// Research status already read, never a second, independently-tracked
+// "pending decisions" list. Bounded, honest human-readable labels only --
+// never a raw run/mission id standing in for a project's real displayName
+// when one is known.
+//
+// Phase 6 finding: plannerMissionRecords was entirely absent from this
+// function until now -- opState.plannerMissions (server/planner-mission-
+// store.mjs's readAllPlannerMissionRecords, the SAME opState-collection
+// convention keepGoingRuns/researchMissions already use) durably holds a
+// { lease, checkpoint } record per mission, and checkpoint.needsYou is a
+// real, independently-raised array a planner mission accumulates exactly
+// like a research mission does -- but no caller ever passed it in, so a
+// planner-raised Needs You item was structurally invisible to every real
+// "what needs me?" query (Command's NEEDS_YOU_QUERY and its "why?"
+// follow-up), even though it was durably persisted and correctly raised.
+// projectId is carried on every item so a caller can deep-link back to the
+// owning project when one is really known -- never fabricated: a
+// ResearchMission genuinely records its own projectId; a planner mission's
+// checkpoint carries no such field (repoState is branch/sha/worktreePath,
+// not a project id), so PLANNER items honestly report projectId: null
+// rather than guessing one.
+export function fleetNeedsYouStatus(projects, keepGoingRuns = {}, researchMissions = {}, plannerMissionRecords = {}) {
   const displayNameById = new Map(projects.map((p) => [p.id, p.displayName]))
   const items = []
   for (const [projectId, run] of Object.entries(keepGoingRuns)) {
@@ -46,14 +66,33 @@ export function fleetNeedsYouStatus(projects, keepGoingRuns = {}, researchMissio
         source: 'PROJECT',
         label: displayNameById.get(projectId) ?? projectId,
         id: entry.id,
-        question: entry.question
+        question: entry.question,
+        projectId
       })
     }
   }
   for (const mission of Object.values(researchMissions)) {
     for (const entry of mission.needsYou ?? []) {
       if (entry.resolvedAt) continue
-      items.push({ source: 'RESEARCH', label: `Research ${mission.id}`, id: entry.id, question: entry.question })
+      items.push({
+        source: 'RESEARCH',
+        label: `Research ${mission.id}`,
+        id: entry.id,
+        question: entry.question,
+        projectId: mission.projectId ?? null
+      })
+    }
+  }
+  for (const [missionId, record] of Object.entries(plannerMissionRecords)) {
+    for (const entry of record?.checkpoint?.needsYou ?? []) {
+      if (entry.resolvedAt) { continue }
+      items.push({
+        source: 'PLANNER',
+        label: `Planner ${missionId}`,
+        id: entry.id,
+        question: entry.question,
+        projectId: null
+      })
     }
   }
   return items
