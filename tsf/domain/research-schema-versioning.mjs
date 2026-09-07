@@ -16,6 +16,13 @@
 // boundary (research-mission-store.mjs) -- that fails closed on an
 // unrecognized version today, and is where a real migration function gets
 // registered the day a V2 actually ships.
+//
+// Despite the filename, this has become the shared home for every durable
+// top-level TSF record's schema-version guard (research library, Platform
+// Learning Ledger, planner-mission checkpoint, Keep Going run) via the ONE
+// generic engine below -- not a second mechanism per record kind. A future
+// rename to something like durable-schema-versioning.mjs is a pure move,
+// not attempted here to keep Finding F4's diff scoped to the actual gap.
 import { deepClone } from './canonical.mjs'
 
 // Generic engine shared by every durable top-level record kind this module
@@ -90,3 +97,31 @@ const learningLedgerGuard = buildSchemaVersionGuard('platform learning ledger', 
 export const SUPPORTED_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSIONS = learningLedgerGuard.supportedVersions
 export const assertSupportedPlatformLearningLedgerSchemaVersion = learningLedgerGuard.assertSupported
 export const migratePlatformLearningLedgerSchema = learningLedgerGuard.migrate
+
+// Same guard, for the planner-mission checkpoint (PLANNER_CONTEXT_LIFECYCLE_V0
+// 2C, see planner-mission-checkpoint.mjs) -- Finding F4 (Autonomous
+// Reliability Hardening Overnight V1, Phase 1): this durable record had no
+// schema-version guard at all, unlike every other top-level singleton this
+// module already covers. Wired into planner-mission-store.mjs's
+// readPlannerMissionRecord/readAllPlannerMissionRecords/withPlannerMissionRecord.
+// The lease half of a planner-mission record carries no schemaVersion of its
+// own (it's a small TTL/holder tuple, not an independently-versioned shape --
+// see planner-mission-lease.mjs) so only the checkpoint is guarded here.
+export const CURRENT_PLANNER_MISSION_CHECKPOINT_SCHEMA_VERSION = 'TSF_PLANNER_MISSION_CHECKPOINT_V1'
+const plannerMissionCheckpointGuard = buildSchemaVersionGuard(
+  'planner mission checkpoint',
+  new Map([[CURRENT_PLANNER_MISSION_CHECKPOINT_SCHEMA_VERSION, (checkpoint) => checkpoint]])
+)
+export const SUPPORTED_PLANNER_MISSION_CHECKPOINT_SCHEMA_VERSIONS = plannerMissionCheckpointGuard.supportedVersions
+export const assertSupportedPlannerMissionCheckpointSchemaVersion = plannerMissionCheckpointGuard.assertSupported
+export const migratePlannerMissionCheckpointSchema = plannerMissionCheckpointGuard.migrate
+
+// Same guard, for the Keep Going overnight run record (see keep-going.mjs's
+// createOvernightRun, schemaVersion 'TSF_OVERNIGHT_RUN_V1'). Wired into
+// keep-going-run-store.mjs's readKeepGoingRun/withKeepGoingRun -- Finding F4,
+// same gap as the planner-mission checkpoint above.
+export const CURRENT_KEEP_GOING_RUN_SCHEMA_VERSION = 'TSF_OVERNIGHT_RUN_V1'
+const keepGoingRunGuard = buildSchemaVersionGuard('Keep Going run', new Map([[CURRENT_KEEP_GOING_RUN_SCHEMA_VERSION, (run) => run]]))
+export const SUPPORTED_KEEP_GOING_RUN_SCHEMA_VERSIONS = keepGoingRunGuard.supportedVersions
+export const assertSupportedKeepGoingRunSchemaVersion = keepGoingRunGuard.assertSupported
+export const migrateKeepGoingRunSchema = keepGoingRunGuard.migrate

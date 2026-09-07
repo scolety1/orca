@@ -74,10 +74,13 @@ test('planner mission store', async (t) => {
 
     await t.test('withPlannerMissionRecord: concurrent writers are serialized, not lost (no torn write)', async () => {
       const missionId = 'mission:concurrency-test'
+      // checkpoint.schemaVersion stamped on every write -- Finding F4's new
+      // read-boundary guard rejects a checkpoint missing/mismatching it,
+      // even in this fixture's otherwise-synthetic count-only shape.
       const writers = Array.from({ length: 10 }, () =>
         withPlannerMissionRecord(missionId, (current) => {
-          const record = current ?? { lease: null, checkpoint: { count: 0 } }
-          return { ...record, checkpoint: { count: record.checkpoint.count + 1 } }
+          const record = current ?? { lease: null, checkpoint: { schemaVersion: 'TSF_PLANNER_MISSION_CHECKPOINT_V1', count: 0 } }
+          return { ...record, checkpoint: { schemaVersion: 'TSF_PLANNER_MISSION_CHECKPOINT_V1', count: record.checkpoint.count + 1 } }
         })
       )
       await Promise.all(writers)

@@ -25,6 +25,9 @@ if (startMarkerPath) {
   writeFileSync(startMarkerPath, String(Date.now()))
 }
 
+// schemaVersion stamped on every write (Finding F4's new read-boundary
+// guard rejects a run missing/mismatching it) -- this fixture's counter
+// shape otherwise has nothing to do with a real TSF_OVERNIGHT_RUN_V1 record.
 for (let i = 0; i < count; i += 1) {
-  await withKeepGoingRun(projectId, (current) => ({ counter: (current?.counter ?? 0) + 1 }))
+  await withKeepGoingRun(projectId, (current) => ({ schemaVersion: 'TSF_OVERNIGHT_RUN_V1', counter: (current?.counter ?? 0) + 1 }))
 }

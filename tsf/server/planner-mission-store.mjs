@@ -9,6 +9,7 @@
 // two clients of that SAME server process's SAME opState file already --
 // unlike heavy-task leases, there is no cross-worktree exclusivity need here.
 import { withFileLock } from './cross-process-file-lock.mjs'
+import { assertSupportedPlannerMissionCheckpointSchemaVersion } from '../domain/research-schema-versioning.mjs'
 import { getStateFilePath, loadState, saveState } from './data-store.mjs'
 import {
   acquirePlannerMissionLease,
@@ -20,12 +21,26 @@ function lockPath() {
   return `${getStateFilePath()}.planner-mission.lock`
 }
 
+// Every read boundary asserts the checkpoint's own schema-version
+// compatibility BEFORE the record reaches any caller -- mirrors
+// research-mission-store.mjs's researchMissionFor. Fails closed on a
+// checkpoint version this running code was never verified against, rather
+// than silently operating on an unfamiliar shape. The lease half of the
+// record carries no schemaVersion of its own (see
+// research-schema-versioning.mjs's own note), so only checkpoint is checked.
+function versionCheckedRecord(record) {
+  if (record?.checkpoint) { assertSupportedPlannerMissionCheckpointSchemaVersion(record.checkpoint) }
+  return record
+}
+
 export function readPlannerMissionRecord(missionId) {
-  return loadState().plannerMissions?.[missionId] ?? null
+  return versionCheckedRecord(loadState().plannerMissions?.[missionId] ?? null)
 }
 
 export function readAllPlannerMissionRecords() {
-  return loadState().plannerMissions ?? {}
+  const records = loadState().plannerMissions ?? {}
+  for (const record of Object.values(records)) { versionCheckedRecord(record) }
+  return records
 }
 
 // mutateFn(current | null) -> next; synchronous, no `await` inside (same
@@ -33,7 +48,7 @@ export function readAllPlannerMissionRecords() {
 export async function withPlannerMissionRecord(missionId, mutateFn) {
   return withFileLock(lockPath(), undefined, () => {
     const opState = loadState()
-    const current = opState.plannerMissions?.[missionId] ?? null
+    const current = versionCheckedRecord(opState.plannerMissions?.[missionId] ?? null)
     const next = mutateFn(current)
     saveState({ ...opState, plannerMissions: { ...opState.plannerMissions, [missionId]: next } })
     return next

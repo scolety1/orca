@@ -343,3 +343,143 @@ exit 0.
 
 Adopted SHA: see the commit on `tsf/feature/f3-learning-ledger-consumer`
 that carries this section.
+
+## Finding F4: planner/Keep Going durability hardening -- FIXED (two parts)
+
+Worktree: `f4-planner-durability-hardening`, branch
+`tsf/feature/f4-planner-durability-hardening` (forked from `tsf/main` @
+`0a1bc3bd6cc4d02ca2e59a14e1dd3cd28c8b64a9`).
+
+**Part A -- no schema-version guard on planner-mission-store.mjs or
+keep-going-run-store.mjs.** `research-mission-store.mjs` already had a real
+fail-closed schema-version guard (`assertSupportedResearchMissionSchemaVersion`,
+`tsf/domain/research-schema-versioning.mjs`); neither Phase 2's planner-
+mission lease/checkpoint store nor Keep Going's run store had one at all --
+confirmed absent by grep before starting.
+
+Ported the SAME generic engine (`buildSchemaVersionGuard`, unchanged) rather
+than inventing a second mechanism -- two new guard instances added to
+`research-schema-versioning.mjs` alongside its existing research
+mission/library/learning-ledger guards (the file's own header now discloses
+it has become the shared home for every durable top-level record's
+schema-version guard, despite its name -- a future rename is a pure move,
+not attempted here to keep this diff scoped):
+- `assertSupportedPlannerMissionCheckpointSchemaVersion`, guarding
+  `TSF_PLANNER_MISSION_CHECKPOINT_V1` (`planner-mission-checkpoint.mjs`'s
+  real literal). Only the checkpoint half of a `{ lease, checkpoint }`
+  planner-mission record is guarded -- the lease itself carries no
+  `schemaVersion` of its own (a small TTL/holder tuple, not an
+  independently-versioned shape).
+- `assertSupportedKeepGoingRunSchemaVersion`, guarding
+  `TSF_OVERNIGHT_RUN_V1` (`keep-going.mjs`'s `createOvernightRun` literal).
+
+Wired in exactly like `research-mission-store.mjs`'s own `researchMissionFor`:
+`tsf/server/planner-mission-store.mjs` gained a `versionCheckedRecord`
+helper called from `readPlannerMissionRecord`, `readAllPlannerMissionRecords`,
+and `withPlannerMissionRecord`; `tsf/server/keep-going-run-store.mjs` gained
+a `versionCheckedRun` helper called from `readKeepGoingRun` and
+`withKeepGoingRun`. A record with a missing or unsupported schema version now
+throws a typed `TSF_..._SCHEMA_VERSION_MISSING` /
+`TSF_UNSUPPORTED_..._SCHEMA_VERSION` error at read time instead of being
+silently operated on.
+
+Side effect found and fixed: two pre-existing tests wrote synthetic,
+non-domain shapes directly through these two stores to exercise raw CAS/
+cross-process-lock behavior only (`tsf/test/fixtures/cross-process-lock-
+worker.mjs`'s counter increment, and one sub-test in
+`planner-mission-store.test.mjs`'s "concurrent writers" proof) -- both now
+stamp the real `schemaVersion` literal on every write so they keep passing
+under the new guard; the lock semantics they actually test are unchanged.
+
+**Part B -- real crash-reclaim end-to-end test.** Prior coverage for
+`planner-mission-lease.mjs` proved only (1) graceful relinquish/reacquire
+(`planner-mission-lease-cross-process.test.mjs`) and (2) stale/expired-lease
+reclaim at the pure-function level with a fake clock
+(`planner-mission-lease.test.mjs`) -- nothing combined a REAL killed process
+holding the lease + real TTL-expiry reclaim + a real successor hydrating and
+passing continuity verification, in one real end-to-end test.
+
+New: `tsf/test/fixtures/planner-crash-reclaim-worker.mjs` (spawned child) +
+`tsf/test/planner-mission-lease-crash-reclaim.test.mjs`. Narrative: the real
+child process uses `PlannerSessionLifecycle` to start a mission with a
+600ms lease TTL override (`acquirePlannerLease`'s existing `ttlMs` param via
+`deps.leaseTtlMs` -- no new API), dispatches one fixture worker, writes a
+result marker proving it got durably past acquire+dispatch, then sleeps
+forever (never relinquishes). The parent test process first confirms a
+fresh successor `PlannerSessionLifecycle` is genuinely refused
+(`TSF_PLANNER_LEASE_DENIED`) while the child is still alive -- proving the
+lease was live, not abandoned/empty, before the reclaim that follows means
+anything. The parent then `SIGKILL`s the child, waits past the real TTL,
+and a genuinely separate successor object (no shared in-memory state with
+either the crashed child or the "too early" instance) calls
+`acquireLeaseAndHydrate()`: it succeeds, passes the real
+`assertRepoStateContinuity` internally (resolving without throwing IS the
+continuity proof), and shows the crashed process's dispatched worker intact
+(`workerId` matches, `status: 'DISPATCHED'`).
+
+**Honest correction on the suggested template.** The task brief pointed at
+`keep-going-autonomy-proof.test.mjs` as having "a real spawn-and-kill
+pattern" -- read in full, it does NOT: its "backend restart" is
+`deactivate()`/`activate()` inside the SAME test process, never a genuinely
+separate OS process kill. The actual real spawn-a-child-then-SIGKILL-it-
+then-reclaim-after-TTL template in this repo is
+`resource-pressure-lease-host-wide.test.mjs`'s "a real process crash while
+holding a lease self-heals via TTL" test (`spawn(...)`, confirm a second
+party sees it live, `holder.kill('SIGKILL')`, wait past TTL, reclaim) --
+that is what was actually reused, and the discrepancy is documented in the
+new test file's own header rather than silently substituted.
+
+Run 8 times total during development (not flaky): 8/8 pass, ~1.1s each on
+this host.
+
+**Tests.** New: `planner-mission-store-schema-version.test.mjs` (3 tests),
+`keep-going-run-store-schema-version.test.mjs` (2 tests),
+`planner-mission-lease-crash-reclaim.test.mjs` (1 test). Targeted regression
+across every planner-mission-*/keep-going-run-store test file plus the two
+`planner-session-lifecycle-*` files that exercise these stores most
+directly: `node --test` -- 50/50 pass. Broader downstream sweep of every
+other test file that touches either store (`chat-dispatch-bridge`,
+`cleanup-active-mission-check`, `cleanup-executor-worktree-adversarial`,
+`cleanup-revalidation`, `command-dogfood-sequences`,
+`command-followup-context`, `command-run-action-bridge`,
+`golden-path-operator-flow`, `http-keep-going`,
+`keep-going-dispatch-loop-concurrency`, `operator-state-adversarial`,
+`settled-run-reconciler`): 123/124 pass -- the 1 failure
+(`operator-state-adversarial.test.mjs`'s "STALE ACTION RACE" test)
+reproduces identically against unmodified `tsf/main` (confirmed via
+`git stash`), and matches F3's own checkpoint entry above describing it as a
+pre-existing, real-host-load race condition -- not caused by this change.
+
+Full-suite sweep (`node --test tsf/test/*.test.mjs`): 2342 tests, 2334 pass,
+8 fail. All 8 fall into the same family F1/F3's own checkpoint entries above
+already documented on this host: 2 intent-classifier phrasing gaps + 1
+WorldForge-scenario phrasing gap in `command-bare-imperative-dispatch.test.mjs`,
+1 real-host-load stall in `keep-going-autonomy-proof.test.mjs`, 1 Work-tab
+timing test in `http-work-summary.test.mjs`, 1 race-condition test in
+`operator-state-adversarial.test.mjs`, plus 2 more only ever observed under
+full-suite load (`runBaselineVerification` in `health-repair-io.test.mjs`,
+`findRegisteredOrcaRepo` in `onboarding-orca-resilience.test.mjs`, both
+bounded-timeout/retry tests). Verified via the same isolated-re-run
+methodology F1 used: running those same 6 files in isolation gives the
+IDENTICAL 4-failure subset (the 2 intent gaps, the Work-tab timing test, the
+operator-state-adversarial race) both with this change stashed out and with
+it applied -- the other 4 (the WorldForge scenario, the autonomy-proof
+stall, and the two bounded-retry tests) pass cleanly in that same isolated
+run both ways, confirming they are pure full-suite-concurrency artifacts on
+this specific run (this session's own memory already flags this host as
+running many concurrent Claude Code sessions), not caused by this change.
+None of the 8 touch `planner-mission-store.mjs`, `keep-going-run-store.mjs`,
+or `research-schema-versioning.mjs`.
+
+**Lint.** `npx oxlint` on every changed/new file (`research-schema-
+versioning.mjs`, `planner-mission-store.mjs`, `keep-going-run-store.mjs`,
+`cross-process-lock-worker.mjs`, `planner-mission-store.test.mjs`,
+`planner-crash-reclaim-worker.mjs`, `planner-mission-store-schema-
+version.test.mjs`, `keep-going-run-store-schema-version.test.mjs`,
+`planner-mission-lease-crash-reclaim.test.mjs`) -- clean, exit 0 (fixed a
+handful of `curly` findings on newly-added lines rather than leaving them,
+even though the ported reference pattern in `research-mission-store.mjs`
+itself pre-dates and does not satisfy that same rule).
+
+Adopted SHA: see the commit on `tsf/feature/f4-planner-durability-hardening`
+that carries this section.

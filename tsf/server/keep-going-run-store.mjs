@@ -18,8 +18,18 @@
 // data-store.mjs's OTHER routes -- deliberately not rewritten here; see
 // program state.json M2 gaps for that separate, larger, out-of-scope item).
 import { withFileLock } from './cross-process-file-lock.mjs'
+import { assertSupportedKeepGoingRunSchemaVersion } from '../domain/research-schema-versioning.mjs'
 import { getStateFilePath, loadState, saveState } from './data-store.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
+
+// Every read boundary asserts schema-version compatibility BEFORE the run
+// reaches any caller -- mirrors research-mission-store.mjs's
+// researchMissionFor. Fails closed on a version this running code was never
+// verified against, rather than silently operating on an unfamiliar shape.
+function versionCheckedRun(run) {
+  if (run) { assertSupportedKeepGoingRunSchemaVersion(run) }
+  return run
+}
 
 // Sibling to the real state file, not the file itself -- readers never
 // take this lock (see readKeepGoingRun below), so a lock file distinct
@@ -36,7 +46,7 @@ function lockPath() {
 // existing behavior, and every real mutation still goes through the CAS
 // below regardless of what an earlier readKeepGoingRun saw.
 export function readKeepGoingRun(projectId) {
-  return keepGoingRunFor(loadState(), projectId)
+  return versionCheckedRun(keepGoingRunFor(loadState(), projectId))
 }
 
 // mutateFn(current) must be synchronous and pure: given the just-loaded
@@ -49,7 +59,7 @@ export function readKeepGoingRun(projectId) {
 export async function withKeepGoingRun(projectId, mutateFn) {
   return withFileLock(lockPath(), undefined, () => {
     const opState = loadState()
-    const current = keepGoingRunFor(opState, projectId)
+    const current = versionCheckedRun(keepGoingRunFor(opState, projectId))
     const next = mutateFn(current)
     const nextOpState = {
       ...opState,
