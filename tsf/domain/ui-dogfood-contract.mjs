@@ -18,6 +18,35 @@ function fail(message) {
   throw new Error(`ui-dogfood contract: ${message}`)
 }
 
+// Phase 5 (browser/screenshot reliability): a screenshot fires right after
+// surface.open()'s own real condition-based wait (activeView flips) and
+// detectSurfaceFindings' own wait (a settings section becomes visible) --
+// CDP timing itself is already sound. What was missing: `deps.
+// captureScreenshot` was called with no try/catch at all, so one transient
+// CDP hiccup (real, occasional, not persistent) threw straight out of the
+// surface x viewport loop and aborted the WHOLE multi-surface pass instead
+// of just that one capture. One bounded retry absorbs a transient miss; a
+// failure that survives it is recorded (not thrown) so a genuinely broken
+// screenshot path still shows up in the result instead of vanishing.
+const SCREENSHOT_RETRY_ATTEMPTS = 2
+const DEFAULT_SCREENSHOT_RETRY_DELAY_MS = 200
+
+async function captureScreenshotSafely(deps, page, surfaceId, viewportId) {
+  const delayMs = deps.screenshotRetryDelayMs ?? DEFAULT_SCREENSHOT_RETRY_DELAY_MS
+  let lastError = null
+  for (let attempt = 1; attempt <= SCREENSHOT_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await deps.captureScreenshot(page, surfaceId, viewportId)
+    } catch (error) {
+      lastError = error
+      if (attempt < SCREENSHOT_RETRY_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+    }
+  }
+  return { surfaceId, viewportId, failed: true, error: lastError.message }
+}
+
 // A launch descriptor names a target and how to reach it -- never an app-
 // specific hardcoded path. `launch()` returns a fresh, isolated instance
 // handle: { page, close() }. `surfaceStrategy` is enumerateSurfaces' own
@@ -130,7 +159,9 @@ export async function runDogfoodPass(descriptorRaw, deps) {
           }
           rawFindings.push(...captureFindings(surface.id, viewportId, capture))
           if (typeof deps.captureScreenshot === 'function') {
-            screenshots.push(await deps.captureScreenshot(instance.page, surface.id, viewportId))
+            screenshots.push(
+              await captureScreenshotSafely(deps, instance.page, surface.id, viewportId)
+            )
           }
         }
       }
@@ -143,7 +174,10 @@ export async function runDogfoodPass(descriptorRaw, deps) {
         targetId: descriptor.targetId,
         surfaceCount: surfaces.length,
         viewports: descriptor.viewports,
-        screenshots
+        screenshots,
+        // Honest visibility for a persistent break (never silently
+        // swallowed): 0 whenever every capture succeeded or retried clean.
+        screenshotFailureCount: screenshots.filter((s) => s.failed === true).length
       }
     } finally {
       capture.detach?.()

@@ -162,6 +162,57 @@ test('REQUIRED PROOF: runIterativeDogfood stops once applyFixes resolves everyth
   assert.equal(result.iterationCount, 2)
 })
 
+// Phase 5 (browser/screenshot reliability): deps.captureScreenshot used to
+// have zero try/catch around it -- one transient CDP hiccup threw straight
+// out of runDogfoodPass and aborted the whole multi-surface pass.
+test('runDogfoodPass retries a transient captureScreenshot failure and still returns the real screenshot', async () => {
+  const descriptor = {
+    targetId: 'fake-app',
+    launch: async () => ({ page: fakePage(), close: async () => {} }),
+    surfaceStrategy: () => [{ id: 'home', title: 'Home', open: async () => {} }]
+  }
+  let calls = 0
+  const run = await runDogfoodPass(descriptor, {
+    attachCapture: fakeCaptureFactory(),
+    screenshotRetryDelayMs: 0,
+    captureScreenshot: async (page, surfaceId, viewportId) => {
+      calls += 1
+      if (calls === 1) {
+        throw new Error('transient CDP miss')
+      }
+      return { surfaceId, viewportId, filePath: '/fake.png' }
+    }
+  })
+  assert.equal(calls, 2)
+  assert.equal(run.screenshots.length, 1)
+  assert.deepEqual(run.screenshots[0], { surfaceId: 'home', viewportId: 'desktop', filePath: '/fake.png' })
+  assert.equal(run.screenshotFailureCount, 0)
+})
+
+test('runDogfoodPass degrades gracefully when captureScreenshot fails persistently: records it, does not abort the run, still visits every other surface', async () => {
+  const descriptor = {
+    targetId: 'fake-app',
+    launch: async () => ({ page: fakePage(), close: async () => {} }),
+    surfaceStrategy: TWO_SURFACES
+  }
+  const run = await runDogfoodPass(descriptor, {
+    attachCapture: fakeCaptureFactory(),
+    screenshotRetryDelayMs: 0,
+    captureScreenshot: async () => {
+      throw new Error('CDP permanently broken')
+    }
+  })
+  // Both surfaces still visited -- the run completed, not aborted.
+  assert.equal(run.surfaceCount, 2)
+  assert.equal(run.screenshots.length, 2)
+  // A persistent break stays VISIBLE (never silently swallowed), not thrown.
+  assert.equal(run.screenshotFailureCount, 2)
+  for (const shot of run.screenshots) {
+    assert.equal(shot.failed, true)
+    assert.match(shot.error, /CDP permanently broken/)
+  }
+})
+
 test('runIterativeDogfood never exceeds maxIterations even with a persistent regression', async () => {
   const descriptor = {
     targetId: 'fake-app',

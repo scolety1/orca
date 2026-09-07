@@ -54,7 +54,8 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 8. Planner Lifecycle Chaos Test | DONE | Finding F24 (real TOCTOU in `_mutate`'s lease enforcement) fixed; see dedicated section below (this row was missing from this table -- a stale-table doc bug found and fixed in passing during Phase 16, not a phase re-run) |
 | 16. Self-Improvement Loop V0 Reconciliation | DONE | 5-link honest reconciliation (detection/mission-creation/verification/adoption/re-dogfood) -- all 4 non-trivial links PARTIALLY_REAL, none REAL_AND_COMPOSABLE end-to-end without a human/external coordinator; no new orchestrator built; one real, small, still-open residual-gap bug (chat-responder.mjs FINISHED-intent vocabulary gap, previously pinned as disclosed-not-fixed in Phase 7) fixed and verified as a bounded READY_FOR_ADOPTION-level proof; see dedicated section below |
 | 3. Resource-Aware Execution Hardening | DONE | 6-area investigation; 3 real gaps found and fixed (F30 UI Dogfood's real Electron launch never consulted the governor at all, F31 a real Electron-instance leak on an attachCapture exception before any try/finally existed, F32 PRESSURED tier's own documented "serialize" language was never actually enforced for concurrent heavyweight LLM-CLI dispatch); 3 areas confirmed sound by design with cited evidence (worker residency, planner rollover residency via an existing Phase 8 test, starvation-by-construction); see dedicated section below |
-| 5, 15, 17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 5. Browser/Screenshot Reliability | DONE | Scoping finding: TSF's own UI Dogfood has ZERO dependency on Claude-in-Chrome or any ChatGPT/Codex Chrome native-host bridge (confirmed by reading the code) -- the mission's "third-party infrastructure" framing does not apply here. CDP timing, stale-page/context, and resource-pressure gating all confirmed already sound (with real-Electron evidence). 1 real gap found and fixed: `deps.captureScreenshot` had zero try/catch, so one transient CDP hiccup aborted the WHOLE multi-surface pass; see dedicated section below |
+| 15, 17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -4198,3 +4199,180 @@ kill of anything by name.
 
 Adopted SHA: see the commit on `tsf/feature/phase3-resource-aware-execution`
 that carries this section.
+
+## Phase 5: Browser/Screenshot Reliability -- scoping finding (no external Chrome-bridge dependency exists) + 1 real gap found and fixed
+
+Worktree: `phase5-browser-screenshot-reliability`, branch
+`tsf/feature/phase5-browser-screenshot-reliability` (forked from `tsf/main`
+@ `faca6209f81a1abf0955fb6c16d303976862c4a3`).
+
+**Scoping finding (task requirement, verified before investigating further).**
+Read `tsf/adapters/electron-target-launcher.mjs` and `tests/e2e/helpers/
+orca-app.ts` in full. Confirmed: TSF's own UI Dogfood capability launches a
+real Electron app directly via Playwright's `_electron.launch()` +
+`app.firstWindow({ timeout: 120_000 })` (the same mechanism `orca-app.ts`'s
+own fixture uses, per F7's own header note) and drives it with Playwright's
+own `Page` API (`page.evaluate`, `page.waitForFunction`, `page.screenshot`,
+`page.setViewportSize`). Grepped the whole dogfood/adapter/domain/server
+layer (`tsf/adapters/*.mjs`, `tsf/domain/ui-dogfood-contract.mjs`,
+`tsf/server/command-dogfood-bridge.mjs`) for any reference to `claude-in-
+chrome`, `mcp__claude-in-chrome`, a Chrome native-host bridge, or a CDP
+connection to an already-running user Chrome instance -- none exist. TSF's
+dogfood pipeline never touches a Chrome extension, a native-messaging host,
+or any Codex/ChatGPT browser bridge at all. The mission's "third-party
+infrastructure" half of the reconciliation framing genuinely does not apply
+to TSF's own code -- this phase focused entirely on TSF's own screenshot
+implementation, as the task's own scoping note anticipated. Nothing was
+repaired or worked around in any external Chrome-extension bridge (none
+exists to repair).
+
+**Method.** Found the one real production `deps.captureScreenshot`
+implementation: `tests/e2e/ui-dogfood-orca-self.spec.ts` (the golden dogfood
+proof) wires `page.screenshot({ path })` per surface x viewport combination
+-- the only place in the whole repo `captureScreenshot` is ever actually
+supplied (grepped every `.mjs`/`.ts` file). `command-dogfood-bridge.mjs`
+(the live Command-triggered dogfood path) and `tests/e2e/ui-dogfood-orca-
+self-full-sweep.spec.ts` (the 33-pane full sweep) both call `runDogfoodPass`
+WITHOUT `captureScreenshot` at all -- screenshots are not on either of those
+paths today. The gap fixed below lives in the shared, generic domain
+contract (`ui-dogfood-contract.mjs`), so it protects every current AND any
+future caller that wires `captureScreenshot`, not just the golden spec.
+
+**1. CDP timing -- CONFIRMED SOUND, no fix needed.** In `runDogfoodPass`
+(`ui-dogfood-contract.mjs`), the call order per surface x viewport is
+strictly sequential: `setViewportSize` -> `surface.open(page)` -> `detect
+SurfaceFindings(page, ...)` -> `captureScreenshot(page, ...)`. `surface.
+open()` (`orca-dogfood-surfaces.mjs`) already uses F7's real condition-based
+wait (`page.waitForFunction(() => store.getState().activeView ===
+'settings', ...)`, mirror-image for main-shell), and Orca's own
+`detectOrcaSettingsRenderFindings` wired as `detectSurfaceFindings` in the
+golden spec additionally waits for `page.waitForSelector('[data-settings-
+section]', { state: 'visible' })` before returning. A screenshot therefore
+never fires until AFTER two independent real-DOM-settled waits already
+resolved -- never immediately after a state change with no settling wait.
+No F7-class gap here.
+
+**2. Stale page/context -- CONFIRMED SOUND, no fix needed.** Every step in
+the per-(surface, viewport) loop above is `await`-chained in a single,
+non-concurrent `for` loop over the SAME `instance.page` object; nothing
+resizes the viewport or navigates concurrently with a capture. `instance.
+close()` is only ever reached from the outer `finally`, after the entire
+surface x viewport loop has finished. No race between resize/navigation and
+capture is reachable through this code path.
+
+**3. Resource pressure -- CONFIRMED SOUND, no fix needed (verified, not
+assumed).** Read `command-dogfood-bridge.mjs`'s `respondDogfoodCommand`
+end to end: `classifyDispatchAdmission(readHostMemory(), 'newBrowserPilots')`
+(F30's own fix, Phase 3) gates BEFORE `createElectronLaunchFn`'s real
+`_electron.launch()` ever runs -- a refused admission returns early with
+`RESOURCE_PRESSURE_REFUSED` and never reaches `runDogfoodPass` at all, so a
+screenshot (real encode cost) can never be attempted in a state F30 would
+have refused the launch itself for. Exactly the "likely a non-issue"
+prediction in this phase's own task framing, confirmed by reading the real
+code rather than assumed.
+
+**4/5. Retry/error handling -- REAL GAP, FOUND AND FIXED.** `runDogfoodPass`
+called `deps.captureScreenshot(...)` with zero `try`/`catch` around it,
+inside the same `for` loop that visits every surface x viewport. A single
+transient CDP hiccup on ANY one capture (real, occasional -- Playwright's
+own `page.screenshot()` can transiently fail right after `setViewportSize`
+under host load, the exact class of flake this program has repeatedly
+surfaced per the mission's own framing) threw straight out of the loop,
+skipped every remaining surface/viewport, and the whole pass rejected with
+no findings, no screenshots, nothing -- via the SAME code path a genuinely
+broken CDP session would take. No way to tell "one blip" from "totally
+broken" from the caller's side, and no bounded retry existed anywhere in
+this file for this call (contrast `attachCapture`/`detectSurfaceFindings`,
+which existing tests deliberately let propagate -- those are real detector
+bugs that SHOULD surface as a hard failure, a materially different failure
+class than a CDP capture timing miss).
+
+**Fix (`tsf/domain/ui-dogfood-contract.mjs`).** Added
+`captureScreenshotSafely(deps, page, surfaceId, viewportId)`: one bounded
+retry (2 attempts total, `SCREENSHOT_RETRY_ATTEMPTS = 2`, a short
+`deps.screenshotRetryDelayMs`-overridable delay, default 200ms) around the
+`deps.captureScreenshot` call. A transient miss on attempt 1 that succeeds
+on attempt 2 returns the REAL screenshot, indistinguishable from a
+first-try success. A failure that survives both attempts is NOT thrown --
+it's recorded in the same `screenshots` array as `{ surfaceId, viewportId,
+failed: true, error: message }`, and the loop continues to the next
+surface/viewport (the run completes, it does not abort). The run result
+also gains `screenshotFailureCount` (0 when every capture succeeded, real
+otherwise) so a persistent break stays honestly visible in the returned
+data -- never silently swallowed -- without inventing a new finding
+category for a tooling-level capture failure (the existing `FINDING_
+CATEGORIES` taxonomy in `ui-dogfood-finding.mjs` is about real UI defects,
+not dogfood-tooling reliability; a new category there was deliberately not
+added).
+
+Deliberately NOT reused: Playwright's own suite-level `retries: 0` /
+`screenshot: 'only-on-failure'` convention (`tests/playwright.config.ts`) --
+that is a DIFFERENT, deliberate choice (disabling whole-TEST retries so a
+first-failure trace stays the only reliable debugging artifact in CI, per
+that config's own comment) operating one layer up from this fix. Conflating
+the two would mean either weakening that deliberate no-test-retry policy or
+missing this contract-level gap entirely; the low-level bounded retry added
+here operates purely inside one `captureScreenshot` call and leaves the
+suite-level policy untouched. The bounded-attempt-loop SHAPE itself mirrors
+this codebase's own existing convention in `tsf/adapters/bounded-http-
+fetch.mjs` (`for (attempt = 1; attempt <= maxAttempts; attempt++) { ...
+if (!retryable || attempt === maxAttempts) break ... }`), not invented from
+scratch.
+
+**Tests.** `tsf/test/ui-dogfood-contract.test.mjs` gained 2 new tests:
+1. A captureScreenshot fake that throws once then succeeds -- proves the
+   retry recovers and the run returns the REAL screenshot result (not a
+   failure record), with `screenshotFailureCount: 0`.
+2. A captureScreenshot fake that always throws -- proves the run still
+   completes (`surfaceCount`/`screenshots.length` both cover every surface,
+   not truncated), each entry is `{ failed: true, error }` (the real error
+   message preserved, not swallowed), and `screenshotFailureCount` reflects
+   the real count. This is the direct proof of the mission's acceptance
+   target: "a long multi-route dogfood run should not fail merely because a
+   screenshot request transiently misses a CDP state," AND that a genuinely
+   persistent failure "must still surface as a real, visible failure, never
+   silently swallowed."
+
+`node --test tsf/test/ui-dogfood-contract.test.mjs` -- 9/9 pass. Regression
+sweep of the whole dogfood domain/adapter/server test surface: `node --test
+tsf/test/command-dogfood-bridge.test.mjs tsf/test/ui-dogfood-contract.
+test.mjs tsf/test/ui-dogfood-surface-catalog.test.mjs tsf/test/ui-dogfood-
+finding.test.mjs tsf/test/orca-dogfood-surfaces.test.mjs tsf/test/command-
+dogfood-sequences.test.mjs` -- 47/47 pass (includes F7's own `orca-dogfood-
+surfaces.test.mjs`, unaffected by this change).
+
+**Independent real-Electron proof (task requirement 6/"ideally real, not
+just a mock").** Built the app for real in this worktree (`pnpm run
+build:electron-vite --mode e2e`, own `out/`, not shared with the canonical
+worktree) and ran the actual golden dogfood spec (`SKIP_BUILD=1 npx
+playwright test -c tests/playwright.config.ts ui-dogfood-orca-self.spec.ts`)
+against the real built Electron app with the fix in place: 1 test passed
+(26.2s), `run.screenshots.length` still the expected 8 (4 surfaces x 2
+viewports, every real `page.screenshot()` call still succeeds through the
+new `captureScreenshotSafely` wrapper with zero behavior change on the
+happy path), and the same real, specific `settings-appearance` xterm-preview
+P2 finding this program's own Phase 4 fix (F8) left as a documented,
+deliberate residual -- confirming the fix is transparent to the real
+CDP-backed capture path, not just the fakes. The transient/persistent-
+failure retry paths themselves are proven with a fake `captureScreenshot`
+(the same rigor level Finding F7 and F31 both used for this exact
+tooling-contract layer -- a real CDP session cannot be made to fail
+deterministically on command, so a controlled fake is the correct,
+established tool for proving retry/degrade-gracefully control flow, while
+the real-Electron run above proves the happy path and CDP-timing/stale-
+context soundness claims). The full-sweep spec (`ui-dogfood-orca-self-full-
+sweep.spec.ts`) does not wire `captureScreenshot` and is therefore untouched
+by this fix; not re-run for this phase (33-pane sweep, no code path this fix
+touches).
+
+**Lint.** `npx oxlint tsf/domain/ui-dogfood-contract.mjs tsf/test/ui-
+dogfood-contract.test.mjs` -- clean, exit 0. `ui-dogfood-contract.mjs` is
+224 lines, comfortably under the 600-counted-line `.mjs` cap.
+
+Astra: not touched, not referenced. NWR data: not touched. No new browser-
+automation harness built -- this is a bounded fix inside the existing
+generic `ui-dogfood-contract.mjs`, reusing the exact Playwright/Electron
+mechanism already established by Finding F7 and Phase 3's F30/F31.
+
+Adopted SHA: see the commit on `tsf/feature/phase5-browser-screenshot-
+reliability` that carries this section.
