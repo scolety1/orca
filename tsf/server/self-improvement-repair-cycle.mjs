@@ -11,7 +11,8 @@ import { readPlannerMissionRecord } from './planner-mission-store.mjs'
 import { transitionFinding } from '../domain/self-improvement-finding.mjs'
 import { buildAuthorityEnvelope } from '../domain/self-improvement-authority-envelope.mjs'
 import { DEFAULT_SELF_IMPROVEMENT_RETRY_BUDGET, decideRepairRetryOrEscalate } from '../domain/self-improvement-retry-budget.mjs'
-import { dispatchRepairWorker } from './self-improvement-worker-dispatch.mjs'
+import { deriveRepairAttemptBranch, deriveRepairAttemptWorktreePath, dispatchRepairWorker } from './self-improvement-worker-dispatch.mjs'
+import { currentHeadSha } from './self-improvement-worktree.mjs'
 import { runIndependentVerification } from './self-improvement-verifier-dispatch.mjs'
 import { observeCanonicalRepoState } from './planner-mission-repo-state.mjs'
 import { withFinding } from './self-improvement-finding-store.mjs'
@@ -80,9 +81,40 @@ export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, 
   // (the real bounded launcher) always receives the exact finding/envelope/
   // attemptNumber closed over by this call -- planner-session-lifecycle.mjs
   // itself stays generic and knows nothing about repair-specific args.
+  //
+  // REAL BUG (Wave D golden-proof, first real end-to-end run): dispatchWorker's
+  // full return value (worktreePath/branch/baseSha/siblingStatusesBefore) is
+  // NEVER what dispatchWorkerForTask hands back -- registerDispatchedWorker
+  // (planner-mission-checkpoint.mjs, a generic, domain-agnostic primitive
+  // shared with every OTHER mission type) only persists a FIXED worker
+  // schema (workerId/kind/taskFingerprint/providerId/agentId/status/...);
+  // every self-improvement-specific extra field is silently dropped on the
+  // round trip through the durable checkpoint. `dispatch.worker.worktreePath`
+  // was therefore always undefined below -- Wave B/C's own tests never
+  // caught this because every one of them injects a FAKE
+  // deps.runIndependentVerification that ignores its worktreePath argument
+  // entirely, never exercising the real default. Fixed WITHOUT touching the
+  // shared generic checkpoint schema (used by other mission types too):
+  // worktreePath/branch are DETERMINISTICALLY RE-DERIVED from
+  // (canonicalRepoPath, missionId, attemptNumber) via the SAME exported
+  // helper dispatchRepairWorker itself uses (single source of truth, safe
+  // whether this is a live dispatch or a resumed/rolled-over one, since
+  // attemptNumber is itself derived identically both times); baseSha is
+  // re-read directly from the still-on-disk worktree. siblingStatusesBefore
+  // is captured via this closure for the live-dispatch case only (it is a
+  // point-in-time snapshot with no deterministic re-derivation) --
+  // gracefully null on a resumed call, matching the verifier's own already-
+  // documented "no before snapshot -> skip this check" degradation.
   const Lifecycle = deps.PlannerSessionLifecycle ?? PlannerSessionLifecycle
   const plannerSessionId = deps.plannerSessionId ?? plannerSessionIdFor(missionId)
-  const dispatchWorker = deps.dispatchWorker ?? (() => dispatchRepairWorker({ finding, envelope, missionId, attemptNumber, canonicalRepoPath, clock, deps: deps.workerDeps ?? {} }))
+  let liveDispatchSiblingSnapshot = null
+  const dispatchWorker =
+    deps.dispatchWorker ??
+    (async () => {
+      const result = await dispatchRepairWorker({ finding, envelope, missionId, attemptNumber, canonicalRepoPath, clock, deps: deps.workerDeps ?? {} })
+      liveDispatchSiblingSnapshot = result.siblingStatusesBefore ?? null
+      return result
+    })
   const lifecycle = new Lifecycle({ missionId, plannerSessionId, deps: { clock, dispatchWorker, ...deps.lifecycleDeps } })
 
   const dispatch = await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>
@@ -93,8 +125,11 @@ export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, 
     })
   )
   const worker = dispatch.worker
+  // Re-derived, not read off `worker` -- see the real-bug comment above.
+  const worktreePath = deriveRepairAttemptWorktreePath({ canonicalRepoPath, missionId, attemptNumber })
+  const branch = deriveRepairAttemptBranch({ missionId, attemptNumber })
   if (!dispatch.alreadyDispatched) {
-    await recordReceipt(missionId, { kind: 'WORKER_DISPATCHED', missionId, findingId: finding.findingId, detail: { attemptNumber, providerId: worker.providerId, worktreePath: worker.worktreePath } }, clock)
+    await recordReceipt(missionId, { kind: 'WORKER_DISPATCHED', missionId, findingId: finding.findingId, detail: { attemptNumber, providerId: worker.providerId, worktreePath } }, clock)
   }
 
   let currentFinding = finding
@@ -109,15 +144,19 @@ export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, 
   await recordReceipt(missionId, { kind: 'WORKER_RESULT', missionId, findingId: finding.findingId, detail: { attemptNumber, exitCode: worker.exitCode, timedOut: worker.timedOut } }, clock)
 
   const verify = deps.runIndependentVerification ?? runIndependentVerification
+  // Real git read (injectable, like every other real side effect here) --
+  // never `worker.baseSha` (always undefined, see the comment above).
+  const readBaseSha = deps.currentHeadSha ?? currentHeadSha
+  const baseSha = await readBaseSha(worktreePath)
   const verification = await verify({
     finding,
     envelope,
-    worktreePath: worker.worktreePath,
-    branch: worker.branch,
-    baseSha: worker.baseSha,
+    worktreePath,
+    branch,
+    baseSha,
     canonicalRepoPath,
     workerProviderId: worker.providerId,
-    siblingStatusesBefore: worker.siblingStatusesBefore ?? null,
+    siblingStatusesBefore: liveDispatchSiblingSnapshot,
     deps: deps.verifierDeps ?? {}
   })
   await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>

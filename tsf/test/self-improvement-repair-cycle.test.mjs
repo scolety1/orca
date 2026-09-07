@@ -82,7 +82,13 @@ function fakeVerifier(verdict, reasons = []) {
   return async () => ({ verdict, reasons, detail: { worktreePath: 'C:/fixture/attempt', branch: 'tsf/fixture', changedFiles: [] } })
 }
 
+// Wave D real-bug fix: worktreePath/branch/baseSha are re-derived (never
+// read off the checkpoint's own narrow worker record, see self-improvement-
+// repair-cycle.mjs's own header comment) -- baseSha's re-derivation is a
+// real `git rev-parse HEAD` against the worktree path, faked here since
+// these fixture paths (C:/fixture/attempt-N) never really exist on disk.
 const LIFECYCLE_DEPS = { lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory } }
+const FAKE_BASE_SHA_DEPS = { currentHeadSha: async () => 'b'.repeat(40) }
 
 test('a VERIFIED_PASS on the first attempt reaches READY_FOR_ADOPTION', async () => {
   const finding = eligibleFinding('tsf/domain/pass-fixture.mjs')
@@ -92,7 +98,7 @@ test('a VERIFIED_PASS on the first attempt reaches READY_FOR_ADOPTION', async ()
     missionId,
     canonicalRepoPath: CANONICAL_REPO_PATH,
     clock,
-    deps: { dispatchWorker: fakeWorker(), runIndependentVerification: fakeVerifier('VERIFIED_PASS'), ...LIFECYCLE_DEPS }
+    deps: { dispatchWorker: fakeWorker(), runIndependentVerification: fakeVerifier('VERIFIED_PASS'), ...LIFECYCLE_DEPS, ...FAKE_BASE_SHA_DEPS }
   })
   assert.equal(result.outcome, 'READY_FOR_ADOPTION')
   assert.equal(result.finding.status, 'READY_FOR_ADOPTION')
@@ -102,7 +108,7 @@ test('retry/correction-attempt budget: real, bounded -- retries once, then escal
   const finding = eligibleFinding('tsf/domain/retry-fixture.mjs')
   const missionId = await originate(finding)
   const budget = { maxAttemptsPerMission: 2 }
-  const deps = { dispatchWorker: fakeWorker(), runIndependentVerification: fakeVerifier('VERIFIED_FAIL', ['REPRODUCTION_STILL_FAILS']), ...LIFECYCLE_DEPS }
+  const deps = { dispatchWorker: fakeWorker(), runIndependentVerification: fakeVerifier('VERIFIED_FAIL', ['REPRODUCTION_STILL_FAILS']), ...LIFECYCLE_DEPS, ...FAKE_BASE_SHA_DEPS }
 
   let attempt1
   await t.test('attempt 1 fails verification -- stays in progress, does not escalate yet', async () => {

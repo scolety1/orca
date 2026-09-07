@@ -45,6 +45,25 @@ function providerArgumentsFor(providerFlag, prompt) {
 
 const DEFAULT_WORKER_TIMEOUT_MS = 20 * 60 * 1000
 
+// `:` is a real, hard git-ref-name violation -- missionId's own
+// `mission:selfimprove:<hash>` shape contains one, so it is NEVER used raw
+// in a branch name. Exported (not just inlined below) so
+// self-improvement-repair-cycle.mjs's own verification step can
+// DETERMINISTICALLY RE-DERIVE the exact same worktreePath/branch a past
+// dispatch used, from the SAME single source of truth -- see that file's
+// own header comment for why re-derivation, not a stored value, is needed.
+export function sanitizeRepairMissionIdForGit(missionId) {
+  return missionId.replace(/[:/]/g, '-')
+}
+
+export function deriveRepairAttemptBranch({ missionId, attemptNumber }) {
+  return `tsf/self-improve/${sanitizeRepairMissionIdForGit(missionId)}/attempt-${attemptNumber}`
+}
+
+export function deriveRepairAttemptWorktreePath({ canonicalRepoPath, missionId, attemptNumber }) {
+  return resolve(canonicalRepoPath, '..', `${sanitizeRepairMissionIdForGit(missionId)}-attempt-${attemptNumber}`)
+}
+
 // Real default: spawns safe-provider-launch.mjs itself as a child, piped
 // (not inherited) on ITS OWN stdio so the real provider process's output
 // -- which safe-provider-launch.mjs launches with stdio:'inherit',
@@ -102,15 +121,10 @@ export async function dispatchRepairWorker({ finding, envelope, missionId, attem
   const providerFlag = providerFlagFromProfile(profile)
 
   const createWorktree = deps.createIsolatedRepairWorktree ?? createIsolatedRepairWorktree
-  // `:` is a real, hard git-ref-name violation -- missionId's own
-  // `mission:selfimprove:<hash>` shape contains one, so it is NEVER used
-  // raw in a branch name (git checkout -b would fail on every real
-  // dispatch otherwise, reproduced and fixed here).
-  const sanitizedMissionId = missionId.replace(/[:/]/g, '-')
-  const branch = `tsf/self-improve/${sanitizedMissionId}/attempt-${attemptNumber}`
+  const branch = deriveRepairAttemptBranch({ missionId, attemptNumber })
   const worktreePath = deps.deriveWorktreePath
     ? deps.deriveWorktreePath({ missionId, attemptNumber })
-    : resolve(canonicalRepoPath, '..', `${sanitizedMissionId}-attempt-${attemptNumber}`)
+    : deriveRepairAttemptWorktreePath({ canonicalRepoPath, missionId, attemptNumber })
   const worktree = await createWorktree({ canonicalRepoPath, worktreePath, branch })
 
   // SECURITY (Phase 8 adversarial review, scenario 11): snapshot every
