@@ -20,6 +20,10 @@ import { ESTIMATOR_BASICS_PACK } from './estimator-eval-cases.mjs'
 import { runEstimatorEvalPack } from './estimator-eval-runner.mjs'
 import { UI_DOGFOOD_BASICS_PACK } from './ui-dogfood-eval-cases.mjs'
 import { runUiDogfoodEvalPack } from './ui-dogfood-eval-runner.mjs'
+import { PLATFORM_GOLDEN_PATH_BASICS_PACK } from './platform-golden-path-eval-cases.mjs'
+import { runPlatformGoldenPathEvalPack } from './platform-golden-path-eval-runner.mjs'
+import { RESEARCH_GOLDEN_PATH_BASICS_PACK } from './research-golden-path-eval-cases.mjs'
+import { runResearchGoldenPathEvalPack } from './research-golden-path-eval-runner.mjs'
 import { normalizeEvalPack } from '../domain/evaluation-pack.mjs'
 
 const REGISTRY = {
@@ -54,6 +58,14 @@ const REGISTRY = {
   [UI_DOGFOOD_BASICS_PACK.packId]: {
     pack: normalizeEvalPack(UI_DOGFOOD_BASICS_PACK),
     run: async (pack) => runUiDogfoodEvalPack(pack)
+  },
+  [PLATFORM_GOLDEN_PATH_BASICS_PACK.packId]: {
+    pack: normalizeEvalPack(PLATFORM_GOLDEN_PATH_BASICS_PACK),
+    run: async (pack, clock) => runPlatformGoldenPathEvalPack(pack, clock)
+  },
+  [RESEARCH_GOLDEN_PATH_BASICS_PACK.packId]: {
+    pack: normalizeEvalPack(RESEARCH_GOLDEN_PATH_BASICS_PACK),
+    run: async (pack, clock) => runResearchGoldenPathEvalPack(pack, clock)
   }
 }
 

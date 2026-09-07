@@ -76,12 +76,13 @@ test('normalizeEvalPack accepts and returns a well-formed pack unchanged in shap
   assert.equal(normalized.cases.length, 2)
 })
 
-test('EVAL_CATEGORIES covers all 8 required capability categories', () => {
+test('EVAL_CATEGORIES covers all 9 required capability categories (Phase 13 added GOLDEN_PATH)', () => {
   assert.deepEqual(
     [...EVAL_CATEGORIES].sort(),
     [
       'AUTONOMY',
       'ESTIMATOR',
+      'GOLDEN_PATH',
       'MEMORY',
       'PLANNER',
       'ROUTING',

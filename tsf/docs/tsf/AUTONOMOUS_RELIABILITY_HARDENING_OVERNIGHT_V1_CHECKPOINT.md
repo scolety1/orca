@@ -45,7 +45,8 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 4. UI Self-Dogfood (UI_DOGFOOD_AGENT_V0) | DONE | Finding F8 reconciled and fixed; see dedicated section below |
 | 6. Global Operator State / Needs You Audit | DONE | Finding F19 fixed; see dedicated section below |
 | 7. Command Control-Surface Dogfood | DONE | Findings F20 (STATUS/FINISHED vocabulary gap), F21 (quantified pause/resume mis-targeting) fixed; see dedicated section below |
-| 3, 5, 8-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 13. Evaluation / Regression Quality | DONE | 2 real acceptance-level gaps confirmed and closed (TSF_PLATFORM_GOLDEN_PATH_EVAL, TSF_RESEARCH_GOLDEN_PATH_EVAL); Cleanup V1 investigated, already adequate; see dedicated section below |
+| 3, 5, 8-12, 14-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -1693,3 +1694,462 @@ re-confirmed pre-existing via `git stash` above.
 Adopted SHA: see the commit on
 `tsf/feature/phase7-command-control-surface-dogfood` that carries this
 section.
+## Phase 13: Evaluation / Regression Quality -- 2 real acceptance-level gaps confirmed and closed
+
+Worktree: `phase13-evaluation-quality`, branch
+`tsf/feature/phase13-evaluation-quality` (forked from `tsf/main` @
+`57e88a55b2de38f8a2664c0ef4921c9f75538208`, i.e. after F19/Phase 6 above).
+
+**Goal.** Audit whether the current test/evaluation system actually
+protects the things TSF now claims to support -- critical capabilities
+with plenty of unit-test coverage but weak or absent ACCEPTANCE-level
+proof that the real, composed product behavior works end to end.
+
+**Reconciliation (mandatory first step).** Read `tsf/domain/evaluation-
+pack.mjs` (the generic scoring engine: `normalizeEvalPack`, `scoreCase`,
+`runEvalPack`, `compareEvalRuns`) and `tsf/server/eval-pack-registry.mjs`
+in full before writing anything. Confirmed the registry held exactly 8
+packs at Phase 13 start (`PLANNER`, `WORKER`, `VERIFIER`, `ROUTING`,
+`MEMORY`, `AUTONOMY`, `ESTIMATOR`, `UI_DOGFOOD`), each a
+`{packId, version, category, description, cases[]}` object plus a
+`run(pack, clock) -> Promise<caseId, actualOutput>` function, registered
+as `REGISTRY[pack.packId] = { pack: normalizeEvalPack(PACK), run }`. Every
+new pack this phase built reuses this EXACT shape -- no second engine, no
+new registration mechanism.
+
+### Investigation 1: TSF_PLATFORM_GOLDEN_PATH_EVAL -- REAL GAP CONFIRMED, CLOSED
+
+Three parallel investigation subagents read the suggested candidate files
+IN FULL against the real code (not doc summaries) before any pack was
+designed, per this phase's own "verify the gap is real first" instruction.
+
+**Candidates read:** `tsf/test/command-dogfood-sequences.test.mjs`,
+`tsf/test/keep-going-autonomy-proof.test.mjs`,
+`tsf/test/planner-session-lifecycle-golden-rollover.test.mjs`, plus
+`tsf/test/golden-path-operator-flow.test.mjs` (found via search, read for
+completeness though not named in the task brief).
+
+**Finding, evidence-backed:**
+- `command-dogfood-sequences.test.mjs` is the only file that drives a
+  dispatch-worthy message through the real `respondCommand` entry point,
+  but every "run it"/"run that" turn is engineered to fail at
+  `ensureWorktreeForDispatch`'s `!project?.root` check (the fixture
+  project never sets `.root`) -- before `classifyDispatchAdmission`, the
+  planner call, `ensureActiveRun`, or `tickKeepGoingRun` are ever reached.
+  `assert.ok(runIt.dispatchResults, ...)` only proves an honest failure
+  record exists, not a successful composed chain.
+- `keep-going-autonomy-proof.test.mjs` is the strongest single proof of
+  real multi-wave autonomous progression (spawns a real server process,
+  survives a real mid-wave restart, drives 3 real waves to COMPLETE via
+  the real background fleet driver) -- but it never calls `respondCommand`
+  at all (starts via raw `/api/keep-going/:id/start`/`/tick` REST calls),
+  forces the Resource Pressure Governor HEALTHY throughout (its DELAY/
+  REFUSE branches are structurally unreachable), supplies
+  `candidateWorkItems` directly in the request body (bypassing any real
+  planner judgment), and stubs the "verifier" as a hand-written JSON file
+  the TEST itself writes to disk -- never a real Command-Panel-shaped
+  operator-visible result (every assertion is a GET of JSON state).
+- `planner-session-lifecycle-golden-rollover.test.mjs` proves real lease/
+  rollover durability for a DIFFERENT subsystem (Planner Context
+  Lifecycle, not Keep Going/Command dispatch) -- its "worker dispatch" is
+  a bare fixture function, its "verifier" is a hardcoded
+  `{verdict:'PASS'}` literal, its Resource Pressure Governor input is a
+  hand-fabricated always-healthy object (never even the env-var seam), and
+  it never touches Command/chat routing or any operator-visible text.
+- `golden-path-operator-flow.test.mjs`'s own header explicitly defers to
+  `keep-going-autonomy-proof.test.mjs` for "the fuller, heavier proof" and
+  never itself drives dispatch through Command -- it proves cross-surface
+  state AGREEMENT (Keep Going panel/Work/Flight Recorder/Planner Chat),
+  not the composed create-to-complete chain.
+
+**Conclusion: no existing test composes, in one run, Command intent
+routing -> a real (non-forced) Resource Pressure Governor admission
+decision -> a real planner call -> real Keep Going dispatch -> real wave
+settlement -> the real settled-run reconciler's verifier stage -> durable
+COMPLETE -> an operator-visible result.** This is a genuine, confirmed,
+evidence-backed gap, not a manufactured one.
+
+**What was built.** `tsf/server/platform-golden-path-eval-cases.mjs` +
+`tsf/server/platform-golden-path-eval-runner.mjs`, registered as the
+`platform-golden-path-basics` pack under a new `GOLDEN_PATH` category
+(added to `EVAL_CATEGORIES` in `evaluation-pack.mjs`). 2 cases:
+1. `critical-host-memory-genuinely-refuses-the-whole-chain-before-the-
+   planner-is-ever-called` -- a real CRITICAL `classifyDispatchAdmission`
+   reading, reached through `respondCommand` (not a hand-called
+   `planAndDispatchFromChat`), refuses before `invokeLiveStructuredAnalysis`
+   is ever called and creates no Keep Going run. The negative control
+   proving the Governor is a genuinely live gate in THIS composition, not
+   merely forced HEALTHY like every existing test.
+2. `full-composed-chain-reaches-durable-complete-with-an-operator-visible-
+   result` -- HEALTHY memory: `respondCommand` -> real
+   `planAndDispatchFromCommand`/`dispatchOneProject` ->
+   `ensureWorktreeForDispatch` (deps-injected registry/worktree-creation,
+   the ONLY intentional fake in the whole chain, since the real Orca CLI
+   worktree provisioning is out of scope for a cheap/bounded/local eval)
+   -> real `resolveRepositoryIdentity` (real `git rev-parse` against a
+   real, disposable git fixture repo) -> real `classifyDispatchAdmission`
+   (HEALTHY, genuinely admits) -> the REAL `live-planner.mjs` spawn+parse
+   path against `stub-planner-cli.mjs` (a real subprocess round-trip, not
+   a hand-injected fake plan -- the actual output's `originalGoal.
+   statement` is asserted to start with `stub-plan-for::`, which only the
+   real stub CLI's own response shape produces) -> real
+   `ensureActiveRun`/`createOvernightRun` -> real `tickKeepGoingRun`
+   dispatch+settle (via a tracking fake orchestration adapter, echoing
+   back whatever task id `dispatchStep` itself created -- deterministic by
+   construction, not scripted) -> the REAL `settled-run-reconciler.mjs`:
+   `reconcileSettledRun` genuinely requires a disk verdict before
+   completing (asserted explicitly: `reconcileBeforeVerdict.action ===
+   'DISPATCH_VERIFICATION'`, never assumed) -> a real verification wave
+   dispatched and settled -> a real verdict JSON file written to the
+   fixture worktree, matching the run's own real (stub-CLI-produced)
+   acceptance criterion text exactly -> `reconcileAfterVerdict.action ===
+   'COMPLETE'` -> real durable `state === 'COMPLETE'` -> a second real
+   `respondCommand` status query whose text contains `READY_FOR_ADOPTION`
+   and `independently-verified acceptance criteria` (the REAL
+   `formatFleetStatusText`/`projectLiveWorkFeedState` production text for
+   a COMPLETE run, not a hand-typed string).
+
+**Real bugs found and fixed while building this (not silently worked
+around):**
+- `createDeterministicFakeResearchWorker`-style script access mistake
+  (N/A here -- see the research pack section below for the actual
+  instance of this).
+- A real git `--since` second-granularity race:
+  `settled-run-reconciler.mjs`'s `gatherWorktreeEvidence` runs real `git
+  log --since=<ISO>`, which has only second-level precision. The fixture
+  repo's initial commit and the run's own millisecond-precision
+  checkpoints can land in the SAME wall-clock second (this whole scenario
+  completes in well under a second), occasionally making the real commit
+  sort as "since" a checkpoint made milliseconds earlier and diverting
+  the reconciler into `CAPTURE_LATE_COMMITS` instead of
+  `DISPATCH_VERIFICATION` -- a genuine, observed intermittent flake
+  (reproduced multiple times), fixed by explicitly backdating the fixture
+  commit's `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` by an hour. Not a
+  product bug -- a real precision characteristic of `git log --since` this
+  eval's own fixture now correctly accounts for.
+- A fixed historical `CLOCK` in the dedicated test file caused the exact
+  same race deterministically (not just occasionally) -- fixed by using a
+  real-time-based clock in the test file, documented inline.
+- Fixed project ids in the runner caused state-file contamination when the
+  pack's `run` function was called more than once in the same process
+  (e.g. a baseline-then-regressed comparison in the same test) -- fixed
+  by making every scenario's project id unique per invocation.
+
+**Break-it-and-confirm-it-catches proof (both forms).**
+1. Permanent regression test (`platform-golden-path-eval-runner.test.mjs`,
+   mirroring `planner-eval-runner.test.mjs`'s own established pattern): the
+   SAME real happy-path scenario re-run with a real CRITICAL memory
+   reading (`freeBytes` override, a real, different input into the same
+   real `classifyDispatchAdmission` call -- never a hand-typed failure)
+   fails the case (`governorAdmittedRealDispatch: false`,
+   `missionReachedDurableCompleteState: false`), and `compareEvalRuns`
+   correctly reports `DO_NOT_PROMOTE`.
+2. Manual proof against real production code (task requirement, not
+   committed): temporarily edited
+   `tsf/domain/resource-pressure-governor.mjs`'s `classifyDispatchAdmission`
+   to unconditionally `return { tier, admitted: false, reason:
+   'DELIBERATE_TEST_BREAK...' }` ("the Resource Pressure Governor never
+   admits anything," the task's own named example). Ran
+   `node --test tsf/test/platform-golden-path-eval-runner.test.mjs`: BOTH
+   the REQUIRED PROOF test and the regression test failed correctly (0.5
+   pass rate, every downstream-of-admission assertion false). Reverted via
+   `Edit` back to the exact original code (confirmed via `git diff --stat`
+   showing zero changes afterward); re-ran the same file: all 3 tests
+   passed again. This is real, direct evidence the pack detects a real
+   product-level Governor outage, not just an assertion the engine
+   trivially satisfies.
+
+### Investigation 2: TSF_RESEARCH_GOLDEN_PATH_EVAL -- REAL GAP CONFIRMED, CLOSED
+
+**Candidates read in full:** `tsf/test/research-e2e-normal-mission.test.mjs`
+and `tsf/test/research-completion-verification-proving-set.test.mjs`, plus
+`tsf/docs/tsf/CROSS_PROVIDER_RESEARCH_WORKER_RECONCILIATION_V2.md` (noted:
+despite the name, this doc is NOT about the claim-verification/
+reconciliation stage of the golden path -- it documents an unrelated
+one-off investigation into single-provider dispatch that produced
+`tsf/adapters/llm-latent-knowledge-research-worker.mjs`; the real
+"reconciliation" domain logic lives in `tsf/domain/research-
+reconciliation.mjs`, a naming collision worth flagging, not a source of
+context for what "reconciliation" means in either candidate test).
+
+**Finding, evidence-backed:**
+- `research-e2e-normal-mission.test.mjs` proves the full epistemic chain
+  (source -> observation -> claim -> verification/reconciliation ->
+  CanonicalFact) through the real per-step driver interface
+  (`research-mission-driver.mjs`), AND explicitly indexes a real
+  CanonicalFact into the REAL DURABLE `research-library-store.mjs`
+  (`withResearchLibrary`/`indexCanonicalFact`) and re-queries it as a real
+  `CACHE_HIT` (step 7) -- but it never drives the mission to real
+  `COMPLETE` (`completeResearchMission`/`driveOneCycle` are never called
+  anywhere in the file) and never touches the Learning Ledger at all.
+- `research-completion-verification-proving-set.test.mjs` is the only
+  file that drives a mission to real `COMPLETE` through the real
+  autonomous driver (`driveOneCycle`, looped until terminal), and is the
+  only file that exercises the REAL, automatic Learning Ledger production
+  wiring (`research-mission-fleet-driver.mjs`'s own `CHECK_COMPLETE`
+  branch calls `withPlatformLearningLedger(recordLessonsFromCompletedMission)`
+  on every real completion) -- but its own "Research Library" coverage
+  hand-builds a brand-new, throwaway, IN-MEMORY library
+  (`createResearchLibrary(clock)` + a manual loop) and never calls
+  `withResearchLibrary`/`readResearchLibrary` (the real durable store) at
+  all. Confirmed by grep: `research-mission-fleet-driver.mjs` (the real
+  driver) never imports or calls `research-library.mjs`/
+  `research-library-store.mjs` -- indexing a completed mission's facts
+  into the durable library is not automatic anywhere in production; it is
+  a deliberate, separate, manually-invoked step (consistent with
+  `research-library.mjs`'s own header on `ReconciliationDecision`-gated
+  reuse). The file's own Learning Ledger assertion is also weak
+  (`typeof finalTickResult.lessonsRecorded === 'number'`; a genuine
+  `lessonsRecorded === 0` clean-mission run would pass identically to one
+  that actually recorded a lesson).
+- Separately, `llm-latent-knowledge-research-worker.mjs` (Cross-Provider
+  Research Worker Reconciliation V2's real deliverable) has solid,
+  honest unit tests (`llm-latent-knowledge-research-worker.test.mjs`,
+  12 tests) that explicitly PROVE it is un-wired from the free autonomous
+  driver path (`research-mission-fleet-driver-bootstrap.mjs`) -- but
+  nothing in the automated suite drives it as part of a real, composed,
+  multi-provider `ResearchMission` through the real mission driver
+  alongside another provider. The only evidence it ever worked in a live
+  multi-provider context is a one-time, manually-run, prose-documented
+  session (the V2 doc's own §6), not a repeatable regression test.
+
+**Conclusion: real, specific, evidence-backed gap.** No single composed
+real run proves (a) a mission driven to real `COMPLETE` through the real
+autonomous driver AND (b) that same run's CanonicalFacts land in, and are
+queryable back out of, the real DURABLE Research Library, AND (c) a
+genuinely different second provider (never previously exercised inside a
+real mission) participates in producing those facts.
+
+**What was built.** `tsf/server/research-golden-path-eval-cases.mjs` +
+`tsf/server/research-golden-path-eval-runner.mjs`, registered as the
+`research-golden-path-basics` pack (same new `GOLDEN_PATH` category). One
+real, composed scenario (`buildResearchGoldenPathScenario`) proves both
+confirmed gaps together, deliberately (not two disconnected fixtures):
+a single field on one node is dispatched to TWO real, different provider
+adapters -- `createDeterministicFakeResearchWorker` (a grounded, cited
+claim) and the REAL `createLlmLatentKnowledgeResearchWorker` (an
+ungrounded latent-recall claim, its own established
+`invokeLiveStructuredAnalysisFn` test seam injected, never a live call;
+`TSF_RESEARCH_LATENT_KNOWLEDGE_DISPATCH_ENABLED` toggled on and restored
+around just this call) -- reporting genuinely DIFFERENT values for the
+same field/temporalScope. 2 cases:
+1. `cross-provider-conflict-reconciles-and-completes-via-the-real-
+   autonomous-driver` -- both real dispatches succeed
+   (`twoDistinctProvidersRealDispatched`), the real
+   `verifyAndReconcileResearchNodeFieldDurable` genuinely escalates the
+   disagreement (`genuineConflictWasEscalated`, via real
+   `detectResearchConflicts`), a real rationale-bearing `RESOLVE_CONFLICT`
+   reconciliation decision (after resolving the real Needs You entry the
+   escalation raised -- mirroring `research-e2e-normal-mission.test.mjs`'s
+   own step-9 ordering) picks the grounded claim
+   (`reconciliationProducedCorrectCanonicalFact`), and the real
+   `driveOneCycle` loop (never a hand-inlined `completeResearchMission`)
+   drives the mission to real, durable `COMPLETE`
+   (`missionReachedRealCompleteViaAutonomousDriver`).
+2. `completed-missions-facts-land-in-the-durable-research-library-and-a-
+   real-ledger-lesson` -- a real durable-store query BEFORE indexing is a
+   genuine `CACHE_MISS` (`libraryCacheMissBeforeIndexing`, guarding
+   against a vacuous later hit), the completed mission's real
+   CanonicalFact is indexed via `withResearchLibrary`/`indexCanonicalFact`
+   (the exact real, durable write missing from production automation),
+   the SAME real store now reports a `CACHE_HIT` with the correct value
+   (`libraryCacheHitAfterDurableIndexing`,
+   `indexedValueMatchesReconciledCanonicalFact`), and the real Learning
+   Ledger (`readPlatformLearningLedger`) is checked for CONTENT, not mere
+   existence: a real `VERIFIED_CORRECTION_PATTERN` lesson whose
+   `sourceMissionIds` names this exact mission
+   (`learningLedgerRecordedARealCorrectionLessonForThisMission`) -- a
+   strictly stronger assertion than the existing proving-set test's
+   `typeof lessonsRecorded === 'number'`.
+
+**Real bugs found and fixed while building this (not silently worked
+around):**
+- `createDeterministicFakeResearchWorker({..., script})`'s `script` is a
+  caller-held `Map`, not a property on the returned worker object --
+  `fakeWorker.script.set(...)` threw; fixed to keep the `Map` as a local
+  variable, matching `research-e2e-normal-mission.test.mjs`'s own real
+  usage pattern (should have been read more carefully the first time).
+- `detectResearchConflicts` (`research-verification.mjs`) buckets claims
+  by `(fieldName, temporalScope)` -- two claims in DIFFERENT temporal
+  buckets can never conflict no matter how much their values disagree.
+  The real `llm-latent-knowledge-research-worker.mjs` always derives its
+  claim's `temporalScope` from `request.temporalRequirements.periodScope`
+  (never `null` when the mission declares one); the fixture's fake-worker
+  script originally hardcoded `temporalScope: null`, silently landing the
+  two claims in different buckets and producing NO conflict at all (a
+  real, confirmed defect in the eval's own fixture, caught by the very
+  assertion this pack exists to make -- `genuineConflictWasEscalated`
+  failed honestly instead of silently passing). Fixed by using the same
+  real `periodScope` value for both claims.
+- Escalating a conflict also raises a real Needs You entry
+  (`raiseResearchNeedsYou`); resolving only the `Conflict` record via
+  `decideReconciliation` without also resolving that Needs You entry left
+  the mission in `NEEDS_YOU` state, which `research-mission-fleet-
+  driver.mjs`'s own eligibility gate correctly refuses to advance --
+  `driveOneCycle` never reached COMPLETE. Fixed by resolving the real
+  Needs You entry first, mirroring `research-e2e-normal-mission.test.mjs`'s
+  own step-9 ordering exactly (not a new pattern).
+- The Research Library and Learning Ledger are real, singleton, cross-
+  mission durable stores -- a fixed `missionId`/`entityId` per scenario
+  build would let a second real build in the same process (needed for the
+  break-it/regression tests) find a prior build's leftover library entry
+  and report a vacuous `CACHE_HIT` even before real indexing. Fixed by
+  making every scenario build generate its own unique `missionId` and
+  `entityId`.
+
+**Break-it-and-confirm-it-catches proof (both forms).**
+1. Permanent regression test (`research-golden-path-eval-runner.test.mjs`):
+   the same real scenario, but with the LLM worker fed the SAME value the
+   fake worker already reports (`llmValue` override -- a real, different
+   input, modeling "two providers silently agree when they shouldn't have
+   been asked the same thing twice") -- `genuineConflictWasEscalated`
+   correctly flips to `false` (the real `detectResearchConflicts` call
+   genuinely finds no disagreement), the case fails, and `compareEvalRuns`
+   reports `DO_NOT_PROMOTE`.
+2. Manual proof against real production code (task requirement, not
+   committed): temporarily edited `tsf/domain/research-verification.mjs`'s
+   `verifyResearchClaim` to force `verdict = 'FAIL'` whenever real
+   evidence exists (the task's own named example: "make a verifier always
+   report FAILED"). Ran
+   `node --test tsf/test/research-golden-path-eval-runner.test.mjs`: both
+   the REQUIRED PROOF test and the regression test failed correctly (the
+   grounded claim now REJECTED instead of VERIFIED, cascading through
+   conflict detection/reconciliation/library-indexing -- 3 of 4
+   assertions in the second case now fail). Reverted via `Edit` back to
+   the exact original line (confirmed via `git diff --stat` showing zero
+   changes afterward); re-ran the same file: all 3 tests passed again.
+
+### Investigation 3: Cleanup V1 -- ALREADY ADEQUATELY COVERED, no new eval built
+
+A dedicated subagent read `tsf/docs/tsf/AUTONOMOUS_POST_CLEANUP_UPGRADE_
+PROGRAM_V1_CHECKPOINT.md` and every `cleanup-*.test.mjs` file, plus
+`cleanup-executor.mjs`/`cleanup-lifecycle.mjs`, to check whether the
+RECOMMENDATION -> PLAN -> AUTHORIZATION -> EXECUTION pipeline is proven
+end to end for at least one real action class through the real production
+entry point, or only tested stage-by-stage.
+
+**Finding: the premise was wrong -- a genuine, single, composed test
+already exists.** `tsf/test/cleanup-executor-worktree-adversarial.test.mjs`'s
+"HAPPY PATH" test (and several siblings in the same file) calls the real
+`runGovernedCleanupAction` (`cleanup-executor.mjs`) -- the single real
+production orchestration entry point, which itself chains, in order, the
+real `buildCleanupRecommendation` -> `buildCleanupPlan`/
+`evaluateCleanupBlockers` -> `readOwnerAuthorizationGateState` ->
+`createCleanupAuthorization` -> `beginCleanupExecution` -> a real
+independent race-recheck -> the real per-action mutate function
+(`executeRemoveDisposableWorktree`) -> `completeCleanupExecution` -- against
+a REAL git repo/worktree on disk, asserting the worktree is actually
+removed and a real quarantine copy of gitignored content exists. The SAME
+file also proves the REAL DEFAULT (closed) owner-authorization gate
+genuinely refuses an otherwise-perfect fixture with no override at all.
+The only injected element in the whole composed run is the boolean
+authorization-gate DECISION itself (`gateCheck`, a deliberate, disclosed
+test seam documented in both the module and test file headers so tests
+never flip the real global env var/flag file) -- every stage downstream of
+that decision is real production code. `cleanup-http-routes.test.mjs`
+routes through the same real `runGovernedCleanupAction` with zero
+overrides (confirming the HTTP layer calls the exact same real pipeline),
+though every mutating HTTP test there correctly stops at
+`AUTHORIZATION_REFUSED` (the real global gate is never opened in a test) --
+a disclosed, deliberate limitation of the HTTP-layer coverage specifically,
+not of the pipeline itself, which is fully proven one layer down.
+
+**Conclusion: no new eval pack or test built for Cleanup V1.** Building
+one would duplicate `cleanup-executor-worktree-adversarial.test.mjs`'s own
+HAPPY PATH test almost exactly, contradicting this phase's own "don't
+build something merely because it's named as a possibility" instruction.
+
+### What was NOT built, and why
+
+- A third pack for Cleanup V1 (investigation 3 above: already adequate).
+- A separate cross-provider-worker-only pack: folded into the research
+  golden path pack's own scenario instead (the SAME composed mission
+  proves both the durable-library gap and the cross-provider gap
+  together, which is a more valuable, less redundant proof than two
+  separate fixtures each exercising half the real chain).
+- A generic `fleetPlannerStatus`-equivalent or other unrelated fixes: out
+  of this phase's INVESTIGATE list and its own "verify the gap is real
+  first" scope.
+
+### Tests and lint
+
+New files: `tsf/server/platform-golden-path-eval-cases.mjs` (46 lines),
+`tsf/server/platform-golden-path-eval-runner.mjs` (289 lines),
+`tsf/server/research-golden-path-eval-cases.mjs` (52 lines),
+`tsf/server/research-golden-path-eval-runner.mjs` (341 lines) -- all well
+under the 600-line `.mjs` oxlint cap. New tests:
+`tsf/test/platform-golden-path-eval-runner.test.mjs` (3 tests),
+`tsf/test/research-golden-path-eval-runner.test.mjs` (3 tests). Changed:
+`tsf/domain/evaluation-pack.mjs` (added `GOLDEN_PATH` to
+`EVAL_CATEGORIES`), `tsf/server/eval-pack-registry.mjs` (registered both
+new packs, exact existing shape reused), `tsf/test/eval-pack-registry.test.mjs`
+(10-category assertion + `TSF_UI_STATE_FILE` isolation -- the first pack
+in this registry to transitively touch `data-store.mjs`, via
+`command-responder.mjs`/`research-mission-store.mjs`; isolated so the
+REQUIRED PROOF run never touches the real shared local dev state file,
+matching `http-eval.test.mjs`'s own established convention),
+`tsf/test/evaluation-pack.test.mjs` (9-category assertion),
+`tsf/test/http-eval.test.mjs` (10-pack-count assertion over the real HTTP
+route).
+
+Ran repeatedly during development for flake-hunting (not just once): both
+new dedicated test files, 5 consecutive runs each, 100% pass, after fixing
+the git `--since` precision race and the fixed-clock/fixed-id
+contamination bugs documented above.
+
+Regression sweep, `node --test`:
+- `eval-pack-registry.test.mjs` + `evaluation-pack.test.mjs`: 25/25 pass
+  (both explicitly required by this phase's own instruction).
+- `http-eval.test.mjs`: 8/8 pass (the real HTTP layer over the whole
+  registry, including a real concurrent-run race test).
+- All 12 `*-eval-runner.test.mjs`/`*-eval-cases.test.mjs`-adjacent files
+  (every existing pack's own dedicated test file, plus the 2 new ones):
+  68/68 pass.
+- All `research-*.test.mjs` (38 files, 319 tests): 319/319 pass -- proves
+  the two production bugs found and fixed while BUILDING this phase's
+  fixtures (the `script` property mistake, the temporalScope-bucketing
+  gap, the Needs-You-not-resolved gap -- all in the NEW eval fixture code
+  itself, never in production) did not require touching any real research
+  domain/server file, and every existing research test still passes
+  unmodified.
+- `keep-going-dispatch-loop*.test.mjs` (4 files) +
+  `settled-run-reconciler.test.mjs` + `settled-run-reconciliation.test.mjs`
+  + `chat-dispatch-bridge.test.mjs` + `command-dogfood-sequences.test.mjs`
+  + `http-chat-dispatch.test.mjs`: 107/107 pass.
+- Full whole-repo sweep (`node --test tsf/test/*.test.mjs`): 2360 tests,
+  2355 pass, 5 fail. All 5 failures exactly match the pre-existing,
+  already-documented fail set this program's own F1/F3/F4/Phase 6
+  checkpoint entries repeatedly cite on this host (2 intent-classifier
+  phrasing gaps + 1 WorldForge-scenario phrasing gap in
+  `command-bare-imperative-dispatch.test.mjs`/`command-operator-
+  integration-adversarial.test.mjs`, 1 Work-tab timing/resource-pressure
+  test in `http-work-summary.test.mjs`, 1 race-condition test in
+  `operator-state-adversarial.test.mjs`'s "STALE ACTION RACE") -- none
+  touch `evaluation-pack.mjs`, `eval-pack-registry.mjs`, any research/
+  Keep Going file, or any file this phase modified.
+
+**Lint.** `npx oxlint` on every new/changed file (`evaluation-pack.mjs`,
+`eval-pack-registry.mjs`, `platform-golden-path-eval-cases.mjs`,
+`platform-golden-path-eval-runner.mjs`, `research-golden-path-eval-
+cases.mjs`, `research-golden-path-eval-runner.mjs`,
+`eval-pack-registry.test.mjs`, `evaluation-pack.test.mjs`,
+`platform-golden-path-eval-runner.test.mjs`,
+`research-golden-path-eval-runner.test.mjs`, `http-eval.test.mjs`) --
+clean, exit 0 (one genuinely new `no-unused-vars` finding, a leftover
+`HEALTHY_MEMORY` constant made redundant by a later refactor, fixed rather
+than left).
+
+**Break-it-and-confirm-it-catches, summarized.** Both new packs were
+proven, against REAL production code (not a test-only hook), to
+genuinely fail when the real capability they measure is really broken,
+and to pass again once reverted -- confirmed via `git diff --stat`
+showing zero net changes after each revert:
+- Platform pack: `resource-pressure-governor.mjs`'s
+  `classifyDispatchAdmission` forced to `admitted: false` unconditionally
+  -> both tests fail (0.5 pass rate) -> reverted -> both tests pass (1.0).
+- Research pack: `research-verification.mjs`'s `verifyResearchClaim`
+  forced to `verdict: 'FAIL'` whenever evidence exists -> both tests fail
+  (0 pass rate) -> reverted -> both tests pass (1.0).
+
+Adopted SHA: see the commit on `tsf/feature/phase13-evaluation-quality`
+that carries this section.

@@ -16,7 +16,12 @@ export const EVAL_CATEGORIES = Object.freeze([
   // Phase 1 (UI_DOGFOOD_AGENT_V0): scores the dogfood rubric (finding
   // taxonomy/severity/auto-fix-eligibility/dedup) -- see
   // tsf/domain/ui-dogfood-finding.mjs.
-  'UI_DOGFOOD'
+  'UI_DOGFOOD',
+  // Phase 13 (Evaluation/Regression Quality): acceptance-level proof that
+  // a whole real pipeline composes end to end in one run -- not another
+  // per-function unit-test category. See platform-golden-path-eval-*.mjs
+  // and research-golden-path-eval-*.mjs.
+  'GOLDEN_PATH'
 ])
 
 const ASSERTION_TYPES = new Set(['EQUALS', 'CONTAINS', 'NOT_CONTAINS', 'MATCHES', 'GTE', 'LTE'])
