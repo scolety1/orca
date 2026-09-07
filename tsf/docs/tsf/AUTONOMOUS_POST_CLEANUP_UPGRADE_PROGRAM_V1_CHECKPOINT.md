@@ -53,7 +53,7 @@ uses, fully read-only).
 |---|---|---|
 | 1. UI_DOGFOOD_AGENT_V0 | **ADOPTED** — merged to `tsf/main` @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **ADOPTED** — merged to `tsf/main` @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
-| 3. Deferred Research Platform Completion Wave | IN_PROGRESS (Wave 1 / 3A+3B done, committed, not yet merged) | Worktree `research-platform-completion-wave-v0` created from `7521e4de87` |
+| 3. Deferred Research Platform Completion Wave | IN_PROGRESS (Wave 1 / 3A+3B **ADOPTED** @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, pushed, worktree retired; Wave 2 / 3C-3G starting) | Worktree `research-platform-completion-wave-v0-wave2` created from `3ae53e07a5` |
 | 4. Cleanup V1 / Governed Destructive Automation | NOT_STARTED | |
 | 5. Larger Astra Follow-up Benchmark | NOT_STARTED | |
 
@@ -832,11 +832,27 @@ ask); lesson supersession/correction; cross-worktree ledger sync; this
 worktree's still-empty `node_modules` (pre-existing, unrelated,
 previously flagged).
 
+**Coordinator independent review (2026-09-06), before adoption:** re-ran
+all 23 new tests directly — 100% pass. `npx oxlint` re-run on every
+new/changed file — the 4 reported `curly` errors in `research-admission.mjs`
+independently confirmed via `git blame` to be on lines last touched by
+pre-2026-09-06 commits, not introduced by this change. Read
+`platform-learning-ledger.mjs` directly — the epistemic-separation
+invariant is enforced structurally (`createLessonRecord` has no parameter
+that can set `epistemicKind`; the shape has no fieldName/value/entityId),
+not just documented. Read the `research-admission.mjs` chain-of-custody
+diff — real evidence-gated upgrade (`attemptStatusUpgrade`), honest
+`NONE` default rather than inferring provenance strength, degradations
+always applied immediately. No corrections needed. **Merged to
+`tsf/main` @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, pushed to
+`fork/tsf/main` (verified), worktree `research-platform-completion-wave-v0`
+retired.**
+
 ## Next intended action
 
-Phase 1, Phase 2, and Phase 3 Wave 1 (3A/3B) are complete in their
-respective worktrees; Phase 3 Wave 1 is committed in
-`research-platform-completion-wave-v0` but not yet merged to `tsf/main`
-(pending owner/coordinator adoption review, matching Phase 1/2's own
-adoption gate). Remaining Phase 3 sub-parts (if any beyond 3A/3B) and
-Phases 4-5 are NOT_STARTED.
+Phase 1, Phase 2, and Phase 3 Wave 1 (3A/3B) are all adopted and closed.
+Phase 3 Wave 2 (3C-3G: acquisition modes, snapshot metadata, completion
+verification) is now in progress in worktree
+`research-platform-completion-wave-v0-wave2` (branch
+`tsf/feature/research-platform-completion-wave-v0-wave2`, forked from
+`3ae53e07a5`). Phases 4-5 are NOT_STARTED.
