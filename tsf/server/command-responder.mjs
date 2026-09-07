@@ -47,6 +47,16 @@ import { explainPriorAnswer } from './command-followup-context.mjs'
 
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
 export const DISPATCH_WORTHY_INTENTS = new Set(['DISPATCH_REQUEST', 'FIX_REQUEST'])
+// Real bug fix: chat-responder.mjs's QUESTION intent (added after this
+// file's own GLOBAL_* routing) is a catch-all for ANY "<interrogative>...?"
+// phrasing that matched nothing more specific -- exactly GENERAL's own
+// role, just for question-shaped text. Gating global-scope classification
+// on GENERAL alone silently stole "what needs me?" and "are there any
+// projects safe to mess around with?" (both QUESTION, since they end in
+// "?") away from classifyGlobalScope, landing them on the generic
+// "couldn't tell which project" fallback instead of a real fleet-wide
+// answer.
+const UNROUTED_QUESTION_INTENTS = new Set(['GENERAL', 'QUESTION'])
 
 // Bounded follow-up conversational context (Phase 2): deliberately narrow --
 // only these explicit back-reference shapes, only for READ-ONLY questions
@@ -445,14 +455,15 @@ export async function respondCommand({
     }
     // Command architecture fix (hands-on pilot round 2, Finding 1): a
     // message that matched none of chat-responder.mjs's own deterministic
-    // patterns (GENERAL, its catch-all) AND named no project at all is no
+    // patterns (GENERAL/QUESTION, its two catch-alls -- see
+    // UNROUTED_QUESTION_INTENTS above) AND named no project at all is no
     // longer assumed to be a failed project lookup -- it might genuinely
     // need no project (GLOBAL_STATUS/GLOBAL_ADVISORY/RESEARCH_REQUEST).
-    // Deliberately scoped to intent === 'GENERAL' only: every OTHER
+    // Deliberately scoped to these two catch-all intents only: every OTHER
     // read-only intent (STATUS/HEALTH/etc.) already has its own real,
     // tested, deterministic pattern and fast fleet-wide fallback below --
     // this never adds live-planner latency to an already-working path.
-    if (intent === 'GENERAL' && resolution.matches.length === 0) {
+    if (UNROUTED_QUESTION_INTENTS.has(intent) && resolution.matches.length === 0) {
       const classification = await classifyGlobalScope({ message })
       if (classification.scope === 'GLOBAL_STATUS') {
         return {
