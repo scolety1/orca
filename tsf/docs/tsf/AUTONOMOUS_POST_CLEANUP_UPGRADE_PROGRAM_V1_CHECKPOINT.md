@@ -54,7 +54,7 @@ uses, fully read-only).
 | 1. UI_DOGFOOD_AGENT_V0 | **ADOPTED** — merged to `tsf/main` @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **ADOPTED** — merged to `tsf/main` @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 3. Deferred Research Platform Completion Wave | **ADOPTED** — both waves merged: Wave 1 @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, Wave 2 @ `10e39227a7ebcdcee15689163c9707bbfc6866b5`, both pushed to `fork/tsf/main` (confirmed), both phase worktrees retired | See below |
-| 4. Cleanup V1 / Governed Destructive Automation | IN_PROGRESS | Worktree `cleanup-v1-governed-destructive-automation` created from `10e39227a7` |
+| 4. Cleanup V1 / Governed Destructive Automation | **CLEANUP_V1_IMPLEMENTED_READY_FOR_OWNER_ACTIVATION** — implemented, tested, dry-run/fixture-proven in worktree `cleanup-v1-governed-destructive-automation` (branch `tsf/feature/cleanup-v1-governed-destructive-automation`, forked from `10e39227a7`); real destructive execution stays behind the unset owner-authorization gate; NOT merged to `tsf/main`, NOT pushed, per this phase's explicit instruction | See below |
 | 5. Larger Astra Follow-up Benchmark | NOT_STARTED | |
 
 ### Phase 1 — UI_DOGFOOD_AGENT_V0
@@ -1218,10 +1218,411 @@ the hard security rule is enforced in code. No corrections needed.
 pushed to `fork/tsf/main` (verified), worktree
 `research-platform-completion-wave-v0-wave2` retired.**
 
+### Phase 4 — Cleanup V1 / Governed Destructive Automation
+
+**Authorization scope (repeated here because it governs every design
+decision below):** this phase covers design, implementation, testing,
+dry-runs, and destruction of fixtures this phase itself created. It does
+NOT authorize any real destructive action against Tim's real projects,
+worktrees, processes, or `C:\TSF_ORCA` / `C:\NWR` / `C:\NWR_HISTORICAL_DATA`
+/ any other real path, and the real owner-authorization gate is not set by
+anything in this phase.
+
+**Reconciliation (STEP 0, before any implementation):**
+
+- Read `tsf/docs/tsf/TSF_RESOURCE_AUDITOR_V0.md` and
+  `tsf/ORCA_RESOURCE_AUDITOR_V0_MAIN_TSF_REVIEW.md` in full. The prior V0
+  is explicitly, deliberately read-only ("Nothing in this feature deletes
+  a worktree, kills a process, runs Git GC, or purges a cache") and its
+  own "Known limitations / V1 prerequisites" section already names exactly
+  what a destructive executor needs: immediate pre-action revalidation,
+  owner confirmation, reversible quarantine/restore, graceful process
+  shutdown, partial-failure recovery, cleanup receipts, human-controlled
+  permanent purge, and an execution-boundary blocker check independently
+  enforced from the classifier. Phase 4 builds exactly that list, as the
+  GOVERNED EXECUTION LAYER on top of the existing classifier — it does
+  not build a second classifier. `classifyWorkspaceResource`/
+  `buildResourceAuditDryRunPlan` are read directly by this phase's own
+  callers where useful (e.g. as one legitimate `basis` for a
+  RECOMMENDATION) but nothing in `domain/cleanup-*.mjs`/
+  `server/cleanup-*.mjs` reimplements disposability classification.
+- Read `domain/resource-pressure-governor.mjs`: confirmed a different
+  concern (host RAM/CPU/contention admission for heavy operations, not
+  candidate disposability or destructive execution) — not reused directly,
+  same conclusion Phase 2's own reconciliation reached for the same module.
+- Searched for an existing "git worktree inventory" pattern already used
+  in this codebase's own scripts: none found in `tsf/domain`/`tsf/server`
+  (only prose references in docs, and Orca-core's own
+  `src/main/ipc/workspace-cleanup*.ts`, which is Electron-only and not
+  importable from a plain Node `tsf/server` module). **NEW**:
+  `server/cleanup-git-worktree-inventory.mjs`, a small, real, read-only-
+  until-called `git worktree list --porcelain` reader plus the handful of
+  git mutations this phase actually needs (`branch -d`/`-D`,
+  `worktree remove`/`add`) — no shell, `execFile` with array args only,
+  mirroring `resource-auditor-git-object-store.mjs`'s own no-injection-
+  surface discipline.
+- Read `server/planner-mission-store.mjs` + `domain/planner-mission-
+  checkpoint.mjs` (Phase 2) in full: `checkpoint.missionState` is
+  `'ACTIVE'` until `completePlannerMission` explicitly sets `'COMPLETE'`,
+  independent of the mission's own LEASE liveness. **This is the exact
+  mechanism active-mission protection needed** — a lease going stale only
+  means the planner session that was directing the mission went away; the
+  mission itself, and therefore its claim on the branch/worktree, can
+  still be open. **NEW**: `server/cleanup-active-mission-check.mjs`
+  queries `readAllPlannerMissionRecords()` directly and blocks whenever
+  ANY non-`COMPLETE` checkpoint's `repoState.branch`/`repoState.
+  worktreePath` matches the candidate — reused directly (REUSE_DIRECTLY),
+  not reimplemented.
+- Read `domain/planner-mission-lease.mjs`/`server/cross-process-file-
+  lock.mjs`: the TTL-expiry-liveness + atomic-file-lock primitives are
+  reused directly (REUSE_DIRECTLY) for `server/cleanup-request-store.mjs`,
+  which is a plain sibling of `planner-mission-store.mjs` (same
+  `withFileLock` + `data-store.mjs` opState CAS shape, new
+  `cleanupRequests` collection) — no new durability mechanism invented.
+- Read `domain/receipts.mjs`: REUSE_PATTERN only (the same
+  `canonicalJson`+`sha256`+`previousReceiptHash` hash-chain shape), not
+  REUSE_DIRECTLY — that module's shape is `{projectId, missionId}`-keyed
+  with a closed `TSF_RECEIPT_KINDS` enum for TSF mission events; a cleanup
+  request has no missionId of its own (it may reference zero or one
+  active mission as a BLOCKER, never an owner) and needs its own kind
+  vocabulary (`PLAN_BLOCKED`, `ARTIFACT_QUARANTINED`,
+  `PARTIAL_FAILURE_RECOVERED`, …). **NEW**: `domain/cleanup-receipt-
+  chain.mjs`, a small, clearly-scoped sibling.
+- Searched `tsf/` for any existing "cleanup"/"quarantine" vocabulary
+  outside the read-only V0 and outside `research-integrity.mjs`'s
+  unrelated data-quarantine concept (data provenance, not filesystem) —
+  none found. No duplicate mechanism exists to reconcile against.
+- `git worktree list` on this host at reconciliation time: 14 worktrees,
+  all sibling `tsf-*`/`nwr-*`/`dataset-research-*`/`web-source-*`
+  worktrees confirmed externally owned by other live sessions and never
+  touched, listed, or read by this phase beyond the read-only `git
+  worktree list` this reconciliation step itself ran.
+
+**Built (bounded V0), organized by the RECOMMENDATION → PLAN →
+AUTHORIZATION → EXECUTION data model (4B):**
+
+- `domain/cleanup-action-taxonomy.mjs` — 7 STANDARD action classes with a
+  real V0 executor (`RETIRE_SESSION`, `REMOVE_DISPOSABLE_WORKTREE`,
+  `DELETE_LOCAL_MERGED_BRANCH`, `CLEAR_SAFE_GENERATED_CACHE`,
+  `QUARANTINE_ARTIFACT`, `RESTORE_QUARANTINE`,
+  `REMOVE_STALE_TEMPORARY_STATE`) plus one ELEVATED class with a real
+  executor to PROVE the tier distinction is structural, not just a label
+  (`DELETE_BRANCH_WITH_UNIQUE_UNPUSHED_COMMITS`, real `git branch -D`) —
+  and 5 further ELEVATED classes (`REMOVE_DIRTY_WORKTREE`, `GIT_PRUNE_GC`,
+  `ARBITRARY_FILESYSTEM_DELETION`, `PROCESS_TERMINATION`,
+  `REMOTE_BRANCH_DELETION`) that are fully classified/planned but have
+  **no executor at all** in V0 — `isV0Implemented(actionClass)` gates
+  dispatch, and an attempt returns
+  `NOT_IMPLEMENTED_V0_CLASSIFICATION_ONLY` before the owner gate is even
+  consulted (proven never to reach it — see Tests below). Both tiers sit
+  behind the SAME unset owner-authorization gate in V0, per the phase
+  instructions' own explicit allowance.
+- `domain/cleanup-protected-registry.mjs` — the explicit denylist
+  mechanism: `CANONICAL_PROTECTED_BRANCH_NAMES` (`main`/`master`/
+  `tsf/main`, always protected regardless of registry content) plus an
+  additive-only `{paths, branches}` registry (`mergeProtectedRegistry`
+  can only grow a registry, never shrink one — a caller-supplied registry
+  can never remove a default). `server/cleanup-protected-registry-
+  defaults.mjs` seeds the real, program-specific defaults this
+  authorization scope names (`C:\TSF_ORCA`, `C:\NWR`,
+  `C:\NWR_HISTORICAL_DATA`), env-extensible
+  (`TSF_CLEANUP_EXTRA_PROTECTED_PATHS`), always merged in by the executor
+  — never overridable away.
+- `domain/cleanup-safety-blockers.mjs` — `evaluateCleanupBlockers`: the
+  independently-enforced blocker check (4B's "structurally separate"
+  requirement). Ternary, fail-closed exactly like
+  `resource-auditor.mjs`'s `classifyWorkspaceResource` (REUSE_PATTERN,
+  not REUSE_DIRECTLY — a materially different question: "is it currently
+  safe to MUTATE this specific target for THIS action" vs "is this
+  workspace disposable"). Structural independence is enforced by NEVER
+  being importable-around: `server/cleanup-executor.mjs`'s
+  `runGovernedCleanupAction` calls it three separate times against three
+  separately fresh evidence collections (plan time, authorization time,
+  and immediately before the mutating call), hard-coded inside the one
+  function that performs the mutation — there is no parameter or code
+  path that skips it.
+- `domain/cleanup-lifecycle.mjs` — the four genuinely distinct schemas
+  (`TSF_CLEANUP_RECOMMENDATION_V1` / `_PLAN_V1` / `_AUTHORIZATION_V1` /
+  `_EXECUTION_V1`), each buildable only from a valid instance of the
+  stage before it. `computeCleanupRequestId(actionClass, targetIdentity)`
+  — a deterministic sha256 fingerprint that IS the idempotency key.
+  `createCleanupAuthorization` refuses unless the caller asserts
+  `ownerGateOpen: true` (never fabricated here — the server derives it
+  from the real gate) AND a blocker evaluation computed AT AUTHORIZATION
+  TIME (not reused from plan time) is clear. `beginCleanupExecution`
+  refuses an expired/revoked authorization.
+- `domain/cleanup-receipt-chain.mjs` — hash-chained
+  `TSF_CLEANUP_RECEIPT_V1` records (13 kinds spanning every lifecycle
+  transition, including `PARTIAL_FAILURE_RECOVERED`/`IDEMPOTENT_REPLAY`),
+  `verifyCleanupReceiptChain` detects a broken/tampered/reordered link.
+- `server/cleanup-owner-authorization-gate.mjs` — **THE master gate**.
+  Open only when BOTH an exact env-var marker
+  (`TSF_CLEANUP_V1_OWNER_AUTHORIZATION`) AND a real flag file
+  (`tsf/server/.local-state/CLEANUP_V1_OWNER_AUTHORIZATION.flag`, real
+  content check) independently agree — defense in depth so no single
+  accidental env var anywhere else can open real destructive capability.
+  Fails closed on any read error. `env`/`flagFilePath` are dependency-
+  injected with real defaults specifically so this phase's own tests can
+  exercise "gate open → proceeds" against FABRICATED env objects/temp
+  files without ever touching the real global gate — proven directly (see
+  Tests). **Nothing in this phase sets either the real env var or writes
+  the real flag file, anywhere.**
+- `server/cleanup-request-store.mjs` — durable CAS store (REUSE_PATTERN
+  from `planner-mission-store.mjs`), keyed by the deterministic
+  `requestId`, appends (never overwrites) execution attempts and
+  receipts. `data-store.mjs` gained one additive `cleanupRequests: {}`
+  DEFAULTS entry.
+- `server/cleanup-git-worktree-inventory.mjs` — real, read-only-until-
+  called git evidence + the handful of real mutations (branch delete
+  safe/force, worktree remove/add), each via `execFile` array args, never
+  a shell string.
+- `server/cleanup-active-mission-check.mjs` — real evidence from Phase
+  2's durable store (see reconciliation above); always resolvable
+  (`referenced: true|false`, never null) because the durable store is
+  genuinely queryable, unlike external session liveness.
+- `server/cleanup-revalidation.mjs` — `collectFreshSafetyContext`: the
+  ONE place that re-collects everything live, right before use — real
+  OS-resolved path identity (via the existing `resource-auditor-path-
+  identity.mjs`, closing any junction/alias evasion), real git
+  cleanliness, real active-mission reference, and a real file-handle-lock
+  probe (`probeFileLock`). Never trusts anything carried from an earlier
+  stage.
+- `server/cleanup-quarantine-store.mjs` — reversible quarantine: a
+  manifest is written to disk BEFORE the risky filesystem step and again
+  after, so an interruption mid-operation leaves enough evidence for
+  `recoverIncompleteQuarantine` to reach one of five coherent, honestly-
+  labeled outcomes (never a guessed one) rather than silent corruption.
+  `MOVE` mode (used by `QUARANTINE_ARTIFACT`) relocates the artifact for
+  good; `COPY` mode (used by `REMOVE_DISPOSABLE_WORKTREE`) preserves a
+  full copy — including untracked/gitignored content `git worktree
+  remove` would otherwise destroy irretrievably — while deliberately
+  leaving the original for git's OWN removal to actually delete.
+  Same-volume moves use `renameSync` (atomic); cross-device falls back to
+  a copy-then-integrity-verified-then-delete sequence. Windows
+  EPERM/EACCES/EBUSY transient failures get the SAME bounded-backoff
+  retry as `data-store.mjs`'s own `withWindowsRenameRetry` (added after a
+  real flake surfaced under full-suite contention — see Tests).
+  `restoreFromQuarantine` is idempotent (a second restore of an
+  already-`RESTORED` manifest returns the same success, not an error) and
+  fails closed (never overwrites) on a destination conflict.
+- `server/cleanup-session-retirement.mjs` +
+  `server/cleanup-session-retirement-action.mjs` — graceful, PID-targeted
+  retirement. **Never kill-by-executable-name anywhere** (statically
+  proven — see Tests): identity is re-verified against a caller-supplied
+  marker immediately before signaling; a cooperative IPC message
+  (`TSF_CLEANUP_GRACEFUL_RETIRE`) is tried first when the caller still
+  holds the process handle (the real cross-platform graceful mechanism —
+  POSIX `SIGTERM` is NOT real graceful shutdown on Windows), a bounded
+  grace period is awaited, and only THEN does a still-PID-specific
+  forceful stop run (`taskkill /PID <exact pid> /F` on win32, `SIGKILL`
+  on POSIX — `/PID`, never `/IM`).
+- `server/cleanup-executor-worktree-actions.mjs` /
+  `server/cleanup-executor-artifact-actions.mjs` — the real mutate
+  functions per action class (4C: modeled separately, no "clean
+  everything" verb). Each returns `{steps, result}` or throws with a
+  `.code`; each has no access to the request store, receipt chain, or
+  owner gate of its own — only `server/cleanup-executor.mjs`'s
+  `runGovernedCleanupAction` can produce a durable EXECUTION record.
+- `server/cleanup-executor.mjs` — `runGovernedCleanupAction`, the sole
+  orchestration entry point implementing the full pipeline: RECOMMENDATION
+  → PLAN (with an informational plan-time blocker snapshot) → idempotency
+  short-circuit (an already-`COMPLETED` requestId replays, never
+  re-mutates) → `NOT_IMPLEMENTED_V0` short-circuit for ELEVATED classes
+  with no executor → owner-gate check (fails closed) → a FRESH blocker
+  re-evaluation at authorization time → AUTHORIZATION → EXECUTION begins
+  → a THIRD, independent blocker re-evaluation immediately before the
+  mutating call (**the race re-check**, `revalidate` is injectable purely
+  so tests can prove this exact step catches a state change the earlier
+  two didn't — production code never overrides it) → dispatch → receipt +
+  durable persistence at every step, success or failure.
+  `recoverStalledCleanupExecution` is a separate, explicitly-invoked
+  crash-recovery entry point (never called implicitly mid-pipeline).
+- `server/cleanup-http-routes.mjs`, registered in `http-server.mjs` —
+  `GET /api/cleanup/{action-classes,gate-state,request,requests}`,
+  `POST /api/cleanup/{preview,run,recover}`. `POST /run` never accepts a
+  `gateCheck`/gate-shaped field from the request body — the route always
+  uses the real gate (proven — see Tests).
+
+**Deliberately NOT built (bounded V0, disclosed):** executors for 5 of
+the 6 ELEVATED classes (only the branch-force-delete demo executor
+exists, to prove the tier distinction is real) — `REMOVE_DIRTY_WORKTREE`,
+`GIT_PRUNE_GC`, `ARBITRARY_FILESYSTEM_DELETION`, `PROCESS_TERMINATION`,
+and `REMOTE_BRANCH_DELETION` are fully classified and plannable but have
+literally no mutate function wired to their action class; a permanent
+(non-quarantine) purge tool for old quarantined artifacts (quarantine
+restore exists; permanent deletion of a quarantine entry does not, so
+nothing this phase built can silently destroy the one safety-net copy it
+creates); a live UI/chat surface for triggering a cleanup request (this
+phase built the HTTP API only, mirroring the Resource Auditor V0's own
+scope boundary — a future phase would wire a Command/chat bridge the same
+way `command-dogfood-bridge.mjs`/`command-research-bridge.mjs` did for
+their features); this worktree's `node_modules` gap (pre-existing,
+unrelated, flagged by every prior phase).
+
+**Test / Verification Ledger — Phase 4 (2026-09-06):**
+
+- 15 new test files, **125 tests (node's own count), 124/125 pass** in
+  isolation and within the full combined `cleanup-*.test.mjs` run:
+  `cleanup-action-taxonomy` (6), `cleanup-protected-registry` (7),
+  `cleanup-safety-blockers` (15), `cleanup-lifecycle` (10),
+  `cleanup-receipt-chain` (8), `cleanup-owner-authorization-gate` (10),
+  `cleanup-request-store` (9, including a real 10-way concurrent-writer
+  CAS proof), `cleanup-git-worktree-inventory` (8, real temp git repos),
+  `cleanup-active-mission-check` (6, real Phase 2 planner-mission-store
+  fixtures), `cleanup-quarantine-store` (11, including a real Windows
+  held-directory-cwd-lock fixture and 5 partial-failure-recovery
+  fixtures), `cleanup-session-retirement` (6, real spawned child
+  processes), `cleanup-revalidation` (8, including a real Windows
+  junction), `cleanup-executor-worktree-adversarial` (12, full pipeline
+  against real git repos), `cleanup-executor-artifact-adversarial` (8,
+  including a real retired child process), `cleanup-http-routes` (1 —
+  **the sole failure**, whole-file `ERR_MODULE_NOT_FOUND:
+  @stablyai/playwright-test`, the exact same pre-existing environment gap
+  Phase 1/2/3 already disclosed for this worktree's empty `node_modules`
+  — every OTHER file importing `http-server.mjs` fails identically and
+  pre-existingly, confirmed unrelated to this phase — see below).
+- **Full-suite run** (`node --test test/*.test.mjs`): 1942 tests, 1894
+  pass, 47 fail, 1 skipped. **All 47 failures confirmed pre-existing**:
+  39 whole-file `ERR_MODULE_NOT_FOUND` (every file importing
+  `http-server.mjs`, `cleanup-http-routes.test.mjs` now one of them, same
+  root cause), 3 live-planner-dependent classification tests (matching
+  Phase 1/2's own disclosed class), 5 real-process/port-timing tests
+  (`activate()`/`self-update-scenarios` E&F/`keep-going-autonomy-proof`).
+  Spot-checked via `git stash -u` + re-run on the clean pre-Phase-4 tree
+  (`command-adversarial-corpus.test.mjs`, `self-update-scenarios.test.mjs`
+  scenarios E/F): byte-identical failures, confirming zero regression.
+- **A real flake was found and FIXED, not just tolerated**: the first
+  full-suite run showed the new Windows held-directory-lock quarantine
+  test failing (`EBUSY` on the RETRY attempt, after the lock-holder
+  process had already been killed) — a genuine transient Windows handle-
+  release race under this box's full-suite contention, not a design flaw.
+  Fixed by adding the same bounded-backoff EPERM/EACCES/EBUSY retry
+  `data-store.mjs`/`cross-process-file-lock.mjs` already use, to
+  `cleanup-quarantine-store.mjs`'s own rename/rm calls. Re-verified: full
+  suite re-run afterward showed exactly one more pass (1894 vs 1893) and
+  the quarantine test file itself green in isolation and under full-suite
+  load both times re-run.
+- `npx oxlint` on all 36 new/changed files in one pass: **0 errors**
+  except one pre-existing violation this phase's own additions grew by 4
+  lines — `http-server.mjs`'s `max-lines` cap (600) was already exceeded
+  (607 lines) on the clean pre-Phase-4 baseline (independently confirmed
+  via `git stash`), now 611 after the one required route-registration
+  block (`import` + 3-line `if`) added in the same position/style as
+  every sibling route. No `max-lines` disable was added anywhere (forbidden
+  by this repo's own AGENTS.md), and this file was not otherwise touched
+  or restructured — out of scope for this phase to fix a pre-existing,
+  unrelated debt item in a large shared file. Every NEW file individually
+  respects the 600-line `.mjs` cap (largest: `cleanup-executor-worktree-
+  adversarial.test.mjs` at 347 lines, `cleanup-executor.mjs` at 252).
+
+**What at least 3 of the adversarial fixtures actually proved (narrative):**
+
+1. **The race-between-audit-and-execution fixture** (`cleanup-executor-
+   worktree-adversarial.test.mjs`) injected a fake `revalidate` returning
+   a genuinely clear `SafetyContext` for the first two calls (plan time,
+   authorization time) and a `DIRTY_WORKTREE`-blocked one only on the
+   THIRD call. The real pipeline reached `AUTHORIZATION_GRANTED` and
+   `EXECUTION_STARTED` normally, then the race re-check's own third,
+   independent evaluation caught the injected state change and the run
+   ended `EXECUTION_FAILED`/`TSF_CLEANUP_RACE_BLOCKED` — with the real git
+   worktree on disk confirmed still present afterward. This proves the
+   race-recheck is a genuinely separate, load-bearing check, not a reuse
+   of the earlier two wearing a different name.
+2. **The Windows held-directory-lock fixture** (`cleanup-quarantine-
+   store.test.mjs`) spawned a REAL, separate Node child process whose
+   `cwd` was set inside the target directory (a genuinely OS-enforced
+   Windows in-use lock — a plain `fs.openSync('r+')` handle was tried
+   first and found NOT to block modern libuv renames, so this fixture
+   uses the mechanism that actually does). While the child was alive,
+   `moveToQuarantine` was proven to throw cleanly with the original
+   directory and its content fully intact (byte-identical), never
+   corrupted/partially moved; after killing the child and confirming its
+   exit, the identical call succeeded. This is the literal "blocks
+   gracefully rather than corrupting" requirement, reproduced against a
+   real OS lock, not simulated.
+3. **The sleeping-lane / active-worker / stale-planner-lease fixtures**
+   (`cleanup-executor-worktree-adversarial.test.mjs`,
+   `cleanup-active-mission-check.test.mjs`) built REAL Phase 2 planner-
+   mission checkpoints via `createPlannerMissionCheckpoint`/
+   `registerDispatchedWorker` and REAL leases via
+   `acquirePlannerLease` with an intentionally-past clock so the lease
+   was already expired relative to the test's main clock — proving the
+   mantra "Sleep != complete" is enforced by actual code, not a comment:
+   `checkActiveMissionReference` blocks because `missionState` is still
+   `'ACTIVE'`, completely independent of whether the LEASE happens to be
+   live. A parallel fixture that calls `completePlannerMission` first
+   confirms the SAME branch stops blocking only once genuinely complete —
+   proving the check isn't hardcoded to always block, either.
+4. **The protected-registry (NWR/TSF-style) fixture** tagged a real,
+   otherwise perfectly disposable-looking temp worktree (clean, non-main,
+   unreferenced) as protected via `callerProtectedRegistry`, resolved to
+   its OS-canonical real path exactly as production registry-seeding
+   would. `runGovernedCleanupAction` refused it (`AUTHORIZATION_REFUSED`)
+   with the gate open and every OTHER signal clean — proving the denylist
+   mechanism itself refuses a real target, not merely that the classifier
+   would have anyway.
+5. **The idempotency fixture**: the exact same `REMOVE_DISPOSABLE_
+   WORKTREE` request was submitted twice. The first call really removed
+   the worktree (`COMPLETED`); the second call detected the already-
+   `COMPLETED` execution for the same deterministic `requestId` and
+   returned `IDEMPOTENT_REPLAY` with the SAME `executionId` — proving a
+   duplicate request is safe by construction, not by convention.
+6. **The REAL default owner-authorization gate fixture** ran the full
+   pipeline with `gateCheck` deliberately OMITTED (using the real,
+   global `cleanup-owner-authorization-gate.mjs` against real
+   `process.env`/the real flag file, neither ever set anywhere in this
+   phase) against an otherwise-perfect, fully-disposable real fixture
+   worktree. Result: `AUTHORIZATION_REFUSED`, worktree confirmed still
+   present. The equivalent HTTP-level fixture additionally tried to
+   smuggle an open gate through the request body (`gateCheck: 'OPEN'`,
+   `ownerGateOpen: true`, the exact real marker string as a body field)
+   — none of it had any effect; the route never reads authority from the
+   request body.
+
+**Confirmation: nothing real was ever touched, deleted, quarantined, or
+killed.** Every fixture (git repos, worktrees, branches, files, spawned
+child processes) was created under `os.tmpdir()` or this worktree's own
+`.local-state`/test scope and destroyed by each test's own cleanup. Every
+test file's `TSF_UI_STATE_FILE`/`TSF_CLEANUP_QUARANTINE_DIR` points at an
+isolated, process-pid-suffixed path, never the real operator state. The
+real owner-authorization gate (`TSF_CLEANUP_V1_OWNER_AUTHORIZATION` env
+var, `CLEANUP_V1_OWNER_AUTHORIZATION.flag` file) was never set/written by
+any code, script, or test in this phase — verified directly by a test
+that calls the real, zero-argument `readOwnerAuthorizationGateState()`
+and asserts `open === false`. `git status` in this worktree shows only
+the 34 new files + 2 additive edits (`data-store.mjs`'s one DEFAULTS
+line, `http-server.mjs`'s one route registration) listed above; no file
+under `src/`, no other worktree, and no path outside this worktree's own
+tree/`os.tmpdir()` was read, written, or deleted at any point in this
+phase.
+
+**Owner Gates Outstanding (Phase 4):**
+
+1. **The owner-authorization gate itself** — by design, remains unset.
+   Setting `TSF_CLEANUP_V1_OWNER_AUTHORIZATION` (env) AND writing
+   `tsf/server/.local-state/CLEANUP_V1_OWNER_AUTHORIZATION.flag` with the
+   matching marker is the explicit, two-part act that would open real
+   destructive capability — a decision this phase does not make.
+2. A live UI/chat trigger surface — not built (see Deliberately NOT
+   built above); the HTTP API is the only surface today.
+3. 5 of the 6 ELEVATED classes have no executor at all yet — a future
+   phase's explicit, bounded scope if ever needed.
+4. This worktree's `node_modules` gap — pre-existing, unrelated,
+   flagged by every prior phase, not remediated here.
+
+**Coordinator independent review:** not yet performed — this phase's
+worktree is left intact (not merged, not pushed, not retired) awaiting
+that review per the phase instructions' explicit "do not merge" scope.
+
 ## Next intended action
 
 Phase 1, Phase 2, and Phase 3 (both waves) are all adopted and closed.
-Phase 4 (Cleanup V1 / Governed Destructive Automation) is now in
-progress in worktree `cleanup-v1-governed-destructive-automation`
-(branch `tsf/feature/cleanup-v1-governed-destructive-automation`, forked
-from `10e39227a7`). Phase 5 is NOT_STARTED.
+Phase 4 (Cleanup V1 / Governed Destructive Automation) has reached
+`CLEANUP_V1_IMPLEMENTED_READY_FOR_OWNER_ACTIVATION` in worktree
+`cleanup-v1-governed-destructive-automation` (branch
+`tsf/feature/cleanup-v1-governed-destructive-automation`, forked from
+`10e39227a7`) — implemented, tested (124/125 new tests passing, the one
+failure a pre-existing environment gap), dry-run/fixture-proven, real
+destructive execution gated behind the still-unset owner-authorization
+gate. Awaiting coordinator/owner review before any merge decision. Phase
+5 (Larger Astra Follow-up Benchmark) is NOT_STARTED.
