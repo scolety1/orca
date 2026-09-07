@@ -33,6 +33,33 @@
         },
         "scope": { "type": "array", "items": { "type": "string" } },
         "requestedOutputSchema": { "type": "object" },
+        "localArtifactCandidates": {
+          "description": "Phase 3 Wave 2 (3C), additive/optional V1.2 field: OWNER_SUPPLIED_LOCAL_ARTIFACT candidates for owner-supplied-local-artifact-research-worker.mjs. Distinct from preferredSources (plain fetchable URLs) -- a local file has no web-rights/robots concept.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ownerAssertion"],
+            "properties": {
+              "filePath": { "type": ["string", "null"] },
+              "content": { "type": ["string", "null"] },
+              "ownerAssertion": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["assertedBy"],
+                "properties": {
+                  "assertedBy": { "type": "string", "minLength": 1 },
+                  "assertionDescription": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "authenticatedDownloadCandidates": {
+          "description": "Phase 3 Wave 2 (3D), additive/optional V1.2 field: AUTHENTICATED_OFFICIAL_DOWNLOAD candidate URLs for authenticated-official-download-research-worker.mjs. The session itself is worker-level dependency injection, never carried on the wire request.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "temporalRequirements": {
           "type": "object", "additionalProperties": false, "required": ["asOfDate", "periodScope"],
           "properties": { "asOfDate": { "type": "string" }, "periodScope": { "type": "string" } }
@@ -122,6 +149,18 @@
             "evidenceProvided": { "type": "boolean" },
             "evidenceDescription": { "type": ["string", "null"] }
           }
+        },
+        "schemaFingerprint": {
+          "description": "Phase 3 Wave 2 (3F): a fingerprint of the INFERRED COLUMN SCHEMA only, distinct from contentHash (raw content) and any selector/data hash the acquisition method carries inside modeEvidence. Optional; null when not computed by this acquisition method.",
+          "type": ["string", "null"]
+        },
+        "selectorOrAdapterVersion": {
+          "description": "Phase 3 Wave 2 (3F): which adapter (and version) produced this snapshot, as a top-level queryable field -- e.g. 'web-table-source-adapter@0.1.0'. Optional; null when not applicable.",
+          "type": ["string", "null"]
+        },
+        "transformationVersion": {
+          "description": "Phase 3 Wave 2 (3F): version of the extraction/transformation logic that turned this raw snapshot into proposedClaims -- distinct from the acquisition adapter's own version. Optional; null when not applicable.",
+          "type": ["string", "null"]
         }
       }
     },

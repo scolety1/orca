@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tsf.local/contracts/web-table-source-acquisition-receipt.schema.v1.json",
   "title": "Web Source Acquisition Receipt V0",
-  "description": "Provisional generic acquisition receipt owned by this worktree. Not the same object as tsf/domain/receipts.mjs's TSF_RECEIPT_KINDS chain (TSF coding-mission lifecycle) or Dataset Research's own provenance package -- folding it into either is a Main TSF integration decision, not made here. V0.5 additively added robotsEvidence (nullable); the safety-default closure additively added transportEvidence (nullable, non-null only when produced by the safe public-web-source-acquisition.mjs entrypoint); no other field changed shape.",
+  "description": "Provisional generic acquisition receipt owned by this worktree. Not the same object as tsf/domain/receipts.mjs's TSF_RECEIPT_KINDS chain (TSF coding-mission lifecycle) or Dataset Research's own provenance package -- folding it into either is a Main TSF integration decision, not made here. V0.5 additively added robotsEvidence (nullable); the safety-default closure additively added transportEvidence (nullable, non-null only when produced by the safe public-web-source-acquisition.mjs entrypoint); Phase 3 Wave 2 additively added contentAccessEvidence (3E, real post-fetch content classification), ownerProvenance (3C, OWNER_SUPPLIED_LOCAL_ARTIFACT only), and authEvidence (3D, AUTHENTICATED_OFFICIAL_DOWNLOAD only) -- all three present-but-null on every acquisition mode that has nothing to report; no other field changed shape.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -26,6 +26,9 @@
     "rowCount",
     "warnings",
     "artifactRef",
+    "contentAccessEvidence",
+    "ownerProvenance",
+    "authEvidence",
     "createdAt",
     "receiptHash"
   ],
@@ -56,7 +59,11 @@
         "EXTRACTION_FAILED",
         "BLOCKED",
         "REQUIRES_REVIEW",
-        "ROUTE_TO_EXPORT_PATH"
+        "ROUTE_TO_EXPORT_PATH",
+        "INGESTED",
+        "ACQUISITION_ERROR",
+        "ACCESS_BLOCKED_POST_FETCH",
+        "NEEDS_INTERACTIVE_LOGIN"
       ]
     },
     "operatorReviewRequired": { "type": "boolean" },
@@ -154,6 +161,44 @@
     "warnings": { "type": "array", "items": { "type": "string" } },
     "artifactRef": { "type": ["object", "null"] },
     "createdAt": { "type": "string", "format": "date-time" },
-    "receiptHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    "receiptHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "ownerProvenance": {
+      "description": "Phase 3 Wave 2 (3C), additive/optional. OWNER_SUPPLIED_LOCAL_ARTIFACT only -- caller-asserted provenance, never independently verified (independentlyVerified is always false).",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["schemaVersion", "assertedBy", "assertionDescription", "assertedAt", "independentlyVerified"],
+      "properties": {
+        "schemaVersion": { "const": "OWNER_SUPPLIED_ARTIFACT_PROVENANCE_V1" },
+        "assertedBy": { "type": "string", "minLength": 1 },
+        "assertionDescription": { "type": ["string", "null"] },
+        "assertedAt": { "type": "string", "format": "date-time" },
+        "independentlyVerified": { "const": false }
+      }
+    },
+    "authEvidence": {
+      "description": "Phase 3 Wave 2 (3D), additive/optional. AUTHENTICATED_OFFICIAL_DOWNLOAD only -- an allowlisted, non-secret projection of the session used (mechanism/profile/when). Never a credential/token/cookie value.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["schemaVersion", "mechanism", "profileIdRef", "authenticatedAt"],
+      "properties": {
+        "schemaVersion": { "const": "AUTHENTICATED_ACQUISITION_EVIDENCE_V1" },
+        "mechanism": { "type": ["string", "null"] },
+        "profileIdRef": { "type": ["string", "null"] },
+        "authenticatedAt": { "type": ["string", "null"] }
+      }
+    },
+    "contentAccessEvidence": {
+      "description": "Phase 3 Wave 2 (3E), additive/optional. Real post-fetch content classification (web-source-content-access-classifier.mjs) -- present whenever a genuine blocking signal was detected, distinguishing a real block from a plain technical failure.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["schemaVersion", "accessClassification", "blocked", "signalsDetected", "decisionReason"],
+      "properties": {
+        "schemaVersion": { "const": "WEB_SOURCE_CONTENT_ACCESS_CLASSIFICATION_V1" },
+        "accessClassification": { "type": "string" },
+        "blocked": { "type": "boolean" },
+        "signalsDetected": { "type": "array", "items": { "type": "string" } },
+        "decisionReason": { "type": "string" }
+      }
+    }
   }
 }

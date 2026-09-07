@@ -4,6 +4,15 @@
 // via caller-supplied FieldBindings -- fuzzy lexical matching was removed
 // after it produced a false match on a word coincidence (e.g. "Team Record"
 // vs "Record High Team Attendance").
+// Phase 3 Wave 2 (3F): a version tag for THIS extraction algorithm itself,
+// distinct from the acquisition adapter's own version (web-table-source-
+// adapter.mjs's WEB_TABLE_SOURCE_ADAPTER_VERSION) -- the same raw snapshot
+// could be re-processed by a future, different extraction algorithm and
+// produce different claims; callers that admit a SourceSnapshotReference's
+// transformationVersion can tell which version of THIS logic ran. Bump
+// this only when the extraction algorithm's own semantics change.
+export const WEB_TABLE_OBSERVATION_EXTRACTION_VERSION = '1.0.0'
+
 function normalize(text) {
   return String(text ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
 }

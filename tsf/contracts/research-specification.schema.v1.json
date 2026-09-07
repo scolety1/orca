@@ -29,7 +29,24 @@
         "freshnessPolicy": { "type": "string" },
         "requireIndependentSources": { "type": "boolean" },
         "minSourceCount": { "type": "integer", "minimum": 0 },
-        "allowCrossMissionLibraryReuse": { "description": "Trust + Scale Hardening Continuation 2 Priority Block 4: explicit opt-in for research-library.mjs's evaluateResearchLibraryReuse. Absent/false means reuse is NOT permitted (fail-closed default) -- an operator sets this only after reviewing that reuse is appropriate (including licensing/terms).", "type": "boolean" }
+        "allowCrossMissionLibraryReuse": { "description": "Trust + Scale Hardening Continuation 2 Priority Block 4: explicit opt-in for research-library.mjs's evaluateResearchLibraryReuse. Absent/false means reuse is NOT permitted (fail-closed default) -- an operator sets this only after reviewing that reuse is appropriate (including licensing/terms).", "type": "boolean" },
+        "localArtifactCandidates": {
+          "description": "Phase 3 Wave 2 (3C), additive/optional: OWNER_SUPPLIED_LOCAL_ARTIFACT candidates carried through buildBoundedResearchRequest to owner-supplied-local-artifact-research-worker.mjs.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "filePath": { "type": ["string", "null"] },
+              "content": { "type": ["string", "null"] },
+              "ownerAssertion": { "type": "object" }
+            }
+          }
+        },
+        "authenticatedDownloadCandidates": {
+          "description": "Phase 3 Wave 2 (3D), additive/optional: AUTHENTICATED_OFFICIAL_DOWNLOAD candidate URLs carried through buildBoundedResearchRequest to authenticated-official-download-research-worker.mjs.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "TemporalRequirements": {

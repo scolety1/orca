@@ -53,7 +53,7 @@ uses, fully read-only).
 |---|---|---|
 | 1. UI_DOGFOOD_AGENT_V0 | **ADOPTED** — merged to `tsf/main` @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **ADOPTED** — merged to `tsf/main` @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
-| 3. Deferred Research Platform Completion Wave | IN_PROGRESS (Wave 1 / 3A+3B **ADOPTED** @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, pushed, worktree retired; Wave 2 / 3C-3G starting) | Worktree `research-platform-completion-wave-v0-wave2` created from `3ae53e07a5` |
+| 3. Deferred Research Platform Completion Wave | IN_PROGRESS (Wave 1 / 3A+3B **ADOPTED** @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, pushed, worktree retired; Wave 2 / 3C-3G **built, tested, committed** in worktree `research-platform-completion-wave-v0-wave2`, pending coordinator review/adoption) | See below |
 | 4. Cleanup V1 / Governed Destructive Automation | NOT_STARTED | |
 | 5. Larger Astra Follow-up Benchmark | NOT_STARTED | |
 
@@ -848,11 +848,361 @@ always applied immediately. No corrections needed. **Merged to
 `fork/tsf/main` (verified), worktree `research-platform-completion-wave-v0`
 retired.**
 
+### Phase 3 Wave 2 — Deferred Research Platform Completion Wave (3C-3G)
+
+Scope: sub-parts 3C (Owner-Supplied Local Artifact Acquisition), 3D
+(Authenticated Official Download), 3E (Real Paywall/Auth Detection), 3F
+(Richer Source Snapshot Metadata), and 3G (Research Completion
+Verification), in worktree `research-platform-completion-wave-v0-wave2`
+(branch `tsf/feature/research-platform-completion-wave-v0-wave2`, forked
+from `3ae53e07a5`). Scope discipline honored throughout: reconciled
+against `web-source-access-gate.mjs`/`web-source-router.mjs`/
+`public-web-source-acquisition.mjs`/`web-table-research-worker.mjs`
+(the existing Web Source Acquisition architecture) before every sub-part,
+never a second router/gate/acquisition-mode taxonomy.
+
+**Reconciliation findings (STEP 1, before any implementation):**
+
+- **3C**: confirmed `OWNER_SUPPLIED_LOCAL_ARTIFACT` still had no producer
+  anywhere (`DATASET_RESEARCH_ENGINE_V0_FINAL_RECONCILIATION.md`'s own
+  "Deferred future roadmap" line named this explicitly). No existing
+  local-file research path to conflict with.
+- **3D**: confirmed `AUTHENTICATED_OFFICIAL_DOWNLOAD` was still
+  unreachable from any live caller (`web-table-research-worker.mjs`
+  hardcodes `authenticationRequired: false`). Searched for existing
+  authenticated-session infrastructure per the phase instructions' own
+  explicit check: found REAL infrastructure at
+  `src/main/browser/browser-session-registry.ts` +
+  `src/main/browser/browser-cookie-import*.ts` (Orca's own named browser
+  session profiles, each bound to a real Electron `session` partition,
+  populated either by importing the user's real browser cookies or by the
+  user logging in through Orca's embedded browser in that partition) --
+  but this is Electron-main-process TypeScript, a different architectural
+  layer than `tsf/domain`'s plain-Node-ESM modules (which must stay
+  Electron-free to run standalone/SSH-host-side, the same separation
+  `electron-target-launcher.mjs` already established for Phase 1).
+  **Decision**: define a minimal `AUTHENTICATED_SESSION_PROVIDER_CONTRACT_V1`
+  interface in `domain/authenticated-official-download-acquisition.mjs`
+  whose field names deliberately mirror `browserSessionRegistry`'s real
+  shape (a profile id/label plus how/when it was authenticated), so a
+  future `adapters/` bridge could wrap the real registry to satisfy this
+  contract without importing Electron into `tsf/domain` today. Not built
+  in this wave (disclosed below).
+- **3E**: `web-source-access-gate.mjs`'s `ACCESS_CLASSIFICATIONS` already
+  covered `PUBLIC_ALLOWED`/`AUTHENTICATED_PAGE_NO_EXPORT`/
+  `PAYWALL_ACCESS_CONTROL`/`ROBOTS_DISALLOWED`/`PUBLIC_TERMS_UNCLEAR`
+  (5 of the 7 requested categories) -- extended additively with
+  `ANTI_BOT_CHALLENGE_DETECTED` and `SOURCE_UNAVAILABLE` (the 2 genuinely
+  missing) rather than inventing a parallel taxonomy. Confirmed the gate
+  itself is pre-fetch/input-only (`classifyWebSourceAccess` only ever
+  reasons about caller-supplied booleans) -- no existing code classifies
+  REAL post-fetch response content at all; `web-table-research-worker.mjs`'s
+  own header comment already flagged this as a "KNOWN GAP."
+- **3F**: read `DATASET_RESEARCH_ENGINE_V0_FINAL_RECONCILIATION.md`'s
+  "Deferred future roadmap" line verbatim: `schemaFingerprint`/
+  `selectorOrAdapterVersion`/`transformationVersion` are the exact three
+  richer `SourceSnapshotReference` fields it names as "not implemented."
+  The proposing fixture doc (`shared-generic-acquisition-contract.json`)
+  no longer exists in this branch (lived only on the retired
+  `dataset-research-engine-v0` branch) -- built from the reconciliation
+  doc's own field names and descriptions, not invented speculatively.
+  Confirmed no other "snapshot metadata" fields are named anywhere else
+  in `tsf/docs/tsf/`.
+- **3G**: confirmed `research-mission-fleet-driver.mjs`'s live production
+  bootstrap (`research-mission-fleet-driver-bootstrap.mjs`) wires exactly
+  ONE `deps.worker` at a time -- a real, disclosed, out-of-scope
+  architectural constraint (matching 3D's own already-disclosed
+  "unreachable from the one live caller" gap), not something this wave
+  restructures. The new 3C/3D workers are proven through the same real
+  durable primitives (`dispatchResearchNodeDurable`/
+  `pollAndAdmitResearchNodeDurable`/`admitBoundedResearchResult`) every
+  other worker in this codebase already uses, exactly like
+  `web-table-research-worker.mjs` is proven -- "the same real admission
+  path," not the live fleet-driver's own single-worker bootstrap wiring
+  (a separate, future, worker-selection-policy decision).
+
+**Built (bounded V0):**
+
+- `domain/web-source-content-access-classifier.mjs` (3E) --
+  `classifyFetchedContentAccess`: real, SIGNAL-based (never heuristic-
+  based, e.g. never "body is short") post-fetch classification. Detects
+  HTTP 401/403/404/410/5xx, anti-bot/challenge markers (Cloudflare/
+  CAPTCHA-shaped text), subscription-paywall phrases, a redirect to a
+  login-shaped URL path, and a bare login-form shell (a password input
+  with no other substantial content) -- a password field ALONGSIDE real
+  substantial content (a table, a long body) is honestly
+  `PUBLIC_TERMS_UNCLEAR` (ambiguous-needs-human), never guessed either
+  way. Verified against this codebase's own real, tiny (500-800 byte)
+  `fixtures/web-table-source-acquisition/*.html` fixtures containing zero
+  blocking markers, to confirm no false-positive risk before wiring in.
+- **Real wiring (3E)**: `domain/web-table-source-adapter.mjs`'s
+  `acquireWebSourceViaStaticTable` now classifies content on BOTH the
+  HTTP-failure path (status-only, since `bounded-http-fetch.mjs` never
+  reads a body for a non-2xx response) and the 200-status success path
+  BEFORE table extraction -- a login/paywall/anti-bot interstitial
+  returning HTTP 200 can never fall through to a "real" table match from
+  its own chrome. A genuine block adds a new receipt decision,
+  `ACCESS_BLOCKED_POST_FETCH`, and overrides `accessClassification` with
+  the real detected value; a non-access failure (network/timeout/SSRF/
+  size/content-type) is completely untouched -- verified via the full
+  existing `web-table-source-adapter.test.mjs`/`web-table-research-worker.
+  test.mjs`/`public-web-source-acquisition.test.mjs` suite (99/99 pass,
+  zero behavior change for the regression paths).
+- `domain/owner-supplied-local-artifact-acquisition.mjs` (3C) --
+  `acquireOwnerSuppliedLocalArtifact({filePath|content, ownerAssertion,
+  ...})`: reuses the exact same table-discovery pipeline the live fetch
+  path runs (`web-table-source-adapter.mjs`'s new exported
+  `extractAndSelectTable`, REUSE_DIRECT) against a caller-supplied local
+  file or already-read content instead of a network fetch.
+  `ownerAssertion.assertedBy` is mandatory (throws rather than fabricate
+  provenance); a missing file, empty content, or no table found is
+  reported as an honest `ACQUISITION_ERROR` receipt, never a fabricated
+  success. `accessClassification` is the new, honest
+  `NOT_APPLICABLE_LOCAL_ARTIFACT` value (no web-rights concept applies to
+  a local file) rather than a fabricated `PUBLIC_ALLOWED`.
+- `domain/web-source-acquisition-receipt.mjs` extended (3C/3D/3E) --
+  `buildOwnerSuppliedArtifactReceipt`/`buildOwnerSuppliedArtifactErrorReceipt`
+  (3C) and `buildAuthenticatedDownloadReceipt`/
+  `buildAuthenticatedDownloadNeedsLoginReceipt`/
+  `buildAuthenticatedDownloadFailureReceipt` (3D) reuse the SAME
+  `WEB_SOURCE_ACQUISITION_RECEIPT_V0` shape every acquisition mode
+  already uses (never a competing schema). Three new fields --
+  `contentAccessEvidence` (3E), `ownerProvenance` (3C), `authEvidence`
+  (3D) -- are present-but-null on every receipt shape that has nothing to
+  report, the same "always present, honestly null" discipline every
+  other N/A field on this receipt already follows (e.g.
+  `tableIdentity`/`schema`/`rowCount`). `ownerProvenance.
+  independentlyVerified` is hardcoded `false` -- structurally impossible
+  to set true from any caller parameter, mirroring
+  `platform-learning-ledger.mjs`'s `createLessonRecord` epistemic guard
+  from Wave 1. `authEvidence` is built through an explicit ALLOWLIST of
+  exactly `mechanism`/`profileIdRef`/`authenticatedAt` -- a caller's real
+  session object can never leak an unexpected extra field into a durable
+  receipt even by accident.
+- `domain/authenticated-official-download-acquisition.mjs` (3D) --
+  `acquireAuthenticatedOfficialDownload({candidate, sessionProvider,
+  downloadFn, ...})`. HARD SECURITY RULES enforced, not just documented:
+  no `password`/`token`/`cookie`/`secret`/`apiKey`-shaped field is ever
+  accepted anywhere in this module's signature; `assertNoSecretLeakage`
+  additionally throws (defense in depth) if a caller's `sessionProvider`
+  result or `downloadFn` result happens to carry a field whose NAME even
+  suggests a secret. No session found for the source's origin -> honest
+  `NEEDS_INTERACTIVE_LOGIN` receipt, `operatorReviewRequired: true`, ZERO
+  download attempted -- never a bypass, never a credential prompt. 3E's
+  classifier is reused directly (REUSE_DIRECT) to detect a re-auth/
+  paywall interstitial even from an authenticated download (e.g. an
+  expired session), never silently admitted as a real official export.
+  `AUTHENTICATED_SESSION_PROVIDER_CONTRACT_V1` documents the minimal
+  interface (see reconciliation above).
+- `adapters/owner-supplied-local-artifact-research-worker.mjs` (3C) /
+  `adapters/authenticated-official-download-research-worker.mjs` (3D) --
+  real `BoundedResearchWorker`-shaped workers
+  (`{provider, dispatch, fetchResult}`), mirroring
+  `web-table-research-worker.mjs`'s exact shape, wired into the SAME real
+  admission path (`dispatchResearchNodeDurable`/
+  `pollAndAdmitResearchNodeDurable`/`admitBoundedResearchResult`), never a
+  parallel research system. Read `request.localArtifactCandidates` /
+  `request.authenticatedDownloadCandidates` respectively -- new, additive,
+  optional `BoundedResearchRequest` fields (contracts updated), distinct
+  from `preferredSources` since neither a local file path nor an
+  authenticated-session identity is a plain fetchable URL concern. Each
+  worker's `buildSourceSnapshot` sets a real, REQ-003-consistent
+  `provenanceStrength`: `ASSERTED_UNLOGGED` for the local-artifact worker
+  (a real origin claim exists via `ownerAssertion`, but nothing here logs
+  or cross-checks it), `ASSERTED_LOGGED` for the authenticated-download
+  worker (a real authentication mechanism established and recorded the
+  session) -- both flow through Wave 1's REQ-003 chain-of-custody wiring
+  in `research-admission.mjs` completely unmodified.
+- **Real wiring (3C/3D request plumbing)**: `domain/research-node.mjs`'s
+  `buildBoundedResearchRequest` now additionally copies
+  `spec.sourcePolicy.localArtifactCandidates`/
+  `.authenticatedDownloadCandidates` (additive, defaults to `[]`,
+  byte-for-byte unchanged for every existing caller) -- without this, a
+  durably-dispatched request had no way to carry either acquisition
+  mode's candidates at all (a real gap found and closed during this
+  wave's own testing, not anticipated in the original reconciliation).
+  `contracts/research-specification.schema.v1.json`'s `SourcePolicy` and
+  `contracts/bounded-research-worker-protocol.schema.v1.json`'s
+  `BoundedResearchRequest` updated additively to match.
+- **Real wiring (3F)**: `domain/research-admission.mjs`'s
+  `admitBoundedResearchResult` now additionally passes through
+  `schemaFingerprint`/`selectorOrAdapterVersion`/`transformationVersion`
+  onto the durable `SourceSnapshotReference` (additive, honest `null`
+  default for any caller that doesn't set them -- every pre-Wave-2 caller
+  is unaffected). `adapters/web-table-research-worker.mjs`'s
+  `buildSourceSnapshot` now computes real values: `schemaFingerprint` is
+  a hash of the INFERRED COLUMN SCHEMA only (distinct from
+  `normalizedTableHash`'s header+row DATA hash and `tableIdentity`'s
+  on-page SELECTOR fingerprint -- three genuinely different real signals,
+  never conflated); `selectorOrAdapterVersion` is
+  `${adapter.id}@${adapter.version}`; `transformationVersion` is a new
+  exported `WEB_TABLE_OBSERVATION_EXTRACTION_VERSION` constant in
+  `domain/web-table-observation-extraction.mjs` (versions the extraction
+  ALGORITHM itself, distinct from the acquisition adapter's own version).
+  Both new 3C/3D workers populate the identical three fields the same way
+  (REUSE_PATTERN), since both reuse the same table-extraction algorithm.
+  `contracts/bounded-research-worker-protocol.schema.v1.json`'s
+  `SourceSnapshotReference` updated additively to match.
+
+**Deliberately NOT built (bounded V0, disclosed rather than silently
+skipped):**
+- A real Electron-session bridge wrapping `browserSessionRegistry` to
+  satisfy `AUTHENTICATED_SESSION_PROVIDER_CONTRACT_V1` (3D) -- the
+  contract is defined and fixture-proven; the real bridge is future,
+  separately-authorized work living in `src/main`/`adapters`, not
+  `tsf/domain`. No real external authentication was attempted or
+  required anywhere in this wave, per the governing directive's own
+  explicit allowance -- proven with fixtures/mocks only (a fake
+  `sessionProvider`/`downloadFn`), honestly disclosed as such, never
+  claimed as a real login test.
+- A real Electron download transport for 3D's `downloadFn` -- no default
+  implementation exists; the domain function throws a clear error if a
+  caller omits it, rather than silently no-op'ing.
+- Wiring the new 3C/3D workers into the live, single-worker
+  `research-mission-fleet-driver-bootstrap.mjs` production bootstrap --
+  a real worker-SELECTION policy (which acquisition mode to try for which
+  node) is a materially different, future decision; both workers are
+  fully proven through the real durable admission primitives directly
+  (see 3G), which IS "the same real admission path" the phase asked for.
+- CSV/JSON/other non-HTML-table local-artifact content shapes (3C) --
+  genuinely open-ended parser matrix, explicitly deferred; only the
+  HTML-table shape (reusing the already-proven extraction pipeline) is
+  built.
+- A caller-facing UI/chat flow that actually prompts a user to complete
+  the one-time interactive login 3D's contract describes -- out of this
+  domain-layer wave's scope (no UI work was in scope for 3C-3G).
+
+**Test / Verification Ledger -- Phase 3 Wave 2 (2026-09-08):**
+
+- 7 new test files, 54 new tests: `web-source-content-access-classifier.
+  test.mjs` (12), `owner-supplied-local-artifact-acquisition.test.mjs` (9),
+  `owner-supplied-local-artifact-research-worker.test.mjs` (4),
+  `authenticated-official-download-acquisition.test.mjs` (9),
+  `authenticated-official-download-research-worker.test.mjs` (4),
+  `research-admission-source-snapshot-metadata.test.mjs` (2), and the 3G
+  proving set `research-completion-verification-proving-set.test.mjs`
+  (1 parent + 14 sub-tests, see below) -- plus 2 pre-existing test files
+  updated for the new, additive taxonomy/schema shape
+  (`web-source-access-gate.test.mjs`'s exhaustive-taxonomy assertion;
+  `web-source-acquisition-receipt.test.mjs`'s exact-schema-key assertion
+  needed no code change once the new fields were made present-but-null
+  uniformly).
+- **Real bug caught and fixed during this wave's own testing** (disclosed,
+  not silently corrected): the 3G proving-set test's FIRST version
+  statically imported `server/research-mission-fleet-driver.mjs` and
+  `server/platform-learning-ledger-store.mjs` at the top of the file --
+  both transitively import `server/data-store.mjs`, whose `STATE_FILE` is
+  a module-level constant resolved from `process.env.TSF_UI_STATE_FILE`
+  only once, at first import, anywhere in the process. Because ES module
+  static imports execute before a file's own top-level statements, this
+  resolved `data-store.mjs` against the AMBIENT env value (not yet
+  overridden), causing the test to silently read/write the REAL shared
+  local dev state file (`server/.local-state/operator-state.json`,
+  gitignored) instead of an isolated one -- confirmed by inspecting that
+  file directly, found a real, leaked `mission:research-completion-
+  proving-set-v0` entry, and removed it. Fixed by deferring those two
+  imports to the same dynamic-import-after-env-override pattern every
+  other test file in this codebase already uses; re-verified clean
+  (5 consecutive standalone runs, 14/14 pass every time) and confirmed no
+  further leakage into the shared default state file.
+- Full-suite result (`node --test test/*.test.mjs`): **1817 tests, 1769
+  pass, 47 fail, 1 skipped**. **All 47 failures independently confirmed
+  pre-existing and unrelated**: `git stash -u` (removing every file this
+  wave touched or added) reproduced the IDENTICAL 47-test failing-name
+  list on the clean pre-wave tree (`node --test` run before/after,
+  diffed by test name -- byte-identical set, only per-run millisecond
+  timings differ), the same class of `@stablyai/playwright-test`/
+  `node_modules`-gap and shared-machine timing/port-contention failures
+  Phase 1/2/Wave 1's own ledgers already documented (this worktree's
+  `node_modules` remains unremediated, same pre-existing, out-of-scope
+  gap).
+  Targeted re-run of every directly-touched/added test file together
+  (web-source-content-access-classifier, owner-supplied-local-artifact-
+  {acquisition,research-worker}, authenticated-official-download-
+  {acquisition,research-worker}, web-source-access-gate,
+  web-source-acquisition-receipt, web-table-source-adapter,
+  web-table-research-worker, public-web-source-acquisition,
+  research-completion-verification-proving-set): **113 tests, 100% pass**
+  (99 from the shared web-table/acquisition-pipeline group + 14 from the
+  3G proving set), the proving set re-run 3x standalone for stability.
+- `npx oxlint` on every new/changed `.mjs` file (20 files): **0 errors**
+  in every file this wave authored or edited. The 8 flagged violations
+  across `research-admission.mjs` (4), `research-node.mjs` (3), and
+  `web-table-source-adapter.mjs` (1) were independently confirmed
+  pre-existing via `git stash` + re-run (byte-identical error set/line
+  content on the clean pre-wave tree) -- the same disclosed, out-of-scope
+  class Phase 1/Wave 1's own ledgers already established a precedent for.
+- Line-count check against the `.oxlintrc.json` 600-line cap (`.mjs`
+  override): largest changed file is `domain/web-source-acquisition-
+  receipt.mjs` at 425 lines; largest new file is `domain/
+  authenticated-official-download-acquisition.mjs`'s sibling `adapters/
+  authenticated-official-download-research-worker.mjs` at 185 lines --
+  all 20 changed/new files comfortably under.
+
+**3G golden proving-set narrative** (`research-completion-verification-
+proving-set.test.mjs`, generic fixture -- entity "Brett Favre" only as a
+convenient, already-proven small public-domain-shaped fixture table,
+never NFL/NWR production data): one real `ResearchMission`, three nodes,
+each requiring one field, each resolved via a DIFFERENT real acquisition
+mode -- `node:public-web` (the existing `web-table-research-worker.mjs`,
+fixture-fed HTML, regression-only), `node:local-artifact` (the new 3C
+worker, inline content, no filesystem/network at all), `node:authenticated`
+(the new 3D worker, a fixture session + fixture download, proving the
+contract behaves correctly without any real login). All three dispatched
+and admitted through the real durable primitives
+(`dispatchResearchNodeDurable`/`pollAndAdmitResearchNodeDurable`), one real
+identity resolution recorded (`recordIdentityResolutionState`), then the
+REAL autonomous production driver
+(`research-mission-fleet-driver.mjs`'s `driveOneCycle`, no manual
+reconciliation authored in the test) ticks the mission through
+verify -> auto-accept -> canonicalize for all three fields and reaches a
+real `COMPLETE` in 4 ticks. Verifies, in one real run: the full raw
+source -> observation -> claim -> verification/reconciliation -> canonical
+flow; `computeCompletenessMetrics` (full `requiredFieldCoverage`, zero
+typed missingness); the recorded identity-resolution state survives to
+completion; every claim carries a real (never fabricated-CONTEMPORANEOUS)
+`temporalClass`; the public-web mode's receipt shape is unchanged
+(regression); 3C's honest `ASSERTED_UNLOGGED`/RED chain-of-custody; 3D's
+honest `ASSERTED_LOGGED` chain-of-custody and non-secret `authEvidence`;
+3F's three new metadata fields present on every mode used; Wave 1's
+Learning Ledger genuinely records a `lessonsRecorded` count and durably
+persists it on this real completion; Research Library indexing/querying
+this mission's real `CanonicalFacts` works; and a repeated
+`pollAndAdmitResearchNodeDurable` call against an already-fully-admitted
+node is a safe no-op (crash/idempotency), never a duplicate
+`SourceSnapshotReference`. No paid provider (Parallel/Exa) is enabled or
+called anywhere in this wave.
+
+**Owner Gates Outstanding (Phase 3 Wave 2):**
+
+1. **NEEDS-YOU (recorded, not blocking)**: 3D's real authenticated-session
+   bridge (wrapping `src/main/browser/browser-session-registry.ts`) and a
+   real download transport were not built -- this requires a real product
+   decision about where that Electron-layer bridge lives and a real UI
+   flow for the one-time interactive login, both out of this bounded
+   domain-layer wave. The contract (`AUTHENTICATED_SESSION_PROVIDER_
+   CONTRACT_V1`) and the acquisition/admission/worker layers underneath
+   it are complete and fixture-proven; only the real session source and
+   real transport remain, by design, for a future, separately-authorized
+   wave.
+2. Live fleet-driver multi-worker routing (which acquisition mode to try
+   for which node) -- recorded as future work, same class of gap 3D's own
+   prior reconciliation already flagged for `AUTHENTICATED_OFFICIAL_
+   DOWNLOAD`'s reachability.
+3. CSV/JSON/other non-HTML-table local-artifact ingestion (3C) --
+   deferred, genuinely open-ended.
+4. This worktree's `node_modules` gap -- pre-existing, unrelated,
+   previously flagged by Phase 1/2/Wave 1.
+
+No confirmation of real credentials or paid providers was needed or given
+-- none were touched anywhere in this wave (verified: every 3D test uses
+an in-memory fake `sessionProvider`/`downloadFn`; no `TSF_RESEARCH_LIVE_
+DISPATCH_ENABLED`/paid-provider flag was set or read anywhere in new/
+changed code).
+
 ## Next intended action
 
-Phase 1, Phase 2, and Phase 3 Wave 1 (3A/3B) are all adopted and closed.
-Phase 3 Wave 2 (3C-3G: acquisition modes, snapshot metadata, completion
-verification) is now in progress in worktree
-`research-platform-completion-wave-v0-wave2` (branch
-`tsf/feature/research-platform-completion-wave-v0-wave2`, forked from
-`3ae53e07a5`). Phases 4-5 are NOT_STARTED.
+Phase 1, Phase 2, Phase 3 Wave 1 (3A/3B), and Phase 3 Wave 2 (3C-3G) are
+all built and tested; Wave 2 awaits the same independent coordinator
+review and merge-to-`tsf/main` step Phase 1/2/Wave 1 each received before
+adoption. Phases 4-5 are NOT_STARTED.

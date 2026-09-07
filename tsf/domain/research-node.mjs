@@ -87,6 +87,12 @@ export function buildBoundedResearchRequest(mission, node, provider, clock) {
     disallowedSources: [...spec.sourcePolicy.disallowedSources],
     licensingConstraints: [...spec.sourcePolicy.licensingConstraints],
     freshnessPolicy: spec.sourcePolicy.freshnessPolicy,
+    // Phase 3 Wave 2 (3C/3D), additive: mirrors preferredSources' own
+    // pass-through shape for the two new acquisition modes' own candidate
+    // lists. Absent on every existing specification (empty array, byte-for-
+    // byte unchanged behavior for every current caller).
+    localArtifactCandidates: deepClone(spec.sourcePolicy.localArtifactCandidates ?? []),
+    authenticatedDownloadCandidates: [...(spec.sourcePolicy.authenticatedDownloadCandidates ?? [])],
     budget: deepClone(spec.budget),
     toolPermissions: [...spec.toolPermissions]
   }

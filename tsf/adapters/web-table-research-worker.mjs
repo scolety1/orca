@@ -4,9 +4,9 @@
 // from serializing the full BoundedResearchResult into providerRunId
 // (documented opaque string) so fetchResult is a pure re-read.
 import { acquirePublicWebTableSource } from '../domain/public-web-source-acquisition.mjs'
-import { extractObservationsFromWebTable } from '../domain/web-table-observation-extraction.mjs'
+import { extractObservationsFromWebTable, WEB_TABLE_OBSERVATION_EXTRACTION_VERSION } from '../domain/web-table-observation-extraction.mjs'
 import { reconcileFieldsToHeaders } from '../server/field-source-reconciliation.mjs'
-import { isoNow } from '../domain/canonical.mjs'
+import { isoNow, sha256 } from '../domain/canonical.mjs'
 
 export const WEB_TABLE_PROVIDER_ID = 'WEB_TABLE_STATIC_EXTRACTION'
 
@@ -47,6 +47,13 @@ function fieldNames(request) {
 // caller would have to know to reach into. Promoted to top-level here,
 // alongside modeEvidence (which still carries the full receipt verbatim
 // for anyone who needs the rest of it).
+// Phase 3 Wave 2 (3F): schemaFingerprint hashes the INFERRED COLUMN SCHEMA
+// only -- distinct from receipt.normalizedTableHash (hashes header+row DATA)
+// and receipt.tableIdentity (the on-page SELECTOR fingerprint, for drift
+// detection). Lets a caller tell "did the source's SCHEMA change" apart
+// from "did the DATA change" or "did the selector/position on the page
+// change", three genuinely different real signals this receipt already
+// computed separately but never fingerprinted as a schema-only value.
 function buildSourceSnapshot(receipt) {
   return {
     sourceRef: receipt.sourceUrl,
@@ -54,6 +61,9 @@ function buildSourceSnapshot(receipt) {
     acquisitionMethod: 'WEB_TABLE_STATIC_SOURCE_EXTRACTION',
     acquisitionMode: receipt.acquisitionMode ?? null,
     accessClassification: receipt.accessClassification ?? null,
+    schemaFingerprint: receipt.schema ? sha256(receipt.schema) : null,
+    selectorOrAdapterVersion: receipt.adapter?.id && receipt.adapter?.version ? `${receipt.adapter.id}@${receipt.adapter.version}` : null,
+    transformationVersion: WEB_TABLE_OBSERVATION_EXTRACTION_VERSION,
     modeEvidence: { ...receipt, artifactRef: { ...receipt.artifactRef, rawHtml: null } }
   }
 }

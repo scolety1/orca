@@ -29,6 +29,7 @@ import {
   performRobotsPreflight,
   applyRobotsEvidenceToAccessInput
 } from './web-source-robots-preflight.mjs'
+import { classifyFetchedContentAccess } from './web-source-content-access-classifier.mjs'
 
 const HEADING_PATTERN = /<h[1-6][^>]*>(.*?)<\/h[1-6]>/gis
 const TIME_ELEMENT_PATTERN = /<time[^>]*\bdatetime\s*=\s*["']([^"']+)["'][^>]*>([^<]*)<\/time>/i
@@ -167,6 +168,25 @@ export function selectTableWithEvidence(tables, hint) {
   }
 }
 
+// Phase 3 Wave 2 (3C/3D REUSE_DIRECT): the same extract -> select -> infer
+// sequence this pipeline already runs post-fetch, factored out so the
+// owner-supplied-local-artifact and authenticated-official-download
+// acquisition paths (which never call fetchBounded -- there is no network
+// fetch to run) can drive genuinely identical table discovery instead of a
+// second, parallel implementation. Returns table:null/schema:null (never
+// throws) when no table is found, matching this file's own NO_TABLES_FOUND
+// handling below.
+export function extractAndSelectTable(rawHtml, tableSelectionHint) {
+  const tables = extractTablesFromHtml(rawHtml)
+  const selection = selectTableWithEvidence(tables, tableSelectionHint)
+  if (selection.selectedIndex === null) {
+    return { tables, selection, table: null, schema: null }
+  }
+  const table = tables[selection.selectedIndex]
+  const schema = inferTableSchema(table.headers, table.bodyRows)
+  return { tables, selection, table, schema }
+}
+
 /**
  * Full V0.5 pipeline. Does not fetch at all when routing refuses; never
  * bypasses the rights gate. `accessInput` feeds classifyWebSourceAccess via
@@ -213,6 +233,19 @@ export async function acquireWebSourceViaStaticTable({
 
   const fetchResult = await fetchBounded({ url: candidate.url, ...fetchOptions })
   if (!fetchResult.ok) {
+    // Phase 3 Wave 2 (3E): fetchBounded never reads a body for a non-2xx
+    // status (see bounded-http-fetch.mjs's fetchOnce), so only the HTTP
+    // status itself is evidence here -- classifyFetchedContentAccess
+    // degrades gracefully with bodyText:null. Only overrides accessClassification
+    // when a REAL blocking signal fired (contentAccess.blocked); a network/
+    // timeout/SSRF/size/content-type failure (no httpStatus rule matches)
+    // stays exactly as before -- no behavior change for those.
+    const contentAccess = classifyFetchedContentAccess({
+      httpStatus: fetchResult.httpStatus ?? null,
+      bodyText: null,
+      finalUrl: fetchResult.finalUrl ?? null,
+      requestedUrl: candidate.url
+    })
     return {
       receipt: buildExtractionFailureReceipt({
         routeDecision,
@@ -220,9 +253,36 @@ export async function acquireWebSourceViaStaticTable({
         failureDetail: fetchResult.detail,
         robotsEvidence,
         transportEvidence,
+        contentAccessEvidence: contentAccess.blocked ? contentAccess : null,
         clock
       }),
       routeDecision
+    }
+  }
+
+  // Phase 3 Wave 2 (3E): a 200 status is not proof of real content -- a
+  // login/paywall/anti-bot interstitial commonly returns 200. Fail closed:
+  // classify BEFORE table extraction, never after, so a blocked page can
+  // never accidentally yield a "real" table match from its own chrome.
+  const contentAccess = classifyFetchedContentAccess({
+    httpStatus: fetchResult.httpStatus,
+    bodyText: fetchResult.bodyText,
+    finalUrl: fetchResult.finalUrl,
+    requestedUrl: candidate.url
+  })
+  if (contentAccess.blocked) {
+    return {
+      receipt: buildExtractionFailureReceipt({
+        routeDecision,
+        failureReason: 'CONTENT_ACCESS_BLOCKED',
+        failureDetail: contentAccess.decisionReason,
+        robotsEvidence,
+        transportEvidence,
+        contentAccessEvidence: contentAccess,
+        clock
+      }),
+      routeDecision,
+      contentAccess
     }
   }
 

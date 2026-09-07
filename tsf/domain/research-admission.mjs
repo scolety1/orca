@@ -174,6 +174,16 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
             // REQ-003: real chain-of-custody strength, independent of the
             // acquisition-mode/access fields above.
             chainOfCustody: { ...computedChainOfCustody, appliedChainOfCustody, upgradeReason: chainOfCustodyUpgradeReason },
+            // Phase 3 Wave 2 (3F): the remaining genuinely-deferred richer-
+            // snapshot fields named in DATASET_RESEARCH_ENGINE_V0_FINAL_
+            // RECONCILIATION.md's own "not implemented" list. Additive,
+            // optional -- every existing caller that doesn't set these
+            // (BULK_SOURCE_FIRST_HTTP, CROSS_MISSION_SOURCE_LIBRARY_REUSE)
+            // is byte-for-byte unaffected; honest null rather than a
+            // fabricated value for a method that has none to report.
+            schemaFingerprint: snap.schemaFingerprint ?? null,
+            selectorOrAdapterVersion: snap.selectorOrAdapterVersion ?? null,
+            transformationVersion: snap.transformationVersion ?? null,
             admittedAt
           })
           wrote = true

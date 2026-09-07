@@ -9,6 +9,15 @@
 // shared-generic-acquisition-contract.json, so a future merge does not need
 // a renaming pass.
 
+// Phase 3 Wave 2 (3E) additive values: real POST-FETCH content evidence can
+// surface two outcomes the pre-fetch input-only gate above has no way to
+// see (it only ever reasons about caller-supplied booleans, never actual
+// response bytes) -- an anti-bot/challenge interstitial, and a source that
+// is simply gone/erroring. See web-source-content-access-classifier.mjs.
+// Phase 3 Wave 2 (3C) additive value: OWNER_SUPPLIED_LOCAL_ARTIFACT has no
+// web rights concept at all (no fetch, no robots, no terms) -- this is the
+// honest "the classification doesn't apply" value, never a fabricated
+// PUBLIC_ALLOWED/AUTHENTICATED_* label for a mode with no such determination.
 export const ACCESS_CLASSIFICATIONS = Object.freeze([
   'PUBLIC_ALLOWED',
   'PUBLIC_TERMS_UNCLEAR',
@@ -16,7 +25,10 @@ export const ACCESS_CLASSIFICATIONS = Object.freeze([
   'AUTHENTICATED_PAGE_NO_EXPORT',
   'ROBOTS_DISALLOWED',
   'TERMS_BLOCKED',
-  'PAYWALL_ACCESS_CONTROL'
+  'PAYWALL_ACCESS_CONTROL',
+  'ANTI_BOT_CHALLENGE_DETECTED',
+  'SOURCE_UNAVAILABLE',
+  'NOT_APPLICABLE_LOCAL_ARTIFACT'
 ])
 
 export const ACQUISITION_MODES = Object.freeze([

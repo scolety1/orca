@@ -13,7 +13,16 @@ test('every access classification in the taxonomy is reachable and typed', () =>
     'AUTHENTICATED_PAGE_NO_EXPORT',
     'ROBOTS_DISALLOWED',
     'TERMS_BLOCKED',
-    'PAYWALL_ACCESS_CONTROL'
+    'PAYWALL_ACCESS_CONTROL',
+    // Phase 3 Wave 2 (3E) additive: real post-fetch content classification
+    // values, unreachable from classifyWebSourceAccess's own pre-fetch
+    // input-only rules -- see web-source-content-access-classifier.mjs.
+    'ANTI_BOT_CHALLENGE_DETECTED',
+    'SOURCE_UNAVAILABLE',
+    // Phase 3 Wave 2 (3C) additive: OWNER_SUPPLIED_LOCAL_ARTIFACT has no
+    // web-rights concept at all -- see web-source-acquisition-receipt.mjs's
+    // buildOwnerSuppliedArtifactReceipt.
+    'NOT_APPLICABLE_LOCAL_ARTIFACT'
   ])
 })
 
