@@ -219,3 +219,28 @@ export function markResearchNodeReady(mission, nodeId, clock, expectedRevision) 
     expectedRevision
   )
 }
+
+// Finding F5 fix: a CLEAN dispatch failure (worker.dispatch() resolves
+// {ok:false} -- a synchronous, unambiguous rejection, never a crash/timeout)
+// happens before the node ever reaches DISPATCHED, so it has no other durable
+// signal that this attempt was exhausted. Transitions READY -> FAILED so the
+// node lands in decideNextNodeAction's existing FAILED branch
+// (research-autonomy-policy.mjs) on the next tick, which routes through the
+// SAME retryCount/budget-tracked RETRY_DISPATCH-or-ESCALATE decision a
+// post-DISPATCHED provider FAILED result already gets via
+// recordResearchNodeResult -- no second retry-tracking mechanism.
+export function markResearchNodeDispatchFailed(mission, nodeId, clock, expectedRevision) {
+  return withResearchNode(
+    mission,
+    nodeId,
+    (node) => {
+      if (node.status === 'FAILED') {
+        return { next: node, changed: false }
+      }
+      assertNodeTransition(node.status, 'FAILED')
+      return { next: { ...node, status: 'FAILED' }, changed: true }
+    },
+    clock,
+    expectedRevision
+  )
+}

@@ -611,3 +611,130 @@ oxlint` was not run against anything, as nothing was touched.
 
 Adopted SHA: see the commit on `tsf/feature/phase2-background-task-
 truthfulness` that carries this section (docs-only commit; no code change).
+## Finding F5: a cleanly-failed research node dispatch stayed READY, bypassing retry-budget tracking -- REPRODUCED and FIXED
+
+Worktree: `f5-research-node-clean-failure`, branch
+`tsf/feature/f5-research-node-clean-failure` (forked from `tsf/main` @
+`d1f29dc95fa655d08328f307becc6eb5c91c2d35`).
+
+**Reproduction (Step 1).** Original citation
+(`tsf/server/research-mission-driver.mjs:257-269`) re-checked directly:
+`dispatchResearchNodeDurable` calls `markResearchNodeReady` (READY),
+`recordDispatchAttempt` (bookkeeping only), then `worker.dispatch(request)`.
+On a CLEAN failure (`dispatched.ok === false` -- a synchronous, unambiguous
+rejection, not a crash) it called `resolveDispatchAttempt(..., outcome:
+'FAILED_CLEAN')` -- which only mutates `node.dispatchAttempts`, never
+`node.status` -- and returned `{ ok:false, ... }` with NO further node-status
+transition. The node was left exactly where `markResearchNodeReady` put it:
+READY.
+
+Wrote a standalone repro script (a real `dispatchResearchNodeDurable` call
+plus 6 simulated `advanceOneMission` fleet-driver ticks against a worker
+whose `dispatch()` always cleanly rejects) run against the unmodified code:
+node stayed `READY`, `retryCount` stayed `0` through all 6 ticks, and
+`worker.dispatch()` was called on every single tick (7 real calls total for
+7 attempts, no bound). Finding independently CONFIRMED, not stale.
+
+**Root cause (Step 2).** Read the full real state machine before concluding:
+- `research-autonomy-policy.mjs`'s `decideNextNodeAction` only routes a node
+  through the retry-budget-tracked path (`decideRetryOrEscalate`, which
+  reads `node.retryCount` against `budget.maxRetriesPerNode` and returns
+  `RETRY_DISPATCH` or `ESCALATE`) when `node.status === 'FAILED'`. A node at
+  `READY` unconditionally returns a fresh `{ type: 'DISPATCH' }` -- the SAME
+  branch a never-before-attempted node takes.
+- `research-mission-fleet-driver.mjs`'s `executeDispatchAction` only calls
+  `recordResearchNodeAttempt` (the function that actually increments
+  `retryCount` and throws `TSF_RESEARCH_RETRY_BUDGET_EXCEEDED` past budget)
+  when `isRetry` is true -- i.e. only on a `RETRY_DISPATCH` decision, never
+  on a plain `DISPATCH`.
+- `escalateResearchNodeToNeedsYou` itself requires
+  `assertNodeTransition(node.status, 'BLOCKED')`, and the node-transition
+  table only allowed `BLOCKED` from `FAILED` or `ADMITTED` -- so escalation
+  was not merely unreached but structurally unreachable for a node stuck at
+  READY.
+- The retry-budget mechanism itself (`recordResearchNodeAttempt`,
+  `decideRetryOrEscalate`) is real, correct, and already exercised by the
+  OTHER failure path (a provider's structured `FAILED` result arriving via
+  `pollAndAdmitResearchNodeDurable` -> `recordResearchNodeResult`, which
+  DOES transition `DISPATCHED -> FAILED`). This finding is specifically
+  about the pre-DISPATCHED, synchronous clean-failure path never reaching
+  that same, already-correct mechanism -- confirming Step 2's question:
+  yes, a cleanly-failing node was retried literally forever, once per driver
+  tick, with the budget check never once consulted (not "a budget check
+  exists elsewhere that this finding missed").
+
+**Fix (Step 3).** No new retry-budget mechanism -- the node is routed into
+the exact SAME `decideRetryOrEscalate`/`recordResearchNodeAttempt` machinery
+the DISPATCHED-then-FAILED path already uses, by making the missing state
+transition legal and reaching it:
+- `tsf/domain/research-mission.mjs`: added `'FAILED'` to `READY`'s allowed
+  transitions in `NODE_ALLOWED` (previously `READY: ['DISPATCHED',
+  'CANCELLED', 'ADMITTED']`), with a comment explaining why a clean failure
+  needs this specific edge (it never reaches DISPATCHED).
+- `tsf/domain/research-node.mjs`: new `markResearchNodeDispatchFailed`,
+  mirroring `markResearchNodeReady`'s own shape exactly (idempotent no-op if
+  already FAILED, `assertNodeTransition` otherwise).
+- `tsf/server/research-mission-driver.mjs`: `dispatchResearchNodeDurable`'s
+  clean-failure branch now calls `markResearchNodeDispatchFailed` (its own
+  durable `withResearchMission` commit, right after the existing
+  `resolveDispatchAttempt` commit) before returning `{ ok:false, ... }`.
+
+This preserves the codebase's existing ambiguous-vs-clean distinction
+completely untouched: `AMBIGUOUS_REQUIRES_RECONCILIATION` (a crash/timeout
+mid-call) still refuses to guess and never reaches this branch at all; only
+a genuinely clean, synchronous `{ ok:false }` rejection transitions to
+FAILED. The `NEEDS_YOU`-category human-escalation distinction
+(`decideRetryOrEscalate`'s `SOURCE_UNAVAILABLE` category) is also unchanged
+-- reached only after the SAME budget is exhausted, exactly as it already
+was for a post-DISPATCHED failure.
+
+**Tests (Step 4).** New `tsf/test/research-mission-clean-dispatch-failure.test.mjs`,
+2 tests:
+1. `dispatchResearchNodeDurable` direct call: a clean failure leaves the
+   node `FAILED` (not `READY`), with `dispatchAttempts.at(-1).outcome ===
+   'FAILED_CLEAN'` unchanged.
+2. A node that cleanly fails on every real dispatch, driven purely through
+   `advanceOneMission` (the real fleet-driver entry point, never a hand-
+   inlined domain call): tick 0 (fresh DISPATCH) fails -> FAILED,
+   `retryCount` 0; tick 1 (RETRY_DISPATCH, budget 2) -> `retryCount` 1; tick
+   2 (RETRY_DISPATCH) -> `retryCount` 2; tick 3 -> budget exhausted ->
+   `ESCALATE`, node `BLOCKED`, mission reaches `state: 'NEEDS_YOU'` with one
+   open Needs You entry; tick 4 (after escalation) is a true `SKIPPED`
+   no-op. Exactly 3 real `worker.dispatch()` calls total, never a 4th --
+   proving the unbounded-retry finding is closed, not merely slowed.
+   (Resource Pressure Governor forced HEALTHY via
+   `TSF_RESOURCE_PRESSURE_TEST_TOTAL/FREE_BYTES`, matching F1's own
+   established test convention, since this host's real free memory can
+   otherwise sit in CRITICAL/refuse-dispatch territory.)
+
+Result: `node --test tsf/test/research-mission-clean-dispatch-failure.test.mjs`
+-- 2/2 pass. Targeted regression across every test file that imports
+`research-node.mjs`/`research-mission.mjs`/`research-mission-driver.mjs`/
+`research-autonomy-policy.mjs`/`research-mission-fleet-driver.mjs` directly
+(`research-mission-driver`, `research-mission`, `research-autonomy-policy`,
+`research-mission-fleet-driver` + its 3 companion files, `research-crash-
+resume`, `research-node-redispatch`, `research-dispatch-bookkeeping`,
+`research-adversarial-gauntlet`, `research-concurrency`, `research-e2e-
+normal-mission`, `nfl-2001-qb-research-fixture`, `research-resource-
+pressure-interaction`): 119/119 pass. Broader sweep of every `research-*`
+test file in the suite (36 files, the full blast radius of a change scoped
+entirely to research node/mission execution-state domain code): `node --test
+tsf/test/research-*.test.mjs` -- 315/315 pass, 0 fail. A full whole-repo
+sweep was not run for this finding -- the change touches no code outside
+the research subsystem (no shared store/schema/HTTP-route file was
+modified), and the research-specific sweep already covers every real
+consumer of the two modified domain functions and the one modified driver
+function.
+
+**Lint.** `npx oxlint` on every changed/new file
+(`research-mission.mjs`, `research-node.mjs`, `research-mission-driver.mjs`,
+`research-mission-clean-dispatch-failure.test.mjs`) -- fixed 2 `curly`
+findings on newly-added lines (the new test file's cleanup loop, the new
+`markResearchNodeDispatchFailed`'s early-return branch) rather than leaving
+them; every other finding oxlint reports on these files is a pre-existing,
+unrelated `curly`/`no-unused-vars` finding on a line this change did not
+touch (confirmed via `git diff --stat` -- 3 small, purely additive diffs;
+none of the flagged line numbers fall inside a changed region).
+
+Adopted SHA: see the commit on `tsf/feature/f5-research-node-clean-failure`
+that carries this section.

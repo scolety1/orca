@@ -21,7 +21,7 @@
 // again is the resume action, and it checks that classification FIRST,
 // before ever risking a second real call.
 import { addResearchNode, assertNodeTransition, blockResearchMission, computeResearchMissionPhase, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, readyResearchNodes, withResearchNode } from '../domain/research-mission.mjs'
-import { buildBoundedResearchRequest, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
+import { buildBoundedResearchRequest, markResearchNodeDispatchFailed, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
 import { classifyDispatchDeliveryGuarantee, recordDispatchAttempt, resolveDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
 import { detectResearchConflicts, verifyResearchClaim } from '../domain/research-verification.mjs'
@@ -266,6 +266,11 @@ export async function dispatchResearchNodeDurable(missionId, nodeId, providerId,
     )
   )
   if (!dispatched.ok) {
+    // F5 fix: READY -> FAILED so the retry-budget-tracked decision path
+    // (research-autonomy-policy.mjs's decideNextNodeAction FAILED branch)
+    // sees this node next tick instead of it being silently re-issued as a
+    // fresh DISPATCH forever.
+    next = await withResearchMission(missionId, (m) => markResearchNodeDispatchFailed(m, nodeId, clock, m.revision))
     return { ok: false, reason: dispatched.reason, detail: dispatched.detail, mission: next }
   }
   next = await withResearchMission(missionId, (m) => recordResearchNodeDispatch(m, nodeId, { taskFingerprint: request.taskFingerprint, workerRunRef: dispatched.workerRunRef }, clock, m.revision))

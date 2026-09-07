@@ -67,7 +67,14 @@ const NODE_ALLOWED = Object.freeze({
   // no dispatch ever occurred first -- this is not a generic bypass of the
   // normal DISPATCHED -> RESULT_RECEIVED -> ADMITTED path.
   PENDING: ['READY', 'CANCELLED', 'ADMITTED'],
-  READY: ['DISPATCHED', 'CANCELLED', 'ADMITTED'],
+  // READY -> FAILED (Finding F5): a clean dispatch failure (worker.dispatch()
+  // returns {ok:false} synchronously) never reaches DISPATCHED at all -- the
+  // node is still READY when the failure is known. Without this transition
+  // the node had no legal way to reach FAILED for a clean failure, so it sat
+  // at READY forever and decideNextNodeAction (research-autonomy-policy.mjs)
+  // kept re-issuing it as a fresh DISPATCH every tick, never RETRY_DISPATCH,
+  // bypassing retryCount/budget entirely.
+  READY: ['DISPATCHED', 'CANCELLED', 'ADMITTED', 'FAILED'],
   DISPATCHED: ['RESULT_RECEIVED', 'READY', 'FAILED'],
   RESULT_RECEIVED: ['ADMITTED', 'FAILED'],
   // A node stays open to further dispatch cycles after one result is
