@@ -53,8 +53,8 @@ uses, fully read-only).
 |---|---|---|
 | 1. UI_DOGFOOD_AGENT_V0 | **ADOPTED** — merged to `tsf/main` @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **ADOPTED** — merged to `tsf/main` @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
-| 3. Deferred Research Platform Completion Wave | IN_PROGRESS (Wave 1 / 3A+3B **ADOPTED** @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, pushed, worktree retired; Wave 2 / 3C-3G **built, tested, committed** in worktree `research-platform-completion-wave-v0-wave2`, pending coordinator review/adoption) | See below |
-| 4. Cleanup V1 / Governed Destructive Automation | NOT_STARTED | |
+| 3. Deferred Research Platform Completion Wave | **ADOPTED** — both waves merged: Wave 1 @ `3ae53e07a5609797c4ecd254cb696b2c9cb5e672`, Wave 2 @ `10e39227a7ebcdcee15689163c9707bbfc6866b5`, both pushed to `fork/tsf/main` (confirmed), both phase worktrees retired | See below |
+| 4. Cleanup V1 / Governed Destructive Automation | IN_PROGRESS | Worktree `cleanup-v1-governed-destructive-automation` created from `10e39227a7` |
 | 5. Larger Astra Follow-up Benchmark | NOT_STARTED | |
 
 ### Phase 1 — UI_DOGFOOD_AGENT_V0
@@ -1200,9 +1200,28 @@ an in-memory fake `sessionProvider`/`downloadFn`; no `TSF_RESEARCH_LIVE_
 DISPATCH_ENABLED`/paid-provider flag was set or read anywhere in new/
 changed code).
 
+**Coordinator independent review (2026-09-06), before adoption:** re-ran
+all Wave-2-specific test files directly (49 across the 3C/3D/3E fixture
+suites + 14 in the 3G multi-acquisition-mode proving set) — 100% pass.
+Independently confirmed the proving-set test's own documented ESM-import-
+ordering fix by reading it: env override runs before the dynamic imports
+of `data-store.mjs`-dependent modules, matching this codebase's
+established isolation pattern; confirmed no real shared state file was
+touched after running it. `npx oxlint` re-run — all 8 flagged violations
+independently `git blame`-verified to be on lines last touched before
+this wave's own base commit. Read `authenticated-official-download-
+acquisition.mjs` directly: `assertNoSecretLeakage` is a real runtime
+guard (throws on any password/token/cookie/secret/apikey-shaped field
+name in a session or download result), not just a documented promise —
+the hard security rule is enforced in code. No corrections needed.
+**Merged to `tsf/main` @ `10e39227a7ebcdcee15689163c9707bbfc6866b5`,
+pushed to `fork/tsf/main` (verified), worktree
+`research-platform-completion-wave-v0-wave2` retired.**
+
 ## Next intended action
 
-Phase 1, Phase 2, Phase 3 Wave 1 (3A/3B), and Phase 3 Wave 2 (3C-3G) are
-all built and tested; Wave 2 awaits the same independent coordinator
-review and merge-to-`tsf/main` step Phase 1/2/Wave 1 each received before
-adoption. Phases 4-5 are NOT_STARTED.
+Phase 1, Phase 2, and Phase 3 (both waves) are all adopted and closed.
+Phase 4 (Cleanup V1 / Governed Destructive Automation) is now in
+progress in worktree `cleanup-v1-governed-destructive-automation`
+(branch `tsf/feature/cleanup-v1-governed-destructive-automation`, forked
+from `10e39227a7`). Phase 5 is NOT_STARTED.
