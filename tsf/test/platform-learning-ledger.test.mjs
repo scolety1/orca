@@ -197,11 +197,26 @@ test('retrieveLessonGuidance: every returned lesson is stamped advisory-only, bo
   assert.equal(guidance[1].statement, 'lesson 2', 'most recent lesson last within the bounded window, matching this codebase\'s .slice(-limit) convention')
 })
 
-test('LESSON_CATEGORIES is exactly the set this module actually computes lessons for', () => {
-  assert.deepEqual(
-    [...LESSON_CATEGORIES].sort(),
-    ['COMPLETENESS_GAP_PATTERN', 'IDENTITY_AMBIGUITY_PATTERN', 'PROVIDER_RELIABILITY_SIGNAL', 'RECURRING_DISPATCH_FAILURE', 'SOURCE_RELIABILITY_SIGNAL', 'VERIFIED_CORRECTION_PATTERN'].sort()
-  )
+test('LESSON_CATEGORIES still contains every category extractLessonsFromCompletedMission itself computes', () => {
+  // Native Self-Improvement Loop V1 Wave B added three more categories
+  // (DETECTOR_FALSE_POSITIVE_PATTERN, VERIFIER_FAILURE_PATTERN,
+  // RECURRING_SUBSYSTEM_DEFECT) written by a DIFFERENT real consumer
+  // (server/self-improvement-learning-ledger-wiring.mjs), not by
+  // extractLessonsFromCompletedMission -- exactly Finding F3's own
+  // precedent of multiple real writers into one shared ledger. This test
+  // now proves the ResearchMission-specific subset is still intact
+  // (regression guard for THIS function), not that it's the whole set.
+  const researchMissionCategories = [
+    'COMPLETENESS_GAP_PATTERN',
+    'IDENTITY_AMBIGUITY_PATTERN',
+    'PROVIDER_RELIABILITY_SIGNAL',
+    'RECURRING_DISPATCH_FAILURE',
+    'SOURCE_RELIABILITY_SIGNAL',
+    'VERIFIED_CORRECTION_PATTERN'
+  ]
+  for (const category of researchMissionCategories) {
+    assert.ok(LESSON_CATEGORIES.includes(category), `expected LESSON_CATEGORIES to still include ${category}`)
+  }
 })
 
 test('recordLessonsFromCompletedMission: extraction + durable merge in one call, idempotent on re-run', () => {

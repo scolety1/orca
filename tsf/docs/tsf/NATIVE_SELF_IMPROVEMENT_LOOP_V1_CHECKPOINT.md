@@ -33,22 +33,25 @@ Do not build a recursive unconstrained self-modifying agent.
 | Reconcile + Design | DONE (Wave A) | See "Wave A" section below |
 | 1 (Finding contract) | DONE (Wave A) | `tsf/domain/self-improvement-finding.mjs` + store |
 | 2 (Autofix eligibility policy) | DONE (Wave A) | `tsf/domain/self-improvement-autofix-eligibility.mjs` |
-| 3-8 (Mission origination through Security review) | NOT_STARTED | Wave B's job |
+| 3 (Fix-mission origination) | DONE (Wave B) | `tsf/server/self-improvement-mission-origination.mjs` |
+| 4 (Duplicate/loop protection) | DONE (Wave B) | Content-addressed missionId + `tsf/domain/self-improvement-retry-budget.mjs` |
+| 5 (Verifier/adoption contract) | DONE (Wave B) | `tsf/server/self-improvement-verifier-dispatch.mjs`, `tsf/server/self-improvement-adoption.mjs` |
+| 6 (Redogfood/close the loop) | DONE (Wave B) | `tsf/server/self-improvement-redogfood.mjs`, `tsf/domain/self-improvement-receipt-chain.mjs` |
+| 7 (Learning Ledger) | DONE (Wave B) | `tsf/server/self-improvement-learning-ledger-wiring.mjs` |
+| 8 (Security review) | NOT_STARTED | Later wave |
 | 9 (Golden proof) | NOT_STARTED | Acceptance test |
 | 10 (Chaos proof) | NOT_STARTED | |
 
 ## Next intended action
 
-Wave B: mission origination from an `ELIGIBLE_FOR_AUTOFIX` finding. Do
-NOT re-derive the reconciliation below from scratch -- re-verify with a
-fresh read (code may have shifted) and build on it. The composable,
-production-wired primitive to reuse for dispatch is
-`chat-dispatch-bridge.mjs`'s `planAndDispatchFromChat` (structured,
-non-chat-text callable given `{project, placement, identity}` -- its one
-free-text input, `message`, still goes through a live LLM planner call).
-`PlannerSessionLifecycle` (`planner-session-lifecycle.mjs`) remains
-test-only/unwired to any production entrypoint as of this wave -- confirm
-this is still true before relying on either path being "already wired."
+Wave C+: Phase 8 (security review of this whole mechanism) and Phases
+9-10 (golden/chaos acceptance proofs, which per the mission brief require
+a REAL bounded Codex/Claude process -- deliberately never exercised by
+Wave B's own automated test suite, which proves every mechanism with
+dependency-injected fakes instead). Do NOT re-derive Wave B's design from
+scratch -- re-verify with a fresh read (code may have shifted) and build
+on it. See the "Wave B" section below for the full reconciliation,
+design, and test evidence.
 
 ---
 
@@ -248,3 +251,382 @@ onward exist only as legal states in the transition table, never reached
 by any function this wave wrote. No second issue-truth store invented
 (see the "Issue/finding representations" reconciliation row above for the
 evidence both existing candidates were genuinely checked and rejected).
+
+---
+
+## Wave B -- Phases 3-7: origination, dedup/loop protection, verifier/
+adoption, redogfood, Learning Ledger (2026-09-07)
+
+Worktree: `selfimprove-wave-b-origination-loop`, branch
+`tsf/feature/selfimprove-wave-b-origination-loop` (forked from `tsf/main`
+@ `3806bb712ad52c50d44b87aee8cee13f1d320eac`, includes Wave A's finding
+contract + eligibility policy). This is the core, safety-critical
+mechanism of the whole mission -- every design decision below was made
+conservatively, fail-closed, per the mission brief's explicit instruction.
+
+### Design decisions, verbatim from the mission brief, and how each was honored
+
+1. **`PlannerSessionLifecycle` is the mission vehicle, unmodified.**
+   `self-improvement-mission-origination.mjs`'s `originateRepairMission`
+   calls `new PlannerSessionLifecycle({missionId, plannerSessionId, deps})`
+   and its real `startMission`/`recordDecision`. `self-improvement-repair-
+   cycle.mjs`'s `runRepairAttempt` calls its real `dispatchWorkerForTask`/
+   `recordWorkerResult`/`recordVerifierResult`/`advancePhase`. No second
+   mission/lease/checkpoint file was written. `PlannerSessionLifecycle`
+   itself was NOT modified -- zero diff to `planner-session-lifecycle.mjs`
+   or `planner-mission-checkpoint.mjs`.
+
+2. **A real, bounded worker in an isolated worktree.**
+   `self-improvement-worktree.mjs`'s `createIsolatedRepairWorktree` runs
+   the real `git worktree add -q --detach <path> HEAD && git checkout -q
+   -b <branch>` sequence (execFile, `-c safe.directory=...`, mirrors
+   `cleanup-git-worktree-inventory.mjs`'s own git-wrapper convention) and
+   asserts the target is never the canonical repo root itself
+   (`TSF_SELF_IMPROVEMENT_WORKTREE_TARGETS_CANONICAL_REPO`). A real,
+   reproduced bug fixed here: the raw `missionId` (`mission:selfimprove:
+   <hash>`) contains `:`, an illegal git-ref character -- every real
+   dispatch would have failed `git checkout -b` until the branch name was
+   sanitized (`self-improvement-worker-dispatch.mjs`'s `sanitizedMissionId`).
+   `self-improvement-worker-dispatch.mjs`'s `dispatchRepairWorker` spawns
+   `tsf/providers/safe-provider-launch.mjs` itself (the real, unmodified
+   file) as a child process, piped rather than inherited on ITS side so
+   the real provider's `stdio:'inherit'` cascades to a capturable pipe.
+   **Deviation, documented, not silent**: `safe-provider-launch.mjs` has
+   NO stdin/prompt-file channel (confirmed by a full read -- it is built
+   for an interactive terminal session Orca itself shells out to via
+   `orcaLaunchMode: CUSTOM_TERMINAL_COMMAND`, never previously invoked
+   programmatically by any `tsf/server` file). The bounded prompt
+   (`domain/self-improvement-worker-prompt.mjs`'s `buildWorkerPrompt` --
+   built ENTIRELY from `sourceDetector`/`evidence`/`reproduction`/
+   `affectedSurface`/allowed scope/forbidden surfaces, never free text)
+   travels as the final CLI argument via `providerArguments` (`['exec',
+   prompt]` for codex, `['-p', prompt]` for claude -- each provider's own
+   real non-interactive/print mode), exactly the same mechanism every
+   other `providerArguments` use in `launch-profiles.v1.json` already
+   relies on. The provider role/model/effort itself is resolved via the
+   real `resolveRole({role:'WORKER_BALANCED', mappings, profiles})`
+   against the real committed `provider-role-mappings.v1.json`/`launch-
+   profiles.v1.json` -- the CLI `--provider` flag value is derived by
+   parsing the resolved profile's own `command` template (`--provider
+   (\S+)`), never a second, independently-maintained mapping that could
+   drift. Gated by `classifyDispatchAdmission(hostMemory,
+   'newHeavyweightWorkerDispatch')` -- Finding F1's own exact admission
+   category and call shape (verified via `chat-dispatch-bridge.mjs`'s own
+   real call site), checked BEFORE any worktree/spawn is attempted.
+
+3. **A real, independent verifier -- never the worker's own certification.**
+   `self-improvement-verifier-dispatch.mjs`'s `runIndependentVerification`
+   mechanically checks, against REAL evidence gathered by REAL git/process
+   calls (all dependency-injectable): the finding's own `reproduction.
+   command` re-executed in the worker's worktree; a targeted `node --test`
+   regression run (hinted `*.test.mjs` filesHint entries first, else a
+   real sibling-file convention lookup -- never the giant suite, fails
+   CLOSED to `NO_TARGETED_REGRESSION_TEST_RESOLVABLE` when nothing
+   resolves, matching this program's "never treat couldn't-check as
+   passed" discipline); a real `git diff --name-only`/`--name-status`
+   against forbidden path prefixes and the authority envelope's declared
+   scope; a documented-limited duplicate-architecture heuristic
+   (Levenshtein edit-distance <=3 on new-file basenames vs. every existing
+   canonical file basename -- catches near-identical naming ONLY, cannot
+   catch semantic duplication under a different name, stated honestly in
+   the module's own header). Composed into a typed
+   `{verdict: VERIFIED_PASS|VERIFIED_FAIL, reasons[]}` by
+   `domain/self-improvement-verifier-checks.mjs`'s `buildVerifierVerdict`
+   -- never a vague pass; every failing check contributes a named reason.
+   **`VERIFIER_INDEPENDENT` runtime enforcement is a REAL, NEW mechanism**
+   (`domain/self-improvement-provider-independence.mjs`'s
+   `resolveIndependentVerifierRole`): `ZERO_RELAY_PLANNER_WORKER_
+   ARCHITECTURE.md`'s own reconciliation documents this flag was
+   previously enforced ONLY by a static regression eval
+   (`routing-eval-runner.mjs`), never a live dispatch. This function
+   resolves `VERIFIER_INDEPENDENT`, and if its preferred provider collides
+   with the worker's actual provider AND `mustDifferFromWorkerWhenAvailable`
+   is set, switches to the role's own `fallbackProfile` -- and if even
+   that shares the worker's provider, honestly reports non-divergent
+   rather than fabricating independence. Proven against BOTH the real
+   committed config (worker=openai/WORKER_BALANCED, verifier=anthropic --
+   already divergent) and fabricated forced-collision configs.
+
+4. **Authority envelope.** `domain/self-improvement-authority-envelope.mjs`'s
+   `buildAuthorityEnvelope` is a pure, deterministic function of
+   `(finding, missionId)` -- deliberately NEVER persisted as its own
+   artifact (a second source of truth that could drift from the finding it
+   describes); any caller holding the finding reconstructs the identical
+   envelope. Carries: evidence/reproduction verbatim, `allowedScope` (from
+   `candidateFixScope.filesHint`, honestly empty when the detector gave no
+   hint), `forbiddenPathPrefixes` (Cleanup V1's real gate files --
+   `cleanup-owner-authorization-gate.mjs`, `cleanup-protected-registry.mjs`,
+   `cleanup-protected-registry-defaults.mjs` -- plus this wave's OWN
+   adoption gate file, so a repair worker can never open its own adoption
+   gate), `structurallyForbiddenSurfaces` (NWR, `dataset-research-engine-
+   v0`, canonical `tsf/main` as a direct write target -- documented as
+   structural, not mechanically diffable, since each is a different
+   repository/worktree the worker's own git diff can never even reference;
+   real double-check: `worktreePath !== canonicalRepoPath` is ALSO
+   asserted in `createIsolatedRepairWorktree` itself, defense in depth,
+   not just documentation), acceptance test, verifier requirements,
+   project attribution, resource class, adoption policy, rollback
+   expectations. `assertScopeDoesNotOverlapForbidden` refuses BEFORE
+   dispatch if a detector's own `filesHint` already names a forbidden path.
+
+5. **Adoption gate -- two signals, mirrors Cleanup V1 exactly, never set
+   by this wave.** `self-improvement-adoption-authorization-gate.mjs` is a
+   line-for-line structural mirror of `cleanup-owner-authorization-gate.mjs`:
+   `TSF_SELF_IMPROVEMENT_ADOPTION_AUTHORIZATION` (env, exact marker string
+   `OWNER_AUTHORIZED_SELF_IMPROVEMENT_ADOPTION_V1`) AND a real flag file
+   (`SELF_IMPROVEMENT_ADOPTION_AUTHORIZATION.flag`, gitignored
+   `.local-state`, trimmed content must equal the same marker) -- BOTH
+   required, both dependency-injected (`env`/`flagFilePath` default to the
+   real global signal only when the caller passes nothing). **Confirmed:
+   grep for `TSF_SELF_IMPROVEMENT_ADOPTION_AUTHORIZATION=` and for the
+   marker string as a written flag-file value across every file this wave
+   committed returns zero matches outside the gate module's own constant
+   declaration and its tests' FABRICATED env objects/temp files.**
+   `self-improvement-adoption.mjs`'s `attemptRepairAdoption` checks the
+   gate FIRST, before any git I/O -- the default-closed path (every real
+   run today) never touches a repo path at all. When open (only ever
+   proven with a fabricated env/flag file against a disposable fixture
+   repo pair, real `git worktree add`/`git merge --ff-only`), it reuses
+   `adapters/git-identity.mjs`'s real `getCurrentCommit`/
+   `isCleanWorkingTree`/`isAncestor`/`ffOnlyMerge` DIRECTLY (the same
+   primitives `self-update-adoption.mjs`'s own TSF-self-adoption
+   governance already relies on) -- no fetch step needed and documented
+   why: `createIsolatedRepairWorktree` makes a genuinely LINKED worktree
+   (`git worktree add`), sharing the canonical repo's own object database
+   and refs by construction, so the candidate branch is already visible
+   from `canonicalRepoPath` with zero network/fetch. A real end-to-end
+   ff-only merge into a disposable fixture "canonical" repo was proven
+   (`self-improvement-adoption.test.mjs`), including confirming the real
+   post-merge HEAD sha and commit message. **When the gate is closed (the
+   permanent state throughout this wave's own work), a fully-verified
+   repair mission stops at `READY_FOR_ADOPTION` -- a correct, expected
+   terminal state, not a failure.**
+
+6. **Dedup / loop protection.** `computeRepairMissionId(findingId)` is a
+   deterministic, content-addressed function
+   (`mission:selfimprove:<findingId-suffix>`) -- the SAME finding always
+   resolves to the SAME missionId BY CONSTRUCTION, giving a real 1:1
+   findingId->missionId mapping with zero separate lookup table (no dual-
+   write consistency risk, mirrors Wave A's own `findingIdFor` discipline).
+   `originateRepairMission` checks `readPlannerMissionRecord(missionId)`
+   BEFORE calling `startMission` and returns the EXISTING checkpoint
+   (`created: false`) rather than throwing/duplicating -- proven idempotent
+   by calling it twice for the identical finding and asserting `deepEqual`
+   checkpoints. The retry/correction-attempt budget
+   (`domain/self-improvement-retry-budget.mjs`'s `decideRepairRetryOrEscalate`,
+   default `{maxAttemptsPerMission: 2}`) mirrors F5/F27/F29's own
+   `decideRetryOrEscalate` shape exactly (same attempts-vs-budget
+   comparison, same RETRY-or-ESCALATE result type) but is NOT a call into
+   `research-autonomy-policy.mjs` itself (that module reads ResearchNode-
+   shaped fields a repair mission's checkpoint doesn't have). Bounds
+   ATTEMPTS WITHIN one persistent mission -- one finding = one mission
+   forever, attempts are tracked via `checkpoint.verifierResults.filter(r
+   => r.verdict === 'VERIFIED_FAIL').length`, never a new mission per
+   attempt. Exhaustion transitions the FINDING to `NEEDS_OWNER`
+   (`REPAIR_RETRY_BUDGET_EXCEEDED`) -- proven: 2 real failed attempts,
+   then a 3rd call escalates and dispatches ZERO further workers. Reopen
+   semantics: `classifyRedogfoodResult` (see Phase 6 below) NEVER routes a
+   `RESOLVED` finding straight back to `FIX_MISSION_CREATED` -- only to
+   `REOPENED`, which itself only legally re-enters `VERIFIED`/`NEEDS_OWNER`/
+   `REJECTED_FALSE_POSITIVE` per Wave A's own transition table, so a
+   recurring finding is never blindly re-originated; it goes through
+   re-verification first, same budget/escalation discipline applying to
+   whatever NEW mission-track cycle that re-verification produces.
+
+7. **Autonomous driver, opt-in, off by default.**
+   `self-improvement-fleet-driver.mjs`'s `startSelfImprovementFleetDriver`
+   mirrors `keep-going-fleet-driver.mjs`'s exact interval/fire/inProgress/
+   unref shape (one bounded action per tick over ONE actionable finding in
+   stable content-addressed order -- `pickOneActionableFinding` -- proven
+   never to overlap a slow cycle). `self-improvement-fleet-driver-
+   bootstrap.mjs`'s `bootstrapSelfImprovementFleetDriverIfEnabled` checks
+   `process.env.TSF_SELF_IMPROVEMENT_LOOP_ENABLED !== '1'` first, exactly
+   like `keep-going-fleet-driver-bootstrap.mjs`. **Deliberate, documented
+   divergence from the literal `TSF_KEEP_GOING_FLEET_DRIVER` convention**:
+   `main.mjs`'s `realSpawnFn` sets `TSF_KEEP_GOING_FLEET_DRIVER: '1'`
+   unconditionally for every real plugin spawn (making THAT driver
+   effectively always-on in production) -- `TSF_SELF_IMPROVEMENT_LOOP_
+   ENABLED` is NEVER added there, or anywhere else this wave committed
+   (confirmed by grep: the string appears only in the bootstrap file's own
+   check and its test's OWN transient, restored-immediately `process.env`
+   manipulation). The bootstrap IS still wired into the real server
+   (`http-server.mjs`'s `startStandaloneServer`, via a new composition
+   root `background-fleet-drivers-bootstrap.mjs` -- see "http-server.mjs
+   line budget" below for why a composition root was used instead of a
+   direct second import) -- an operator who deliberately wants this loop
+   running sets the env var themselves, outside this wave's own control.
+
+### Phase 6 -- Redogfood: mapping logic and why
+
+`domain/self-improvement-redogfood.mjs`'s `classifyRedogfoodResult`
+re-runs the ORIGINAL detector's own `reproduction` criteria (never a
+substitute check -- `server/self-improvement-redogfood.mjs`'s
+`runRedogfood` literally imports and reuses `resolveMechanicalCommand`/
+`runCommand` from `self-improvement-verifier-dispatch.mjs`, the SAME
+functions the verifier itself uses) and maps the outcome onto Wave A's
+OWN finding status vocabulary -- never a parallel result enum. The
+mapping is **context-dependent on the finding's CURRENT status**, not
+just the redogfood facts, because Wave A's `STATUS_ALLOWED` table is
+narrower than the outcome vocabulary: from `READY_FOR_ADOPTION` (pre-
+adoption, candidate worktree), a clean pass -> `RESOLVED`; anything else
+(still fails / regression introduced / a late "never really reproduced"
+discovery) -> `NEEDS_OWNER` (none of `REOPENED`/`REJECTED_FALSE_POSITIVE`
+is a legal edge out of `READY_FOR_ADOPTION`, and a late reversal at this
+stage is exactly what Wave A's design reserves for a human). From
+`RESOLVED` (post-adoption, canonical repo), the ONLY legal edge is
+`REOPENED` -- so ANY bad outcome routes there, and a clean reconfirmation
+needs no transition at all. A durable receipt chain
+(`domain/self-improvement-receipt-chain.mjs`) links finding -> mission ->
+implementation sha -> verifier result -> adoption decision -> redogfood
+result. **Receipt primitive choice, both checked**: `receipts.mjs`
+requires a non-null `projectId` (throws otherwise) -- incompatible with
+Wave A's own honest-null `projectId` discipline for a platform-wide
+finding. `cleanup-receipt-chain.mjs`'s `createCleanupReceipt` hardcodes a
+fixed, cleanup-specific `CLEANUP_RECEIPT_KINDS` enum with no room for this
+mechanism's own kinds. Both share the identical proven algorithm
+(`sha256(body-without-its-own-hash)` chained via `previousReceiptHash`) --
+`self-improvement-receipt-chain.mjs` reuses that ALGORITHM exactly (same
+`createXReceipt`/`verifyXReceipt`/`verifyXReceiptChain`/`appendXReceipt`
+API shape as `cleanup-receipt-chain.mjs`) as a NEW, small, clearly-scoped
+sibling -- the identical justification `cleanup-receipt-chain.mjs`'s own
+header already used for not reusing `receipts.mjs`. V1, honestly limited
+(stated in the module's own header): `FALSE_POSITIVE` needs a baseline
+re-run against the PRE-fix code to distinguish "the fix worked" from
+"this never reproduced" -- not built this wave; a mechanical redogfood run
+only ever reaches `RESOLVED`/`REOPENED`/`REGRESSION_INTRODUCED` on its
+own; `FALSE_POSITIVE` is reachable only via an explicit, caller-supplied
+signal for a future detector adapter with its own baseline evidence.
+
+### Phase 7 -- Learning Ledger wiring
+
+`server/self-improvement-learning-ledger-wiring.mjs` wires four real
+outcomes into the EXISTING `platform-learning-ledger.mjs` via its already-
+generic `addLessonRecord` (NOT `extractLessonsFromCompletedMission`, which
+reads ResearchMission-specific fields a finding/repair-mission doesn't
+have) -- mirrors Finding F3's own real-consumer pattern exactly (a write
+triggered by a genuine terminal event, a read wired as an advisory-only
+annotation, never a gate). **`LESSON_CATEGORIES` extended additively**
+(EXTEND, not a second store): `DETECTOR_FALSE_POSITIVE_PATTERN`,
+`VERIFIER_FAILURE_PATTERN`, `RECURRING_SUBSYSTEM_DEFECT` -- three new
+categories, zero renamed/removed; a repeatedly-successful
+`candidateFixScope.kind` REUSES the existing `VERIFIED_CORRECTION_PATTERN`
+category directly (a real, already-correct fit, no new category needed).
+The one existing test that assumed `LESSON_CATEGORIES` was EXACTLY the set
+`extractLessonsFromCompletedMission` computes
+(`platform-learning-ledger.test.mjs`) was updated (not weakened) to assert
+that function's own subset is still fully present, since it is now
+genuinely one of several real writers into one shared ledger.
+
+### `http-server.mjs` line budget
+
+`background-fleet-drivers-bootstrap.mjs` is a new, small composition root
+(`bootstrapBackgroundFleetDrivers(server)` calling both
+`bootstrapKeepGoingFleetDriverIfEnabled` and
+`bootstrapSelfImprovementFleetDriverIfEnabled`) used instead of a direct
+second import+call in `http-server.mjs`. Reason, confirmed by measurement:
+`http-server.mjs` was ALREADY at 611 counted lines (over the
+`.oxlintrc.json` 600-line `.mjs` cap) BEFORE this wave touched it at all
+(confirmed by lint-checking the file at its pre-Wave-B git HEAD) --
+pre-existing debt unrelated to this wave. This wave's net change to that
+file is ZERO lines (one import line, one call line -- same count as
+before, just pointing at the composition root instead of directly at the
+keep-going bootstrap) so the pre-existing violation is neither fixed (out
+of scope, risky to restructure unrelated code in a safety-critical wave)
+nor worsened.
+
+### Real bug found and fixed during this wave's own testing
+
+`node --test <targeted regression file>`, when spawned as a subprocess
+FROM WITHIN a process that is itself running under `node --test`
+(`NODE_TEST_CONTEXT`/`NODE_TEST_WORKER_ID` in `process.env`, inherited by
+a child by default), is silently treated by Node's OWN test runner as a
+detected recursion and SKIPPED -- exiting 0 regardless of the real target
+test's outcome. Reproduced live: a genuinely failing regression fixture
+was reported as a false PASS until `self-improvement-verifier-dispatch.mjs`'s
+`runCommand` was fixed to strip both vars from the child's environment
+(`childEnvWithoutTestRecursionGuard`) before every reproduction/regression
+subprocess spawn. This is a REAL correctness fix, not just a test-suite
+workaround: a production TSF process running under any supervisor that
+itself sets `NODE_TEST_CONTEXT` would hit the identical silent-skip bug. A
+second, related fix: the first `runCommand` implementation manually built
+a `cmd.exe /d /s /c <command>` argv, which was found to mis-escape a
+command string that itself contains double-quoted arguments (e.g.
+`node -e "process.exit(1)"`) -- `/S`'s own quote-stripping rule rewrote
+the inner quotes, silently truncating the real command to one that always
+exits 0. Fixed by switching to `spawnSync(command, {shell:true, ...})`
+(Node's own documented cross-platform shell-string execution), verified to
+propagate real non-zero exit codes correctly with nested quotes on
+Windows.
+
+### Tests and results
+
+Real tests throughout -- dependency-injected fakes for the LLM-CLI worker/
+verifier dispatch only (never a real Codex/Claude process spawned by this
+wave's own suite, per the mission brief), but REAL git (disposable fixture
+repos under `os.tmpdir()`, mirroring `cleanup-git-worktree-inventory.
+test.mjs`'s own pattern), REAL file locks, REAL transition guards, REAL
+subprocess spawns for reproduction/regression commands, and a REAL end-to-
+end ff-only merge for the adoption gate-open path.
+
+18 new test files (`tsf/test/self-improvement-{mission-origination,retry-
+budget,repair-cycle,adoption-authorization-gate,adoption,adoption-
+readiness,worktree,verifier-checks,verifier-dispatch,provider-independence,
+redogfood,redogfood-server,worker-dispatch,worker-prompt,authority-envelope,
+receipt-chain,learning-ledger-wiring,fleet-driver}.test.mjs`) covering
+every mission-brief-required proof: idempotent origination; bounded retry
+budget with real escalation; the authorization gate genuinely blocking
+adoption by default (real process.env/real flag path) and only proceeding
+with a FAKE, test-injected gate (confirmed the real global signal was
+never touched); the forbidden-surface check genuinely catching a real
+worker diff; the verifier independence requirement proven both against
+the real committed routing config and a forced-collision fixture;
+redogfood distinguishing RESOLVED/REOPENED/REGRESSION_INTRODUCED using
+real reproduction-check logic against real fixture state; and the
+autonomous driver flag genuinely off by default with a real test asserting
+the loop does nothing when unset.
+
+**Results**: `node --test` on the 18 self-improvement test files: **240/240
+pass**. `npx oxlint` on every new/changed `.mjs` file (18 new domain/server
+files, `platform-learning-ledger.mjs`, `data-store.mjs`, `http-server.mjs`):
+clean, except `http-server.mjs`'s pre-existing 611-line `max-lines`
+violation (confirmed unchanged before/after this wave, see above -- not a
+new violation this wave introduced, and NEVER worked around with a
+disable comment). Targeted regression sweep of every shared file this
+wave touched (`data-store-rename-retry`, `platform-learning-ledger*`,
+`keep-going-run-store-schema-version`, `planner-mission-store-schema-
+version`, `research-mission-store-schema-version`, `research-schema-
+versioning`): all pass (one pre-existing test's assumption was corrected,
+not weakened -- see Phase 7 above). **Full whole-repo sweep**,
+`node --test tsf/test/*.test.mjs`: **2660 tests, 2653 pass, 6 fail** -- the
+IDENTICAL 6 pre-existing, host-load-sensitive failures Wave A's own
+checkpoint already documented (`command-bare-imperative-dispatch.test.mjs`'s
+QUERY/STATUS + IDIOM, `command-operator-integration-adversarial.test.mjs`'s
+"Should I deploy WorldForge?", `http-work-summary.test.mjs`'s dispatch-tick
+timing test, `keep-going-autonomy-proof.test.mjs`'s long-running autonomy-
+proof stall, `operator-state-adversarial.test.mjs`'s "STALE ACTION RACE"),
+none touching any file this wave added or changed. 2660 - 2568 (Wave A's
+own whole-repo total) = 92 = exactly this wave's 92 newly-added tests
+(240 total self-improvement tests - Wave A's own 148).
+
+### Constraints honored
+
+NWR: not touched (no NWR path read or written; forbidden by construction
+in the authority envelope, see Phase 4 above). Cleanup V1 real destructive
+authority: not activated (this wave's own new adoption gate mirrors it,
+never touches Cleanup V1's own gate signals). No deploy, no money spent
+(every LLM-CLI dispatch this wave's OWN code path would take is gated by
+the SAME `TSF_SELF_IMPROVEMENT_LOOP_ENABLED` flag this wave never set, and
+even when manually invoked directly, is gated by the Resource Pressure
+Governor exactly like every other heavyweight dispatch). The real
+`TSF_SELF_IMPROVEMENT_ADOPTION_AUTHORIZATION` env var and its flag file:
+never set anywhere in any file this wave committed (confirmed by grep, see
+Phase 5 above). The real `TSF_SELF_IMPROVEMENT_LOOP_ENABLED` flag: never
+set anywhere in any file this wave committed (confirmed by grep, see
+Phase 7 above). No second mission/lease/checkpoint/eval/learning-ledger
+system built (every reuse/extend/new decision cited above with evidence).
+No push, no merge to `tsf/main`/`main` from this wave's own actions. No
+real Codex/Claude process spawned by this wave's own automated test
+suite. No file under `C:\TSF_ORCA` or any other real worktree read or
+written by this wave's own code or its tests -- every real git operation
+in the test suite runs against a disposable fixture repo under
+`os.tmpdir()`, created and torn down by the test itself.

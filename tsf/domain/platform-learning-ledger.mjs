@@ -31,7 +31,16 @@ export const LESSON_CATEGORIES = Object.freeze([
   'IDENTITY_AMBIGUITY_PATTERN', // a node whose target-entity identity was AMBIGUOUS/UNRESOLVED
   'COMPLETENESS_GAP_PATTERN', // typed-missingness reasons a mission ended with
   'SOURCE_RELIABILITY_SIGNAL', // a source linked to FAILed claim verifications
-  'VERIFIED_CORRECTION_PATTERN' // a real, rationale-bearing conflict resolution
+  'VERIFIED_CORRECTION_PATTERN', // a real, rationale-bearing conflict resolution
+  // Native Self-Improvement Loop V1, Phase 7 (EXTEND, additive only -- no
+  // existing category renamed/removed, no second ledger built): outcomes
+  // from the self-improvement repair loop, see
+  // server/self-improvement-learning-ledger-wiring.mjs. A repeatedly-
+  // successful candidateFixScope.kind reuses VERIFIED_CORRECTION_PATTERN
+  // above rather than adding a redundant category.
+  'DETECTOR_FALSE_POSITIVE_PATTERN', // a detector's REJECTED_FALSE_POSITIVE finding, recurring by sourceDetector/kind
+  'VERIFIER_FAILURE_PATTERN', // a recurring reason class a repair mission's verifier rejected a candidate fix
+  'RECURRING_SUBSYSTEM_DEFECT' // repeated findings whose affectedSurface names the same subsystem
 ])
 
 export const LESSON_CONFIDENCE_LEVELS = Object.freeze(['LOW', 'MEDIUM', 'HIGH'])

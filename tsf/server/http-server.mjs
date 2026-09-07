@@ -67,7 +67,7 @@ import usageModes from '../routing/usage-modes.v1.json' with { type: 'json' }
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
 import { writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
-import { bootstrapKeepGoingFleetDriverIfEnabled } from './keep-going-fleet-driver-bootstrap.mjs'
+import { bootstrapBackgroundFleetDrivers } from './background-fleet-drivers-bootstrap.mjs'
 import { bootstrapResearchMissionFleetDriverIfEnabled } from './research-mission-fleet-driver-bootstrap.mjs'; import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
 import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
 import { handleResourcePressureGovernorRoute } from './resource-pressure-governor-http-routes.mjs'
@@ -859,7 +859,7 @@ export function startStandaloneServer(port = 4610, options = {}) {
   writeRuntimeMetadata().catch((error) => {
     console.error('runtime metadata write failed:', error)
   })
-  bootstrapKeepGoingFleetDriverIfEnabled(server) // see keep-going-fleet-driver-bootstrap.mjs
+  bootstrapBackgroundFleetDrivers(server) // see background-fleet-drivers-bootstrap.mjs
   return server
 }
 
