@@ -59,6 +59,26 @@ export function checkDuplicateArchitectureHeuristic(newFiles, existingFileBasena
   return { pass: suspects.length === 0, suspects }
 }
 
+// SECURITY (Phase 8 adversarial review, scenario 11): compares a before/
+// after sibling-git-worktree status snapshot (server/self-improvement-
+// worktree.mjs's snapshotSiblingWorktreeStatuses) -- catches a worker that
+// reached OUTSIDE its own isolated worktree into another real worktree of
+// the SAME repository (e.g. dataset-research-engine-v0), which git-diff on
+// the worker's own worktree can never see. Fails CLOSED: a missing snapshot
+// (inventory unresolvable) or an unresolvable per-worktree status both
+// count as a violation -- "couldn't check" is never treated as "untouched".
+export function checkSiblingWorktreesUntouched(beforeStatuses, afterStatuses) {
+  if (!beforeStatuses || !afterStatuses) {
+    return { pass: false, violations: [], unresolvable: true }
+  }
+  const violations = Object.keys(beforeStatuses).filter((path) => {
+    const before = beforeStatuses[path]
+    const after = afterStatuses[path]
+    return before === null || after === null || before !== after
+  })
+  return { pass: violations.length === 0, violations, unresolvable: false }
+}
+
 // The worker's provider must genuinely differ from the verifier's when the
 // routing config's mustDifferFromWorkerWhenAvailable flag is set AND a
 // different provider was actually available -- see self-improvement-
@@ -79,7 +99,12 @@ export function buildVerifierVerdict({
   forbiddenSurfaceCheck,
   scopeCheck,
   duplicateArchitectureCheck,
-  independenceCheck
+  independenceCheck,
+  // Optional, defaults to passing: a caller that hasn't wired real sibling-
+  // worktree evidence yet (e.g. an older fixture/test) is not forced to
+  // break -- real production dispatch (server/self-improvement-verifier-
+  // dispatch.mjs) always passes real evidence.
+  siblingWorktreeCheck = { pass: true, violations: [] }
 }) {
   const reasons = []
   if (!reproductionPassed) { reasons.push('REPRODUCTION_STILL_FAILS') }
@@ -91,5 +116,12 @@ export function buildVerifierVerdict({
     reasons.push(`POSSIBLE_DUPLICATE_ARCHITECTURE:${duplicateArchitectureCheck.suspects.map((s) => s.newFile).join(',')}`)
   }
   if (!independenceCheck.pass) { reasons.push('VERIFIER_NOT_INDEPENDENT_FROM_WORKER') }
+  if (!siblingWorktreeCheck.pass) {
+    reasons.push(
+      siblingWorktreeCheck.unresolvable
+        ? 'SIBLING_WORKTREE_STATUS_UNRESOLVABLE'
+        : `SIBLING_WORKTREE_TOUCHED:${siblingWorktreeCheck.violations.join(',')}`
+    )
+  }
   return reasons.length === 0 ? { verdict: 'VERIFIED_PASS', reasons: [] } : { verdict: 'VERIFIED_FAIL', reasons }
 }

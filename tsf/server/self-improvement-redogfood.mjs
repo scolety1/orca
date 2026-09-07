@@ -12,7 +12,7 @@ import { classifyRedogfoodResult } from '../domain/self-improvement-redogfood.mj
 import { transitionFinding } from '../domain/self-improvement-finding.mjs'
 import { withFinding } from './self-improvement-finding-store.mjs'
 import { recordSelfImprovementReceipt } from './self-improvement-receipt-store.mjs'
-import { resolveMechanicalCommand, runCommand } from './self-improvement-verifier-dispatch.mjs'
+import { isPathContainedInDirectory, resolveMechanicalCommand, runCommand, runRegressionTests } from './self-improvement-verifier-dispatch.mjs'
 
 // V1, honestly limited: `wasNeverGenuinelyReproducible` (a true detector
 // false-positive signal) needs a baseline re-run against the PRE-fix code
@@ -35,11 +35,17 @@ export async function runRedogfood({ finding, missionId, targetPath, adoptedSha 
   // only the finding's own explicitly-hinted *.test.mjs entries (a
   // redogfood run has no fresh worker diff to derive sibling tests from,
   // unlike the verifier's own resolveRegressionTestPaths).
+  // SECURITY: filesHint is detector-supplied, untrusted text -- never
+  // concatenated into a shell string (see self-improvement-verifier-
+  // dispatch.mjs's runRegressionTests header) and never trusted to stay
+  // inside targetPath without checking (isPathContainedInDirectory).
   let regressionTestsNowFail = false
-  const regressionTargets = (finding.candidateFixScope?.filesHint ?? []).filter((f) => f.endsWith('.test.mjs'))
+  const regressionTargets = (finding.candidateFixScope?.filesHint ?? [])
+    .filter((f) => f.endsWith('.test.mjs'))
+    .filter((f) => isPathContainedInDirectory(targetPath, f))
   if (!reproductionStillFails && !knownNeverReproducible && regressionTargets.length > 0) {
-    const command = `node --test ${regressionTargets.map((p) => `"${p}"`).join(' ')}`
-    regressionTestsNowFail = !run(command, targetPath, deps).passed
+    const runRegression = deps.runRegressionTests ?? runRegressionTests
+    regressionTestsNowFail = !runRegression(regressionTargets, targetPath, deps).passed
   }
 
   const classification = classifyRedogfoodResult(finding.status, {

@@ -8,13 +8,40 @@
 // reuses a possibly-dirty prior attempt's tree.
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
+import { resolveCanonicalPath } from './resource-auditor-path-identity.mjs'
+import { listGitWorktrees } from './cleanup-git-worktree-inventory.mjs'
 
 const exec = promisify(execFile)
 const GIT_TIMEOUT_MS = 30000
 
 function slash(value) {
   return String(value ?? '').replaceAll('\\', '/')
+}
+
+// SECURITY (Phase 8 adversarial review, scenario 5): a plain resolve()
+// string comparison does NOT follow a Windows junction/symlink alias --
+// the same class of gap Finding Phase 14 found and fixed for Cleanup V1's
+// protected-path registry via resolveCanonicalPath (real OS-level
+// realpath, not string normalization). Reused directly here. Unlike that
+// registry's targets, worktreePath legitimately does NOT exist yet at
+// check time (it is about to be created by `git worktree add`) so
+// fs.realpath alone would throw -- this walks up to the deepest EXISTING
+// ancestor, canonicalizes THAT (defeating an alias on any real directory),
+// then re-appends the not-yet-created tail segments.
+async function canonicalizeAllowingMissingTail(candidatePath) {
+  let current = resolve(candidatePath)
+  const missingTail = []
+  for (;;) {
+    const real = await resolveCanonicalPath(current)
+    if (real !== null) {
+      return missingTail.length > 0 ? resolve(real, ...missingTail.toReversed()) : real
+    }
+    const parent = dirname(current)
+    if (parent === current) { return resolve(candidatePath) } // nothing on this path exists -- fall back to plain resolve
+    missingTail.push(basename(current))
+    current = parent
+  }
 }
 
 async function git(cwd, args) {
@@ -31,7 +58,14 @@ async function git(cwd, args) {
 // not just assumed by callers): worktreePath is always a caller-supplied
 // path OUTSIDE canonicalRepoPath.
 export async function createIsolatedRepairWorktree({ canonicalRepoPath, worktreePath, branch }) {
-  if (resolve(worktreePath).toLowerCase() === resolve(canonicalRepoPath).toLowerCase()) {
+  const [canonicalReal, worktreeReal] = await Promise.all([
+    canonicalizeAllowingMissingTail(canonicalRepoPath),
+    canonicalizeAllowingMissingTail(worktreePath)
+  ])
+  const targetsCanonical =
+    resolve(worktreePath).toLowerCase() === resolve(canonicalRepoPath).toLowerCase() ||
+    worktreeReal.toLowerCase() === canonicalReal.toLowerCase()
+  if (targetsCanonical) {
     const error = new Error('refusing to create an isolated repair worktree at the canonical repo path itself')
     error.code = 'TSF_SELF_IMPROVEMENT_WORKTREE_TARGETS_CANONICAL_REPO'
     throw error
@@ -86,6 +120,56 @@ export async function listAddedFiles(worktreePath, baseSha) {
     .map((line) => line.slice(2).trim())
     .filter(Boolean)
     .sort()
+}
+
+// Real `git status --porcelain` text, or null if unresolvable -- callers
+// must treat null as "cannot verify", never coerce it to "clean" (same
+// fail-closed discipline this module's own isWorktreeClean documents
+// elsewhere, but this variant preserves the raw text for a real before/
+// after content comparison, not just a clean/dirty boolean).
+export async function worktreeStatusPorcelain(worktreePath) {
+  try {
+    const { stdout } = await git(worktreePath, ['status', '--porcelain'])
+    return stdout
+  } catch {
+    return null
+  }
+}
+
+// SECURITY (Phase 8 adversarial review, scenario 11): checkForbiddenSurfaceTouched
+// is git-diff-based and can only see files inside THIS worktree's own
+// tracked tree -- nothing stops a worker process, at the OS/filesystem
+// level, from reading or writing a SIBLING worktree of the SAME repository
+// (e.g. dataset-research-engine-v0) via an ordinary relative path, entirely
+// outside this worktree's own git diff. `git worktree list` on the
+// canonical repo is the one real, mechanically discoverable inventory of
+// every such sibling -- this snapshots their status so a caller can compare
+// before dispatch vs. after, catching a worker that reached outside its own
+// worktree into another real worktree of this repo. A null return (the
+// inventory call itself failed) or a null per-path status must both fail
+// CLOSED downstream (self-improvement-verifier-checks.mjs's
+// checkSiblingWorktreesUntouched), never be silently treated as untouched.
+// Genuinely does NOT cover a completely separate repository the worker
+// might discover some other way (e.g. NWR) -- honestly disclosed, not
+// oversold, matching this module's own duplicate-architecture-heuristic
+// disclosure discipline.
+export async function snapshotSiblingWorktreeStatuses(canonicalRepoPath, excludeWorktreePaths) {
+  const inventory = await listGitWorktrees(canonicalRepoPath)
+  if (!inventory.ok) { return null }
+  // Real OS-level canonicalization (not plain resolve()) on BOTH sides --
+  // git itself can report a worktree path in a different string form (e.g.
+  // Windows short/8.3 vs. long form) than the literal string this caller
+  // passed in, and a plain string compare would then fail to exclude the
+  // caller's own paths, misreporting them as "siblings".
+  const excluded = new Set(await Promise.all(excludeWorktreePaths.map((p) => canonicalizeAllowingMissingTail(p).then((real) => real.toLowerCase()))))
+  const statuses = {}
+  for (const worktree of inventory.worktrees) {
+    if (!worktree.path) { continue }
+    const real = (await canonicalizeAllowingMissingTail(worktree.path)).toLowerCase()
+    if (excluded.has(real)) { continue }
+    statuses[worktree.path] = await worktreeStatusPorcelain(worktree.path)
+  }
+  return statuses
 }
 
 // Real full tracked-file basename list for the CANONICAL repo (not the

@@ -99,6 +99,23 @@ export class PlannerSessionLifecycle {
     return mutateCheckpoint(this.missionId, (current) => checkpointMutator(current, this.deps.clock), this.deps.clock, { requireLeaseHolder: this.plannerSessionId })
   }
 
+  // SECURITY/CORRECTNESS (Phase 8 adversarial review, self-improvement
+  // loop scenario 7 -- traced back to this SHARED mechanism, not something
+  // new in self-improvement's own code): the pre-flight `existing?.checkpoint`
+  // read below is a cheap early-reject only, same "fast pre-flight, real
+  // guard is atomic" discipline as _mutate's own comment above -- it is NOT
+  // what makes concurrent startMission calls for the SAME missionId safe.
+  // Two genuinely concurrent callers (proven with a real race: two
+  // self-improvement originateRepairMission calls for the identical
+  // finding) can BOTH pass this read before either has written anything,
+  // then BOTH reach mutateCheckpoint -- which previously created a checkpoint
+  // unconditionally, so the second call's write silently overwrote the
+  // first's (losing its just-recorded decision) before the second caller's
+  // own next step failed with an unrelated-looking error. Fixed by
+  // re-checking `current` ATOMICALLY inside the same lock the write uses
+  // (the checkpointMutator itself), never overwriting an already-present
+  // checkpoint -- exactly the requireLeaseHolder pattern mutateCheckpoint
+  // already established for the identical class of TOCTOU.
   async startMission({ missionGoal, phase, repoState }) {
     this._assertResourceAdmission()
     const existing = readPlannerMissionRecord(this.missionId)
@@ -113,7 +130,18 @@ export class PlannerSessionLifecycle {
       error.code = 'TSF_PLANNER_LEASE_DENIED'
       throw error
     }
-    return mutateCheckpoint(this.missionId, () => createPlannerMissionCheckpoint({ missionId: this.missionId, missionGoal, phase, repoState }, this.deps.clock), this.deps.clock)
+    return mutateCheckpoint(
+      this.missionId,
+      (current) => {
+        if (current) {
+          const error = new Error(`mission ${this.missionId} already has a durable checkpoint -- use acquireLeaseAndHydrate to resume it`)
+          error.code = 'TSF_PLANNER_MISSION_ALREADY_STARTED'
+          throw error
+        }
+        return createPlannerMissionCheckpoint({ missionId: this.missionId, missionGoal, phase, repoState }, this.deps.clock)
+      },
+      this.deps.clock
+    )
   }
 
   // 2C's hydrate step: acquire (must succeed -- prior holder must have

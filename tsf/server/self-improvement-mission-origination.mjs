@@ -57,11 +57,27 @@ export async function originateRepairMission(finding, { canonicalRepoPath, clock
   const Lifecycle = deps.PlannerSessionLifecycle ?? PlannerSessionLifecycle
   const plannerSessionId = deps.plannerSessionId ?? `self-improvement-loop:${missionId}`
   const lifecycle = new Lifecycle({ missionId, plannerSessionId, deps: { clock, ...deps.lifecycleDeps } })
-  await lifecycle.startMission({
-    missionGoal: `Repair mission (auto-originated): ${finding.affectedSurface} -- ${finding.sourceDetector} finding ${finding.findingId}`,
-    phase: 'REPAIR_DISPATCH',
-    repoState
-  })
+  try {
+    await lifecycle.startMission({
+      missionGoal: `Repair mission (auto-originated): ${finding.affectedSurface} -- ${finding.sourceDetector} finding ${finding.findingId}`,
+      phase: 'REPAIR_DISPATCH',
+      repoState
+    })
+  } catch (error) {
+    // A genuine concurrent-origination race (proven: two real calls for the
+    // identical finding) can lose the outer existing?.checkpoint pre-check
+    // above and still reach here -- startMission's OWN atomic re-check
+    // (planner-session-lifecycle.mjs) is what actually closes the race, so
+    // the loser sees this specific, expected error rather than a second
+    // mission. Handled the same idempotent way as the pre-check: read back
+    // whichever checkpoint actually won and return it, never propagate a
+    // confusing failure for what is really just "already originated".
+    if (error.code === 'TSF_PLANNER_MISSION_ALREADY_STARTED') {
+      const raced = readRecord(missionId)
+      if (raced?.checkpoint) { return { created: false, missionId, checkpoint: raced.checkpoint } }
+    }
+    throw error
+  }
   await lifecycle.recordDecision({
     summary: `repair mission auto-originated from ELIGIBLE_FOR_AUTOFIX finding ${finding.findingId} (${finding.affectedSurface})`,
     kind: 'ACCEPTED',

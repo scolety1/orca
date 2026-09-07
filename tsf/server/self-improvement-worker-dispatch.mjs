@@ -9,7 +9,7 @@ import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.
 import { buildWorkerPrompt } from '../domain/self-improvement-worker-prompt.mjs'
 import { resolveRole } from '../domain/routing.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
-import { createIsolatedRepairWorktree } from './self-improvement-worktree.mjs'
+import { createIsolatedRepairWorktree, snapshotSiblingWorktreeStatuses } from './self-improvement-worktree.mjs'
 import providerRoleMappings from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import launchProfiles from '../providers/launch-profiles.v1.json' with { type: 'json' }
 
@@ -113,6 +113,15 @@ export async function dispatchRepairWorker({ finding, envelope, missionId, attem
     : resolve(canonicalRepoPath, '..', `${sanitizedMissionId}-attempt-${attemptNumber}`)
   const worktree = await createWorktree({ canonicalRepoPath, worktreePath, branch })
 
+  // SECURITY (Phase 8 adversarial review, scenario 11): snapshot every
+  // OTHER real worktree of this repo (e.g. dataset-research-engine-v0)
+  // BEFORE the worker process ever runs, so the verifier can later detect a
+  // worker that reached outside its own isolated worktree via an ordinary
+  // relative path -- something git-diff on THIS worktree alone can never
+  // see. See self-improvement-worktree.mjs's snapshotSiblingWorktreeStatuses.
+  const snapshotSiblings = deps.snapshotSiblingWorktreeStatuses ?? snapshotSiblingWorktreeStatuses
+  const siblingStatusesBefore = await snapshotSiblings(canonicalRepoPath, [canonicalRepoPath, worktree.worktreePath])
+
   const prompt = buildWorkerPrompt(finding, envelope)
   const spawnProcess = deps.spawnProviderProcess ?? realSpawnProviderProcess
   const result = await spawnProcess({
@@ -129,6 +138,7 @@ export async function dispatchRepairWorker({ finding, envelope, missionId, attem
     worktreePath: worktree.worktreePath,
     branch: worktree.branch,
     baseSha: worktree.baseSha,
+    siblingStatusesBefore,
     exitCode: result.exitCode,
     timedOut: result.timedOut,
     stdout: result.stdout,

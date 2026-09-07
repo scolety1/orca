@@ -8,17 +8,18 @@
 // program's own test suite.
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, sep } from 'node:path'
 import {
   buildVerifierVerdict,
   checkAuthorityEnvelopeRespected,
   checkDuplicateArchitectureHeuristic,
   checkForbiddenSurfaceTouched,
+  checkSiblingWorktreesUntouched,
   checkVerifierIndependence
 } from '../domain/self-improvement-verifier-checks.mjs'
 import { resolveIndependentVerifierRole } from '../domain/self-improvement-provider-independence.mjs'
 import { resolveRole } from '../domain/routing.mjs'
-import { listAddedFiles, listCanonicalFileBasenames, listChangedFiles } from './self-improvement-worktree.mjs'
+import { listAddedFiles, listCanonicalFileBasenames, listChangedFiles, snapshotSiblingWorktreeStatuses } from './self-improvement-worktree.mjs'
 import providerRoleMappings from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import launchProfiles from '../providers/launch-profiles.v1.json' with { type: 'json' }
 
@@ -68,6 +69,36 @@ export function runCommand(command, cwd, deps) {
   return { passed: result.status === 0 && !result.error, exitCode: result.status ?? null, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
 }
 
+// SECURITY: regression targets are resolved from candidateFixScope.filesHint
+// (detector-supplied, untrusted text) -- unlike `reproduction.command`
+// (a single trusted shell string the detector deliberately authored), a
+// LIST of file-path-shaped strings must never be concatenated into a shell
+// command line. `node --test "${p}"`-style string-building was found to let
+// a crafted hint (e.g. containing an embedded `"` plus a shell metachar)
+// break out of its own quoting and run an arbitrary command on the HOST,
+// entirely outside the isolated worktree -- reproduced live. Fixed by
+// passing each target as its own argv element with `shell` NEVER set, so no
+// shell ever parses/interprets the string content.
+export function runRegressionTests(targets, cwd, deps) {
+  const run = deps.spawnSync ?? spawnSync
+  const env = deps.env ?? childEnvWithoutTestRecursionGuard()
+  const result = run(process.execPath, ['--test', ...targets], { cwd, env, encoding: 'utf8', windowsHide: true, timeout: deps.testTimeoutMs ?? TEST_TIMEOUT_MS })
+  return { passed: result.status === 0 && !result.error, exitCode: result.status ?? null, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+}
+
+// SECURITY: candidateFixScope.filesHint is detector-supplied, untrusted text
+// (self-improvement-finding.mjs's own comment) -- it must never be trusted
+// as a real path without checking it actually stays inside the worktree.
+// A hint containing `../` could otherwise point a "regression test" run at
+// an arbitrary file elsewhere on disk. Rejected (not silently truncated),
+// so a bad hint fails closed to NO_TARGETED_REGRESSION_TEST_RESOLVABLE
+// rather than mechanically checking the wrong file.
+export function isPathContainedInDirectory(directory, candidate) {
+  const base = resolve(directory)
+  const target = resolve(directory, candidate)
+  return target === base || target.startsWith(`${base}${sep}`)
+}
+
 // Targeted-regression discipline (this program's own established
 // convention, not the giant suite): prefers explicit *.test.mjs entries
 // already named in the finding's own filesHint; otherwise looks for the
@@ -76,7 +107,9 @@ export function runCommand(command, cwd, deps) {
 // silently "passes") when neither yields a real target.
 export function resolveRegressionTestPaths(finding, changedFiles, worktreePath, deps) {
   const exists = deps.existsSync ?? existsSync
-  const hinted = (finding.candidateFixScope?.filesHint ?? []).filter((f) => f.endsWith('.test.mjs'))
+  const hinted = (finding.candidateFixScope?.filesHint ?? [])
+    .filter((f) => f.endsWith('.test.mjs'))
+    .filter((f) => isPathContainedInDirectory(worktreePath, f))
   if (hinted.length > 0) { return hinted }
   const derived = new Set()
   for (const file of changedFiles) {
@@ -93,7 +126,7 @@ export function resolveRegressionTestPaths(finding, changedFiles, worktreePath, 
 // { verdict, reasons, detail } -- detail carries every raw check result
 // for the durable verifierResult record (planner-session-lifecycle.mjs's
 // recordVerifierResult).
-export async function runIndependentVerification({ finding, envelope, worktreePath, branch, baseSha, canonicalRepoPath, workerProviderId, deps = {} }) {
+export async function runIndependentVerification({ finding, envelope, worktreePath, branch, baseSha, canonicalRepoPath, workerProviderId, siblingStatusesBefore = null, deps = {} }) {
   const resolve_ = deps.resolveRole ?? resolveRole
   const mappings = deps.providerRoleMappings ?? providerRoleMappings
   const profiles = deps.launchProfiles ?? launchProfiles
@@ -108,12 +141,25 @@ export async function runIndependentVerification({ finding, envelope, worktreePa
   const reproductionCheck = reproCommand ? runCommand(reproCommand, worktreePath, deps) : { passed: false, exitCode: null, stdout: '', stderr: 'no mechanical reproduction command declared' }
 
   const regressionTargets = resolveRegressionTestPaths(finding, changedFiles, worktreePath, deps)
-  const regressionCommand = regressionTargets.length > 0 ? `node --test ${regressionTargets.map((p) => `"${p}"`).join(' ')}` : null
-  const regressionCheck = regressionCommand ? runCommand(regressionCommand, worktreePath, deps) : { passed: false, exitCode: null, stdout: '', stderr: 'no targeted regression test resolvable' }
+  // argv-based (runRegressionTests), never a shell string built from
+  // untrusted filesHint entries -- see runRegressionTests's own header.
+  const regressionCommand = regressionTargets.length > 0 ? `node --test ${regressionTargets.join(' ')}` : null
+  const regressionCheck =
+    regressionTargets.length > 0
+      ? (deps.runRegressionTests ?? runRegressionTests)(regressionTargets, worktreePath, deps)
+      : { passed: false, exitCode: null, stdout: '', stderr: 'no targeted regression test resolvable' }
 
   const forbiddenSurfaceCheck = checkForbiddenSurfaceTouched(changedFiles, envelope.forbiddenPathPrefixes)
   const scopeCheck = checkAuthorityEnvelopeRespected(changedFiles, envelope.allowedScope)
   const duplicateArchitectureCheck = checkDuplicateArchitectureHeuristic(addedFiles, canonicalBasenames)
+
+  // Scenario 11: only meaningful when a real "before" snapshot was captured
+  // at dispatch time (dispatchRepairWorker) -- a caller/test that never
+  // wired one (siblingStatusesBefore stays null) skips this check entirely
+  // rather than fabricating a before/after comparison with no real before.
+  const siblingWorktreeCheck = siblingStatusesBefore
+    ? checkSiblingWorktreesUntouched(siblingStatusesBefore, await (deps.snapshotSiblingWorktreeStatuses ?? snapshotSiblingWorktreeStatuses)(canonicalRepoPath, [canonicalRepoPath, worktreePath]))
+    : { pass: true, violations: [] }
 
   const { verdict, reasons } = buildVerifierVerdict({
     reproductionPassed: reproductionCheck.passed,
@@ -122,7 +168,8 @@ export async function runIndependentVerification({ finding, envelope, worktreePa
     forbiddenSurfaceCheck,
     scopeCheck,
     duplicateArchitectureCheck,
-    independenceCheck
+    independenceCheck,
+    siblingWorktreeCheck
   })
 
   return {
@@ -139,6 +186,7 @@ export async function runIndependentVerification({ finding, envelope, worktreePa
       forbiddenSurfaceCheck,
       scopeCheck,
       duplicateArchitectureCheck,
+      siblingWorktreeCheck,
       independence: { resolution: independence.resolution, divergent: independence.divergent, usedFallback: independence.usedFallback, requiredIndependence: independence.requiredIndependence }
     }
   }

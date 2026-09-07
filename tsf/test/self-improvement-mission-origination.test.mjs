@@ -101,4 +101,35 @@ test('origination refuses when canonical repo state is unobservable -- fails hon
   )
 })
 
+// Phase 8 (adversarial security review, scenario 7): a REAL concurrent race
+// -- two genuine, overlapping originateRepairMission calls for the
+// IDENTICAL finding via Promise.all, not two sequential calls. Proved a
+// real gap in the SHARED PlannerSessionLifecycle.startMission (not new
+// self-improvement code): its own pre-flight existing-checkpoint read was
+// unlocked, so the loser's startMission call could silently overwrite the
+// winner's just-written checkpoint (losing its recorded decision) before
+// failing at an unrelated later step. Fixed at the root (planner-session-
+// lifecycle.mjs's startMission now re-checks atomically inside the same
+// lock as the write) plus origination-level idempotent handling of the
+// resulting TSF_PLANNER_MISSION_ALREADY_STARTED race outcome. This proves
+// BOTH: only one missionId ever exists (content-addressed, unchanged) AND
+// the checkpoint/decision data is never silently clobbered under real
+// concurrency.
+test('a real concurrent double-origination for the identical finding never loses data and both calls resolve idempotently', async () => {
+  const finding = eligibleFinding({ affectedSurface: 'tsf/domain/fixture-concurrent-origination.mjs' })
+  const deps = { observeRepoState: () => FAKE_REPO_STATE, lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory } }
+
+  const [a, b] = await Promise.all([
+    originateRepairMission(finding, { canonicalRepoPath: CANONICAL_REPO_PATH, clock, deps }),
+    originateRepairMission(finding, { canonicalRepoPath: CANONICAL_REPO_PATH, clock, deps })
+  ])
+
+  assert.equal(a.missionId, b.missionId, 'content-addressed missionId: never two missions for one finding')
+  assert.equal([a.created, b.created].filter(Boolean).length, 1, 'exactly one of the two races originated the mission')
+
+  const record = readPlannerMissionRecord(a.missionId)
+  assert.ok(record.checkpoint, 'a real durable checkpoint must exist')
+  assert.equal(record.checkpoint.decisions.length, 1, 'the winning decision must not be silently overwritten by the loser')
+})
+
 test.after(cleanupStateFile)

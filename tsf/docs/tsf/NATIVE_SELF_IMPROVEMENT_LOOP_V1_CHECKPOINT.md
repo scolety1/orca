@@ -38,19 +38,19 @@ Do not build a recursive unconstrained self-modifying agent.
 | 5 (Verifier/adoption contract) | DONE (Wave B) | `tsf/server/self-improvement-verifier-dispatch.mjs`, `tsf/server/self-improvement-adoption.mjs` |
 | 6 (Redogfood/close the loop) | DONE (Wave B) | `tsf/server/self-improvement-redogfood.mjs`, `tsf/domain/self-improvement-receipt-chain.mjs` |
 | 7 (Learning Ledger) | DONE (Wave B) | `tsf/server/self-improvement-learning-ledger-wiring.mjs` |
-| 8 (Security review) | NOT_STARTED | Later wave |
+| 8 (Security review) | DONE (Wave C) | See "Wave C" section below -- 4 real gaps found and fixed |
 | 9 (Golden proof) | NOT_STARTED | Acceptance test |
 | 10 (Chaos proof) | NOT_STARTED | |
 
 ## Next intended action
 
-Wave C+: Phase 8 (security review of this whole mechanism) and Phases
-9-10 (golden/chaos acceptance proofs, which per the mission brief require
-a REAL bounded Codex/Claude process -- deliberately never exercised by
-Wave B's own automated test suite, which proves every mechanism with
-dependency-injected fakes instead). Do NOT re-derive Wave B's design from
-scratch -- re-verify with a fresh read (code may have shifted) and build
-on it. See the "Wave B" section below for the full reconciliation,
+Wave D+: Phases 9-10 (golden/chaos acceptance proofs, which per the
+mission brief require a REAL bounded Codex/Claude process -- deliberately
+never exercised by Wave B's OR Wave C's own automated test suites, which
+prove every mechanism with dependency-injected fakes/real-but-disposable-
+fixture git instead). Do NOT re-derive Wave B/C's design from scratch --
+re-verify with a fresh read (code may have shifted) and build on it. See
+the "Wave B" and "Wave C" sections below for the full reconciliation,
 design, and test evidence.
 
 ---
@@ -630,3 +630,206 @@ suite. No file under `C:\TSF_ORCA` or any other real worktree read or
 written by this wave's own code or its tests -- every real git operation
 in the test suite runs against a disposable fixture repo under
 `os.tmpdir()`, created and torn down by the test itself.
+
+---
+
+## Wave C -- Phase 8: adversarial security review (2026-09-07)
+
+Worktree: `selfimprove-wave-c-security-review`, branch
+`tsf/feature/selfimprove-wave-c-security-review` (forked from `tsf/main` @
+`7b35610fc59a122e5494ceeda2ad6be07aec72f0`, includes Wave A + Wave B in
+full). A genuine, skeptical adversarial pass -- every scenario below was
+attempted with a REAL fixture and REAL code path, not a thought experiment;
+Wave B's own design comments were treated as claims to disprove, not proof.
+**4 real gaps were found and fixed.** The other 7 scenarios held up, each
+with a real test or a real reproduction attempt as evidence.
+
+### Real gaps found and fixed
+
+**1. Shell command injection via `candidateFixScope.filesHint` (scenarios 3
+& 4, the most severe finding).** `runIndependentVerification`
+(`self-improvement-verifier-dispatch.mjs`) and `runRedogfood`
+(`self-improvement-redogfood.mjs`) both built the regression-test command as
+a hand-interpolated shell string: `` `node --test ${targets.map(p =>
+`"${p}"`).join(' ')}` `` executed via `spawnSync(command, {shell:true})`.
+`filesHint` is detector-supplied, untrusted text (`self-improvement-
+finding.mjs`'s own comment says so) -- a crafted entry
+(`` `x" & echo pwned > "<marker>" & rem .test.mjs` ``, satisfying the
+`.endsWith('.test.mjs')` filter) broke out of the quoting and ran an
+**arbitrary command on the host**, entirely outside the isolated worktree,
+**regardless of the eventual verdict** (reproduced with `VERIFIED_FAIL`
+still returned while the marker file was created). This ran mechanically,
+with zero LLM/worker involvement -- worse than the prompt-injection framing
+of scenario 3, since it required no worker to be fooled at all, and reached
+BEFORE any git-diff-based check ever ran. A second, related gap: the same
+untrusted strings were used as real `node --test` argv targets with no
+containment check, so a `../`-laden hint could point a "regression test" at
+a real file outside the worktree (scenario 4).
+**Fix:** `runRegressionTests` (new, argv-based, `shell` never set) replaces
+the shell-string builder in both files; `isPathContainedInDirectory` rejects
+any hint that resolves outside the worktree before it is ever treated as a
+regression target (fails closed to `NO_TARGETED_REGRESSION_TEST_RESOLVABLE`).
+`reproduction.command` itself is unchanged -- that field is, by design, a
+single trusted string the detector authored (the whole point of mechanical
+reproduction), never built by concatenating a list of untrusted strings.
+Real tests (`tsf/test/self-improvement-verifier-dispatch.test.mjs`,
+`tsf/test/self-improvement-redogfood-server.test.mjs`): the exact crafted
+hint reproduces the marker-file write on the pre-fix code and creates
+nothing post-fix; a `../../outside.test.mjs` hint is proven excluded from
+the real regression targets and the check fails closed.
+
+**2. Windows junction alias defeats the canonical-repo-path check (scenario
+5).** `createIsolatedRepairWorktree`'s guard was `resolve(worktreePath)
+.toLowerCase() === resolve(canonicalRepoPath).toLowerCase()` -- pure string
+normalization, no OS-level resolution. A real junction
+(`fs.symlinkSync(target, path, 'junction')`) aliasing the canonical repo
+under a different path string was proven to defeat this specific,
+purpose-built check: the dedicated `TSF_SELF_IMPROVEMENT_WORKTREE_TARGETS_
+CANONICAL_REPO` error never fired: execution fell through to `git worktree
+add`, which happened to fail anyway but with an unrelated, generic "already
+exists" error rather than the intended safety refusal -- exactly the class
+of gap Finding Phase 14 already found and fixed for Cleanup V1's
+protected-path registry. **Fix:** `canonicalizeAllowingMissingTail` reuses
+`resource-auditor-path-identity.mjs`'s `resolveCanonicalPath` (real
+`fs.realpath`, the same primitive Phase 14 used) on both paths, walking up
+to the deepest EXISTING ancestor first since `worktreePath` legitimately
+does not exist yet at check time. Real test
+(`tsf/test/self-improvement-worktree.test.mjs`): a real junction alias now
+throws the correct, dedicated error code; proven to NOT throw it pre-fix.
+
+**3. Concurrent mission origination silently clobbers checkpoint data
+(scenario 7).** `computeRepairMissionId`'s content-addressing does prevent
+two DIFFERENT missionIds from ever existing for one finding (confirmed,
+holds). But a REAL concurrent race -- two genuine, overlapping
+`originateRepairMission` calls for the identical finding via `Promise.all`,
+100% reproducible -- found that the SHARED `PlannerSessionLifecycle.
+startMission` (not new self-improvement code; reused directly per the
+mission brief's own non-negotiable design) had an unlocked TOCTOU: its
+pre-flight `existing?.checkpoint` read happened before the lock, and the
+actual checkpoint-creating write inside the lock never re-checked `current`.
+Both racing calls passed the pre-flight check, both wrote a checkpoint
+under the same lock (serialized, but the SECOND write unconditionally
+overwrote the first, silently losing the first caller's just-recorded
+decision), and the loser then failed at an unrelated, confusing later step
+(`TSF_INVALID_FINDING_TRANSITION: FIX_MISSION_CREATED -> FIX_MISSION_
+CREATED`) instead of behaving idempotently. **Fix:** `startMission`'s
+checkpoint-creating mutator now re-checks `current` ATOMICALLY inside the
+same lock as the write (mirrors `mutateCheckpoint`'s own `requireLeaseHolder`
+pattern, the identical class of TOCTOU that Phase 8 of the ORIGINAL
+Reliability Hardening program already fixed for the lease-holder case one
+line above this one) and throws `TSF_PLANNER_MISSION_ALREADY_STARTED`
+instead of overwriting. `originateRepairMission` additionally catches that
+specific race outcome and returns the winner's checkpoint idempotently
+(`created:false`), restoring the exact idempotency guarantee the mission
+brief requires even under real concurrency. Real test
+(`tsf/test/self-improvement-mission-origination.test.mjs`, plus the full 72/72
+`planner-session-lifecycle*`/`planner-mission*` regression suite proving no
+other caller of the shared mechanism regressed): a genuine `Promise.all` of
+two identical-finding origination calls now yields exactly one `created:true`
++ one `created:false`, one checkpoint, one decision, never data loss.
+
+**4. No mechanical check catches a worker that reaches a SIBLING git
+worktree of the same repository (scenario 11, partial).** The entire
+forbidden-surface/scope enforcement is `git diff`-based and can only see
+files inside the worker's OWN worktree's tracked tree. Nothing in this
+mechanism stops the worker PROCESS itself, at the OS/filesystem level, from
+reading or writing a sibling worktree of the same repo (e.g.
+`dataset-research-engine-v0`) via an ordinary relative path -- this was
+previously covered only by the honest-but-weak comment "the worker is never
+given its path". **Fix (real, mechanical, reuses `git worktree list` --
+the exact primitive `cleanup-git-worktree-inventory.mjs` already
+established):** `snapshotSiblingWorktreeStatuses` inventories every OTHER
+real worktree of the canonical repo and snapshots each one's `git status
+--porcelain` BEFORE the worker process is dispatched
+(`dispatchRepairWorker`); `checkSiblingWorktreesUntouched`
+(`self-improvement-verifier-checks.mjs`) re-snapshots and compares AFTER,
+during verification, failing closed on any unresolvable status. New
+verdict reason: `SIBLING_WORKTREE_TOUCHED:<path>` /
+`SIBLING_WORKTREE_STATUS_UNRESOLVABLE`. Real test
+(`tsf/test/self-improvement-verifier-dispatch.test.mjs`): a real linked
+sibling worktree, tampered with directly (simulating a worker reaching
+outside its own tree), is caught with `VERIFIED_FAIL` /
+`SIBLING_WORKTREE_TOUCHED`; a genuinely untouched sibling passes clean.
+**Honestly still NOT closed (documented, not oversold):** this only covers
+OTHER WORKTREES OF THE SAME REPOSITORY, discoverable via `git worktree
+list` on the canonical repo -- it does NOT and cannot cover a completely
+separate repository the worker might reach some other way (e.g. NWR, if its
+path were independently knowable), since there is no OS-level process
+sandbox (container/chroot/restricted account) anywhere in this mechanism.
+Closing that residual fully would require real process-level sandboxing,
+judged out of scope for a "minimal fix that reuses existing mechanisms" --
+flagged here for a future wave rather than silently left undocumented.
+
+### Scenario-by-scenario verdicts
+
+| # | Scenario | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Project A finding causing Project B mutation | **REAL_SAFE** | `projectId` is never read anywhere in `tsf/server/self-improvement-*.mjs` except as the informational `projectAttribution` field (grep-confirmed, zero other uses). `canonicalRepoPath` is always a caller-supplied constant (fleet-driver-bootstrap defaults `process.cwd()`), never derived from any finding field; `worktreePath` is always internally derived from `missionId`/`attemptNumber` alone. A Project A finding's own text has no channel to select a different repo/worktree. Combined with gap #1's fix (filesHint traversal now contained to the worktree), there is no way for a finding's own claimed content to cause a real mutation reachable outside its own isolated worktree. |
+| 2 | Stale finding targeting a renamed/removed file | **REAL_SAFE** | `createIsolatedRepairWorktree` always forks from CURRENT canonical `HEAD` (`git worktree add --detach <path> HEAD`), never a stale snapshot. A `reproduction.command` referencing a since-removed file/behavior fails mechanically as a real non-zero-exit subprocess (never crashes the verifier, never coerced to a pass) -- proven by the existing real test "reproduction still genuinely fails (real exit 1) -> VERIFIED_FAIL with REPRODUCTION_STILL_FAILS" (`self-improvement-verifier-dispatch.test.mjs`), which exercises exactly this mechanical path. |
+| 3a | `assertScopeDoesNotOverlapForbidden` catches a forbidden `filesHint` before dispatch | **REAL_SAFE** | Already proven by Wave B's own real test (`self-improvement-authority-envelope.test.mjs`: "assertScopeDoesNotOverlapForbidden catches a scope that already names a forbidden surface") -- re-verified by fresh read, still correct and still wired as the first thing `originateRepairMission` does after building the envelope. |
+| 3b | Mechanical forbidden-surface check still catches a worker fooled by injected instruction text | **REAL_SAFE** | `checkForbiddenSurfaceTouched` is a real `git diff --name-only` comparison, entirely independent of what the worker was told or tricked into attempting -- proven by Wave B's own real test simulating exactly this ("the forbidden-surface check genuinely catches a real worker diff that touches a forbidden path"): a fake worker's real commit touching `cleanup-owner-authorization-gate.mjs` is caught regardless of intent. Re-verified this wave; still holds. |
+| 3c | Untrusted `evidence`/`reproduction`/`filesHint` text mechanically expanding real authority | **REAL_GAP_FOUND, FIXED** | See fixes #1 and #4 above -- the real gap was not in the LLM-prompt-injection framing, but in `filesHint` reaching a real shell command and in the absence of any check on sibling worktrees. |
+| 4 | Path traversal via `filesHint` `../` sequences | **REAL_GAP_FOUND, FIXED** | See fix #1 above. Every OTHER real fs operation in the mechanism (worktree creation, `git diff`, canonical basenames) uses only paths the code itself constructs (`worktreePath`, `canonicalRepoPath`) -- never a caller-supplied hint string joined directly into a path used for a real operation -- confirmed by a full read of `self-improvement-worktree.mjs`; the regression-target path was the ONE real exception, now fixed. |
+| 5 | Worktree alias/junction defeating the canonical-repo-path check | **REAL_GAP_FOUND, FIXED** | See fix #2 above. |
+| 6 | Finding severity/confidence spoofing granting a skipped safety check | **REAL_SAFE (accepted trust boundary, unchanged)** | Grep-confirmed: `severity` is read in only 4 places across the whole mechanism, all either enum-membership validation or verbatim display in the worker prompt -- never a magnitude-based bypass of any check. `confidence` gates only the `MIN_CONFIDENCE_FOR_AUTOFIX` floor itself (the intended mechanism, not a bypass of something else). No downstream code treats a HIGH severity/confidence claim as license to skip a check it would otherwise perform. This is Wave A's own disclosed trust boundary (a detector's honesty about its own severity/confidence), not a new gap. |
+| 7 | Duplicate/racing repair mission origination | **REAL_GAP_FOUND, FIXED** | See fix #3 above. `computeRepairMissionId`'s content-addressing itself holds (only ever one missionId) -- the real gap was in the checkpoint WRITE not being atomic against a genuine concurrent double-call. |
+| 8 | Stale planner ownership bypassing lease/TOCTOU protections | **REAL_SAFE** | Full trace of `self-improvement-repair-cycle.mjs`'s `runRepairAttempt`: every mutation (`dispatchWorkerForTask`, `recordWorkerResult`, `recordVerifierResult`, `advancePhase`) goes exclusively through the `PlannerSessionLifecycle` instance's own methods, which route through `_mutate` -> `mutateCheckpoint(..., {requireLeaseHolder})` -- the SAME atomic-inside-the-lock re-check Findings F22/F24 already established for the general Planner Context Lifecycle. No lower-level store function is ever called directly for a write. `withLeaseRecovery` correctly handles `TSF_PLANNER_LEASE_NOT_HELD` by re-hydrating rather than plowing through. The full `planner-session-lifecycle*`/`planner-mission*` regression suite (72/72, including 3 dedicated rollover-race tests) re-run clean after this wave's own fix to the same file. |
+| 9 | Adoption bypass reaching a real merge/push without the gate | **REAL_SAFE** | Grep across every `tsf/server/self-improvement-*.mjs` file for `ffOnlyMerge`/`resetHardTo`/`push`: exactly ONE call site (`self-improvement-adoption.mjs`'s `attemptRepairAdoption`), and by full read, the gate state (`readAdoptionAuthorizationGateState`) is checked and returned on FIRST, before any git I/O -- the default-closed path never reaches `ffOnlyMerge` at all. No other file in the mechanism imports a mutating git-identity primitive. |
+| 10 | Cleanup V1 authority leakage | **REAL_SAFE** | Grep across every `tsf/domain/self-improvement-*.mjs` and `tsf/server/self-improvement-*.mjs` file for `cleanup-executor`/`runGovernedCleanupAction`: zero matches. The self-improvement adoption gate is a structural, independent sibling of Cleanup V1's gate (mirrors its shape, never imports or calls into it). |
+| 11 | Protected project/holdout targeting (NWR, `dataset-research-engine-v0`) | **REAL_GAP_FOUND (partial), FIXED for the discoverable case** | See fix #4 above. `dataset-research-engine-v0` (a worktree of the SAME repository) is now mechanically covered. NWR (a genuinely separate repository) remains covered only structurally/by construction (never referenced by any code path, path never supplied) -- honestly disclosed as a residual gap requiring real process sandboxing to close completely, not silently claimed as solved. |
+
+### Tests and results
+
+8 new real tests added across 4 existing test files (`self-improvement-
+verifier-dispatch.test.mjs` +5, `self-improvement-redogfood-server.test.mjs`
++1, `self-improvement-worktree.test.mjs` +1, `self-improvement-mission-
+origination.test.mjs` +1). Every new test was confirmed to FAIL against
+the pre-fix code (via `git stash` on the fix files) and PASS after the fix,
+for every one of the 4 real gaps -- not vacuous.
+
+**Full self-improvement suite** (`node --test tsf/test/self-improvement-
+*.test.mjs`): **248/248 pass** (Wave B's own 240 + this wave's 8 new tests).
+**Full whole-repo sweep**
+(`node --test tsf/test/*.test.mjs`): **2668 tests, 2660 pass, 7 fail**. 6 of
+the 7 are the IDENTICAL pre-existing, host-load-sensitive failures Wave A's
+and Wave B's own checkpoints already documented (`command-bare-imperative-
+dispatch.test.mjs`'s QUERY/STATUS + IDIOM, `command-operator-integration-
+adversarial.test.mjs`'s "Should I deploy WorldForge?", `http-work-summary.
+test.mjs`'s dispatch-tick timing test, `keep-going-autonomy-proof.test.mjs`'s
+long-running autonomy-proof stall, `operator-state-adversarial.test.mjs`'s
+"STALE ACTION RACE"). The 7th (`resource-pressure-lease-host-wide.test.mjs`'s
+"a real process crash while holding a lease self-heals via TTL") is NEW to
+this sweep but unrelated to any file this wave touched (confirmed: this
+wave never read or wrote `resource-pressure-lease-store.mjs` or any file it
+depends on) and reproduces PASS cleanly (6/6) when run in isolation --
+a real, TTL-timing-sensitive test flaking under this shared machine's host
+load (per this session's own multi-session-contention note), not a
+regression this wave introduced.
+
+**Lint:** `npx oxlint` on all 8 changed `.mjs` files (`self-improvement-
+verifier-checks.mjs`, `planner-session-lifecycle.mjs`, `self-improvement-
+mission-origination.mjs`, `self-improvement-redogfood.mjs`,
+`self-improvement-repair-cycle.mjs`, `self-improvement-verifier-dispatch.mjs`,
+`self-improvement-worker-dispatch.mjs`, `self-improvement-worktree.mjs`) --
+clean, exit 0 (one `unicorn/no-array-reverse` finding caught and fixed
+during this wave's own work). All 8 files well under the 600-line
+`.oxlintrc.json` cap (largest: `planner-session-lifecycle.mjs` at 298
+lines).
+
+### Constraints honored
+
+NWR: not touched. Cleanup V1 real destructive authority: not activated
+(confirmed by this wave's own scenario 10 grep). The real
+`TSF_SELF_IMPROVEMENT_ADOPTION_AUTHORIZATION` env var/flag file and the real
+`TSF_SELF_IMPROVEMENT_LOOP_ENABLED` flag: never set anywhere in any file
+this wave committed. No second finding/mission/authority mechanism built --
+every fix reused an existing primitive (`resolveCanonicalPath`,
+`mutateCheckpoint`'s own lock-scoped re-check pattern, `git worktree list`)
+rather than inventing a new one. No existing safety check was weakened --
+every change this wave made is strictly additive (a new atomic re-check, a
+new argv-based execution path replacing an unsafe shell-string one, a new
+mechanical check) or a correctness fix to an existing check's own blind
+spot. No push, no merge to `tsf/main`/`main`. No file under `C:\TSF_ORCA` or
+any other real worktree read or written -- every real git operation in this
+wave's own tests and PoCs ran against disposable fixture repos under
+`os.tmpdir()`.

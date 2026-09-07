@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createIsolatedRepairWorktree, isWorktreeClean, listAddedFiles, listCanonicalFileBasenames, listChangedFiles } from '../server/self-improvement-worktree.mjs'
@@ -46,6 +46,22 @@ test('createIsolatedRepairWorktree refuses to target the canonical repo path its
   const canonicalRepoPath = initFixtureRepo('repo-refuse')
   await assert.rejects(
     createIsolatedRepairWorktree({ canonicalRepoPath, worktreePath: canonicalRepoPath, branch: 'tsf/self-improve/fixture/x' }),
+    (error) => error.code === 'TSF_SELF_IMPROVEMENT_WORKTREE_TARGETS_CANONICAL_REPO'
+  )
+})
+
+// Phase 8 (adversarial security review, scenario 5): a real Windows
+// junction aliasing the canonical repo under a different path string.
+// resolve()-only comparison does not follow it -- proves the real-
+// canonicalization defense (resolveCanonicalPath, same primitive Finding
+// Phase 14 used for Cleanup V1's protected-path registry) actually fires.
+test('createIsolatedRepairWorktree refuses a junction alias of the canonical repo path, not just the literal path', async () => {
+  if (process.platform !== 'win32') { return } // junctions are a Windows-specific mechanism
+  const canonicalRepoPath = initFixtureRepo('repo-refuse-junction')
+  const aliasPath = path.join(ROOT, 'repo-refuse-junction-alias')
+  symlinkSync(canonicalRepoPath, aliasPath, 'junction')
+  await assert.rejects(
+    createIsolatedRepairWorktree({ canonicalRepoPath, worktreePath: aliasPath, branch: 'tsf/self-improve/fixture/junction-alias' }),
     (error) => error.code === 'TSF_SELF_IMPROVEMENT_WORKTREE_TARGETS_CANONICAL_REPO'
   )
 })

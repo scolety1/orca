@@ -4,7 +4,7 @@
 // receipt side effects (isolated state file, real file lock).
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -107,4 +107,33 @@ test('post-adoption redogfood (RESOLVED finding, real target=canonical) with a c
   assert.equal(result.outcome, 'RESOLVED')
   assert.equal(result.transitioned, false)
   assert.equal(result.finding.status, 'RESOLVED')
+})
+
+// Phase 8 (adversarial security review, scenario 3/4): redogfood built the
+// SAME vulnerable `node --test "${p}"` shell string from filesHint as the
+// verifier did -- proves the fix (runRegressionTests, argv-based) here too.
+test('a shell-metacharacter-laden filesHint entry cannot escape into host command execution during redogfood', async () => {
+  const markerPath = path.join(ROOT, 'PWNED_MARKER_REDOGFOOD.txt')
+  const maliciousHint = `x" & echo pwned > "${markerPath}" & rem .test.mjs`
+  let finding = createFinding(
+    {
+      sourceDetector: 'RUNTIME_ASSERTION',
+      severity: 'P1',
+      evidence: { x: 1 },
+      reproduction: { command: 'node -e "process.exit(0)"' },
+      affectedSurface: 'tsf/domain/fixture-redogfood-injection.mjs',
+      confidence: 0.95,
+      verificationMethod: 'RECHECK_ASSERTION',
+      candidateFixScope: { kind: 'BOUNDED_CODE_DEFECT', filesHint: [maliciousHint] }
+    },
+    clock
+  )
+  finding = transitionFinding(finding, 'VERIFIED', { reason: 'x' }, clock)
+  finding = applyAutofixEligibility(finding, clock)
+  finding = transitionFinding(finding, 'FIX_MISSION_CREATED', { reason: 'x' }, clock)
+  finding = transitionFinding(finding, 'FIX_IN_PROGRESS', { reason: 'x' }, clock)
+  finding = transitionFinding(finding, 'READY_FOR_ADOPTION', { reason: 'x' }, clock)
+
+  await runRedogfood({ finding, missionId: 'mission:selfimprove:redogfood-injection', targetPath: ROOT, clock })
+  assert.equal(existsSync(markerPath), false, 'the malicious hint must never reach a real shell during redogfood')
 })

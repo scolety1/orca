@@ -117,6 +117,7 @@ export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, 
     baseSha: worker.baseSha,
     canonicalRepoPath,
     workerProviderId: worker.providerId,
+    siblingStatusesBefore: worker.siblingStatusesBefore ?? null,
     deps: deps.verifierDeps ?? {}
   })
   await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>
