@@ -98,6 +98,32 @@ test('runDogfoodPass still closes the instance when a detector throws', async ()
   assert.equal(closed, true)
 })
 
+// F31 (Phase 3, resource-aware execution hardening): attachCapture used to
+// run BEFORE any try/finally existed, so a real launched Electron instance
+// leaked when it threw. Proves instance.close() is now reached even from
+// this specific pre-try failure point, not just from inside the loop.
+test('F31: runDogfoodPass still closes the instance when attachCapture itself throws', async () => {
+  let closed = false
+  const descriptor = {
+    targetId: 'fake-app',
+    launch: async () => ({
+      page: fakePage(),
+      close: async () => {
+        closed = true
+      }
+    }),
+    surfaceStrategy: TWO_SURFACES
+  }
+  await assert.rejects(
+    runDogfoodPass(descriptor, {
+      attachCapture: () => {
+        throw new Error('attachCapture boom')
+      }
+    })
+  )
+  assert.equal(closed, true)
+})
+
 test('runDogfoodPass turns real captured console errors into real CONSOLE_ERROR findings', async () => {
   const descriptor = {
     targetId: 'fake-app',

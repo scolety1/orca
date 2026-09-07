@@ -25,6 +25,8 @@ import {
   buildOrcaSurfaceStrategy,
   detectOrcaSettingsRenderFindings
 } from '../adapters/orca-dogfood-surfaces.mjs'
+import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
+import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 
 // Deliberately narrow -- a bare "check" or "review" is common, unrelated
 // chat vocabulary elsewhere in this codebase's own domain (status checks,
@@ -122,6 +124,29 @@ export async function respondDogfoodCommand({ message, clock = () => new Date(),
       text: 'Orca has not been built for dogfooding yet (`out/main/index.js` is missing) -- run `pnpm run build:electron-vite --mode e2e` first, then ask me again.',
       plannerRole: 'PLANNER_DEEP',
       providerLabel: 'PLANNER_DEEP · dispatch withheld -- no built candidate to launch',
+      live: false,
+      resolvedProjectIds: [],
+      scope: 'UI_DOGFOOD'
+    }
+  }
+
+  // Phase 3 (resource-aware execution hardening), F30: this is the one real
+  // production call site that launches a full Electron instance
+  // (createElectronLaunchFn -> _electron.launch()) and it never consulted
+  // the Resource Pressure Governor at all -- `newBrowserPilots` has existed
+  // in buildAdmissionPolicy since V0 but had zero real callers until now.
+  // Reuses classifyDispatchAdmission verbatim (F1's own established
+  // pattern for the other 5 previously-ungated sites), gated before the
+  // real launch, never after.
+  const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
+  const admission = classifyDispatchAdmission(readHostMemory(), 'newBrowserPilots')
+  if (!admission.admitted) {
+    return {
+      intent: 'UI_DOGFOOD',
+      decisionClass: 'RECOMMEND_AND_PROCEED',
+      text: `Dogfood run withheld -- ${admission.reason} (tier: ${admission.tier}). Try again once memory pressure eases.`,
+      plannerRole: 'PLANNER_DEEP',
+      providerLabel: 'PLANNER_DEEP · dispatch withheld -- RESOURCE_PRESSURE_REFUSED',
       live: false,
       resolvedProjectIds: [],
       scope: 'UI_DOGFOOD'

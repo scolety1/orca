@@ -97,48 +97,58 @@ export async function runDogfoodPass(descriptorRaw, deps) {
   const detectSurfaceFindings = deps.detectSurfaceFindings ?? (() => [])
 
   const instance = await descriptor.launch()
-  // Attached once for the whole instance -- re-attaching per iteration
-  // would stack duplicate listeners on the same page. `reset()` between
-  // iterations scopes each surface/viewport's findings to "since the last
-  // reset" without losing or duplicating events.
-  const capture = deps.attachCapture(instance.page)
+  // Phase 3 (resource-aware execution hardening), F31: instance.close()
+  // must be reachable from the moment launch() succeeds, not just from
+  // inside the inner try below -- deps.attachCapture(instance.page)
+  // itself can throw (a real, reproduced gap: a launched-but-never-closed
+  // Electron process) if it ran before any try/finally existed. This outer
+  // try/finally is the ONLY thing that changed; the inner block's own
+  // logic is untouched.
   try {
-    const surfaces = enumerateSurfaces(descriptor.surfaceStrategy, { page: instance.page })
-    const rawFindings = []
-    const screenshots = []
-    for (const surface of surfaces) {
-      for (const viewportId of descriptor.viewports) {
-        const viewport = DOGFOOD_VIEWPORTS[viewportId]
-        if (typeof instance.page.setViewportSize === 'function') {
-          await instance.page.setViewportSize({ width: viewport.width, height: viewport.height })
-        }
-        capture.reset?.()
-        await surface.open(instance.page)
-        const detected = await detectSurfaceFindings(instance.page, surface, viewportId)
-        for (const finding of detected) {
-          rawFindings.push(
-            normalizeFinding({ ...finding, surfaceId: surface.id, viewport: viewportId })
-          )
-        }
-        rawFindings.push(...captureFindings(surface.id, viewportId, capture))
-        if (typeof deps.captureScreenshot === 'function') {
-          screenshots.push(await deps.captureScreenshot(instance.page, surface.id, viewportId))
+    // Attached once for the whole instance -- re-attaching per iteration
+    // would stack duplicate listeners on the same page. `reset()` between
+    // iterations scopes each surface/viewport's findings to "since the last
+    // reset" without losing or duplicating events.
+    const capture = deps.attachCapture(instance.page)
+    try {
+      const surfaces = enumerateSurfaces(descriptor.surfaceStrategy, { page: instance.page })
+      const rawFindings = []
+      const screenshots = []
+      for (const surface of surfaces) {
+        for (const viewportId of descriptor.viewports) {
+          const viewport = DOGFOOD_VIEWPORTS[viewportId]
+          if (typeof instance.page.setViewportSize === 'function') {
+            await instance.page.setViewportSize({ width: viewport.width, height: viewport.height })
+          }
+          capture.reset?.()
+          await surface.open(instance.page)
+          const detected = await detectSurfaceFindings(instance.page, surface, viewportId)
+          for (const finding of detected) {
+            rawFindings.push(
+              normalizeFinding({ ...finding, surfaceId: surface.id, viewport: viewportId })
+            )
+          }
+          rawFindings.push(...captureFindings(surface.id, viewportId, capture))
+          if (typeof deps.captureScreenshot === 'function') {
+            screenshots.push(await deps.captureScreenshot(instance.page, surface.id, viewportId))
+          }
         }
       }
-    }
-    const deduped = deduplicateFindings(rawFindings)
-    return {
-      // Spread first: scoreDogfoodFindings has its own (deliberately
-      // different) schemaVersion -- the RUN version below must win.
-      ...scoreDogfoodFindings(deduped),
-      schemaVersion: 'TSF_UI_DOGFOOD_RUN_V1',
-      targetId: descriptor.targetId,
-      surfaceCount: surfaces.length,
-      viewports: descriptor.viewports,
-      screenshots
+      const deduped = deduplicateFindings(rawFindings)
+      return {
+        // Spread first: scoreDogfoodFindings has its own (deliberately
+        // different) schemaVersion -- the RUN version below must win.
+        ...scoreDogfoodFindings(deduped),
+        schemaVersion: 'TSF_UI_DOGFOOD_RUN_V1',
+        targetId: descriptor.targetId,
+        surfaceCount: surfaces.length,
+        viewports: descriptor.viewports,
+        screenshots
+      }
+    } finally {
+      capture.detach?.()
     }
   } finally {
-    capture.detach?.()
     await instance.close()
   }
 }

@@ -51,6 +51,9 @@ test('REQUIRED PROOF: respondDogfoodCommand runs the real domain contract agains
     message: 'dogfood orca',
     deps: {
       forceRunEvenWhenUnbuilt: true,
+      // F30: forced HEALTHY -- this test's own real point is the domain
+      // contract wiring, not this host's real memory at run time.
+      collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }),
       launch: async () => ({ page: fakePage, close: async () => {} }),
       attachCapture: () => ({
         consoleErrors: [{ text: 'real crash', location: null }],
@@ -67,11 +70,57 @@ test('REQUIRED PROOF: respondDogfoodCommand runs the real domain contract agains
   assert.match(result.text, /CONSOLE_ERROR/)
 })
 
+// F30 (Phase 3, resource-aware execution hardening): this was the one real
+// production call site that launched a full Electron instance with zero
+// Resource Pressure Governor check at all -- newBrowserPilots existed in
+// the domain policy since V0 but had no real caller until this fix.
+test('F30: respondDogfoodCommand refuses a real Electron launch under CRITICAL memory pressure', async () => {
+  let launchCalls = 0
+  const result = await respondDogfoodCommand({
+    message: 'dogfood orca',
+    deps: {
+      forceRunEvenWhenUnbuilt: true,
+      collectHostMemoryEvidence: () => ({ availableBytes: 2 * 1024 ** 3 }), // CRITICAL (1.5-2.5GB)
+      launch: async () => {
+        launchCalls += 1
+        return { page: {}, close: async () => {} }
+      },
+      surfaceStrategy: () => []
+    }
+  })
+  assert.equal(result.live, false)
+  assert.match(result.text, /withheld/)
+  assert.match(result.providerLabel, /RESOURCE_PRESSURE_REFUSED/)
+  assert.equal(launchCalls, 0)
+})
+
+test('F30: respondDogfoodCommand still runs a real dogfood pass under HEALTHY memory', async () => {
+  const fakePage = {
+    setViewportSize: async () => {},
+    evaluate: async () => {},
+    waitForTimeout: async () => {}
+  }
+  const result = await respondDogfoodCommand({
+    message: 'dogfood orca',
+    deps: {
+      forceRunEvenWhenUnbuilt: true,
+      collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }), // HEALTHY
+      launch: async () => ({ page: fakePage, close: async () => {} }),
+      attachCapture: () => ({ consoleErrors: [], failedRequests: [], reset() {}, detach() {} }),
+      surfaceStrategy: () => [{ id: 'home', title: 'Home', open: async () => {} }]
+    }
+  })
+  assert.equal(result.live, true)
+})
+
 test('respondDogfoodCommand honestly reports a failed dogfood run instead of throwing', async () => {
   const result = await respondDogfoodCommand({
     message: 'dogfood orca',
     deps: {
       forceRunEvenWhenUnbuilt: true,
+      // F30: forced HEALTHY so this exercises the launch-failure path
+      // itself, deterministically, regardless of this host's real memory.
+      collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }),
       launch: async () => {
         throw new Error('electron launch failed')
       },

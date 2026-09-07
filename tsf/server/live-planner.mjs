@@ -21,6 +21,8 @@ import {
 import { emptyProjectMemory, retrieveExperiencesForCapsule } from '../domain/project-memory.mjs'
 import { describeLiveRunStatus } from '../domain/live-work-feed.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
+import { classifyResourcePressureTier } from '../domain/resource-pressure-governor.mjs'
+import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 import { resolveAgentEntry } from '../providers/resolve-agent-entry.mjs'
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import launchProfiles from '../providers/launch-profiles.v1.json' with { type: 'json' }
@@ -245,6 +247,47 @@ function buildSystemPrompt({ project, capsule, opState, recentHistory, attachmen
   ].join('\n')
 }
 
+// Phase 3 (resource-aware execution hardening), F32: every one of this
+// module's ~8 real callers (chat, onboarding x2, WBS generation, scope
+// classification, field-source reconciliation, research-spec synthesis,
+// planner session creation) independently calls classifyDispatchAdmission
+// before reaching here, but PRESSURED is fully ADMITted -- only CRITICAL/
+// EMERGENCY REFUSE (resource-pressure-governor.mjs's own ADMISSION_BY_TIER).
+// Nothing stopped two callers racing under PRESSURED from both spawning a
+// real Codex/Claude child process at the same moment, spiking memory
+// together before either finished -- the exact "unnecessary simultaneous
+// heavy jobs" scenario this phase's mission named. Design record
+// (TSF_RESOURCE_PRESSURE_GOVERNOR_V0.md §4) already says PRESSURED's own
+// "serialize" language is what the heavy-task LEASE is for -- but no
+// LLM-CLI dispatch call site ever acquired one, so that language was never
+// actually enforced anywhere. Rather than thread a durable, cross-process
+// lease (missionId, ttl, HTTP route) through 8 unrelated call sites for a
+// same-process concern, this closes the gap at the ONE real choke point
+// every such call already funnels through (spawnAgent, via runOnce): an
+// in-process FIFO queue, consulted only under non-HEALTHY tiers so this
+// module's own documented "normal Fleet concurrency" under HEALTHY stays
+// exactly as unbounded as it already was. Reuses classifyResourcePressureTier
+// verbatim -- never a second memory-pressure classification.
+let heavyweightDispatchQueue = Promise.resolve()
+
+export async function serializeHeavyweightDispatchWhenPressured(run) {
+  const tier = classifyResourcePressureTier(collectHostMemoryEvidence().availableBytes)
+  if (tier === 'HEALTHY') {
+    return run()
+  }
+  const wait = heavyweightDispatchQueue
+  let release
+  heavyweightDispatchQueue = new Promise((resolve) => {
+    release = resolve
+  })
+  try {
+    await wait
+    return await run()
+  } finally {
+    release()
+  }
+}
+
 // Exported for a direct regression test of the shell:true refusal guard
 // below (spawnAgent's normal callers never construct an entry themselves).
 export function spawnAgent({ entry, args, cwd, timeoutMs }) {
@@ -411,12 +454,14 @@ async function runOnce({
       detail: `no invocation shape configured for agent: ${agentId}`
     }
   }
-  const outcome = await spawnAgent({
-    entry,
-    args: [...entry.args, ...cliArgs],
-    cwd: ensureNeutralCwd(),
-    timeoutMs: timeoutOverrideMs ?? timeoutMs()
-  })
+  const outcome = await serializeHeavyweightDispatchWhenPressured(() =>
+    spawnAgent({
+      entry,
+      args: [...entry.args, ...cliArgs],
+      cwd: ensureNeutralCwd(),
+      timeoutMs: timeoutOverrideMs ?? timeoutMs()
+    })
+  )
   if (!outcome.ok) {
     return outcome
   }

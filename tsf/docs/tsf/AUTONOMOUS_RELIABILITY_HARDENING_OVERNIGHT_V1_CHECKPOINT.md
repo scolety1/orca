@@ -53,7 +53,8 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 9. Research Autonomy Chaos / Soak Test | DONE | 10-scenario reconciliation (4 already well-covered, cited; 6 newly composed-mission-tested); 3 real generic bugs found, reproduced, fixed (**renumbered F27-F29 during adoption** -- this phase's own worktree independently assigned F25-F27, run in parallel with and unaware of Phase 12's own F25/F26; renumbered here to keep the finding ledger unique: F27 CHECK_COMPLETE silently ignored an uncovered expected universe, F28 identity-ambiguity reconciliation refusal never escalated -- both stranded the mission with no human-visible Needs You, F29 a verification-failure retry silently bypassed the retry budget forever, unbounded -- the same "READY bypasses the budget" class F5 fixed, on a different trigger); see dedicated section below |
 | 8. Planner Lifecycle Chaos Test | DONE | Finding F24 (real TOCTOU in `_mutate`'s lease enforcement) fixed; see dedicated section below (this row was missing from this table -- a stale-table doc bug found and fixed in passing during Phase 16, not a phase re-run) |
 | 16. Self-Improvement Loop V0 Reconciliation | DONE | 5-link honest reconciliation (detection/mission-creation/verification/adoption/re-dogfood) -- all 4 non-trivial links PARTIALLY_REAL, none REAL_AND_COMPOSABLE end-to-end without a human/external coordinator; no new orchestrator built; one real, small, still-open residual-gap bug (chat-responder.mjs FINISHED-intent vocabulary gap, previously pinned as disclosed-not-fixed in Phase 7) fixed and verified as a bounded READY_FOR_ADOPTION-level proof; see dedicated section below |
-| 3, 5, 15, 17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 3. Resource-Aware Execution Hardening | DONE | 6-area investigation; 3 real gaps found and fixed (F30 UI Dogfood's real Electron launch never consulted the governor at all, F31 a real Electron-instance leak on an attachCapture exception before any try/finally existed, F32 PRESSURED tier's own documented "serialize" language was never actually enforced for concurrent heavyweight LLM-CLI dispatch); 3 areas confirmed sound by design with cited evidence (worker residency, planner rollover residency via an existing Phase 8 test, starvation-by-construction); see dedicated section below |
+| 5, 15, 17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -3835,4 +3836,365 @@ Astra: not touched, not referenced. NWR data: not touched. No new
 orchestrator/scheduler/dispatch mechanism was built.
 
 Adopted SHA: see the commit on `tsf/feature/phase16-self-improvement-loop`
+## Phase 3: Resource-Aware Execution Hardening
+
+Worktree: `phase3-resource-aware-execution`, branch
+`tsf/feature/phase3-resource-aware-execution` (forked from `tsf/main` @
+`3078b85bc38b9cc3c01ea0b34ebc0827ccb58234`). Finding F1 (already fixed)
+closed the gap where 5 real dispatch sites bypassed the Resource Pressure
+Governor entirely. This phase asks a different question: for the
+orchestration that DOES correctly call the governor, is it actually used
+well in practice? Six investigation areas, per the mission brief; 3 real
+gaps found and fixed (F30, F31, F32), 3 confirmed sound by design with
+cited evidence.
+
+### Area 1 -- Worker residency (Keep Going wave settlement, ResearchMission
+node completion, Cleanup V1) -- CONFIRMED SOUND, no fix
+
+Read `keep-going-dispatch-loop.mjs`'s `settleStep` in full: Keep Going never
+spawns a local child process for a dispatched worker itself -- it delegates
+to Orca's own orchestration CLI (`createOrchestrationTask`/
+`startOrchestrationWorker`, `orca-orchestration-bridge.mjs`) and settles a
+wave purely by polling `listOrchestrationTasks` and comparing the returned
+`task.status` against `COMPLETED_STATUSES`/`FAILED_STATUSES`. There is
+structurally no local resource for TSF to release on settlement -- the
+worker process's own lifecycle belongs to Orca core, one layer down, which
+this phase's INVESTIGATE list did not name and this phase did not audit
+(re-confirms Phase 2's own "Background Task Truthfulness" finding on the
+same module, independently re-verified here for the residency angle
+specifically, not merely re-cited).
+
+ResearchMission node completion: every real research worker adapter
+(`exa-research-worker.mjs`, `parallel-research-worker.mjs`,
+`web-table-research-worker.mjs`, `llm-latent-knowledge-research-worker.mjs`,
+`authenticated-official-download-research-worker.mjs`,
+`owner-supplied-local-artifact-research-worker.mjs`) is HTTP/API-backed, not
+a local process launch (re-confirmed directly, not merely cited from Phase
+2) -- there is no local child process for a completed node to leak.
+
+Cleanup V1 action completion: `cleanup-executor.mjs` (`grep -n
+'spawn\|execFile\|child_process'`) has zero direct process-spawn calls of
+its own -- every real mutate function
+(`cleanup-executor-worktree-actions.mjs`, `cleanup-executor-artifact-
+actions.mjs`) goes through the same exit-code-authoritative git/fs wrappers
+Phase 2 already verified (`cleanup-git-worktree-inventory.mjs` and
+siblings), none of which hold a persistent process handle across the
+action's own lifetime.
+
+`safe-provider-launch.mjs`'s own process lifecycle (read in full): a single
+real `spawn()`, one `'error'` handler (`fail()` -> `process.exit(2)`, only
+reachable before or instead of a successful spawn) and one `'exit'` handler
+that sets `process.exitCode` from the real child's code/signal -- no
+`setInterval`/`setTimeout`/other handle that would keep the wrapper alive
+past the child's own exit. Once the child process exits, nothing else holds
+the event loop open, so the wrapper exits naturally in lockstep with it.
+Orphan prevention across a wrapper-process kill (e.g. an operator killing
+the whole terminal) is OS/job-control territory owned by Orca core (the
+terminal/process-group manager), not something this single-child wrapper
+file could or should implement itself -- out of this phase's INVESTIGATE
+scope (it named this file's "process lifecycle," which is real, exit-code-
+correct, and handle-clean, not Orca's separate process-group ownership).
+
+### Area 2 -- Test concurrency (`tests/playwright.config.ts` and TSF's own
+test/CI-adjacent tooling) -- CONFIRMED SOUND for CI, one pre-existing
+disclosed (not new) gap for local dev runs, no fix
+
+Read `tests/playwright.config.ts` in full: `workers: process.env.CI ? 1 :
+undefined` -- CI already serializes to exactly one Electron/Chromium
+process tree, with the file's own comment citing the real reason
+("two apps per VM can contend on Xvfb/git enough to create false E2E
+failures"). Local dev runs default to Playwright's own CPU-based worker
+heuristic (unbounded relative to the Resource Pressure Governor) -- but
+this is a human-invoked `pnpm run test:e2e`, not TSF's own autonomous/
+unattended orchestration, and is a different risk profile from the
+mission's own overnight-autonomy charter, matching this program's own
+established distinction (see the next paragraph).
+
+Searched further for TSF's own test-running/CI-adjacent tooling that could
+launch multiple heavy processes unattended: `health-repair.mjs`'s
+`runBaselineVerification` (real npm test/build/lint execution) is exactly
+this shape but is ALREADY explicitly disclosed, pre-existing debt --
+`docs/tsf/ZERO_RELAY_RESOURCE_AWARE_CANDIDATE_FREEZE.md`'s own
+`HEALTH_REPAIR_SECURITY_SCANNER_RESOURCE_ADMISSION` debt item records it
+by name: "genuinely heavyweight but operator-triggered, not autonomous/
+unattended -- a different risk profile than the two self-ticking loops
+(Keep Going, Research) already gated. Not yet wired to the Resource
+Pressure Governor's admission check." Confirmed still true by direct read
+of `health-repair.mjs` (no resource-pressure import at all) and its 3 real
+callers (`repo-inspector.mjs`, `health-repair-http-routes.mjs`,
+`prepare-for-work-http-routes.mjs` -- all HTTP-route/Command-triggered, none
+on an autonomous per-tick loop). Re-deciding this prior program's own
+explicit, deliberate scoping call is out of this phase's remit -- cited
+here for completeness, not re-opened or re-fixed.
+
+`tsf/fixtures/run-dogfood.mjs` (a differently-named "dogfood" fixture, pure
+domain-state fixture generation, zero process spawn) is unrelated -- the
+real UI Dogfood tooling this phase's INVESTIGATE list means is
+`command-dogfood-bridge.mjs`/`ui-dogfood-contract.mjs`, covered under Area 4
+below (where a real, new gap WAS found and fixed).
+
+### Area 3 -- Provider concurrency: two heavyweight LLM-CLI dispatches
+racing from the SAME TSF process -- REAL GAP, FIXED (Finding F32)
+
+**Reconciled against the existing primitives first**, per the mission's own
+instruction. `resource-pressure-governor.mjs`'s `classifyDispatchAdmission`
+is stateless per call -- nothing tracks how many heavyweight dispatches are
+already in flight. `TSF_RESOURCE_PRESSURE_GOVERNOR_V0.md` §4 already says
+PRESSURED's own "delay/serialize" language "is exactly what per-kind mutual
+exclusion already provides" via the existing heavy-task lease
+(`requestHeavyTaskLease`/`releaseHeavyTaskLease`) -- but `grep -rn
+'requestHeavyTaskLease'` across `tsf/server` shows its ONLY real caller is
+`resource-pressure-governor-http-routes.mjs` (the operator-facing HTTP
+route). No LLM-CLI dispatch call site anywhere in the codebase ever
+acquires one. Concretely: `ADMISSION_BY_TIER`'s `PRESSURED` decision is
+`'DELAY'`, and every one of the ~8 real callers (`chat-dispatch-bridge.mjs`,
+`command-research-spec-synthesis.mjs`, `command-scope-classifier.mjs`,
+`field-source-reconciliation.mjs`, `onboarding.mjs` x2 call sites,
+`wbs-generation.mjs`, `planner-session-lifecycle.mjs`) computes
+`admitted = policy[field] !== 'REFUSE'` -- `'DELAY' !== 'REFUSE'` is `true`,
+so PRESSURED is fully admitted, identically to HEALTHY. Nothing stopped two
+independent callers (e.g. a live chat turn and a concurrent onboarding scan,
+or two overlapping chat requests) from both reading PRESSURED at the same
+instant and each spawning a real Codex/Claude child process, spiking memory
+together before either finished -- exactly the "unnecessary simultaneous
+heavy jobs" scenario the mission named, and a real risk given this host's
+own documented real free-memory range (~1.4-3.4GB, spanning PRESSURED
+through EMERGENCY) throughout this program.
+
+Keep Going's own heavyweight dispatch (`keep-going-resource-pressure-
+gate.mjs`, gated on the same `newHeavyweightWorkerDispatch` field) is
+structurally NOT part of this same-process race: per Area 1 above, it
+dispatches via Orca's own orchestration CLI, a different process family
+entirely, not `live-planner.mjs`'s `spawnAgent`. `research-mission-fleet-
+driver.mjs`'s `newResearchWorkers` category is also excluded -- every real
+research worker is HTTP/API-backed (Area 1), not a local LLM-CLI spawn.
+
+**Fix.** All ~8 real LLM-CLI-shaped callers funnel through exactly ONE real
+choke point: `live-planner.mjs`'s `spawnAgent`, called from `runOnce`,
+called from both `invokeLivePlanner` (chat) and `invokeLiveStructuredAnalysis`
+(every structured caller). Rather than thread a durable, cross-process,
+missionId-keyed lease through 8 unrelated call sites for a same-process
+concern (over-scoped for what the mission actually asked), added a small
+in-process FIFO queue at that one choke point
+(`serializeHeavyweightDispatchWhenPressured`, `live-planner.mjs`):
+re-reads the real tier via `classifyResourcePressureTier`/
+`collectHostMemoryEvidence` (never a second memory-pressure classification)
+immediately before the real spawn, and under any non-HEALTHY tier, chains
+onto a `Promise`-based queue so a second concurrent dispatch genuinely waits
+for the first to finish before its own `spawnAgent` call starts. HEALTHY
+tier is completely untouched -- `run()` executes immediately, preserving
+this module's own documented "normal Fleet concurrency." No caller-facing
+signature changed; every one of the 8 real callers is unaffected code-wise,
+only timing under real pressure changes.
+
+**Tests.** New `tsf/test/live-planner-heavyweight-dispatch-serialization.test.mjs`,
+4 tests, using fake `run()` functions (never a real child_process.spawn, so
+deterministic and fast, not timing-sensitive against a loaded host):
+PRESSURED serializes (second dispatch's `run()` provably does not start
+until the first's gate releases), CRITICAL also serializes, HEALTHY does
+NOT serialize (both start before either finishes -- proves "normal Fleet
+concurrency" is unaffected), and a 3rd dispatch under PRESSURED queues
+strictly in FIFO order behind the other two. All 4 pass. Regression:
+`live-planner.test.mjs` + `live-planner-provider-fallback.test.mjs` (29
+tests, real spawned stub-CLI child processes) -- 29/29 pass unchanged,
+proving the real spawn path still works correctly wrapped in the new queue.
+
+### Area 4 -- Browser runtime release (UI Dogfood: `ui-dogfood-contract.mjs`
+launch/close lifecycle, `command-dogfood-bridge.mjs`'s real dispatch) --
+TWO REAL GAPS, FIXED (Findings F30, F31)
+
+**Finding F31 -- a real Electron-instance leak on a pre-try exception.**
+Read `runDogfoodPass` in full: `const instance = await descriptor.launch()`
+and `const capture = deps.attachCapture(instance.page)` both ran BEFORE the
+function's only `try/finally` began. If `attachCapture` itself threw (a
+real, plausible failure mode -- e.g. a page-listener attach failing because
+the page was already closed/crashed), `instance.close()` was never reached:
+the real, already-launched Electron process leaked. Proven with a new
+regression test before writing the fix (`attachCapture: () => { throw new
+Error(...) }`) -- failed as predicted against the unfixed code (`closed`
+stayed `false`). **Fix**: wrapped `attachCapture` and the whole surface-walk
+body in an OUTER `try/finally` (`await instance.close()`) around the
+existing inner `try/finally` (`capture.detach?.()`) -- `instance.close()` is
+now reachable from the moment `launch()` succeeds, regardless of where
+anything after it throws. No other logic changed.
+
+**Finding F30 -- the one real Electron-launch call site had ZERO Resource
+Pressure Governor consultation.** `buildAdmissionPolicy`'s `newBrowserPilots`
+field has existed in the domain policy since V0 (`resource-pressure-
+governor.mjs`, `TSF_RESOURCE_PRESSURE_GOVERNOR_V0.md`'s own contract table)
+but `grep -rn 'newBrowserPilots'` across `tsf/` showed its only real
+"users" were its own definition and its own domain test -- zero real
+dispatch callers, ever, unlike `newHeavyweightWorkerDispatch` (F1's own
+gated 5+ sites) or `newResearchWorkers`. `command-dogfood-bridge.mjs`'s
+`respondDogfoodCommand` is the one real production call site that launches
+a genuine Electron instance (`createElectronLaunchFn` ->
+`_electron.launch()`, a real, heavyweight process by any reading of this
+mission's own vocabulary) from a live chat command ("dogfood orca"), and it
+never checked the governor at all -- it could launch a full Electron app
+even under real CRITICAL/EMERGENCY host memory pressure, precisely the
+scenario the whole governor exists to prevent, and a genuinely NEW gap not
+covered by F1 (a different admission category) or disclosed in the Zero-
+Relay freeze doc's own debt list (which explicitly distinguishes autonomous
+work needing this gate from operator-triggered work that doesn't -- a live
+chat-triggered Electron launch is squarely the autonomous-adjacent,
+heavyweight kind the freeze doc's own reasoning would gate, unlike
+`runBaselineVerification`'s human-invoked-only shape in Area 2 above).
+
+**Fix.** `command-dogfood-bridge.mjs`: added the SAME `classifyDispatchAdmission`
+call F1 already established as the pattern (reused verbatim, no new
+category, no new mechanism), gated on `'newBrowserPilots'`, checked after
+the existing "not built yet" honesty check and before the real
+`launch`/`attachCapture`/`surfaceStrategy` deps are even assembled. A
+refusal returns the same `RECOMMEND_AND_PROCEED`/`live:false` degraded
+shape family every other honest-refusal branch in this function already
+uses, with `providerLabel` carrying `RESOURCE_PRESSURE_REFUSED` for
+consistency with F1's other 5 sites. `deps.collectHostMemoryEvidence`
+override added, matching every other F1 site's own test-injection
+convention.
+
+**Tests.** `command-dogfood-bridge.test.mjs` gained 2 new tests (F30):
+CRITICAL tier refuses before `launch` is ever called (`launchCalls`
+asserted `0`), HEALTHY tier still runs a real pass end to end. Two
+PRE-EXISTING tests in the same file did not force host memory and started
+failing for real once F30 was wired in -- because this host's real free
+memory was genuinely CRITICAL at test time (the same real-host-pressure
+condition this whole program has repeatedly observed and logged, not a bug
+in the fix): "REQUIRED PROOF: ...reports real findings" and "...honestly
+reports a failed dogfood run instead of throwing". Both fixed by adding the
+same `collectHostMemoryEvidence` HEALTHY override (matching F1's own
+established remediation pattern for exactly this situation), so they now
+deterministically exercise what they were always meant to test, independent
+of this host's real, fluctuating memory. `ui-dogfood-contract.test.mjs`
+gained 1 new test (F31, "attachCapture itself throws" -> `instance.close()`
+still called). Full file re-runs: `command-dogfood-bridge.test.mjs` 10/10
+pass, `ui-dogfood-contract.test.mjs` 21/21 pass (see Area 3 for the combined
+first run of all three new/changed test files together, 21/21 pass before
+the two pre-existing tests were patched; both files independently reconfirmed
+clean after the patch).
+
+### Area 5 -- Planner rollover residency (a stale planner's own in-flight
+provider call after a successor takes over) -- CONFIRMED SOUND, no fix,
+existing evidence cited
+
+This exact scenario is already real-timing tested by Phase 8's own
+`planner-session-lifecycle-dispatch-lease-handoff.test.mjs` (not a
+simulated/patched-call-count proof like F22's own crash-mid-dispatch test --
+a genuinely slow real `dispatchWorker` call, a real 200ms lease TTL, and
+real wall-clock timing): planner A's real dispatch call is still
+genuinely in flight (A has NOT crashed) exactly when its lease's real TTL
+expires and planner B takes over. Read `planner-session-lifecycle.mjs`'s
+`dispatchWorkerForTask` in full to confirm the mechanism, then confirmed
+the existing test's own assertions prove it end to end:
+
+- **No real cancellation/abort signal exists** -- A's own `await
+  this.deps.dispatchWorker(...)` call is not wrapped in any
+  `AbortController`/cancellation primitive, and does run to completion
+  "wastefully" once a successor has taken over. This matches the mission's
+  own framing exactly.
+- **But it cannot silently double-spend.** A's dispatch durably records a
+  `recordDispatchAttempt` (UNKNOWN outcome) BEFORE calling the real
+  dispatcher (Phase 11/F22's own fix). B, hydrating after taking the lease,
+  sees this unresolved attempt and `classifyPlannerDispatchAmbiguity`
+  correctly refuses to redispatch the same `taskFingerprint`
+  (`TSF_PLANNER_DISPATCH_AMBIGUOUS`) -- the existing test proves
+  `dispatchCallCount === 1` (the real dispatcher fired exactly once, not
+  twice) even though A's call was still genuinely in flight when B took
+  over.
+- **A's own attempt to durably land its result is refused, not silently
+  applied or silently lost.** `_mutate`'s `_requireLease` check fails once A
+  no longer holds the lease (`TSF_PLANNER_LEASE_NOT_HELD`) -- the existing
+  test's own name states the honest outcome directly: "honest ambiguity, no
+  silently-lost or silently-landed result." The durable record is left with
+  one unresolved attempt and zero registered workers -- a real, bounded,
+  human-visible ambiguity (a successor or operator must reconcile it), never
+  a duplicate dispatch and never a fabricated-clean state.
+- **Bounded, not unbounded, residency.** The wasted call is bounded by its
+  own real duration (in the cited test, 400ms; in production,
+  `spawnAgent`'s own `timeoutMs`/`SIGTERM` kill for the LLM-CLI shape, or
+  whatever timeout the specific `dispatchWorker` implementation carries) --
+  never an indefinitely-running orphan.
+
+Building real cross-call cancellation (threading an `AbortController` or
+equivalent through every `dispatchWorker` implementation) would be a
+materially larger mechanism than this phase's smallest-fix mandate
+justifies for what is, by the cited test's own real-timing proof, a rare
+(TTL-window-only), already-structurally-bounded, already-non-corrupting
+inefficiency -- not a resource leak. No fix implemented; re-ran
+`planner-session-lifecycle-dispatch-lease-handoff.test.mjs` standalone
+during this phase to independently reconfirm it still passes on this
+worktree's own code (1/1 pass), rather than only citing it from memory.
+
+### Area 6 -- Starvation (`classifyDispatchAdmission`'s tier logic favoring
+one dispatch category over another indefinitely) -- CONFIRMED SOUND BY
+CONSTRUCTION, no fix
+
+Read `buildAdmissionPolicy` in full: `ADMISSION_BY_TIER` maps exactly ONE
+`{decision, reason}` pair per tier, and `newFullSuiteTests`,
+`newBrowserPilots`, `newResearchWorkers`, and `newHeavyweightWorkerDispatch`
+are ALL set to that SAME `decision` value inside `buildAdmissionPolicy` --
+the function's own comment states this directly: "Tiers gate admission
+uniformly across work categories." There is no branch, weight, or ordering
+anywhere in this function (or in `classifyDispatchAdmission`, which just
+looks up one field on the result) that treats one category as
+higher-priority than another. Given the SAME real-time `hostMemory` reading
+governs every category identically at every call, a "low-priority" dispatch
+and a "high-priority" dispatch checked in the same instant always receive
+the IDENTICAL admit/refuse verdict -- there is no policy surface for one to
+be systematically preferred over the other, so indefinite starvation of one
+category in favor of another cannot arise from this function by
+construction, not merely by absence of an observed case. (A caller-side
+starvation vector -- e.g. one dispatch loop retrying far more aggressively
+than another -- would be a property of the CALLING loop's own scheduling,
+not of the governor; Keep Going's and ResearchMission's fleet drivers both
+tick at the same `DEFAULT_TICK_INTERVAL_MS` cadence, so no such asymmetry
+was found either.)
+
+### Regression sweep
+
+Full-suite baseline run (`node --test tsf/test/*.test.mjs`) taken BEFORE
+patching the two pre-existing host-memory-sensitive dogfood tests (see Area
+4): 5 failures beyond the expected new-test set, all reproducing this
+program's own long-documented pre-existing/real-host-load-sensitive
+candidate set (`command-bare-imperative-dispatch.test.mjs`/
+`command-operator-integration-adversarial.test.mjs`'s QUESTION/GENERAL
+phrasing gap, `health-repair-io.test.mjs`'s bounded-timeout-kill test under
+full-suite load, `http-work-summary.test.mjs`'s dispatch-tick timing test,
+`keep-going-autonomy-proof.test.mjs`'s long-running autonomy proof,
+`operator-state-adversarial.test.mjs`'s STALE ACTION RACE) -- all cited
+verbatim in F1/F3/F4/F8/F9's own checkpoint entries above as pre-existing
+and unrelated to any file those phases touched; none of the 5 touch
+`live-planner.mjs`, `ui-dogfood-contract.mjs`, or `command-dogfood-
+bridge.mjs`. The ONE genuinely new failure this phase's own F30 fix caused
+(2 tests in `command-dogfood-bridge.test.mjs` that never forced host memory,
+tripped by this host's real CRITICAL reading at run time -- the fix doing
+exactly its job) was fixed by forcing HEALTHY memory in both, per F1's own
+established remediation convention -- confirmed clean on re-run (`command-
+dogfood-bridge.test.mjs` 10/10 pass). Full-suite re-run after that patch:
+`node --test tsf/test/*.test.mjs` -- 2417 tests, 2411 pass, 6 fail, and the
+6 failures are the EXACT SAME 6 tests by name as the pre-patch run's 5 (the
+QUESTION/GENERAL phrasing gap alone spans 2 assertions inside
+`command-operator-integration-adversarial.test.mjs`'s test list, `QUERY/
+STATUS`/`IDIOM`/`SCENARIO: Should I deploy WorldForge?`, matching this
+program's own long-documented pre-existing phrasing-gap family) plus
+`http-work-summary.test.mjs`, `keep-going-autonomy-proof.test.mjs`, and
+`operator-state-adversarial.test.mjs` -- none newly introduced, none
+touching any file this phase changed.
+
+**Lint.** `npx oxlint` on every changed/new file (`tsf/server/live-planner.mjs`,
+`tsf/domain/ui-dogfood-contract.mjs`, `tsf/server/command-dogfood-bridge.mjs`,
+`tsf/test/live-planner-heavyweight-dispatch-serialization.test.mjs`,
+`tsf/test/ui-dogfood-contract.test.mjs`, `tsf/test/command-dogfood-
+bridge.test.mjs`) -- clean, exit 0 (one `curly` finding on the new test
+file's own env-restore branches was fixed, not left). `live-planner.mjs`
+stays comfortably under the 600-counted-line `.mjs` cap after
+`skipBlankLines`/`skipComments` (confirmed via the same clean oxlint run,
+not just a raw `wc -l` estimate).
+
+Astra: not touched, not referenced. NWR data: not touched. No process-kill-
+by-executable-name mechanism was added anywhere -- F32's fix is a pure
+in-process `Promise` queue (no process termination at all), and F30/F31 only
+gate/guarantee a `close()` call on an instance TSF itself launched, never a
+kill of anything by name.
+
+Adopted SHA: see the commit on `tsf/feature/phase3-resource-aware-execution`
 that carries this section.
