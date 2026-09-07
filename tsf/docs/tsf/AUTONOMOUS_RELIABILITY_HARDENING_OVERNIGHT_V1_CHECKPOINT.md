@@ -51,7 +51,9 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 11. Provider / Worker Resilience | DONE | Findings F22 (planner dispatch double-spend on crash-mid-dispatch) and F23 (unvalidated structured-response shape / codex schema-forwarding gap) fixed; see dedicated section below |
 | 12. Durable State / Restart Gauntlet | DONE | 11-category reconciliation; Finding F25 (Keep Going's own wave-dispatch double-spend on crash-mid-dispatch, real, reproduced, fixed) + Finding F26 (Resource Pressure Governor refusals vanished with zero durable trace for Keep Going and ResearchMission, real, fixed) + 2 new real cross-process SIGKILL crash-survival tests (Needs You, Verifier result) closing explicit-assertion gaps; see dedicated section below |
 | 9. Research Autonomy Chaos / Soak Test | DONE | 10-scenario reconciliation (4 already well-covered, cited; 6 newly composed-mission-tested); 3 real generic bugs found, reproduced, fixed (**renumbered F27-F29 during adoption** -- this phase's own worktree independently assigned F25-F27, run in parallel with and unaware of Phase 12's own F25/F26; renumbered here to keep the finding ledger unique: F27 CHECK_COMPLETE silently ignored an uncovered expected universe, F28 identity-ambiguity reconciliation refusal never escalated -- both stranded the mission with no human-visible Needs You, F29 a verification-failure retry silently bypassed the retry budget forever, unbounded -- the same "READY bypasses the budget" class F5 fixed, on a different trigger); see dedicated section below |
-| 3, 5, 8, 15-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 8. Planner Lifecycle Chaos Test | DONE | Finding F24 (real TOCTOU in `_mutate`'s lease enforcement) fixed; see dedicated section below (this row was missing from this table -- a stale-table doc bug found and fixed in passing during Phase 16, not a phase re-run) |
+| 16. Self-Improvement Loop V0 Reconciliation | DONE | 5-link honest reconciliation (detection/mission-creation/verification/adoption/re-dogfood) -- all 4 non-trivial links PARTIALLY_REAL, none REAL_AND_COMPOSABLE end-to-end without a human/external coordinator; no new orchestrator built; one real, small, still-open residual-gap bug (chat-responder.mjs FINISHED-intent vocabulary gap, previously pinned as disclosed-not-fixed in Phase 7) fixed and verified as a bounded READY_FOR_ADOPTION-level proof; see dedicated section below |
+| 3, 5, 15, 17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -3532,4 +3534,305 @@ env var Phase 13's golden-path eval already established the convention
 for.
 
 Adopted SHA: see the commit on `tsf/feature/phase9-research-autonomy-chaos`
+that carries this section.
+
+## Phase 16: Self-Improvement Loop V0 Reconciliation
+
+Worktree: `phase16-self-improvement-loop`, branch
+`tsf/feature/phase16-self-improvement-loop` (forked from `tsf/main` @
+`3078b85bc38b9cc3c01ea0b34ebc0827ccb58234`).
+
+**Mission.** This program has, across 15 prior phases, manually performed
+the composition "dogfood/audit -> find a real issue -> bounded fix in an
+isolated worktree -> verify -> adversarially review -> adopt -> checkpoint"
+many times -- but always driven by an EXTERNAL coordinator (a live Claude
+Code session directing Agent-tool dispatches and git operations), never by
+TSF's own internal primitives acting autonomously. This phase's job was to
+determine, honestly, whether TSF's EXISTING primitives already compose
+enough for a bounded self-improvement loop to run without a human/external-
+coordinator relay -- and prove it with one real, small, disposable bug if
+they do, or prove up to the exact point a human is genuinely still required
+if they don't. Explicit mission constraint: do not build a new orchestrator
+"merely to call it self-improvement," and do not manufacture a false "it
+all works" narrative if the honest answer is a real gap.
+
+**Method.** 5 parallel read-only investigation agents, each scoped to
+exactly one link of the loop, independently read every real production
+file plausibly implementing that link (not sampled -- full-file reads,
+cited by exact path/line below) and reported REAL_AND_COMPOSABLE /
+PARTIALLY_REAL / MISSING with citations. A 6th agent re-read the
+remainder of this checkpoint doc (it had grown to 3536 lines) to locate
+any still-open, small, disclosed, not-yet-fixed bug suitable as the
+loop's real test case, since the mission explicitly pointed at this doc's
+own "recommend-only" items as candidates.
+
+### The 5-link reconciliation
+
+| Link | Verdict | Why |
+|---|---|---|
+| 1. Detection | **PARTIALLY_REAL / MISSING** | UI Dogfood findings are structured (`TSF_UI_DOGFOOD_RUN_V1`/`TSF_UI_DOGFOOD_SCORE_V1`) but never durably stored (MISSING); eval-pack/GOLDEN_PATH and health-repair baseline results ARE durably stored (`opState.evalRuns`/`opState.healthRepairOperations`) but have no real automated consumer (PARTIALLY_REAL) |
+| 2. Bounded fix mission creation | **PARTIALLY_REAL** | Real, structured, non-chat-text, directly-callable primitives exist (`startKeepGoingRun`, `tickKeepGoingRun`, `createResearchMissionDurable`, `PlannerSessionLifecycle.startMission`, `prepareRepairMission`) but no autonomous TSF subsystem calls any of them, on its own initiative, to create a NEW mission from a self-generated finding |
+| 3. Verification | **PARTIALLY_REAL** | `scoreCase`/`runEvalPack` are real, pure, and TSF already proves the autonomous-composition pattern works (Research Mission Fleet Driver's tick loop calls `verifyResearchClaim` -> `scoreCase` with zero human at call time) -- but only for research factual claims, never wired for a code-fix candidate |
+| 4. Governed adoption | **PARTIALLY_REAL, deliberately MISSING for execution** | Authorization is hardcoded to a literal human check (`decidedBy === 'TIM'` in `self-update-adoption.mjs`, or an env-var+flag-file pair Cleanup V1's own code never sets) BY DESIGN; the actual mutating merge primitives (`ffOnlyMerge`/`resetHardTo`) have zero production callers anywhere |
+| 5. Re-dogfood | **Derivative of 1+2** | Re-invoking a detector is trivially real as a function call, but nothing autonomously triggers that re-invocation -- same missing-trigger gap as Links 1/2 |
+
+**Verdict: NOT all 5 links are REAL_AND_COMPOSABLE.** Per this phase's own
+"if adoption authority requires owner approval: prove up to
+READY_FOR_ADOPTION instead" instruction, no full autonomous end-to-end
+proof was attempted or fabricated.
+
+### Link 1 -- Detection (evidence)
+
+- `tsf/domain/ui-dogfood-contract.mjs`'s `runDogfoodPass`/`runIterativeDogfood`
+  (lines 92-180) and `tsf/domain/ui-dogfood-finding.mjs`'s `normalizeFinding`/
+  `scoreDogfoodFindings` (lines 51-169) produce a real, schema-versioned
+  structured finding set -- but never call any store. The one production
+  caller, `tsf/server/command-dogfood-bridge.mjs:99-173`
+  (`respondDogfoodCommand`, wired from chat via `command-responder.mjs:232-241`),
+  returns the finding set directly as a one-shot chat-turn response. Grep for
+  "dogfood" + "store"/"ledger" across all of `tsf/`: zero matches. **MISSING**
+  durability entirely.
+- `tsf/domain/evaluation-pack.mjs`'s `runEvalPack` (lines 179-199, includes
+  the Phase-13 `GOLDEN_PATH` category) is likewise a pure return value on its
+  own -- but one layer up, `tsf/server/eval-http-routes.mjs`'s
+  `POST /api/eval/:packId/run`/`regression-check` (lines 47-91) DO persist
+  every run into `opState.evalRuns[packId]` (`data-store.mjs:36`,
+  append-only, JSON-backed, queryable via `GET /api/eval/:packId/history`).
+  Real durability. But no module besides `eval-http-routes.mjs`'s own GET
+  routes (operator/dashboard-facing) and the same-request regression-check
+  ever reads a stored run back; the closest analog to an automated consumer,
+  `tsf/domain/model-upgrade-gate.mjs`'s `buildModelUpgradeGateReport`, has
+  **zero production callers** (confirmed by grep -- only its own test file).
+- `tsf/server/health-repair.mjs`'s `runBaselineVerification` (lines 178-196)
+  is genuinely exit-code-authoritative (as Phase 2's own investigation
+  already certified) and its result IS durably persisted, crash-recoverable,
+  into `opState.healthRepairOperations[operationId]`
+  (`health-repair-store.mjs`, `health-repair-http-routes.mjs:275`) -- but
+  again only read back by that same file's own HTTP GET routes for the
+  operator UI; it is never merged into `lastAnalysis` for `scanFleetHealth`
+  to see, and no other server module reads a stored baseline result.
+- **Contrast that proves the pattern IS achievable in this codebase:**
+  `platform-learning-ledger.mjs`'s `retrieveLessonGuidance` (Finding F3, this
+  program's own prior phase) DOES have a real automated, non-test consumer --
+  `research-mission-fleet-driver.mjs:65-82`'s `buildDispatchLessonGuidance`,
+  read back on a LATER, independent dispatch decision. No dogfood/eval/
+  health-repair finding has an equivalent consumer yet.
+
+### Link 2 -- Bounded fix mission creation (evidence)
+
+Real, structured (no chat text, no chat parsing), directly-callable
+primitives exist and are genuinely composable in principle:
+- `tsf/server/keep-going-controller.mjs:30` `startKeepGoingRun(opState,
+  projectId, { originalGoal, acceptanceCriteria, constraints,
+  stopConditions, usageMode, budget }, clock)`.
+- `tsf/server/keep-going-dispatch-loop.mjs:913` `tickKeepGoingRun(projectId,
+  candidateWorkItems, clock, deps)` -- the function that performs the real
+  Orca dispatch.
+- `tsf/server/research-mission-driver.mjs:41` `createResearchMissionDurable(
+  missionId, { projectId, specification, expectedUniverse, nodes }, clock)`.
+- `tsf/server/planner-session-lifecycle.mjs:47,102`
+  `PlannerSessionLifecycle.startMission({ missionGoal, phase, repoState })`.
+- `tsf/server/health-repair.mjs:291` `prepareRepairMission({ displayName,
+  repoPath, cause })` -- the single closest-to-the-goal primitive in the
+  whole codebase: it takes an ALREADY-AUTOMATICALLY-DETECTED `diagnosis`
+  object and returns a structured, `createOvernightRun`-shaped mission spec,
+  pure, no I/O, no LLM, no chat text.
+
+**The gap:** no existing autonomous TSF subsystem calls any of the above
+from its own initiative to create a NEW mission. `keep-going-fleet-driver.mjs`
+and `research-mission-fleet-driver.mjs` are real, autonomous
+`setInterval`-based loops (zero chat message per tick) -- but BOTH are
+explicitly scoped, by their own design comments, to only continue/settle/
+reconcile an ALREADY-STARTED run/mission, never to originate one (`advance
+OneProject`'s own `SKIPPED`/"awaiting an initial wave (planner/Command
+scope, not this driver's)" branch). `prepareRepairMission`'s own doc
+comment and its one HTTP consumer
+(`ProjectHealthRepairCard.tsx`) explicitly stop one step short --
+"This does not create a worktree or start a worker on its own." Grepping
+`server/`/`domain/` for `PlannerSessionLifecycle` shows it is instantiated
+**only in test files** -- zero production callers anywhere.
+
+### Link 3 -- Verification (evidence)
+
+- `tsf/domain/evaluation-pack.mjs`'s `scoreCase`/`runEvalPack`/
+  `compareEvalRuns` (lines 160-240) are real, pure, reusable-by-anyone
+  scoring functions.
+- **Real, existing, non-hypothetical precedent that autonomous composition
+  works:** `research-mission-fleet-driver.mjs` (a genuine `setInterval`-based
+  autonomous loop, zero human at call time) ticks `verifyAndReconcile
+  ResearchNodeFieldDurable` -> `verifyResearchClaim`
+  (`research-verification.mjs:46-102`) -> `scoreCase`
+  (`evaluation-pack.mjs:160-171`) every cycle. This IS a real TSF component
+  autonomously invoking the shared verification engine on its own schedule.
+- **The gap:** that precedent verifies research FACTUAL CLAIMS, not CODE-FIX
+  CANDIDATES. Every real caller of `runEvalPack` itself is
+  `eval-http-routes.mjs`'s HTTP route handlers, reachable only via a manual
+  HTTP request (not even wired to a UI button today). `VERIFIER_INDEPENDENT`'s
+  only "dispatch" function, `resolveRole` (`routing.mjs:31-56`), only
+  resolves provider/model config -- it never runs a verification. The actual
+  verdict-acceptance function, `registerVerifierResult`
+  (`tsf/domain/coordinator.mjs:49-63`), has **zero importers** in
+  `tsf/server`/`tsf/adapters` -- only fixture/dogfood demo scripts call it;
+  every real `VERIFIER_INDEPENDENT` pass in this program's own history
+  (`tsf/programs/daily-driver-autonomy-v1/state.json`) came from a human
+  manually launching a separate Codex/Claude session or the `code-review`
+  skill. Keep Going's own dispatch loop imports none of
+  `evaluation-pack.mjs`/`eval-pack-registry.mjs`/`coordinator.mjs` at all.
+
+### Link 4 -- Governed adoption (evidence)
+
+- Cleanup V1's `createCleanupAuthorization` (`cleanup-lifecycle.mjs:99-131`)
+  cannot mint without `ownerGateOpen: true`, which
+  `cleanup-owner-authorization-gate.mjs:33-55` derives from a real env var
+  (`TSF_CLEANUP_V1_OWNER_AUTHORIZATION`) AND a gitignored local flag file --
+  both of which that module's own header states are deliberately never set
+  by any TSF production code ("nothing in this phase... ever sets either
+  condition against the REAL process environment or the REAL flag file").
+- Safe Update Manager V1's `createAdoptionReceipt`
+  (`tsf/domain/self-update-adoption.mjs:47-50`) hardcodes
+  `if (decidedBy !== 'TIM') throw ...` (`TSF_ADOPTION_REQUIRES_TIM`) -- a
+  literal string-equality check against a named human, not a policy
+  predicate. Grep confirms **zero production callers** of
+  `createAdoptionReceipt`/`assessAdoptionReadiness` anywhere -- only its own
+  test file.
+- The actual mutating merge primitives, `tsf/adapters/git-identity.mjs`'s
+  `ffOnlyMerge`/`resetHardTo` (lines 102-150), have **zero production
+  callers** anywhere in `tsf/server`/`tsf/domain` -- only test files
+  (`git-identity.test.mjs`) call them, against disposable throwaway repos.
+- `tsf/docs/tsf/adoption-receipts/` contains exactly one file
+  (`2613be403c.json`). Grep for "adoption-receipts" across the ENTIRE repo
+  (code, docs, tests) returns zero other matches -- no code reads or writes
+  that directory. Its own `reason` field ("Approved explicitly by Tim in
+  chat") confirms it documents a human decision, not something TSF's own
+  pipeline emitted as a side effect of running.
+- **This is a genuine, deliberate, correctly-designed safety boundary, not
+  an oversight.** `TSF_SAFE_UPDATE_MANAGER_V1.md`'s own text says as much:
+  "the receipt's own `decidedBy === 'TIM'` gate means it structurally can't
+  happen without your explicit authorization anyway."
+
+### Link 5 -- Re-dogfood
+
+Not independently assessed as its own gap: re-invoking a detector (e.g.
+`runDogfoodPass` again) is trivially real as a plain function call, but
+"automatically" (with no human) requires the same missing autonomous-
+trigger wiring Links 1 and 2 already lack. Every real invocation of
+`runDogfoodPass` today is a human-typed chat dogfood command via
+`command-dogfood-bridge.mjs`.
+
+### Final honest verdict
+
+Every one of the 4 substantive links (1-4) is PARTIALLY_REAL, never
+REAL_AND_COMPOSABLE end-to-end without a human/external coordinator --
+and this is a MORE conservative finding than the mission's own example
+anticipated ("if adoption authority requires owner approval..."): the
+human/external-coordinator requirement is not confined to the final merge
+decision. It recurs at every boundary:
+- No TSF-native automated component reads a dogfood/eval/health-repair
+  finding back into a later decision (Link 1) -- except the one proven
+  exception, the Learning Ledger, which is not itself a dogfood/eval
+  mechanism.
+- No TSF-native automated component creates a brand-new tracked mission
+  from a finding on its own initiative -- only CONTINUATION of already-
+  human-started work is autonomous today (Link 2).
+- No TSF-native automated component invokes verification on its own
+  initiative for a code-fix candidate specifically, though a real working
+  precedent exists for research-claim verification (Link 3).
+- Governed code adoption is, by deliberate and correct design, hard-gated
+  to a literal human/Tim identity check, and its execution primitives are
+  entirely unwired in production (Link 4).
+
+This is not a set of oversights to patch -- it is what 16 phases of this
+program's own empirical history already show: an external, human-directed
+Claude Code session driving worktree-isolate -> verify -> adopt-pending-
+checkpoint has been structurally necessary every single time, not an
+accident of how this particular program happened to be run. Per this
+phase's explicit prohibition on building new orchestration to paper over
+this, and since none of the 4 gaps is "a genuinely tiny, obviously-scoped
+wiring fix connecting two already-real primitives" (closing any of them
+means inventing a genuine new autonomous decision-maker -- deciding a
+finding is worth acting on, deciding a candidate is ready, deciding it is
+safe to merge -- exactly the disallowed "new orchestrator" pattern), **no
+code was written to close any of these 4 gaps.**
+
+### The bounded proof: real, up to READY_FOR_ADOPTION
+
+Per "if adoption authority requires owner approval: prove up to
+READY_FOR_ADOPTION instead," one real, small, still-open TSF bug already on
+record in this program's own history was carried through every composable
+part of the loop for real.
+
+**The bug.** Phase 7's own checkpoint entry (residual FINISHED-intent
+vocabulary gap) and a pinned test at `tsf/test/chat-responder.test.mjs:76`
+had explicitly documented `classifyIntent("what's finished")` returning
+`'GENERAL'` instead of `'FINISHED'` as a disclosed, not-yet-fixed gap ("only
+the bare-verb + 'is done' shapes are covered, not every FINISHED synonym").
+Re-confirmed live in this worktree before touching anything (not assumed
+from stale doc text): `classifyIntent("what's finished")` and
+`classifyIntent('what is finished')` both genuinely returned `'GENERAL'`.
+
+**Fix.** `tsf/server/chat-responder.mjs` -- the `FINISHED` intent's
+predicate-adjective alternative widened from `what(?:'?s| is) done` to
+`what(?:'?s| is) (done|finished)`, mirroring this same file's own
+established `STATUS` pattern convention for contraction/synonym coverage
+(`what(?:'?s| is) going on`, etc.). No new mechanism, no new intent, one
+regex alternative.
+
+**Test.** `tsf/test/chat-responder.test.mjs` -- replaced the pinned
+disclosed-gap assertion with a passing one, and added a dedicated test
+covering `"what's finished"`/`"what is finished"`/`"whats finished"`.
+
+**Verification, using TSF's own real, exit-code-authoritative test-execution
+mechanism** (the same mechanism Phase 2 already certified as honest):
+- `node --test tsf/test/chat-responder.test.mjs`: 38/38 pass.
+- Regression sweep across all 17 files (294 tests) importing
+  `chat-responder.mjs`/`command-responder.mjs`
+  (`operator-ui-server`, `live-planner`, `golden-path-operator-flow`,
+  `command-run-action-bridge`, `command-followup-context`,
+  `command-operator-integration-adversarial`,
+  `command-authority-regression-matrix`, `command-bare-imperative-dispatch`,
+  `eval-pack-registry`, `command-target-resolution-blocker`,
+  `command-research-zero-relay-autonomy`, `command-responder`,
+  `command-research-bridge`, `command-research-completion-watch`,
+  `command-dogfood-sequences`, `command-adversarial-corpus`, plus
+  `chat-responder` itself): 291/294 pass. The 3 failures
+  (`command-bare-imperative-dispatch.test.mjs`'s "QUERY/STATUS"/"IDIOM",
+  `command-operator-integration-adversarial.test.mjs`'s "Should I deploy
+  WorldForge?") reproduce byte-identically with the fix `git stash`-ed out
+  (confirmed) -- pre-existing, unrelated, matching this program's own F18
+  checkpoint entry describing the same phrasing gaps.
+- Full whole-repo sweep: `node --test tsf/test/*.test.mjs` -- 2411 tests,
+  2405 pass, 6 fail. All 6 (the same 3 above, plus
+  `http-work-summary.test.mjs`'s dispatch-tick timing test,
+  `keep-going-autonomy-proof.test.mjs`'s long-running autonomy-proof stall,
+  `operator-state-adversarial.test.mjs`'s "STALE ACTION RACE") are the
+  IDENTICAL candidate set this program's own F1/F3/F4/Phase-9 checkpoint
+  entries already document as pre-existing, real-host-load-sensitive, and
+  unrelated to `chat-responder.mjs`. None touch the FINISHED intent.
+
+**Lint.** `npx oxlint tsf/server/chat-responder.mjs
+tsf/test/chat-responder.test.mjs` -- clean, exit 0.
+
+**Where this honestly stops.** This candidate is READY_FOR_ADOPTION by
+every real TSF-composable criterion this phase found (a genuinely still-
+open finding, a bounded single-regex fix, real passing tests, a clean
+regression sweep, clean lint) -- but getting it there required this
+session (an external, human-directed Claude Code session) to: (a) locate
+the finding by reading a markdown checkpoint doc, not by TSF autonomously
+surfacing and storing it (Link 1's own gap); (b) create the "unit of work"
+by editing files directly in an isolated worktree, not by calling
+`prepareRepairMission`/`startKeepGoingRun` from any autonomous trigger
+(Link 2's gap); (c) run `node --test`/`oxlint` manually, not via an
+autonomously-dispatched `VERIFIER_INDEPENDENT` role or eval-pack run (Link
+3's gap); and (d) it will be adopted, if at all, only when Tim/the owning
+coordinator reviews and merges it -- never by TSF's own code, which by
+design has no non-test caller of `ffOnlyMerge` and hardcodes
+`decidedBy === 'TIM'` (Link 4's gap, deliberately so). This fix is committed
+to `tsf/feature/phase16-self-improvement-loop` only -- not pushed, not
+merged to `tsf/main` or `main`, exactly like every other phase's adopted-
+but-unmerged fix in this program's history.
+
+Astra: not touched, not referenced. NWR data: not touched. No new
+orchestrator/scheduler/dispatch mechanism was built.
+
+Adopted SHA: see the commit on `tsf/feature/phase16-self-improvement-loop`
 that carries this section.

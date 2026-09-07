@@ -73,8 +73,17 @@ test('Phase 7: uncontracted "What is running?"/"What finished?" are recognized (
   assert.equal(classifyIntent('What is running?'), 'STATUS')
   assert.equal(classifyIntent('what is going on?'), 'STATUS')
   assert.equal(classifyIntent('What finished?'), 'FINISHED')
-  assert.equal(classifyIntent("what's finished"), 'GENERAL') // disclosed: only the bare-verb + "is done" shapes are covered, not every FINISHED synonym
   assert.equal(classifyIntent('what is done'), 'FINISHED')
+})
+
+// Phase 16: closes the residual gap the test above used to pin as disclosed-
+// not-fixed -- "what's finished"/"what is finished" (the predicate-adjective
+// FINISHED synonym) previously fell through to GENERAL for the same missing-
+// vocabulary reason "what finished" once did.
+test('Phase 16: "what\'s finished"/"what is finished" are recognized as FINISHED, not swallowed by GENERAL', () => {
+  assert.equal(classifyIntent("what's finished"), 'FINISHED')
+  assert.equal(classifyIntent('what is finished'), 'FINISHED')
+  assert.equal(classifyIntent('whats finished'), 'FINISHED')
 })
 
 test('DISPATCH_REQUEST classifies as RECOMMEND_AND_PROCEED, same tier as FIX_REQUEST', () => {

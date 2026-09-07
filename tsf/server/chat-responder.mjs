@@ -192,7 +192,13 @@ const INTENTS = [
   // distinct from "what's/what is done" (predicate-adjective form) -- both
   // added as separate alternatives rather than forcing one regex fragment to
   // cover two different sentence shapes.
-  { id: 'FINISHED', pattern: /\b(is (this|it) (actually )?(done|finished|ready)|are we done|what finished|what(?:'?s| is) done)\b/i },
+  // Phase 16 residual-gap fix: the predicate-adjective alternative only
+  // covered "done", not "finished" itself -- "what's finished"/"what is
+  // finished" (this file's own test suite had pinned this as a disclosed,
+  // not-yet-fixed gap) fell through to GENERAL for the identical missing-
+  // synonym reason "what finished" originally did. `(done|finished)` closes
+  // that gap the same way STATUS's `what(?:'?s| is)` prefix already does.
+  { id: 'FINISHED', pattern: /\b(is (this|it) (actually )?(done|finished|ready)|are we done|what finished|what(?:'?s| is) (done|finished))\b/i },
   // M3: the affirmative "go do real work" phrasings Tim's own north star
   // names ("go ahead," "build that," "do the recommended next step") --
   // deliberately a SEPARATE intent from FIX_REQUEST (which stays scoped to
