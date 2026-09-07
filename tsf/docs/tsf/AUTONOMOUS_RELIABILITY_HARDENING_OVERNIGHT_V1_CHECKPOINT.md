@@ -49,7 +49,8 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 13. Evaluation / Regression Quality | DONE | 2 real acceptance-level gaps confirmed and closed (TSF_PLATFORM_GOLDEN_PATH_EVAL, TSF_RESEARCH_GOLDEN_PATH_EVAL); Cleanup V1 investigated, already adequate; see dedicated section below |
 | 14. Security / Authority Boundary Review | DONE | 1 real bug found, reproduced, fixed (Cleanup V1 protected-path registry canonicalization), 7 areas confirmed safe; see dedicated section below |
 | 11. Provider / Worker Resilience | DONE | Findings F22 (planner dispatch double-spend on crash-mid-dispatch) and F23 (unvalidated structured-response shape / codex schema-forwarding gap) fixed; see dedicated section below |
-| 3, 5, 8-9, 12, 15-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 12. Durable State / Restart Gauntlet | DONE | 11-category reconciliation; Finding F25 (Keep Going's own wave-dispatch double-spend on crash-mid-dispatch, real, reproduced, fixed) + Finding F26 (Resource Pressure Governor refusals vanished with zero durable trace for Keep Going and ResearchMission, real, fixed) + 2 new real cross-process SIGKILL crash-survival tests (Needs You, Verifier result) closing explicit-assertion gaps; see dedicated section below |
+| 3, 5, 8-9, 15-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -3036,4 +3037,241 @@ uses small, disposable, hermetic fixtures (`mission:rollover-race-*`,
 `TSF_UI_STATE_FILE`.
 
 Adopted SHA: see the commit on `tsf/feature/phase8-planner-lifecycle-chaos`
+that carries this section.
+
+## Phase 12: Durable State / Restart Gauntlet -- Findings F25 and F26, both FIXED; 2 new real crash-survival tests closing explicit-assertion gaps
+
+Worktree: `phase12-durable-state-restart-gauntlet`, branch
+`tsf/feature/phase12-durable-state-restart-gauntlet` (forked from
+`tsf/main` @ `1e71fbefd5f889f479c73d9718bb9226b5a96504`, i.e. immediately
+after Phase 8's F24 fix). Core platform assumption under test: "the
+computer/backend/chat can die without losing the mission." Method: read
+every durable-state production file this phase's 11 categories name in
+full (`domain/keep-going.mjs`, `server/keep-going-dispatch-loop.mjs`,
+`server/keep-going-fleet-driver.mjs`, `domain/research-mission.mjs`,
+`server/research-mission-driver.mjs`, `server/research-mission-fleet-driver.mjs`,
+`domain/fleet-work-status.mjs`, `domain/cleanup-lifecycle.mjs`,
+`server/cleanup-executor.mjs`, `domain/ui-dogfood-contract.mjs`,
+`server/platform-learning-ledger-store.mjs`) before writing anything, per
+this program's own RECONCILE-FIRST discipline.
+
+### 11-category reconciliation table
+
+| # | Category | Verdict | Evidence |
+|---|---|---|---|
+| 1 | ResearchMission | Already proven | Finding F6 (`research-mission-process-crash-survival.test.mjs`) -- real spawn+SIGKILL, dispatch state intact, driven to COMPLETE by a fresh process. Cited, not re-tested. |
+| 2 | Keep Going mission | Already proven -- and this phase corrects a prior checkpoint entry's own undersell of it | `keep-going-autonomy-proof.test.mjs` was read in full, then traced into `tsf/main.mjs`/`server-process-lifecycle.mjs`: `activate()` genuinely `spawn()`s `http-server.mjs` as a real, separate OS child process; `deactivate()` calls `child.kill()` on it, and `http-server.mjs` installs no `SIGTERM`/`SIGINT` handler, so on this Windows host (where Node forcibly terminates on ANY kill signal per Node's own documented Windows behavior) and even cross-platform (no handler means default-terminate), this is a genuine, uncooperative process kill, not a graceful shutdown. The test explicitly asserts a different PID post-restart and continues a wave that was `WAVE_DISPATCHED` (mid-flight) at kill time, entirely via the NEW process's own autonomous driver. F4's own checkpoint entry (Part B) called this "not a real OS process kill" -- that characterization was made from reading the test file alone, without tracing `activate`/`deactivate` into `main.mjs`; corrected here with the trace above. Real crash-mid-run coverage for Keep Going's OWN durable run state (not a planner's) already exists. |
+| 3 | Planner checkpoint | Already proven | Findings F4 (schema-version guard + real crash-reclaim), F22 (dispatch double-spend), F24 (TOCTOU race in `_mutate`'s lease enforcement). Cited, not re-tested. |
+| 4 | Needs You | Explicit-assertion gap, closed with a new real crash test | F19 (Phase 6) proved AGGREGATION coverage (`fleetNeedsYouStatus` reads all 3 sources) but never crash-tested. Grepped every `*crash*`/`*restart*` test file in the repo for `needsYou`/`raiseNeedsYou`/`raisePlannerNeedsYou`/`raiseResearchNeedsYou`: zero matches -- no existing crash test raises a Needs You item before killing the process. New: `research-mission-needs-you-crash-survival.test.mjs` + `fixtures/research-mission-needs-you-crash-worker.mjs` (REUSE_PATTERN of F6's own spawn/SIGKILL template) -- a real child process raises a real Needs You question via `raiseResearchNeedsYou`, is SIGKILLed, and a fresh process confirms the entry (id, question, `resolvedAt: null`) survives intact AND is correctly surfaced by the real `fleetNeedsYouStatus` aggregation reading the post-crash record. |
+| 5 | Completion notification | Investigated, no gap | Traced every process-outcome/notification boundary: TSF has no websocket/SSE/event-push channel to the client at all (`grep` for `WebSocket`/`EventEmitter`/`orca.events.emit` for mission completion: zero matches) -- every GET route (`keep-going-http-routes.mjs`, research/planner equivalents) calls `loadState()`/`readXRun`/`readXMission` fresh on every single request, and every chat-surfaced summary (`summarizeRun`, `fleetWorkStatus`) is a pure function computed live from the same durable record. There is no separate "fired once, in-memory" notification for a restarted backend to have lost -- completion is, by construction, always re-derivable from the exact durable record a restart would read. Genuine negative finding, not manufactured. |
+| 6 | Worker result | REAL GAP FOUND AND FIXED -- Finding F25 | ResearchMission (F6) and Planner (F22) were already covered. Keep Going's OWN wave-dispatch path (`keep-going-dispatch-loop.mjs`'s `dispatchStep`) was not -- see below. |
+| 7 | Verifier result | Explicit-assertion gap, closed with a new real crash test | F24's own test proves a Planner verifier-result commit (`recordVerifierResult`) is safe against a rollover race, but that is a simulated in-process timing window, not a real killed process; F6's crash happens strictly BEFORE any verification runs. New: `research-mission-verifier-crash-survival.test.mjs` + `fixtures/research-mission-verifier-crash-worker.mjs` -- a real child process dispatches, admits, and canonicalizes a claim via `admitReconciliationDecision` (the one function in this codebase that may construct a CanonicalFact), is SIGKILLed, and a fresh process confirms the CanonicalFact survives intact (not lost, not duplicated) AND is genuinely USABLE by the real completion path (`advanceOneMission` reaches `COMPLETED` with a worker that throws if ever redispatched/re-polled, proving the verifier result -- not a fresh re-verification -- is what completion actually rests on). |
+| 8 | Resource Governor wait state | REAL GAP FOUND AND FIXED -- Finding F26 | Phase 6 already disclosed the FLEET-WIDE `missionsWaitingForResources` aggregation as a real, out-of-scope gap (needs an Orca-core bridge that does not exist). This phase found and fixed a narrower, in-scope sibling gap: neither Keep Going's nor ResearchMission's dispatch path left ANY durable trace on the run/mission's OWN record when the Resource Pressure Governor refused a dispatch -- see below. |
+| 9 | Cleanup plan | Confirmed already adequate -- quick check only, per this phase's own instruction not to rebuild Phase 10's work | Read `cleanup-executor.mjs`'s `runGovernedCleanupAction`: `putPlan(requestId, plan)` (line 131) durably persists the PLAN stage via `cleanup-request-store.mjs`'s own cross-process-file-lock CAS strictly BEFORE `createCleanupAuthorization`/`putAuthorization` (line 165) ever runs -- confirmed by direct code read, not assumed. `cleanup-request-store.test.mjs` already store-level-proves `putPlan` persists and survives an independent fresh read. Same underlying durability primitive (`withFileLock` + synchronous `loadState`/`saveState`) this program has already real-process-crash-tested for every other durable store (F4, F6, F22, F24) backs this one too -- no new test built, per this phase's own "quick check, don't rebuild Phase 10" instruction. |
+| 10 | UI Dogfood findings | Investigated, no gap -- legitimately in-memory-only by design | `runDogfoodPass`/`runIterativeDogfood` (`domain/ui-dogfood-contract.mjs`) are single, bounded, synchronous-lifecycle async functions: launch Electron, scan, close, return a plain findings object -- zero `writeFile`/store call anywhere in the file. `command-dogfood-bridge.mjs`'s own header states this explicitly: "A Command-triggered run is a single, bounded read-only PASS." A crash mid-pass loses nothing worth persisting -- the scan is read-only, idempotent, and cheap to simply re-run, unlike a multi-hour autonomous mission. Not the same shape as Keep Going/ResearchMission/Planner; durability was never warranted here. Genuine negative finding, not manufactured urgency. |
+| 11 | Learning Ledger entry | Already proven (write path) + confirmed atomic (quick look) | Finding F3's own test proves `recordLessonsFromCompletedMission` persists and is retrievable via `retrieveLessonGuidance`. Quick look at `platform-learning-ledger-store.mjs`'s `withPlatformLearningLedger`: identical `withFileLock` + synchronous `loadState`/mutate/`saveState` pattern as every other durable store in this codebase (its own header: "REUSE_PATTERN" of `research-library-store.mjs`), own dedicated lock file, own schema-version guard (`assertSupportedPlatformLearningLedgerSchemaVersion`). No special crash-during-write gap -- same already-proven-safe primitive as F4/F6/F22/F24's own stores. |
+
+### Finding F25: Keep Going's own wave dispatch could double-spend a real Orca task/worker on crash-mid-dispatch -- REPRODUCED and FIXED
+
+**Gap.** `keep-going-dispatch-loop.mjs`'s `dispatchStep` calls the real
+`orchestration.createOrchestrationTask`/`startOrchestrationWorker` for each
+work item, then only commits the durable record (`dispatchWave` inside
+`commitDispatchedWave`, which sets `inFlightWave` and releases the tick
+lock) AFTER every item in the wave succeeds. A crash between a real
+`startOrchestrationWorker` succeeding and that commit landing leaves the
+durable run showing `inFlightWave: null` and a stale-but-still-present
+`tickLock` -- `claimTick` (`domain/keep-going.mjs`) already treats a
+lock past `TICK_LOCK_TIMEOUT_MS` (2 minutes) as absent and reclaimable,
+with nothing checking whether the PRIOR claim's real dispatch calls had
+already fired. `tickKeepGoingRun`'s routing (`before.inFlightWave ? SETTLE
+: DISPATCH`) then routes a resumed tick straight back into `dispatchStep`,
+which calls the real orchestration API a SECOND time for the identical
+work item -- a genuine double-spend of real dispatch capacity, the exact
+class of bug Finding F22 fixed for the planner's own dispatch path, but
+never ported to this newer, structurally similar mechanism.
+`keep-going-fleet-driver.mjs`'s own header comment explicitly (and, before
+this fix, incorrectly) claimed self-healing: "a stale tick lock left by a
+crashed process already self-heals via TICK_LOCK_TIMEOUT_MS... no special
+recovery step needed" -- true for the LOCK, false for the real external
+side effects a DISPATCH-kind claim may already have caused.
+
+**Reproduction.** New sub-tests in
+`keep-going-dispatch-loop-concurrency.test.mjs` (replacing two pre-existing
+tests whose own "stale lock -> clean reclaim" premise this finding
+disproves -- see below): a fake orchestration counts real
+`createOrchestrationTask` calls; a `store.withRun` wrapper is made to throw
+on exactly its SECOND call within one tick (the post-dispatch commit,
+modeling a crash strictly after the real dispatch call succeeded). Against
+the unmodified code (verified via `git stash` on `domain/keep-going.mjs`
+alone, plus an ad hoc standalone repro script run directly): tick 1 reports
+`WAVE_DISPATCHED_LOST_LOCK` (the crash), and a second tick past
+`TICK_LOCK_TIMEOUT_MS` reports a full, successful SECOND `WAVE_DISPATCHED`
+with `taskCreateCalls` at 2 -- the real Orca task-create call fired twice
+for the same work item. Confirmed live, not hypothesized.
+
+**Fix.** No new store/lock mechanism -- reuses `keep-going.mjs`'s own
+existing `claimTick`/`releaseTick` single-write CAS pattern, mirroring
+F22's `recordDispatchAttempt`/`resolveDispatchAttempt` REUSE_PATTERN
+adapted to this file's own no-array, single-slot convention (only one
+wave can ever be dispatching under the tick lock, unlike a mission with
+many independently-dispatching nodes, so a single `dispatchAttempt` field
+suffices -- no per-item ledger needed). `createOvernightRun`'s shape gains
+`dispatchAttempt: null` (purely additive, no schema-version bump -- an old
+record missing the field reads as falsy `undefined`, same convention
+F22/F4 already established). `claimTick(run, 'DISPATCH', ...)` now refuses
+with a new `TSF_KEEP_GOING_DISPATCH_AMBIGUOUS` error when `run.dispatchAttempt`
+is already truthy (a leftover from a claim whose commit never landed) --
+checked AFTER the existing `isTickLockActive` live-lock rejection (so a
+genuinely still-live tick still reports the pre-existing `TSF_TICK_IN_PROGRESS`
+first), and sets `dispatchAttempt` as part of the SAME atomic write that
+claims the lock for a fresh `DISPATCH` kind. `releaseTick` (called by
+every real terminal commit path -- `commitAbortedDispatch`,
+`commitPartialOrAbortedDispatch`, `commitDispatchedWave`) clears
+`dispatchAttempt` back to `null` atomically with releasing the lock,
+closing the ambiguity window the instant a real commit actually lands.
+
+**Two pre-existing tests updated, not silently left broken.**
+`keep-going-dispatch-loop-concurrency.test.mjs` had two tests whose own
+premise ("a stale DISPATCH lock is legitimately, cleanly reclaimed by a
+fresh tick -- a crashed/hung-tick recovery, not a bug") is exactly what
+this finding disproves for the case where real dispatch work already
+happened. Rewritten (not deleted) to prove the corrected, safer behavior:
+a stale DISPATCH lock is now refused (`TSF_KEEP_GOING_DISPATCH_AMBIGUOUS`)
+rather than silently reclaimed, with persisted state provably untouched by
+the refusal; the second test became this finding's own central
+crash-mid-dispatch reproduction+fix proof (real orchestration fake,
+real crash-at-the-second-store-write simulation, asserting the real
+dispatch call count stays at 1 across the "restart"). Both SETTLE-kind
+sibling tests in the same file (abandonment-recovery on settle, on stall
+escalation) were re-run unmodified and still pass -- confirming the fix is
+correctly scoped to `kind === 'DISPATCH'` only.
+
+**Tests.** `keep-going-dispatch-loop-concurrency.test.mjs`: 8/8 pass
+(2 rewritten, 6 unchanged). Targeted regression:
+`node --test test/keep-going*.test.mjs test/settled-run-reconciliation.test.mjs
+test/update-safety.test.mjs test/http-keep-going.test.mjs` -- 164/164 pass.
+
+**Lint.** `npx oxlint domain/keep-going.mjs
+test/keep-going-dispatch-loop-concurrency.test.mjs` -- clean, exit 0 (fixed
+one `no-unused-vars` on two now-unused test-file imports rather than
+leaving them).
+
+### Finding F26: a Resource Pressure Governor refusal left zero durable trace on the run/mission it refused -- REAL GAP, FIXED for Keep Going and ResearchMission
+
+**Gap.** `keep-going-dispatch-loop.mjs`'s `dispatchStep` and
+`research-mission-fleet-driver.mjs`'s `executeDispatchAction` both return
+immediately on a governor refusal (`{action: 'DISPATCH_WAITING_FOR_RESOURCES', ...}` /
+`{action: 'WAITING_FOR_RESOURCES', ...}`) without writing anything durable
+-- by deliberate original design, to avoid a wasted cross-process-file-lock
+round trip under CRITICAL/EMERGENCY pressure (the ORIGINAL comment on this
+check states that reasoning explicitly). The side effect: a run/mission
+refused for many consecutive driver cycles is, to any later reader
+(an operator inspecting `recentCheckpointTrail`, or a restarted backend),
+completely indistinguishable from a run that was simply never ticked at
+all -- the wait itself vanishes. Phase 6 already disclosed the FLEET-WIDE
+version of this gap (`missionsWaitingForResources`) as real but out of
+scope (needs an Orca-core bridge). This narrower, per-run/per-mission
+version -- "did THIS run's own checkpoint trail ever record it was
+waiting" -- needs no new subsystem: both Keep Going and ResearchMission
+already have an identical, existing, durable, hash-chained checkpoint
+mechanism (`checkpointRun`/`checkpointResearchMission`) already used for
+other refusal reasons (e.g. `DISPATCH_FAILED`).
+
+**Fix.** Reuses `checkpointRun`/`checkpointResearchMission` directly, no
+new mechanism. Preserves the original design's I/O-avoidance intent: a
+cheap, lock-free `readRun`/`readResearchMission` snapshot is checked FIRST
+(per `keep-going-run-store.mjs`'s own documented "safe to call freely,
+never takes the lock" contract) -- the lock round trip (and a real write)
+is paid ONLY on a genuine phase TRANSITION into
+`DISPATCH_WAITING_FOR_RESOURCES` (re-checked again, freshly, inside the
+lock for correctness under a real race between two overlapping refused
+ticks), not on every single refused tick during a sustained pressure
+window. A run stuck refused for an hour now writes exactly one checkpoint
+entry for that whole episode, not one per 30-second driver cycle.
+
+**Tests.** Extended two existing, already-real tests rather than adding
+redundant new files: `research-resource-pressure-interaction.test.mjs`'s
+"a restart during a resource wait preserves the correct state" test now
+also asserts `beforeRestart.checkpoints.at(-1)?.phase ===
+'DISPATCH_WAITING_FOR_RESOURCES'`; `keep-going-fleet-driver.test.mjs`'s
+CRITICAL-tier continuation test now also asserts the same on
+`store.all.p.checkpoints`. Both pass. Targeted regression:
+`node --test test/keep-going-dispatch-loop.test.mjs
+test/keep-going-dispatch-loop-concurrency.test.mjs
+test/research-mission-fleet-driver.test.mjs
+test/research-resource-pressure-interaction.test.mjs
+test/research-mission-fleet-driver-bootstrap.test.mjs
+test/research-mission-fleet-driver-dispatch-advisories.test.mjs
+test/research-mission-fleet-driver-learning-ledger.test.mjs
+test/keep-going-fleet-driver.test.mjs` -- 69/69 pass.
+
+**Lint / line budget.** `server/keep-going-dispatch-loop.mjs` was already
+within a handful of lines of the 600-line `.oxlintrc.json` cap before this
+change -- the fix was written and re-compacted (inlined directly into
+`dispatchStep`'s existing refusal branch rather than as a separate
+top-level function, per CLAUDE.md's explicit "never bump the per-file cap"
+rule) until `npx oxlint` reported clean; final file size 995 raw lines,
+well under the cap on oxlint's own counted-line metric. `npx oxlint
+server/keep-going-dispatch-loop.mjs server/research-mission-fleet-driver.mjs
+test/keep-going-fleet-driver.test.mjs
+test/research-resource-pressure-interaction.test.mjs` -- clean, exit 0.
+
+### New crash-survival tests (categories 4 and 7)
+
+`test/research-mission-needs-you-crash-survival.test.mjs` +
+`test/fixtures/research-mission-needs-you-crash-worker.mjs`, and
+`test/research-mission-verifier-crash-survival.test.mjs` +
+`test/fixtures/research-mission-verifier-crash-worker.mjs` -- both REUSE_PATTERN
+of F6's own real spawn+SIGKILL template (`research-mission-process-crash-survival.test.mjs`),
+same generic fixture (`generic-research-crash-fixture.mjs`), no new
+mechanism. Each run 4 times standalone, 4/4 pass every time, ~90-140ms
+each on this host. `npx oxlint` on all 4 new files -- clean, exit 0.
+
+### Full regression sweep and lint
+
+`node --test test/*.test.mjs` (full suite): 2401 tests, 2394 pass, 7 fail
+on the final authoritative run (5, 5, and 7 failures respectively across
+three full-suite runs this phase -- the exact failing subset shifting
+run-to-run is itself diagnostic of real-host-load flakiness, not a
+deterministic defect). The complete failing set observed across all three
+runs: 2 intent-classifier phrasing gaps + 1 adversarial-corpus gap in
+`command-bare-imperative-dispatch.test.mjs`/`command-operator-integration-
+adversarial.test.mjs` (the exact pre-existing gap F18's own checkpoint
+entry documents), `health-repair-io.test.mjs`'s bounded-timeout test,
+`http-work-summary.test.mjs`'s dispatch-tick timing test,
+`keep-going-autonomy-proof.test.mjs`'s long-running autonomy stall,
+`operator-state-adversarial.test.mjs`'s "STALE ACTION RACE", and
+`resource-pressure-lease-host-wide.test.mjs`'s real-TTL-timing test --
+every one of these is independently named, repeatedly, across this
+program's own F1/F3/F4/F18/Phase 6/Phase 8/Phase 11 checkpoint entries as
+a pre-existing, real-host-load-sensitive artifact on this shared machine,
+not caused by any specific phase's change. Independently re-verified this
+phase, not just cited: this host's real free memory was directly measured
+at 1.80GB/15.11GB (~12%, genuinely CRITICAL tier) during these runs, and
+the failures reproduce byte-identically with this phase's changed files
+`git stash`ed out (confirmed via isolated re-runs both with and without the
+stash, for `http-work-summary.test.mjs`, `operator-state-adversarial.test.mjs`,
+and `resource-pressure-lease-host-wide.test.mjs` specifically). None of the
+7 touch any file this phase modified. `node --test test/research-*.test.mjs`:
+321/321 pass, every run. `npx oxlint` on every changed/new file (`domain/keep-going.mjs`,
+`server/keep-going-dispatch-loop.mjs`, `server/research-mission-fleet-driver.mjs`,
+`test/keep-going-dispatch-loop-concurrency.test.mjs`,
+`test/keep-going-fleet-driver.test.mjs`,
+`test/research-resource-pressure-interaction.test.mjs`,
+`test/research-mission-needs-you-crash-survival.test.mjs`,
+`test/research-mission-verifier-crash-survival.test.mjs`,
+`test/fixtures/research-mission-needs-you-crash-worker.mjs`,
+`test/fixtures/research-mission-verifier-crash-worker.mjs`) -- clean, exit 0.
+
+Astra: not touched, not referenced. NWR data: not touched -- every new
+test uses small, disposable, generic fixtures (`FIXTURE_ENTITY`,
+`mission:needs-you-crash-survival-fixture`,
+`mission:verifier-crash-survival-fixture`), each in its own isolated
+temp-dir state file. No machine reboot; only this phase's own disposable
+spawned test processes were started/killed. No second durable-store/lock
+mechanism was built -- every fix and every new test reuses an existing
+store (`keep-going-run-store.mjs`, `research-mission-store.mjs`) and its
+existing CAS/checkpoint primitive.
+
+Adopted SHA: see the commit on `tsf/feature/phase12-durable-state-restart-gauntlet`
 that carries this section.

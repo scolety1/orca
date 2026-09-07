@@ -19,7 +19,7 @@ import {
   decideNextMissionAction,
   DEFAULT_RESEARCH_RETRY_BUDGET
 } from '../domain/research-autonomy-policy.mjs'
-import { findResearchNode, escalateResearchNodeToNeedsYou, completeResearchMission } from '../domain/research-mission.mjs'
+import { findResearchNode, escalateResearchNodeToNeedsYou, completeResearchMission, checkpointResearchMission } from '../domain/research-mission.mjs'
 import { recordResearchNodeAttempt } from '../domain/research-node.mjs'
 import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
 import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
@@ -78,6 +78,34 @@ function gatherDispatchAdvisories(providerId, isRetry, deps) {
   return advisories.length > 0 ? advisories : undefined
 }
 
+// Phase 12 (Durable State / Restart Gauntlet, category 8): mirrors
+// keep-going-dispatch-loop.mjs's own identical fix -- a refusal used to
+// leave the node exactly as it was with zero durable trace, indistinguishable
+// from "never tried." Checkpoints the wait onto the mission's own existing
+// checkpoint trail (checkpointResearchMission -- REUSE_DIRECTLY, no new
+// store) so a restarted backend can see this mission has been genuinely
+// stuck on resource pressure, not merely idle. Cheap read first, write only
+// on a real transition -- same I/O-avoidance reasoning as the Keep Going
+// fix (a full lock round trip every tick is exactly the wasted CRITICAL/
+// EMERGENCY-tier I/O this gate was designed to avoid).
+async function checkpointResourcePressureWait(missionId, clock, admission) {
+  const snapshot = readResearchMission(missionId)
+  if (snapshot?.checkpoints.at(-1)?.phase !== 'DISPATCH_WAITING_FOR_RESOURCES') {
+    await withResearchMission(missionId, (current) => {
+      if (!current || current.checkpoints.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES') {
+        return current
+      }
+      return checkpointResearchMission(
+        current,
+        { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: admission.reason ?? admission.tier ?? null, evidence: [] },
+        clock,
+        current.revision
+      )
+    })
+  }
+  return admission
+}
+
 async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
   const { admitted, tier } = isDispatchAdmitted(deps)
   if (!admitted) {
@@ -85,7 +113,8 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
     // (READY or FAILED-with-budget-remaining); the next cycle tries again.
     // Never FAILED/STALLED merely because the HOST, not the research
     // itself, was not ready.
-    return { missionId, nodeId, action: 'WAITING_FOR_RESOURCES', tier }
+    const admission = await checkpointResourcePressureWait(missionId, clock, { admitted, tier })
+    return { missionId, nodeId, action: 'WAITING_FOR_RESOURCES', tier: admission.tier }
   }
 
   if (isRetry) {

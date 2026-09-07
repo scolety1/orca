@@ -37,7 +37,7 @@ process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 // See keep-going-dispatch-loop.test.mjs's own identical comment.
 delete process.env.ORCA_TERMINAL_HANDLE
 
-const { createOvernightRun, claimTick, releaseTick, dispatchWave, pauseRun, planWave } =
+const { createOvernightRun, claimTick, releaseTick, pauseRun } =
   await import('../domain/keep-going.mjs')
 const { readKeepGoingRun, withKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 const { tickKeepGoingRun } = await import('../server/keep-going-dispatch-loop.mjs')
@@ -236,80 +236,103 @@ test('a full tick still completes correctly even after a concurrent pause attemp
 // --- Requirement: test stale revision after an Orca Run/task has already
 // been created, so cleanup/persistence remains correct ---
 
-test("a tick that loses its lock to abandonment-recovery after creating real Orca resources reports the conflict honestly without corrupting the winner's state", async () => {
+// Phase 12 (Durable State / Restart Gauntlet): a real, reproduced gap --
+// this test used to prove a stale DISPATCH lock left by a crashed tick is
+// silently, cleanly reclaimed by a fresh tick ("a crashed/hung-tick
+// recovery, not a bug"). That is unsafe: tick A may already have made a
+// real, uncounted external dispatch call before "crashing" (see the next
+// test), and a fresh claim has no way to know. claimTick now refuses this
+// reclaim outright (TSF_KEEP_GOING_DISPATCH_AMBIGUOUS) instead of silently
+// granting it -- the same "never silently redispatch" discipline Finding
+// F22 established for the planner's own dispatch path.
+test("a stale DISPATCH lock left by a crashed tick is refused for owner review, not silently reclaimed, and the refusal itself never corrupts persisted state", async () => {
   await seedRun()
   const clockA = clock
-  // Tick A claims the lock and (conceptually) goes on to do real CLI work
-  // -- simulated here directly via the exported primitives, since we need
-  // to hold A's claimed revision open across a controlled clock jump
-  // rather than letting a real orchestration call resolve immediately.
+  // Tick A claims the lock -- durably records dispatchAttempt -- then
+  // (modeling a crash) never reaches its own commit.
   const claimedA = await withKeepGoingRun(PROJECT_ID, (current) =>
     claimTick(current, 'DISPATCH', clockA, current.revision)
   )
-  const wavePlan = planWave({ ...claimedA, waves: [] }, oneItem, clockA)
-  const dispatchRecordsA = [
-    { workItemId: 't1', scope: ['src/a.mjs'], taskId: 'task-t1', dispatchId: 'ctx-1' }
-  ]
+  assert.ok(claimedA.dispatchAttempt, 'claiming a DISPATCH tick durably marks an attempt begun')
 
-  // A's lock is now old enough to be treated as abandoned -- tick B
-  // legitimately recovers it (a crashed/hung-tick recovery, not a bug).
+  // A's lock is now old enough that isTickLockActive alone would treat it
+  // as absent -- but a second claim must still be refused, since A's own
+  // dispatchAttempt was never resolved (no clean release happened).
   const muchLater = () => new Date('2026-08-20T06:10:00.000Z') // 10 minutes later
-  const claimedB = await withKeepGoingRun(PROJECT_ID, (current) =>
-    claimTick(current, 'DISPATCH', muchLater, current.revision)
-  )
-  assert.ok(claimedB.revision > claimedA.revision)
-
-  // Tick A, unaware it lost the lock, finally attempts its commit using
-  // the revision IT claimed -- this must fail loudly (not silently
-  // overwrite tick B's now-current claim), and must not touch persisted
-  // state at all.
   await assert.rejects(
     () =>
       withKeepGoingRun(PROJECT_ID, (current) =>
-        dispatchWave(current, wavePlan, dispatchRecordsA, clockA, claimedA.revision)
+        claimTick(current, 'DISPATCH', muchLater, current.revision)
       ),
-    (error) => error.code === 'TSF_STALE_REVISION'
+    (error) => error.code === 'TSF_KEEP_GOING_DISPATCH_AMBIGUOUS'
   )
 
-  // Persisted state must still reflect exactly what B established --
-  // uncorrupted by A's failed, stale commit attempt. This is the
-  // "cleanup/persistence remains correct" property: A's real Orca
-  // resources (task-t1, ctx-1 in this scenario) are not silently adopted
-  // into the run by a losing commit, and B's legitimate claim is not
-  // clobbered either.
+  // The refused reclaim attempt must not have touched persisted state at
+  // all -- A's own claim (and the unresolved attempt marker an owner needs
+  // to investigate) survives exactly as it was.
   const persisted = readKeepGoingRun(PROJECT_ID)
-  assert.equal(persisted.revision, claimedB.revision)
+  assert.equal(persisted.revision, claimedA.revision)
   assert.equal(persisted.tickLock.kind, 'DISPATCH')
-  assert.equal(persisted.tickLock.claimedAt, claimedB.tickLock.claimedAt)
+  assert.equal(persisted.tickLock.claimedAt, claimedA.tickLock.claimedAt)
+  assert.ok(persisted.dispatchAttempt, 'the unresolved attempt remains durably visible, not cleared')
   assert.equal(persisted.inFlightWave, null, "A's dispatch was never recorded onto the run")
 })
 
-test('tickKeepGoingRun itself reports a *_LOST_LOCK result (not a thrown exception) when its own commit loses the CAS race', async () => {
+// Phase 12: the real double-spend this program's own F22 finding named as
+// a risk for the planner's dispatch path also existed here, unfixed, for
+// Keep Going's own wave dispatch -- reproduced directly. Before the fix in
+// domain/keep-going.mjs (claimTick/releaseTick's new dispatchAttempt
+// field), the second tick below silently redispatched, creating a REAL
+// second Orca task/worker for the same work item; after the fix it refuses
+// instead.
+test('a real dispatch that crashes strictly between the external call succeeding and its own commit landing is never blindly redispatched on the next tick', async () => {
   await seedRun()
-  // Drive a real tick, but have its orchestration fake steal the lock out
-  // from under it mid-flight (simulating an abnormally slow tick whose
-  // lock timed out and was recovered by another actor before this tick's
-  // own commit ran).
+  let taskCreateCalls = 0
   const orchestration = okOrchestration({
     createOrchestrationTask: async ({ taskTitle }) => {
-      const muchLater = () => new Date('2026-08-20T06:10:00.000Z')
-      await withKeepGoingRun(PROJECT_ID, (current) =>
-        claimTick(current, 'DISPATCH', muchLater, current.revision)
-      )
+      taskCreateCalls += 1
       return { ok: true, result: { task: { id: `task-${taskTitle}` } } }
     }
   })
-  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration })
-  assert.equal(result.action, 'WAVE_DISPATCHED_LOST_LOCK')
-  assert.equal(result.reason, 'TSF_STALE_REVISION')
-  // The orphaned dispatch info is surfaced, not silently swallowed.
-  assert.equal(result.dispatchRecords.length, 1)
-  assert.equal(result.dispatchRecords[0].taskId, 'task-t1')
 
-  // Persisted state reflects the recovering claim, not this tick's lost work.
-  const persisted = readKeepGoingRun(PROJECT_ID)
-  assert.equal(persisted.inFlightWave, null)
-  assert.equal(persisted.tickLock.kind, 'DISPATCH')
+  // Tick 1: the real dispatch calls (task-create/worker-start) genuinely
+  // succeed, but the post-dispatch commit (commitDispatchedWave's own
+  // store write -- the SECOND store.withRun call this tick makes, after
+  // claim()'s own) never lands -- models a process crash strictly between
+  // those two points.
+  let storeCalls = 0
+  const crashingStore = {
+    readRun: readKeepGoingRun,
+    withRun: (projectId, mutateFn) => {
+      storeCalls += 1
+      if (storeCalls === 2) {
+        throw new Error('simulated crash before the post-dispatch commit lands')
+      }
+      return withKeepGoingRun(projectId, mutateFn)
+    }
+  }
+  const result1 = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration,
+    store: crashingStore
+  })
+  assert.equal(result1.action, 'WAVE_DISPATCHED_LOST_LOCK')
+  assert.equal(taskCreateCalls, 1, 'the real dispatch genuinely happened exactly once')
+
+  const afterCrash = readKeepGoingRun(PROJECT_ID)
+  assert.equal(afterCrash.inFlightWave, null, 'no trace the dispatch ever committed')
+  assert.ok(afterCrash.dispatchAttempt, 'the unresolved attempt is the only durable trace left')
+
+  // "Restart": a fresh tick, past TICK_LOCK_TIMEOUT_MS, against a healthy
+  // store. This is the exact window the fix closes.
+  const laterClock = () => new Date('2026-08-20T06:10:00.000Z')
+  const result2 = await tickKeepGoingRun(PROJECT_ID, oneItem, laterClock, { orchestration })
+  assert.equal(result2.action, 'DISPATCH_CLAIM_FAILED')
+  assert.equal(result2.reason, 'TSF_KEEP_GOING_DISPATCH_AMBIGUOUS')
+  assert.equal(
+    taskCreateCalls,
+    1,
+    'the real dispatch was never repeated -- the double-spend is closed'
+  )
 })
 
 // Mirrors the DISPATCH-side abandonment-recovery test above on the SETTLE

@@ -274,6 +274,11 @@ test('driveOneCycle: CRITICAL host memory defers a real CONTINUATION wave honest
   assert.equal(result.continuationResult.admitted, false)
   assert.equal(store.all.p.state, 'ACTIVE', 'the run itself is never paused or failed by a resource wait')
   assert.equal(store.all.p.inFlightWave, null, 'no wave was dispatched -- honestly nothing in flight, not a fabricated one')
+  // Phase 12 (Durable State / Restart Gauntlet, category 8): the wait is now
+  // durably checkpointed on the run itself -- a restarted backend (or an
+  // operator reading recentCheckpointTrail) can see this run was genuinely
+  // stuck on resource pressure, not merely un-ticked.
+  assert.equal(store.all.p.checkpoints.at(-1)?.phase, 'DISPATCH_WAITING_FOR_RESOURCES')
 
   // Resources clear -- the very next cycle succeeds with no special resume
   // step, proving this is a per-tick condition, never a durable run state.

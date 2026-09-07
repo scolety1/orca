@@ -110,6 +110,13 @@ export function createOvernightRun(
     waves: [],
     inFlightWave: null,
     tickLock: null,
+    // Set durably by claimTick the instant a DISPATCH claim is granted --
+    // BEFORE any real Orca CLI call runs -- and cleared by releaseTick once
+    // that claim's commit lands. A crash between those two points leaves
+    // this truthy after the tickLock itself has gone stale, which is the
+    // one honest signal that a real dispatch may have already happened and
+    // was never durably recorded (see claimTick's own comment).
+    dispatchAttempt: null,
     orchestrationRunId: null,
     retryCounts: {},
     needsYou: [],
@@ -235,8 +242,27 @@ export function claimTick(run, kind, clock, expectedRevision, timeoutMs = TICK_L
     error.code = 'TSF_TICK_IN_PROGRESS'
     throw error
   }
+  // Real, reproduced gap (Phase 12): a prior DISPATCH claim's own
+  // dispatchAttempt survives exactly when its process crashed between this
+  // claim landing and its commit (commitDispatchedWave/commitAbortedDispatch/
+  // commitPartialOrAbortedDispatch, all of which clear it via releaseTick) --
+  // the real Orca task-create/worker-start calls that claim may already have
+  // made are then undiscoverable from this run's own durable state. Reusing
+  // the stale tick lock to blindly dispatch again would double-spend those
+  // real external calls, exactly the class of bug Finding F22 fixed for the
+  // planner's own dispatch path -- refuse honestly instead, the same way.
+  if (kind === 'DISPATCH' && run.dispatchAttempt) {
+    const error = new Error(
+      'a prior dispatch attempt for this run never resolved (crash-mid-dispatch) -- refusing to redispatch blindly; needs owner review'
+    )
+    error.code = 'TSF_KEEP_GOING_DISPATCH_AMBIGUOUS'
+    throw error
+  }
   const next = deepClone(run)
   next.tickLock = { kind, claimedAt: isoNow(clock), timeoutMs }
+  if (kind === 'DISPATCH') {
+    next.dispatchAttempt = { beganAt: isoNow(clock) }
+  }
   next.revision += 1
   next.updatedAt = isoNow(clock)
   return next
@@ -256,6 +282,11 @@ export function releaseTick(run, clock, expectedRevision) {
   }
   const next = deepClone(run)
   next.tickLock = null
+  // Whatever dispatchAttempt claimTick set for this same tick (if any) is
+  // now durably resolved one way or another by this release's own commit --
+  // clearing it here, atomically with the lock release, is what closes the
+  // ambiguity window claimTick's own check exists to detect.
+  next.dispatchAttempt = null
   next.revision += 1
   next.updatedAt = isoNow(clock)
   return next

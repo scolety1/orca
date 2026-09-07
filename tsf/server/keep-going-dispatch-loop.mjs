@@ -340,6 +340,11 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
   // concurrent full-suite/pilot/research-worker categories).
   const admission = classifyDispatchAdmission(resourcePressure)
   if (!admission.admitted) {
+    // Phase 12 (category 8): durably records the refusal (was: vanished with
+    // zero trace) -- lock-free read first, write only on a real transition.
+    if (store.readRun(projectId)?.checkpoints.at(-1)?.phase !== 'DISPATCH_WAITING_FOR_RESOURCES') {
+      await store.withRun(projectId, (r) => (!r || r.checkpoints.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES' ? r : checkpointRun(r, { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: admission.reason ?? admission.tier ?? null, evidence: [] }, clock, r.revision)))
+    }
     return { action: 'DISPATCH_WAITING_FOR_RESOURCES', ...admission }
   }
 

@@ -225,6 +225,11 @@ test('a restart during a resource wait preserves the correct state -- a fresh ca
   const beforeRestart = readResearchMission(missionId)
   assert.equal(findResearchNode(beforeRestart, 'node:alpha').status, 'PENDING')
   assert.equal(findResearchNode(beforeRestart, 'node:alpha').dispatchRecords.length, 0)
+  // Phase 12 (Durable State / Restart Gauntlet, category 8): the refusal
+  // itself is now durably visible on the mission's own checkpoint trail --
+  // before this fix there was zero durable trace a resource wait ever
+  // happened, indistinguishable from "never ticked."
+  assert.equal(beforeRestart.checkpoints.at(-1)?.phase, 'DISPATCH_WAITING_FOR_RESOURCES')
 
   // "Restart": advanceOneMission holds no in-memory state of its own (it
   // always calls readResearchMission fresh) -- a genuinely new process
