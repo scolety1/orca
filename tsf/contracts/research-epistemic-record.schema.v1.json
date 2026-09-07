@@ -29,7 +29,11 @@
         "contentHash": { "type": "string" },
         "rawContentRef": { "type": ["string", "null"] },
         "retrievable": { "type": "boolean" },
-        "admittedAt": { "type": "string" }
+        "admittedAt": { "type": "string" },
+        "chainOfCustody": {
+          "description": "REQ-003: real chain-of-custody strength computed at admission (domain/source-chain-of-custody.mjs). Documented here as optional/informational -- this schema doc is not the machine-enforced admission gate (see contracts/validate-research-contracts.mjs); acquisitionMethod/modeEvidence/acquisitionMode/accessClassification (REQ-005) are real, already-admitted fields not yet reflected in this doc either, a pre-existing gap out of this addition's scope.",
+          "type": ["object", "null"]
+        }
       }
     },
     "Observation": {

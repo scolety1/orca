@@ -53,7 +53,7 @@ uses, fully read-only).
 |---|---|---|
 | 1. UI_DOGFOOD_AGENT_V0 | **ADOPTED** — merged to `tsf/main` @ `90d77e3a1cd56ee0cd34c3e40aecd86a3975ed1f`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
 | 2. PLANNER_CONTEXT_LIFECYCLE_V0 | **ADOPTED** — merged to `tsf/main` @ `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main` (confirmed), phase worktree retired | See below |
-| 3. Deferred Research Platform Completion Wave | IN_PROGRESS | Worktree `research-platform-completion-wave-v0` created from `7521e4de87` |
+| 3. Deferred Research Platform Completion Wave | IN_PROGRESS (Wave 1 / 3A+3B done, committed, not yet merged) | Worktree `research-platform-completion-wave-v0` created from `7521e4de87` |
 | 4. Cleanup V1 / Governed Destructive Automation | NOT_STARTED | |
 | 5. Larger Astra Follow-up Benchmark | NOT_STARTED | |
 
@@ -568,14 +568,275 @@ claimed. No corrections needed. **Merged to `tsf/main` @
 `7521e4de87cde4d0eb981ccb5b6e2aedfb5c1513`, pushed to `fork/tsf/main`
 (verified), worktree `planner-context-lifecycle-v0` retired.**
 
-## Next intended action
+### Phase 3 Wave 1 — Deferred Research Platform Completion Wave (3A/3B)
 
-Phase 1 and Phase 2 are both adopted and closed. Phase 3 (Deferred
-Research Platform Completion Wave) is now in progress in worktree
+Scope: sub-parts 3A (REQ-002 Platform Learning Ledger) and 3B (REQ-003
+Wiring) of the Deferred Research Platform Completion Wave, in worktree
 `research-platform-completion-wave-v0` (branch
 `tsf/feature/research-platform-completion-wave-v0`, forked from
-`7521e4de87`). Observed at Phase 3 start: free memory ~1.38GB (tighter
-than prior phases) with a new peer session
-(`nwr-historical-redraft-data-hq-1d`) active — consistent with this
-host's known shared-machine contention, not attributed to this program
-alone.
+`7521e4de87`). Explicit scope discipline honored: no new architecture
+invented, no duplicate validation/admission pipeline — only the smallest
+honest V0 slice each real filing actually required.
+
+**STEP 1 — read the real filings verbatim** (`tsf/docs/tsf/
+DATASET_RESEARCH_PLATFORM_REQUIREMENTS_BACKLOG.md`, corroborated against
+`tsf/docs/tsf/DATASET_RESEARCH_ENGINE_V0_FINAL_RECONCILIATION.md`, which
+already classified both as `DEFERRED_FUTURE_ROADMAP`/open):
+
+- **REQ-002** ("No generic first-class Platform Learning Ledger"): found
+  by `mission:nwr-historical-redraft-calibration-v0` searching for an
+  existing repo-native mechanism to record cross-checkpoint platform
+  learning (source knowledge, acquisition performance, data-quality
+  lessons, architecture classification, reusable assets, engine
+  evaluation). What existed then and now — `research-dispatch-
+  bookkeeping.mjs`'s per-node attempt ledger, the legacy `capability-
+  migration.v1.json` capability-preservation ledger, `pilots/first-real-
+  project-v1/result-capsules.json` — none is a real match (different
+  domain or single-mission-scoped, not generic/cross-mission). The
+  mission's own workaround was a mission-scoped
+  `platform-learning-ledger.json` fixture artifact, explicitly disclosed
+  as "not a generic platform mechanism another customer mission would
+  automatically discover." Real need: missions repeatedly re-discover the
+  same platform-level lessons with nowhere durable and generic for that
+  knowledge to accumulate for the NEXT mission.
+- **REQ-003** ("No generic temporal chain-of-custody strength concept,
+  independent of any one source's own settings"): found during rigorous
+  multi-axis re-verification of four independent real seasons, all four
+  landing on the identical `temporallyVerified: YELLOW` for the identical
+  stated reason ("provenance established per owner directive; no
+  independent source_as_of chain-of-custody timestamp found") — a
+  structural gap, not a one-off. The filing explicitly asks for a
+  generic axis distinguishing (a) no provenance evidence, (b) provenance
+  asserted but not yet processed/logged by the source's own intake
+  tooling, (c) asserted and logged, (d) independently, cryptographically
+  verified — never collapsed into free-text `verdictRationale`.
+  `DATASET_RESEARCH_ENGINE_V0_FINAL_RECONCILIATION.md` (prior, already-
+  adopted work) had already ported `domain/evidence-gated-status-
+  upgrade.mjs` and `domain/source-chain-of-custody.mjs` as the two
+  primitives matching this exact filing, explicitly disclosing "neither
+  is wired into any real mission dispatch path yet" as the remaining open
+  item — this wave closes exactly that delta.
+
+**Reconciliation before build (3A):** searched `domain`/`server` for any
+existing "ledger"/"lesson"/"learning" concept. Found `domain/project-
+memory.mjs` (M7): a real, generic, append-only EXPERIENCE-record pattern
+with an explicit/inferred supersession gate — genuinely the closest
+sibling in spirit (REUSE_PATTERN: its append-only, source-tagged,
+never-silently-overwritten shape). **REJECT as the direct mechanism**:
+`project-memory.mjs` is keyed per-Orca-`projectId` (one project/worktree
+scope) and consumed only by the live planner/chat surface
+(`live-planner.mjs`), not cross-mission research-system knowledge a
+FUTURE, unrelated research mission should automatically discover — using
+it directly would conflate "what Tim told the planner about this
+project" with "what the research engine itself learned across every
+mission." Also checked `domain/research-library.mjs` (indexes
+VERIFIED/canonical facts+sources for direct reuse — a different concern:
+caching known-true answers, not recording system-level guidance) and
+`research-dispatch-bookkeeping.mjs`'s attempt ledger (per-node delivery-
+guarantee bookkeeping, not mission-level learning) — neither is a match,
+confirming the original filing's own analysis. **NEW**: `domain/
+platform-learning-ledger.mjs` + `server/platform-learning-ledger-store.mjs`,
+following the `research-library.mjs`/`research-library-store.mjs`
+singleton-CAS-store shape (REUSE_PATTERN) rather than the per-key
+`researchMissions` map shape, since a ledger is one cross-mission
+accumulator, not itself keyed by mission.
+
+**Reconciliation before build (3B):** confirmed via `grep` across
+`domain`/`server`/`adapters` that ALL SIX modules named by the program
+directive (`identity-collision-resolution.mjs`, `evidence-gated-status-
+upgrade.mjs`, `source-chain-of-custody.mjs`, `raw-value-completeness-
+validator.mjs`, `claimed-value-temporal-classifier.mjs`, `column-
+requirement-usability-validator.mjs`) are completely unreferenced
+anywhere outside their own dedicated unit-test files — genuinely
+"ported, never wired," confirming the prior reconciliation's own
+disclosure. Read the actual REQ-003 filing text and cross-checked it
+against `DATASET_RESEARCH_ENGINE_V0_FINAL_RECONCILIATION.md`'s own
+"Deferred future roadmap" line, which names exactly **two** of the six as
+REQ-003's real delta: `evidence-gated-status-upgrade.mjs` and `source-
+chain-of-custody.mjs`. **Decision: wire only those two.** The other
+four are real, valuable, ported primitives, but are NOT what REQ-003
+itself asks for and wiring them in would be exactly the "invent a giant
+new architecture" scope creep this wave was explicitly told to avoid:
+  - `identity-collision-resolution.mjs`: fills a real, confirmed gap
+    (`research-admission.mjs`'s `recordIdentityResolutionState` has no
+    decision algorithm of its own, only a RECORD/ENFORCE layer) but that
+    gap belongs to identity resolution, a materially different concern
+    from chain-of-custody strength — left unwired, explicitly disclosed
+    as a separate, future, REQ-003-unrelated wiring task.
+  - `raw-value-completeness-validator.mjs`, `claimed-value-temporal-
+    classifier.mjs`, `column-requirement-usability-validator.mjs`: real,
+    generic, tested primitives with no corresponding REQ filing calling
+    for their wiring at all — left as available, standalone platform
+    utilities a customer-mission script may call directly, exactly as
+    the prior reconciliation landed them.
+  - No REDUNDANT-coverage case was found — none of the six duplicates
+    logic `research-admission.mjs` already performs.
+
+**Built (bounded V0):**
+
+- `domain/platform-learning-ledger.mjs` (3A) — `TSF_PLATFORM_LEARNING_
+  LEDGER_V1`: an append-only collection of `TSF_LESSON_RECORD_V1`
+  entries. **CRITICAL EPISTEMIC RULE enforced structurally, not just in
+  comments**: `createLessonRecord` has no `epistemicKind` parameter at
+  all — every record is unconditionally stamped with the one frozen
+  `LESSON_EPISTEMIC_KIND = 'SYSTEM_GUIDANCE'` constant, and a
+  `LessonRecord`'s entire shape (`category`/`statement`/`evidenceSummary`/
+  `confidence`/`sourceMissionIds`) has no `fieldName`/`value`/`entityId`
+  — nothing that could be mistaken for a Claim/CanonicalFact
+  (`research-admission.mjs`/`research-reconciliation.mjs`, which this
+  module never imports from or writes to). `retrieveLessonGuidance` (the
+  one consumption surface) stamps every returned entry with
+  `advisoryOnly: true`/`neverOverridesVerifiedEvidence: true` directly on
+  the data, not only in documentation — proven by a test asserting those
+  flags on every retrieved lesson and that no Claim-shaped field exists
+  on the retrieved shape. No auto-apply/auto-correct function exists
+  anywhere in this module (deliberately absent — a lesson can inform a
+  caller's own strategy decision, but nothing here ever mutates a
+  Claim/CanonicalFact). `extractLessonsFromCompletedMission` computes six
+  real, evidence-gated lesson categories from a mission's own already-
+  admitted, already-validated state (never a placeholder category, never
+  fabricated confidence — `confidenceForSampleSize` scales LOW/MEDIUM/HIGH
+  from real sample counts): `PROVIDER_RELIABILITY_SIGNAL` (grouped
+  BoundedResearchResult provider/status pairs), `RECURRING_DISPATCH_
+  FAILURE` (2+ FAILED raw results before a node settled),
+  `IDENTITY_AMBIGUITY_PATTERN` (a real recorded `identityResolutionState`),
+  `COMPLETENESS_GAP_PATTERN` (reuses `computeCompletenessMetrics`
+  directly, REUSE_DIRECTLY, never re-derives), `SOURCE_RELIABILITY_
+  SIGNAL` (claim verification verdicts traced through evidence to their
+  source), `VERIFIED_CORRECTION_PATTERN` (real `RESOLVE_CONFLICT`
+  reconciliation decisions). Requires `mission.state === 'COMPLETE'`
+  (`TSF_LEARNING_LEDGER_MISSION_NOT_COMPLETE` otherwise) — fails honest
+  rather than learning from a still-running, unsettled mission.
+- `server/platform-learning-ledger-store.mjs` — CAS store mirroring
+  `research-library-store.mjs`'s `withResearchLibrary` exactly
+  (REUSE_PATTERN): same cross-process file lock, own lock file, singleton
+  (not keyed by missionId) shape. `platformLearningLedger: null` added to
+  `data-store.mjs`'s `DEFAULTS` (one line + comment, additive only, same
+  idiom as `researchLibrary`). A third schema-version guard
+  (`assertSupportedPlatformLearningLedgerSchemaVersion`) added to
+  `research-schema-versioning.mjs` via the existing
+  `buildSchemaVersionGuard` factory (REUSE_DIRECTLY) — no new versioning
+  mechanism.
+- **Real wiring (3A)**: `server/research-mission-fleet-driver.mjs`'s
+  `advanceOneMission` CHECK_COMPLETE branch — the one real path a
+  mission actually reaches `COMPLETE` through — now calls
+  `recordLessonsFromCompletedMission` against the freshly-completed
+  mission immediately after `completeResearchMission` durably commits,
+  and durably persists the result via `withPlatformLearningLedger`. The
+  action response gains a `lessonsRecorded` field. Per-worktree scope
+  (like every other opState collection here) — a true cross-worktree
+  ledger sync is out of this bounded wave's scope, disclosed here rather
+  than silently assumed.
+- **Real wiring (3B)**: `domain/research-admission.mjs`'s
+  `admitBoundedResearchResult`, in the `SourceSnapshotReference` admission
+  loop. For each newly-admitted snapshot: `computeFilesystemStability` is
+  computed for REAL from that exact `sourceRef`'s own already-admitted
+  `contentHash` history on the node (never fabricated); `provenanceStrength`
+  is read only from an explicit caller claim (`snap.provenanceStrength`),
+  defaulting honestly to `PROVENANCE_STRENGTH.NONE` when absent — NEVER
+  inferred from `acquisitionMode`/`accessClassification`, since no live
+  acquisition method today (web-table extraction) produces a real
+  intake-logged provenance signal, and inferring one would be exactly the
+  fabrication REQ-003 exists to prevent. `computeChainOfCustodyStatus`
+  produces the raw computed tier. `attemptStatusUpgrade` then gates
+  whether a STRONGER tier than a prior admission already recorded for the
+  SAME `sourceRef` is actually applied — refused
+  (`appliedChainOfCustody` stays at the prior, weaker, already-recorded
+  tier) unless the caller attaches real `chainOfCustodyEvidence:
+  {evidenceProvided: true, ...}`; a genuine DOWNGRADE (e.g. hash
+  instability newly detected) is always applied immediately per
+  `attemptStatusUpgrade`'s own "not an upgrade → always allowed" rule — a
+  real degradation is never hidden behind a stale, stronger tier. Result
+  stored as an additive `chainOfCustody` field on the durable
+  `SourceSnapshotReference` record. Both worker-protocol contract docs
+  (`contracts/bounded-research-worker-protocol.schema.v1.json`,
+  `contracts/research-epistemic-record.schema.v1.json`) updated
+  additively (`provenanceStrength`/`chainOfCustodyEvidence` on input,
+  `chainOfCustody` on the admitted record) — `contracts/validate-
+  research-contracts.mjs`'s hand-written validators do not enforce
+  per-property shape on `sourceSnapshotsOrSnapshotRefs` entries, so this
+  is documentation-consistency only, not a behavior gate.
+
+**Deliberately NOT built (disclosed, not silently skipped):**
+`identity-collision-resolution.mjs`/`raw-value-completeness-
+validator.mjs`/`claimed-value-temporal-classifier.mjs`/`column-
+requirement-usability-validator.mjs` wiring (see reconciliation above —
+real but not what REQ-003 asks for); a lesson-supersession/correction
+mechanism for the Learning Ledger (lessons are append-only for this V0 —
+a later, contradicting lesson simply accumulates alongside an earlier
+one rather than silently replacing it, which is itself a disclosed,
+deliberate choice, not an oversight); any consumption wiring that lets a
+retrieved lesson bias a live dispatch/strategy decision (`retrieveLessonGuidance`
+exists and is tested, but no caller in this wave reads from it yet — the
+filing asked for the durable, generic accumulation mechanism, not a
+strategy-engine redesign); true cross-worktree ledger sync (per-worktree
+scope only, matching every other opState collection).
+
+**Test / Verification Ledger — Phase 3 Wave 1 (2026-09-06):**
+
+- 4 new test files, 23 new tests: `platform-learning-ledger.test.mjs`
+  (13 — epistemic-guard proof, all six lesson categories from real
+  synthetic mission data, idempotency, `COMPLETE`-only fail-honest
+  guard), `platform-learning-ledger-store.test.mjs` (3 — real disk
+  round-trip via an isolated `TSF_UI_STATE_FILE`, first-use creation,
+  idempotent re-add), `research-mission-fleet-driver-learning-ledger.test.mjs`
+  (3 — **the real 3A wiring proof**: a mission driven through the real
+  `advanceOneMission` to genuine `COMPLETE` with a real FAILED raw result
+  durably records exactly one `PROVIDER_RELIABILITY_SIGNAL` lesson,
+  verified via a FRESH read of the store, not just the in-memory return
+  value; a clean mission adds zero lessons), `research-admission-chain-
+  of-custody.test.mjs` (4 — **the real 3B wiring proof**, a genuine
+  before/after: a second admission cycle for the same `sourceRef` claiming
+  `INDEPENDENTLY_VERIFIED` provenance without evidence computes GREEN raw
+  but is gated back to the prior RED `appliedChainOfCustody`; a third
+  cycle with real evidence legitimately unlocks GREEN; a real hash
+  mismatch always degrades immediately regardless of evidence).
+- Full-suite result (`node --test test/*.test.mjs`, same file set Phase
+  1/2 used): **1763 tests, 1716 pass, 46 fail, 1 skipped** (1740 + 23 new,
+  all 23 new tests passing). **All 46 failures independently confirmed
+  pre-existing and unrelated**: re-ran 3 representative failing files
+  (`command-adversarial-corpus.test.mjs`, `golden-path-operator-flow.test.mjs`,
+  `http-capacity.test.mjs`) after `git stash -u` (removing every file this
+  wave touched or added) — byte-identical `ERR_MODULE_NOT_FOUND:
+  @stablyai/playwright-test` failures on the clean pre-wave tree (this
+  worktree's own `node_modules` is still empty/absent, the same
+  environment gap Phase 1/2 already flagged, never remediated here as
+  out of scope), confirming zero regression; stash restored and verified
+  clean before continuing. The remaining failures are the same
+  live-planner-dependent classification tests and resource/timing-
+  sensitive autonomy tests Phase 1/2's own ledgers already documented.
+- Targeted re-run of every research-admission/fleet-driver/library/
+  epistemic-ladder test file together (131 tests: 108 pre-existing +
+  23 new): **131/131 pass**.
+- `npx oxlint` on every new/changed `.mjs` file: **0 errors** in every
+  file this wave authored or edited. `domain/research-admission.mjs`
+  retains exactly 4 pre-existing `curly` violations (verified via `git
+  diff` that none of the 4 flagged lines were touched by this wave's
+  edit) — the same disclosed, out-of-scope class Phase 1's ledger
+  already established a precedent for (`command-responder.mjs`'s 3
+  pre-existing violations).
+- Line-count check against the `.oxlintrc.json` 600-line cap: largest
+  changed file is `domain/research-admission.mjs` at 384 lines; largest
+  new file is `domain/platform-learning-ledger.mjs` at 279 lines — both
+  comfortably under.
+
+**Owner Gates Outstanding (Phase 3 Wave 1):** none blocking — this
+wave's bounded V0 scope (durable, structurally-epistemic-guarded Learning
+Ledger wired into the one real mission-completion path; the REQ-003
+chain-of-custody delta wired into the one real admission path) is
+complete. Recorded for future, separately-authorized work: a real
+consumer that reads `retrieveLessonGuidance` to bias a live
+dispatch/strategy decision; identity-collision-resolution.mjs and the
+other three ported-but-unwired modules (real gaps, not REQ-003's own
+ask); lesson supersession/correction; cross-worktree ledger sync; this
+worktree's still-empty `node_modules` (pre-existing, unrelated,
+previously flagged).
+
+## Next intended action
+
+Phase 1, Phase 2, and Phase 3 Wave 1 (3A/3B) are complete in their
+respective worktrees; Phase 3 Wave 1 is committed in
+`research-platform-completion-wave-v0` but not yet merged to `tsf/main`
+(pending owner/coordinator adoption review, matching Phase 1/2's own
+adoption gate). Remaining Phase 3 sub-parts (if any beyond 3A/3B) and
+Phases 4-5 are NOT_STARTED.

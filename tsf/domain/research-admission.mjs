@@ -21,6 +21,17 @@
 // else has landed.
 import { deepClone, isoNow, sha256 } from './canonical.mjs'
 import { assertNodeTransition, withResearchNode } from './research-mission.mjs'
+import { attemptStatusUpgrade } from './evidence-gated-status-upgrade.mjs'
+import { computeFilesystemStability, computeChainOfCustodyStatus, PROVENANCE_STRENGTH } from './source-chain-of-custody.mjs'
+
+// REQ-003 (DATASET_RESEARCH_PLATFORM_REQUIREMENTS_BACKLOG.md): a generic
+// temporal chain-of-custody strength axis, independent of any one source's
+// own settings. Weakest-first so attemptStatusUpgrade's ordering-index
+// comparison treats a later admission reporting a STRONGER tier as a real
+// upgrade requiring real evidence, while a weaker tier (a real degradation,
+// e.g. hash instability newly detected) is always applied immediately --
+// see the sourceSnapshot loop below.
+const CHAIN_OF_CUSTODY_TIER_ORDER = Object.freeze(['RED', 'YELLOW', 'GREEN'])
 
 function hasId(list, id) {
   return list.some((item) => item.id === id)
@@ -100,6 +111,43 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
       for (const snap of result.sourceSnapshotsOrSnapshotRefs) {
         const id = sha256({ resultDigest, kind: 'SourceSnapshotReference', sourceRef: snap.sourceRef, contentHash: snap.contentHash })
         if (!hasId(next.sourceSnapshots, id)) {
+          // REQ-003 wiring: filesystemStability is computed for REAL from
+          // this exact sourceRef's own already-admitted contentHash history
+          // on this node (never fabricated, never caller-supplied) --
+          // includes this new observation. provenanceStrength is read from
+          // an explicit caller claim only; no live acquisition method today
+          // (web-table extraction) produces a real intake-logged provenance
+          // signal, so inferring one from acquisitionMode/accessClassification
+          // would be exactly the fabrication this axis exists to prevent --
+          // absent is honestly NONE, never upgraded by inference.
+          const priorHashesForSourceRef = next.sourceSnapshots.filter((s) => s.sourceRef === snap.sourceRef).map((s) => s.contentHash)
+          const filesystemStability = computeFilesystemStability([...priorHashesForSourceRef, snap.contentHash])
+          const provenanceStrength = PROVENANCE_STRENGTH[snap.provenanceStrength] ?? PROVENANCE_STRENGTH.NONE
+          const computedChainOfCustody = computeChainOfCustodyStatus(filesystemStability, provenanceStrength)
+
+          // Evidence-gated upgrade guard: a later admission for the SAME
+          // sourceRef can never silently report a STRONGER chain-of-custody
+          // tier than a prior admission already recorded for it without the
+          // caller explicitly attaching real evidence -- prevents a stale/
+          // unverified provenance claim from silently overriding an
+          // already-recorded, weaker-but-real tier. A genuine downgrade
+          // (e.g. hash instability newly detected) is always applied
+          // immediately -- attemptStatusUpgrade's own "not an upgrade ->
+          // always allowed" rule -- a real degradation must never be hidden.
+          const priorSnapshotForSourceRef = next.sourceSnapshots.toReversed().find((s) => s.sourceRef === snap.sourceRef && s.chainOfCustody)
+          let appliedChainOfCustody = computedChainOfCustody.overallChainOfCustody
+          let chainOfCustodyUpgradeReason = 'first chain-of-custody observation for this sourceRef -- nothing to gate against'
+          if (priorSnapshotForSourceRef) {
+            const upgrade = attemptStatusUpgrade(
+              priorSnapshotForSourceRef.chainOfCustody.appliedChainOfCustody,
+              computedChainOfCustody.overallChainOfCustody,
+              CHAIN_OF_CUSTODY_TIER_ORDER,
+              snap.chainOfCustodyEvidence ?? { evidenceProvided: false }
+            )
+            appliedChainOfCustody = upgrade.appliedStatus
+            chainOfCustodyUpgradeReason = upgrade.reason
+          }
+
           next.sourceSnapshots.push({
             schemaVersion: 'TSF_SOURCE_SNAPSHOT_REFERENCE_V1',
             id,
@@ -123,6 +171,9 @@ export function admitBoundedResearchResult(mission, nodeId, resultDigest, clock,
             // method that has no rights classification to report.
             acquisitionMode: snap.acquisitionMode ?? null,
             accessClassification: snap.accessClassification ?? null,
+            // REQ-003: real chain-of-custody strength, independent of the
+            // acquisition-mode/access fields above.
+            chainOfCustody: { ...computedChainOfCustody, appliedChainOfCustody, upgradeReason: chainOfCustodyUpgradeReason },
             admittedAt
           })
           wrote = true

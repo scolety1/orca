@@ -32,6 +32,8 @@ import {
   verifyAndReconcileResearchNodeFieldDurable
 } from './research-mission-driver.mjs'
 import { readResearchMission, withResearchMission } from './research-mission-store.mjs'
+import { emptyPlatformLearningLedger, recordLessonsFromCompletedMission } from '../domain/platform-learning-ledger.mjs'
+import { withPlatformLearningLedger } from './platform-learning-ledger-store.mjs'
 
 export const DEFAULT_TICK_INTERVAL_MS = 30_000
 // Same fleet-shape throttle keep-going-fleet-driver.mjs applies, for the
@@ -202,8 +204,20 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
   // research execution finding -- see research-completeness.mjs).
   const fieldsResolved = completeness.requiredFieldCoverage === null || completeness.requiredFieldCoverage === 1
   if (fieldsResolved && completeness.unresolvedConflictCount === 0) {
-    await withResearchMission(missionId, (m) => completeResearchMission(m, clock, m.revision))
-    return { missionId, action: 'COMPLETED', completeness }
+    const completedMission = await withResearchMission(missionId, (m) => completeResearchMission(m, clock, m.revision))
+    // REQ-002: the real wiring point -- every mission that actually reaches
+    // COMPLETE here durably feeds the cross-mission Platform Learning
+    // Ledger. A ledger-extraction failure must never un-complete an
+    // already-durably-completed mission, but nothing here is expected to
+    // throw under normal conditions: extraction reads only already-admitted,
+    // already-validated mission state.
+    let lessonsRecorded = 0
+    await withPlatformLearningLedger((current) => {
+      const result = recordLessonsFromCompletedMission(current ?? emptyPlatformLearningLedger(), completedMission, clock)
+      lessonsRecorded = result.lessonsRecorded
+      return result.ledger
+    })
+    return { missionId, action: 'COMPLETED', completeness, lessonsRecorded }
   }
   return {
     missionId,

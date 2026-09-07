@@ -81,3 +81,12 @@ const libraryGuard = buildSchemaVersionGuard('research library', new Map([[CURRE
 export const SUPPORTED_RESEARCH_LIBRARY_SCHEMA_VERSIONS = libraryGuard.supportedVersions
 export const assertSupportedResearchLibrarySchemaVersion = libraryGuard.assertSupported
 export const migrateResearchLibrarySchema = libraryGuard.migrate
+
+// Same guard, for the Platform Learning Ledger singleton (REQ-002, see
+// platform-learning-ledger.mjs). Wired into platform-learning-ledger-store.mjs
+// exactly like the mission/library guards are wired into their own stores.
+export const CURRENT_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSION = 'TSF_PLATFORM_LEARNING_LEDGER_V1'
+const learningLedgerGuard = buildSchemaVersionGuard('platform learning ledger', new Map([[CURRENT_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSION, (ledger) => ledger]]))
+export const SUPPORTED_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSIONS = learningLedgerGuard.supportedVersions
+export const assertSupportedPlatformLearningLedgerSchemaVersion = learningLedgerGuard.assertSupported
+export const migratePlatformLearningLedgerSchema = learningLedgerGuard.migrate
