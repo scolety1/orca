@@ -9,6 +9,8 @@
 // enables the loop -- answering these questions requires no authority this
 // bridge doesn't already have as a plain reader.
 import { readAllFindings } from './self-improvement-finding-store.mjs'
+import { buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
+import { gatherRealFleetAttentionInputs } from './attention-status-reconciler.mjs'
 
 // Order matters (most specific first), same convention as
 // command-research-bridge.mjs's RESEARCH_INTENT_PATTERNS: "why wasn't X
@@ -62,7 +64,8 @@ export async function respondSelfImprovementCommand({ message, deps = {} }) {
   if (!intent) { return null }
 
   const read = deps.readAllFindings ?? readAllFindings
-  const all = Object.values(read())
+  const rawStore = read()
+  const all = Object.values(rawStore)
 
   if (intent === 'SELF_IMPROVEMENT_ALL_FINDINGS') {
     if (all.length === 0) {
@@ -86,10 +89,35 @@ export async function respondSelfImprovementCommand({ message, deps = {} }) {
   }
 
   if (intent === 'SELF_IMPROVEMENT_READY_FOR_ADOPTION') {
-    const ready = all.filter((f) => f.status === 'READY_FOR_ADOPTION')
+    // Operator Attention V1, Wave 2: swapped from this bridge's own narrow
+    // readAllFindings-only filter to buildFleetAttentionItems filtered to
+    // READY_FOR_ADOPTION -- a strict superset (self-improvement findings are
+    // already one input to that bucket, functionally equivalent to the old
+    // path, PLUS project-level Keep Going adoption candidates the old path
+    // never saw). Replaced outright rather than merged with the old path,
+    // per the locked design -- simpler, same real data underneath. `rawStore`
+    // (not `all`) is threaded through so an empty real store is never
+    // confused with "no override supplied" and silently swapped for a real
+    // read. deps.projects/keepGoingRuns/etc. (mirroring deps.readAllFindings's
+    // own convention) let tests inject a fixed fleet snapshot; production
+    // falls back to gatherRealFleetAttentionInputs. resourcePressureState is
+    // never needed here (READY_FOR_ADOPTION can never contain the resource-
+    // pressure item), so it's passed null rather than reading real host
+    // memory for a query that structurally can't use it.
+    const needsRealFleetRead = deps.projects === undefined || deps.keepGoingRuns === undefined
+    const realInputs = needsRealFleetRead ? gatherRealFleetAttentionInputs() : null
+    const readyItems = buildFleetAttentionItems({
+      projects: deps.projects ?? realInputs.projects,
+      keepGoingRuns: deps.keepGoingRuns ?? realInputs.keepGoingRuns,
+      researchMissions: deps.researchMissions ?? realInputs?.researchMissions ?? {},
+      plannerMissionRecords: deps.plannerMissionRecords ?? realInputs?.plannerMissionRecords ?? {},
+      selfImprovementFindings: rawStore,
+      resourcePressureState: null
+    }).filter((i) => i.category === 'READY_FOR_ADOPTION')
+    const lines = readyItems.map((i) => `- **${i.severity}** ${i.label}: ${i.reason}`)
     return RESPOND({
       intent,
-      text: `Ready for adoption (adoption gate is closed -- nothing here has been auto-merged):\n${listOrNone(ready, 'Nothing is ready for adoption right now.')}`
+      text: `Ready for adoption (adoption gate is closed -- nothing here has been auto-merged):\n${lines.length ? lines.join('\n') : 'Nothing is ready for adoption right now.'}`
     })
   }
 

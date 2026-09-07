@@ -7,6 +7,7 @@ import {
 } from '../server/command-self-improvement-bridge.mjs'
 import { createFinding, transitionFinding } from '../domain/self-improvement-finding.mjs'
 import { applyAutofixEligibility } from '../domain/self-improvement-autofix-eligibility.mjs'
+import { completeRun, createOvernightRun } from '../domain/keep-going.mjs'
 
 const CLOCK = () => new Date('2026-09-07T00:00:00.000Z')
 
@@ -147,7 +148,11 @@ test('REQUIRED PROOF: each of the 6 real questions reads the correct real findin
     [notEligible.findingId]: notEligible,
     [failedVerification.findingId]: failedVerification
   }
-  const deps = { readAllFindings: () => store }
+  // Operator Attention V1, Wave 2: SELF_IMPROVEMENT_READY_FOR_ADOPTION now
+  // goes through buildFleetAttentionItems, which also needs a fleet
+  // snapshot (never a real read in a test) -- projects/keepGoingRuns/etc.
+  // explicitly empty so this stays exactly as isolated as before.
+  const deps = { readAllFindings: () => store, projects: [], keepGoingRuns: {}, researchMissions: {}, plannerMissionRecords: {} }
 
   const all = await respondSelfImprovementCommand({ message: 'what did TSF find?', deps })
   assert.equal(all.text.split('\n').filter((l) => l.startsWith('-')).length, 6)
@@ -172,4 +177,28 @@ test('REQUIRED PROOF: each of the 6 real questions reads the correct real findin
   const failedVerif = await respondSelfImprovementCommand({ message: 'what failed verification?', deps })
   assert.match(failedVerif.text, /surface-failed-verification/)
   assert.doesNotMatch(failedVerif.text, /surface-not-eligible/)
+})
+
+// Operator Attention V1, Wave 2: real gap this closes -- a project-level
+// (non-self-improvement) Keep Going run that reached COMPLETE is a real
+// READY_FOR_ADOPTION candidate (buildFleetAttentionItems' own
+// readyForAdoptionItems), previously invisible to this chat question since
+// it only ever read the self-improvement finding store.
+test('SELF_IMPROVEMENT_READY_FOR_ADOPTION: a project-level (non-self-improvement) readyForAdoption item now also appears through this same chat question', async () => {
+  const run = completeRun(
+    createOvernightRun({ id: 'run-1', projectId: 'proj-1', originalGoal: 'Fix it.', acceptanceCriteria: ['X'] }, CLOCK),
+    CLOCK
+  )
+  const result = await respondSelfImprovementCommand({
+    message: 'what is ready for adoption?',
+    deps: {
+      readAllFindings: () => ({}),
+      projects: [{ id: 'proj-1', displayName: 'Project One', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }],
+      keepGoingRuns: { 'proj-1': run },
+      researchMissions: {},
+      plannerMissionRecords: {}
+    }
+  })
+  assert.match(result.text, /Project One/)
+  assert.match(result.text, /adoption gate is closed/)
 })

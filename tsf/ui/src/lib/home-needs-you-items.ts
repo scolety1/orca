@@ -1,4 +1,4 @@
-import { isResearchMissionWorkItem, type ProjectDetail, type WorkItem, type WorkSummary } from './types.ts'
+import { isResearchMissionWorkItem, type AttentionItem, type ProjectDetail, type WorkItem, type WorkSummary } from './types.ts'
 
 export type HomeNeedsYouItem = WorkItem & { keyPrefix: string }
 
@@ -41,4 +41,22 @@ export function homeNeedsYouItemKey(item: HomeNeedsYouItem): string {
 // exist across them.
 export function countDistinctNeedsYouProjects(items: HomeNeedsYouItem[]): number {
   return new Set(items.map((item) => item.id)).size
+}
+
+// Operator Attention V1, Wave 2: a self-improvement finding the eligibility
+// classifier declined to autofix (real gap -- previously invisible on Home
+// entirely, only reachable via chat). Not a WorkItem (no project may exist
+// -- `project` is honestly null when a finding has none), so this is its
+// own small shape rather than forced into HomeNeedsYouItem.
+export type SelfImprovementNeedsYouItem = {
+  findingId: string
+  label: string
+  reason: string
+  projectId: string | null
+}
+
+export function buildSelfImprovementNeedsYouItems(attentionItems: AttentionItem[]): SelfImprovementNeedsYouItem[] {
+  return attentionItems
+    .filter((i) => i.category === 'NEEDS_OWNER' && i.source.kind === 'SELF_IMPROVEMENT_FINDING')
+    .map((i) => ({ findingId: i.source.id ?? i.id, label: i.label, reason: i.reason, projectId: i.project?.id ?? null }))
 }

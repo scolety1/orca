@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildHomeNeedsYouItems,
+  buildSelfImprovementNeedsYouItems,
   countDistinctNeedsYouProjects,
   homeNeedsYouItemKey
 } from './home-needs-you-items.ts'
-import type { WorkSummary } from './types.ts'
+import type { AttentionItem, WorkSummary } from './types.ts'
 
 function emptyWork(overrides: Partial<WorkSummary> = {}): WorkSummary {
   return {
@@ -77,4 +78,49 @@ test('countDistinctNeedsYouProjects: distinct projects across different buckets 
 
 test('countDistinctNeedsYouProjects: empty input counts zero, never a fabricated number', () => {
   assert.equal(countDistinctNeedsYouProjects([]), 0)
+})
+
+function attentionItem(overrides: Partial<AttentionItem> = {}): AttentionItem {
+  return {
+    id: 'finding:x',
+    category: 'NEEDS_OWNER',
+    severity: 'P2',
+    project: null,
+    label: 'some-surface',
+    reason: 'Not eligible for autofix -- needs your call.',
+    changedAt: null,
+    deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:x' },
+    source: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:x' },
+    ...overrides
+  }
+}
+
+test('buildSelfImprovementNeedsYouItems: empty input -> no items', () => {
+  assert.deepEqual(buildSelfImprovementNeedsYouItems([]), [])
+})
+
+test('buildSelfImprovementNeedsYouItems: a real NEEDS_OWNER self-improvement finding appears, with an honest null project when none exists', () => {
+  const items = buildSelfImprovementNeedsYouItems([attentionItem()])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].findingId, 'finding:x')
+  assert.equal(items[0].label, 'some-surface')
+  assert.equal(items[0].projectId, null)
+})
+
+test('buildSelfImprovementNeedsYouItems: excludes non-self-improvement NEEDS_OWNER items and non-NEEDS_OWNER self-improvement items', () => {
+  const projectNeedsOwner = attentionItem({
+    id: 'needsyou:PROJECT:1',
+    source: { kind: 'KEEP_GOING_RUN', id: 'p1' }
+  })
+  const readyForAdoption = attentionItem({
+    id: 'finding:y',
+    category: 'READY_FOR_ADOPTION',
+    source: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:y' }
+  })
+  assert.deepEqual(buildSelfImprovementNeedsYouItems([projectNeedsOwner, readyForAdoption]), [])
+})
+
+test('buildSelfImprovementNeedsYouItems: a finding with a real project carries its real projectId', () => {
+  const items = buildSelfImprovementNeedsYouItems([attentionItem({ project: { id: 'proj-1', displayName: 'Project One' } })])
+  assert.equal(items[0].projectId, 'proj-1')
 })

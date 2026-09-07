@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildGlobalRunStatusItems, sortByUrgency, mostUrgentState } from './global-run-status.ts'
-import type { WorkSummary } from './types.ts'
+import {
+  attentionItemToGlobalRunStatusItem,
+  buildGlobalRunStatusItems,
+  resolveAttentionDeepLink,
+  selectExtraAttentionItems,
+  sortByUrgency,
+  mostUrgentState
+} from './global-run-status.ts'
+import type { AttentionItem, WorkSummary } from './types.ts'
 
 function emptyWork(overrides: Partial<WorkSummary> = {}): WorkSummary {
   return {
@@ -144,4 +151,67 @@ test('MULTIPLE PROJECTS: several real projects each in a different urgency state
     'NEEDS_YOU',
     'the single most urgent real state must drive the summary, not an average or a count'
   )
+})
+
+function attentionItem(overrides: Partial<AttentionItem> = {}): AttentionItem {
+  return {
+    id: 'finding:x',
+    category: 'NEEDS_OWNER',
+    severity: 'P2',
+    project: null,
+    label: 'some-surface',
+    reason: 'Not eligible for autofix -- needs your call.',
+    changedAt: '2026-09-03T00:00:00.000Z',
+    deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:x' },
+    source: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:x' },
+    ...overrides
+  }
+}
+
+// Operator Attention V1, Wave 2
+test('selectExtraAttentionItems: includes every self-improvement-sourced item and the host-wide resource-pressure item, excludes everything else', () => {
+  const selfImprovementReady = attentionItem({ id: 'finding:y', category: 'READY_FOR_ADOPTION' })
+  const resourcePressure = attentionItem({
+    id: 'resource-pressure:CRITICAL',
+    category: 'WAITING_FOR_RESOURCES',
+    project: null,
+    source: { kind: 'RESOURCE_PRESSURE_TIER', id: 'CRITICAL' }
+  })
+  const projectNeedsOwner = attentionItem({ id: 'needsyou:PROJECT:1', source: { kind: 'KEEP_GOING_RUN', id: 'p1' } })
+  const projectStalled = attentionItem({ id: 'run:p1:stalled', category: 'FAILED_REQUIRES_ATTENTION', source: { kind: 'KEEP_GOING_RUN', id: 'p1' } })
+
+  const result = selectExtraAttentionItems([attentionItem(), selfImprovementReady, resourcePressure, projectNeedsOwner, projectStalled])
+  assert.deepEqual(
+    result.map((i) => i.id).sort(),
+    ['finding:x', 'finding:y', 'resource-pressure:CRITICAL'].sort()
+  )
+})
+
+test('resolveAttentionDeepLink: a PROJECT deep link resolves to the real project route; every other kind is honestly null (no route exists yet)', () => {
+  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'PROJECT', id: 'proj-1' } })), '/projects/proj-1')
+  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'RESEARCH_MISSION', id: 'm1' } })), null)
+  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'PLANNER_MISSION', id: 'm1' } })), null)
+  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:x' } })), null)
+  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'RESOURCE_PRESSURE', id: null } })), null)
+})
+
+test('attentionItemToGlobalRunStatusItem: maps a real attention item field-for-field, falling back to label when no project is known', () => {
+  const mapped = attentionItemToGlobalRunStatusItem(attentionItem())
+  assert.deepEqual(mapped, {
+    id: 'finding:x',
+    displayName: 'some-surface',
+    runId: null,
+    state: 'NEEDS_OWNER',
+    reason: 'Not eligible for autofix -- needs your call.',
+    lastCheckpointAt: '2026-09-03T00:00:00.000Z',
+    linkTo: null
+  })
+})
+
+test('attentionItemToGlobalRunStatusItem: uses the real project displayName when a project is known', () => {
+  const mapped = attentionItemToGlobalRunStatusItem(
+    attentionItem({ project: { id: 'proj-1', displayName: 'Project One' }, deepLink: { kind: 'PROJECT', id: 'proj-1' } })
+  )
+  assert.equal(mapped.displayName, 'Project One')
+  assert.equal(mapped.linkTo, '/projects/proj-1')
 })

@@ -38,6 +38,7 @@ import {
 } from './api-response-normalization'
 import type {
   AgentEvidence,
+  AttentionResponse,
   ChatAttachmentMeta,
   ChatMessage,
   ChatResponse,
@@ -113,6 +114,7 @@ export const api = {
   projects: () => request<ProjectCard[]>('/projects'),
   project: (id: string) => request<ProjectDetail>(`/projects/${encodeURIComponent(id)}`),
   work: () => request<WorkSummary>('/work').then(normalizeWorkSummary),
+  attention: () => request<AttentionResponse>('/attention'),
   routing: () => request<RoutingInfo>('/routing'),
   setUsageMode: (mode: string) =>
     request<{ ok: true; mode: string }>('/usage-mode', {

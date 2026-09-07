@@ -243,6 +243,38 @@ export type WorkSummary = {
   recentlyCompleted: RecentlyCompletedItem[]
 }
 
+// Operator Attention + Proactive Notifications V1, Wave 2: GET /api/attention
+// -- mirrors tsf/domain/fleet-attention-status.mjs's real buildFleetAttentionItems
+// output field-for-field (see that file for the authoritative shape).
+export type AttentionCategory =
+  | 'NEEDS_OWNER'
+  | 'READY_FOR_ADOPTION'
+  | 'WAITING_FOR_RESOURCES'
+  | 'FAILED_REQUIRES_ATTENTION'
+  | 'BLOCKED_EXTERNAL'
+  | 'COMPLETED_RECENTLY'
+
+export type AttentionDeepLinkKind =
+  | 'PROJECT'
+  | 'RESEARCH_MISSION'
+  | 'PLANNER_MISSION'
+  | 'SELF_IMPROVEMENT_FINDING'
+  | 'RESOURCE_PRESSURE'
+
+export type AttentionItem = {
+  id: string
+  category: AttentionCategory
+  severity: string
+  project: { id: string; displayName: string } | null
+  label: string
+  reason: string
+  changedAt: string | null
+  deepLink: { kind: AttentionDeepLinkKind; id: string | null }
+  source: { kind: string; id: string | null }
+}
+
+export type AttentionResponse = { ok: true; items: AttentionItem[] }
+
 export type UsageModeConfig = {
   plannerTier: string
   workerTier: string

@@ -30,6 +30,15 @@ export function buildLiveWorkFeedLookup(
   return lookup
 }
 
+// Operator Attention V1, Wave 2: extended with the fleet-attention
+// aggregator's own category vocabulary (NEEDS_OWNER/WAITING_FOR_RESOURCES/
+// FAILED_REQUIRES_ATTENTION/COMPLETED_RECENTLY) -- never collides with a
+// liveWorkFeed state string above, so both vocabularies share one map
+// (READY_FOR_ADOPTION is deliberately the SAME key/color in both -- genuinely
+// the same real meaning) rather than a second parallel function callers
+// would have to choose between. BLOCKED_EXTERNAL intentionally omitted --
+// never one of the categories GlobalRunStatusIndicator merges in (see
+// global-run-status.ts's selectExtraAttentionItems).
 const BADGE_VARIANT: Record<string, 'primary' | 'neutral' | 'degraded' | 'healthy' | 'blocked'> = {
   PLANNING: 'neutral',
   WORKING: 'primary',
@@ -39,12 +48,18 @@ const BADGE_VARIANT: Record<string, 'primary' | 'neutral' | 'degraded' | 'health
   STALLED: 'blocked',
   NEEDS_YOU: 'degraded',
   READY_FOR_ADOPTION: 'healthy',
-  COMPLETED: 'healthy'
+  COMPLETED: 'healthy',
+  NEEDS_OWNER: 'degraded',
+  FAILED_REQUIRES_ATTENTION: 'blocked',
+  WAITING_FOR_RESOURCES: 'degraded',
+  COMPLETED_RECENTLY: 'healthy'
 }
 
-// Same live-work-feed state vocabulary, one shared badge-color mapping --
-// reused wherever a live run state needs a Badge variant, so a state never
-// reads as a different color/urgency on one surface than another.
+// Same live-work-feed state vocabulary (now extended with the fleet-
+// attention category vocabulary above), one shared badge-color mapping --
+// reused wherever a live run state or attention category needs a Badge
+// variant, so it never reads as a different color/urgency on one surface
+// than another.
 export function liveWorkFeedBadgeVariant(
   state: string
 ): 'primary' | 'neutral' | 'degraded' | 'healthy' | 'blocked' {

@@ -1,4 +1,5 @@
-import { isResearchMissionWorkItem, type WorkSummary } from './types.ts'
+import { isResearchMissionWorkItem, type AttentionItem, type WorkSummary } from './types.ts'
+import { projectDeepLinkTo } from './project-work-deep-link.ts'
 
 // Persistent global execution visibility (bug-ledger.json, BUG-14's own
 // disclosed remaining gap): "a user must be able to see, from anywhere in
@@ -17,6 +18,13 @@ export type GlobalRunStatusItem = {
   state: string
   reason: string
   lastCheckpointAt: string | null
+  // Operator Attention V1, Wave 2: present (possibly null) ONLY for an item
+  // merged in from GET /api/attention (see attentionItemToGlobalRunStatusItem
+  // below) -- a real link when one exists (PROJECT), null when it honestly
+  // doesn't (no fabricated link to nowhere). Absent (undefined) for every
+  // ordinary run-driven item above, which still computes its own link the
+  // original way (projectDeepLinkTo(item.id, ...)) in the component.
+  linkTo?: string | null
 }
 
 export function buildGlobalRunStatusItems(work: WorkSummary): GlobalRunStatusItem[] {
@@ -48,10 +56,19 @@ export function buildGlobalRunStatusItems(work: WorkSummary): GlobalRunStatusIte
 }
 
 // Most-urgent-first: an operator opening this from anywhere should see
-// what needs them before what's merely progressing normally.
+// what needs them before what's merely progressing normally. Extended
+// (Operator Attention V1, Wave 2) with the fleet-attention category
+// vocabulary for items this file structurally cannot produce on its own --
+// NEEDS_OWNER/FAILED_REQUIRES_ATTENTION tie with their closest run-driven
+// equivalents (NEEDS_YOU/STALLED); READY_FOR_ADOPTION is already the same
+// key. COMPLETED_RECENTLY intentionally excluded from selectExtraAttentionItems
+// below, so no rank is needed for it here.
 const URGENCY_RANK: Record<string, number> = {
   NEEDS_YOU: 0,
+  NEEDS_OWNER: 0,
   STALLED: 1,
+  FAILED_REQUIRES_ATTENTION: 1,
+  WAITING_FOR_RESOURCES: 1,
   READY_FOR_ADOPTION: 2,
   REVISION: 3,
   VERIFYING: 4,
@@ -59,6 +76,42 @@ const URGENCY_RANK: Record<string, number> = {
   WAITING: 6,
   PLANNING: 7,
   COMPLETED: 8
+}
+
+// Real route exists only for a PROJECT deep link (projectDeepLinkTo) --
+// checked against App.tsx's actual route table: RESEARCH_MISSION/
+// PLANNER_MISSION/SELF_IMPROVEMENT_FINDING/RESOURCE_PRESSURE have no
+// standalone page yet. Honestly null rather than a link to nowhere -- the
+// component renders a plain, non-clickable card for a null result.
+export function resolveAttentionDeepLink(item: AttentionItem): string | null {
+  if (item.deepLink.kind === 'PROJECT' && item.deepLink.id) {
+    return projectDeepLinkTo(item.deepLink.id)
+  }
+  return null
+}
+
+// Items buildGlobalRunStatusItems (above) structurally cannot produce --
+// no run/liveWorkFeed exists for a self-improvement finding at all (any
+// category it can reach: NEEDS_OWNER, FAILED_REQUIRES_ATTENTION, or
+// READY_FOR_ADOPTION), and the host-wide resource-pressure item has no
+// project/run of its own either. Every OTHER attention category
+// (project-level NEEDS_OWNER/STALLED/READY_FOR_ADOPTION/COMPLETED_RECENTLY)
+// already reaches this indicator via its own real liveWorkFeed, so
+// including it here too would double-count the same real fact.
+export function selectExtraAttentionItems(items: AttentionItem[]): AttentionItem[] {
+  return items.filter((i) => i.source.kind === 'SELF_IMPROVEMENT_FINDING' || i.category === 'WAITING_FOR_RESOURCES')
+}
+
+export function attentionItemToGlobalRunStatusItem(item: AttentionItem): GlobalRunStatusItem {
+  return {
+    id: item.id,
+    displayName: item.project?.displayName ?? item.label,
+    runId: null,
+    state: item.category,
+    reason: item.reason,
+    lastCheckpointAt: item.changedAt,
+    linkTo: resolveAttentionDeepLink(item)
+  }
 }
 
 export function sortByUrgency(items: GlobalRunStatusItem[]): GlobalRunStatusItem[] {

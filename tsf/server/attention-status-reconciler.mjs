@@ -62,15 +62,28 @@ function transitionSignatureFor(item, findingsById) {
 // Real, default readers -- injectable so tests never touch the global
 // store. `projectsById()` is read once (not once per field) so `projects`
 // and `keepGoingRuns` are consistent with each other, not two independent
-// snapshots of a state file that could change between calls.
-function gatherRealDeps(clock) {
+// snapshots of a state file that could change between calls. Exported (Wave
+// 2) split into two: `gatherRealFleetAttentionInputs` for callers that never
+// need resource-pressure evidence (command-responder.mjs's NEEDS_OWNER
+// query, command-self-improvement-bridge.mjs's READY_FOR_ADOPTION query --
+// neither category can ever contain the resource-pressure item, so reading
+// real host memory for them would be pure waste), and `gatherRealDeps`
+// (unchanged shape) for callers -- this reconciler, the new GET /api/attention
+// route -- that need the real, full live view.
+export function gatherRealFleetAttentionInputs() {
   const { map, opState } = projectsById()
   return {
     projects: [...map.values()],
     keepGoingRuns: opState.keepGoingRuns ?? {},
     researchMissions: readAllResearchMissions(),
     plannerMissionRecords: readAllPlannerMissionRecords(),
-    selfImprovementFindings: readAllFindings(),
+    selfImprovementFindings: readAllFindings()
+  }
+}
+
+export function gatherRealDeps(clock) {
+  return {
+    ...gatherRealFleetAttentionInputs(),
     resourcePressureState: buildResourcePressureState({ hostMemory: collectHostMemoryEvidence() }, clock)
   }
 }

@@ -36,5 +36,20 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: React.DependencyList)
 
   useEffect(() => load(), [load])
 
-  return { data, loading, error, reload: () => setTick((t) => t + 1) }
+  // Real, independently-discovered bug (reproduced via Operator Attention
+  // V1, Wave 2's own real Playwright validation of HQPage.tsx -- pre-
+  // existing, not introduced there): an inline arrow function here has a
+  // NEW identity every render. A caller that composes several useApi
+  // results into one useCallback (e.g. HQPage.tsx's `reloadAll`) and feeds
+  // that into an effect keyed on it (useReloadOnDockActivity/
+  // useForegroundPolling) got a real infinite render loop the instant a
+  // fetch first settled: settling triggers one re-render -> `reload`'s
+  // fresh identity makes the dependent effect re-run -> the effect calls
+  // `reload()` -> `setTick` -> another re-render -> repeat forever. A
+  // stable identity (useCallback, no deps -- `setTick`'s updater form
+  // never needs the closure to change) fixes this at the root for every
+  // caller, not just the one that happened to trip it first.
+  const reload = useCallback(() => setTick((t) => t + 1), [])
+
+  return { data, loading, error, reload }
 }

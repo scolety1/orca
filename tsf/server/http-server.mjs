@@ -69,8 +69,10 @@ import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
 import { writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
 import { bootstrapBackgroundFleetDrivers } from './background-fleet-drivers-bootstrap.mjs'
 import { bootstrapResearchMissionFleetDriverIfEnabled } from './research-mission-fleet-driver-bootstrap.mjs'; import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
+import { attachDueAttentionNotices } from './attention-status-reconciler.mjs'
 import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
 import { handleResourcePressureGovernorRoute } from './resource-pressure-governor-http-routes.mjs'
+import { handleAttentionRoute } from './attention-http-routes.mjs'
 
 const FOUNDATION = Object.freeze({
   product: 'Thousand Sunny Fleet — Orca Foundation',
@@ -522,7 +524,8 @@ export function createRequestHandler(options = {}) {
               }
             ].slice(-200)
             saveState({ ...freshState, chatThreads: threads })
-            return json(res, 200, await attachDueCompletionNotices(commandResult, () => new Date()))
+            // Both reconcilers run, neither replaces the other -- completion notices first, then attention notices.
+            return json(res, 200, await attachDueAttentionNotices(await attachDueCompletionNotices(commandResult, () => new Date()), () => new Date()))
           }
         }
 
@@ -686,7 +689,7 @@ export function createRequestHandler(options = {}) {
           }
         ].slice(-200)
         saveState({ ...freshState, chatThreads: threads, plannerSessions: nextPlannerSessions })
-        return json(res, 200, await attachDueCompletionNotices(result, () => new Date()))
+        return json(res, 200, await attachDueAttentionNotices(await attachDueCompletionNotices(result, () => new Date()), () => new Date()))
       }
 
       // GET /api/chat/:projectId (history)
@@ -797,6 +800,10 @@ export function createRequestHandler(options = {}) {
       const rpCtx = { opState }
       const rpHelpers = { json, notFound, readBody, saveState }
       if (await handleResourcePressureGovernorRoute(parts, req, res, rpCtx, rpHelpers)) {
+        return
+      }
+
+      if (await handleAttentionRoute(parts, req, res, {}, { json, notFound, readBody })) { // GET /api/attention
         return
       }
 

@@ -20,7 +20,13 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/States'
-import { buildGlobalRunStatusItems, sortByUrgency, mostUrgentState } from '@/lib/global-run-status'
+import {
+  attentionItemToGlobalRunStatusItem,
+  buildGlobalRunStatusItems,
+  selectExtraAttentionItems,
+  sortByUrgency,
+  mostUrgentState
+} from '@/lib/global-run-status'
 import { liveWorkFeedBadgeVariant } from '@/lib/work-feed-lookup'
 import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
 
@@ -47,8 +53,20 @@ export function GlobalRunStatusIndicator() {
   // SystemStatusIndicator) -- "visible from anywhere" means the always-
   // shown trigger badge itself should stay current as the operator moves
   // around, not just once a dialog is opened.
-  const { data: work, loading, reload } = useApi(() => api.work(), [location.pathname])
-  const items = work ? sortByUrgency(buildGlobalRunStatusItems(work)) : []
+  const { data: work, loading, reload: reloadWork } = useApi(() => api.work(), [location.pathname])
+  // Operator Attention V1, Wave 2: merges in items buildGlobalRunStatusItems
+  // structurally cannot produce (self-improvement findings, host-wide
+  // resource pressure -- neither has a liveWorkFeed) so the badge count/
+  // dialog list honestly reflect the combined total, not run-driven work
+  // alone.
+  const { data: attention, reload: reloadAttention } = useApi(() => api.attention(), [location.pathname])
+  const reload = () => {
+    reloadWork()
+    reloadAttention()
+  }
+  const runItems = work ? buildGlobalRunStatusItems(work) : []
+  const extraItems = attention ? selectExtraAttentionItems(attention.items).map(attentionItemToGlobalRunStatusItem) : []
+  const items = sortByUrgency([...runItems, ...extraItems])
   const urgent = mostUrgentState(items)
 
   return (
@@ -92,26 +110,50 @@ export function GlobalRunStatusIndicator() {
 
         {items.length > 0 && (
           <div className="flex flex-col gap-2">
-            {items.map((item) => (
-              <Link
-                key={item.id}
-                to={projectDeepLinkTo(item.id, {
-                  tab: item.state === 'READY_FOR_ADOPTION' ? 'adoption' : 'keep-going',
-                  runId: item.runId
-                })}
-                onClick={() => setOpen(false)}
-                className="rounded-lg border border-border p-3 text-xs transition-colors hover:border-primary/40"
-              >
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="font-medium">{item.displayName}</span>
-                  <Badge variant={liveWorkFeedBadgeVariant(item.state)}>{item.state}</Badge>
-                </div>
-                <p className="text-muted-foreground">{item.reason}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  Last checkpoint: {relativeTime(item.lastCheckpointAt)}
-                </p>
-              </Link>
-            ))}
+            {items.map((item) => {
+              const cardBody = (
+                <>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="font-medium">{item.displayName}</span>
+                    <Badge variant={liveWorkFeedBadgeVariant(item.state)}>{item.state}</Badge>
+                  </div>
+                  <p className="text-muted-foreground">{item.reason}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Last checkpoint: {relativeTime(item.lastCheckpointAt)}
+                  </p>
+                </>
+              )
+              // `linkTo` is only set (possibly null) for an attention-merged
+              // item (global-run-status.ts) -- undefined means an ordinary
+              // run-driven item, which computes its own link the original
+              // way. A null linkTo means no real route exists yet for that
+              // item's deep-link kind -- rendered as a plain, non-clickable
+              // card rather than a link to nowhere.
+              const linkTo =
+                item.linkTo !== undefined
+                  ? item.linkTo
+                  : projectDeepLinkTo(item.id, {
+                      tab: item.state === 'READY_FOR_ADOPTION' ? 'adoption' : 'keep-going',
+                      runId: item.runId
+                    })
+              if (!linkTo) {
+                return (
+                  <div key={item.id} className="rounded-lg border border-border p-3 text-xs">
+                    {cardBody}
+                  </div>
+                )
+              }
+              return (
+                <Link
+                  key={item.id}
+                  to={linkTo}
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg border border-border p-3 text-xs transition-colors hover:border-primary/40"
+                >
+                  {cardBody}
+                </Link>
+              )
+            })}
           </div>
         )}
       </DialogContent>

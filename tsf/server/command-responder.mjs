@@ -25,15 +25,17 @@ import {
   resolveProjectsFromText
 } from './project-name-resolver.mjs'
 import {
-  fleetNeedsYouStatus,
   fleetResearchStatus,
   fleetWorkStatus
 } from '../domain/fleet-work-status.mjs'
+import { buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
+import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { shouldRouteToResearchBridge, respondResearchCommand } from './command-research-bridge.mjs'
 import { shouldRouteToDogfoodBridge, respondDogfoodCommand } from './command-dogfood-bridge.mjs'
 import { shouldRouteToSelfImprovementBridge, respondSelfImprovementCommand } from './command-self-improvement-bridge.mjs'
+import { shouldRouteToFleetAttentionBridge, respondFleetAttentionCommand } from './command-fleet-attention-bridge.mjs'
 import {
   advisorySafeProjects,
   buildGlobalAdvisoryText,
@@ -252,6 +254,22 @@ export async function respondCommand({
     })
     if (selfImprovementResult) {
       return selfImprovementResult
+    }
+  }
+  // Operator Attention V1, Wave 2: same layer as the three bridges above --
+  // checked AFTER shouldRouteToSelfImprovementBridge so it never shadows
+  // "what did TSF find?"/"what is ready for adoption?" (already owned,
+  // surgically extended above/in that bridge), and BEFORE general intent
+  // classification since none of its 4 questions are about a registered
+  // fleet project either.
+  if (shouldRouteToFleetAttentionBridge(message)) {
+    const fleetAttentionResult = await respondFleetAttentionCommand({
+      message,
+      clock,
+      deps: deps.fleetAttention ?? {}
+    })
+    if (fleetAttentionResult) {
+      return fleetAttentionResult
     }
   }
   const intent = classifyIntent(message)
@@ -547,12 +565,29 @@ export async function respondCommand({
         // UI mechanism. A PLANNER item's projectId is honestly null (no
         // reliable project association exists on that record), so it never
         // contributes a fabricated link.
-        const items = fleetNeedsYouStatus(projects, opState.keepGoingRuns, opState.researchMissions, opState.plannerMissions)
+        //
+        // Operator Attention V1, Wave 2: swapped from the narrow
+        // fleetNeedsYouStatus to buildFleetAttentionItems filtered to
+        // NEEDS_OWNER -- a strict superset that also surfaces self-
+        // improvement findings the eligibility classifier declined to
+        // autofix (previously invisible outside the self-improvement chat
+        // bridge). resourcePressureState is explicitly null: NEEDS_OWNER
+        // can structurally never include the resource-pressure item (only
+        // WAITING_FOR_RESOURCES does), so there is no real host-memory
+        // evidence to bother collecting for this query.
+        const items = buildFleetAttentionItems({
+          projects,
+          keepGoingRuns: opState.keepGoingRuns,
+          researchMissions: opState.researchMissions,
+          plannerMissionRecords: opState.plannerMissions,
+          selfImprovementFindings: readAllFindings(),
+          resourcePressureState: null
+        }).filter((i) => i.category === 'NEEDS_OWNER')
         const text =
           items.length === 0
             ? 'Nothing needs you right now -- no open decisions across any project or research mission.'
-            : `${items.length} thing(s) need you:\n${items.map((i) => `- **${i.label}** -- ${i.question}`).join('\n')}`
-        const linkedProjectIds = [...new Set(items.map((i) => i.projectId).filter(Boolean))]
+            : `${items.length} thing(s) need you:\n${items.map((i) => `- **${i.label}** -- ${i.reason}`).join('\n')}`
+        const linkedProjectIds = [...new Set(items.map((i) => i.project?.id).filter(Boolean))]
         return {
           intent: 'NEEDS_YOU_QUERY',
           decisionClass,

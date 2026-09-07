@@ -16,7 +16,32 @@ import path from 'node:path'
 const NONEXISTENT = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
 process.env.TSF_PLANNER_CLAUDE_COMMAND = NONEXISTENT
 process.env.TSF_PLANNER_CODEX_COMMAND = NONEXISTENT
-import { respondCommand } from '../server/command-responder.mjs'
+// Operator Attention V1, Wave 2: NEEDS_YOU_QUERY now calls the real
+// readAllFindings() (self-improvement-finding-store.mjs) unconditionally --
+// isolated here the same way every other test file in this suite isolates
+// its durable state, so this file never reads/writes the shared default
+// local-state file on a machine that may have other concurrent sessions.
+// REQUIRED: command-responder.mjs (and its transitive data-store.mjs
+// dependency) must be imported DYNAMICALLY, after TSF_UI_STATE_FILE is set --
+// a STATIC `import` here would be hoisted and evaluated before this file's
+// own env-var assignment ever runs (real ESM footgun, empirically confirmed:
+// data-store.mjs's `STATE_FILE` is a module-top-level const, frozen at
+// data-store.mjs's own evaluation time, which for a static import happens
+// before ANY of this module's own top-level statements -- regardless of
+// their textual order relative to the import line).
+import { rmSync } from 'node:fs'
+const STATE_FILE = path.join(import.meta.dirname, '..', 'server', '.local-state', `operator-state.test-command-responder-${process.pid}.json`)
+process.env.TSF_UI_STATE_FILE = STATE_FILE
+function cleanupStateFile() {
+  for (const suffix of ['', '.tmp', '.self-improvement-finding.lock']) {
+    rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  }
+}
+cleanupStateFile()
+test.after(cleanupStateFile)
+const { respondCommand } = await import('../server/command-responder.mjs')
+const { withFinding } = await import('../server/self-improvement-finding-store.mjs')
+const { createFinding, transitionFinding } = await import('../domain/self-improvement-finding.mjs')
 
 const clock = () => new Date('2026-08-25T00:00:00.000Z')
 
@@ -388,7 +413,12 @@ test('NEEDS_YOU_QUERY: "what needs me?" surfaces real outstanding Needs You acro
   assert.equal(empty.scope, 'FLEET')
 
   const withOpenItem = {
-    keepGoingRuns: { 'alpha-widgets': { needsYou: [{ id: 'q1', question: 'A real decision is pending', resolvedAt: null }] } }
+    // Operator Attention V1, Wave 2: NEEDS_YOU_QUERY now goes through
+    // buildFleetAttentionItems, whose real contract (via summarizeWorkFromRuns
+    // -> fleetWorkStatus) reads run.checkpoints unconditionally (for
+    // lastCheckpointAt) -- a bare literal missing it (fine for the old,
+    // narrower fleetNeedsYouStatus) now needs this one extra real-shaped field.
+    keepGoingRuns: { 'alpha-widgets': { needsYou: [{ id: 'q1', question: 'A real decision is pending', resolvedAt: null }], checkpoints: [] } }
   }
   const result = await respondCommand({ message: 'what needs me?', projects: [project('alpha-widgets', 'Alpha Widgets')], opState: withOpenItem, clock })
   assert.match(result.text, /Alpha Widgets/)
@@ -444,6 +474,39 @@ test('NEEDS_YOU_QUERY: a real Planner Context Lifecycle needsYou item is now dis
   assert.match(result.text, /planner-mission-1/)
   // No reliable project association on a planner checkpoint -- honestly no
   // deep link fabricated for this item.
+  assert.deepEqual(result.resolvedProjectIds, [])
+})
+
+// Operator Attention V1, Wave 2: real gap this closes -- a self-improvement
+// finding the eligibility classifier declined to autofix was previously
+// invisible outside command-self-improvement-bridge.mjs's own narrow "what
+// did TSF find?" question. NEEDS_YOU_QUERY now goes through
+// buildFleetAttentionItems (a strict superset of the old fleetNeedsYouStatus
+// alone), so the SAME real finding is now also discoverable via "what needs
+// me?" -- proven here against the real, durable finding store (writing
+// through the real domain constructors), not a fabricated fixture shape.
+test('NEEDS_YOU_QUERY: a real self-improvement NEEDS_OWNER finding is now discoverable via the same "what needs me?" query', async () => {
+  let finding = createFinding(
+    {
+      sourceDetector: 'GOLDEN_PATH_EVAL',
+      severity: 'P2',
+      evidence: { caseId: 'case-1' },
+      reproduction: { command: 'node --test' },
+      affectedSurface: 'command-responder-needs-owner-surface',
+      confidence: 0.8,
+      verificationMethod: 'EVAL_PACK_RERUN'
+    },
+    clock
+  )
+  finding = transitionFinding(finding, 'VERIFIED', { reason: 'x' }, clock)
+  finding = transitionFinding(finding, 'NEEDS_OWNER', { reason: 'AUTOFIX_ELIGIBILITY_CLASSIFIED' }, clock)
+  await withFinding(finding.findingId, () => finding)
+
+  const result = await respondCommand({ message: 'what needs me?', projects: [], opState, clock })
+  assert.match(result.text, /command-responder-needs-owner-surface/)
+  assert.match(result.text, /needs your call/)
+  // No project is associated with this finding (projectId null) -- honestly
+  // no deep link fabricated, same convention as the PLANNER case above.
   assert.deepEqual(result.resolvedProjectIds, [])
 })
 
