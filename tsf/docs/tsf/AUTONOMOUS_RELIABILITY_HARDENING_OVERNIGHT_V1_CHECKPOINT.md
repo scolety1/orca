@@ -56,7 +56,7 @@ disposable TSF pilot projects/fixtures wherever possible.
 | 3. Resource-Aware Execution Hardening | DONE | 6-area investigation; 3 real gaps found and fixed (F30 UI Dogfood's real Electron launch never consulted the governor at all, F31 a real Electron-instance leak on an attachCapture exception before any try/finally existed, F32 PRESSURED tier's own documented "serialize" language was never actually enforced for concurrent heavyweight LLM-CLI dispatch); 3 areas confirmed sound by design with cited evidence (worker residency, planner rollover residency via an existing Phase 8 test, starvation-by-construction); see dedicated section below |
 | 5. Browser/Screenshot Reliability | DONE | Scoping finding: TSF's own UI Dogfood has ZERO dependency on Claude-in-Chrome or any ChatGPT/Codex Chrome native-host bridge (confirmed by reading the code) -- the mission's "third-party infrastructure" framing does not apply here. CDP timing, stale-page/context, and resource-pressure gating all confirmed already sound (with real-Electron evidence). 1 real gap found and fixed: `deps.captureScreenshot` had zero try/catch, so one transient CDP hiccup aborted the WHOLE multi-surface pass; see dedicated section below |
 | 15. Performance / Responsiveness Pass | DONE | 6-area measured investigation; 1 real high-impact fix (CommandPanel.tsx's transcript re-rendered/re-parsed markdown for every past message on every composer keystroke -- memoized, proven with a real render-count test); 5 areas confirmed already fine with real measurements (fleet driver idle ticks ~1.3ms/~0.015ms on a 30s interval, data-store.mjs round trip <3ms at its real 652KB production size, git/FS scans all bounded/on-demand/non-redundant, no `*Sync` call reachable from a live HTTP handler); see dedicated section below |
-| 17 | NOT_STARTED | Final Platform Dogfood -- the closing phase, run after all other adopted fixes |
+| 17. Final Platform Dogfood | DONE | Real re-build + real re-dogfood (bounded + full sweep) + full regression sweep, compared against this program's own documented baselines; EVERY metric UNCHANGED-STILL-GOOD, nothing regressed; see dedicated section below |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -4586,3 +4586,256 @@ touch the existing `node --test` `.test.ts` sweep).
 Adopted SHA: see the commit on
 `tsf/feature/phase15-performance-responsiveness` that carries this
 section.
+
+## Phase 17: Final Platform Dogfood -- CLOSING phase; every metric re-measured against this program's own documented baselines; nothing regressed
+
+Worktree: `phase17-final-platform-dogfood`, branch
+`tsf/feature/phase17-final-platform-dogfood` (forked from `tsf/main` @
+`1258504e7b6c5a766bcd200b3215daf047e30b35`, the final adopted commit of
+this entire program -- i.e. every finding F1-F32 and every phase above
+already landed). This phase makes no new finding and fixes nothing new
+(none was needed) -- it is a real re-build, real re-dogfood, and real
+full-suite re-run, each compared against this program's own actual
+documented numbers, not re-derived from memory or the commit log alone.
+
+### Method
+
+1. Built the real app in this worktree: `pnpm run build:electron-vite
+   --mode e2e` (no pre-existing `out/` in this worktree -- a real, from-
+   scratch build, `3.95s`, exit 0).
+2. Ran BOTH real dogfood specs against the real built Electron app:
+   `SKIP_BUILD=1 npx playwright test -c tests/playwright.config.ts
+   ui-dogfood-orca-self.spec.ts --project=electron-headless` (bounded
+   golden spec) and the same command against
+   `ui-dogfood-orca-self-full-sweep.spec.ts` with
+   `ORCA_E2E_RUN_UI_DOGFOOD_FULL_SWEEP=1` (opt-in full sweep, all 33
+   settings panes). Both real `_electron.launch()` runs, both passed.
+3. Re-ran a sample of the real Phase 7 dogfood driver pattern -- a
+   throwaway script (not committed) reusing `command-dogfood-sequences
+   .test.mjs`'s own isolated-state-file + `turn()` convention, driving
+   `respondCommand` against 3 disposable `FIXTURE` projects with real
+   durable state (an `ACTIVE` run, a `NEEDS_YOU` run, an idle project) --
+   `"what needs me?"`, `"what is running?"`, `"pause
+   phase17-active."`/`"continue phase17-active."`, and the F21 regression
+   shape (`"pause everything except phase17-idle."` with a stale prior-
+   turn back-reference on record) -- checking real durable state after
+   each turn, not just response text.
+4. Re-read `tsf/server/health-repair.mjs`'s `runCommand` exit-code gate
+   (`status: code === 0 ? 'PASS' : 'FAIL'`) to re-confirm Phase 2's own
+   "no gap in TSF's own code" finding is still accurate -- the line is
+   unchanged since Phase 2 read it.
+5. Re-ran the real Resource Pressure Governor test files (F1/F30/F32):
+   `resource-pressure-governor.test.mjs`,
+   `live-planner-heavyweight-dispatch-serialization.test.mjs`,
+   `command-dogfood-bridge.test.mjs`.
+6. Re-ran a sample of the real crash-survival tests (F4/F6/F22/F24/F25):
+   `planner-mission-lease-crash-reclaim.test.mjs` (F4, real spawn+SIGKILL),
+   `research-mission-process-crash-survival.test.mjs` (F6, real
+   spawn+SIGKILL), `planner-session-lifecycle-crash-mid-dispatch.test.mjs`
+   (F22), `research-mission-needs-you-crash-survival.test.mjs` +
+   `research-mission-verifier-crash-survival.test.mjs` (Phase 12's F24/F25-
+   adjacent crash-survival closes, real spawn+SIGKILL each),
+   `keep-going-dispatch-loop-concurrency.test.mjs` (F25-adjacent double-
+   spend/lock-loss coverage).
+7. Ran the full regression sweep TWICE: once concurrently with the full-
+   sweep dogfood Electron run (real host contention, deliberately not
+   hidden -- see below), once in isolation for a clean comparison.
+
+### Real-host condition disclosed up front
+
+Free memory at the start of this phase: **~3.16GB / 15.85GB** (`Get-
+CimInstance Win32_OperatingSystem`), which is `PRESSURED` tier under
+`DEFAULT_RESOURCE_PRESSURE_THRESHOLDS_BYTES`
+(`healthyAtLeastBytes: 4GB`, `pressuredAtLeastBytes: 2.5GB`) -- not the
+`CRITICAL` reading several earlier phases hit, but not `HEALTHY` either.
+This is disclosed because it materially explains one of the two full-
+suite runs below (see "Full regression sweep").
+
+### 1-2. Build + re-dogfood -- REAL RUN, RESULT UNCHANGED FROM PHASE 4's FINAL NUMBERS
+
+| Run | P0 | P1 | P2 | P3 | Total |
+|---|---|---|---|---|---|
+| Bounded golden spec (`ui-dogfood-orca-self.spec.ts`), Phase 4 FINAL (documented baseline) | -- | -- | 1 | -- | 1 |
+| Bounded golden spec, Phase 17 re-run (today, real) | 0 | 0 | **1** | 0 | **1** |
+| Full sweep (`ui-dogfood-orca-self-full-sweep.spec.ts`, 33 panes), Phase 4 ORIGINAL baseline (unfixed) | 0 | 0 | 33 | 0 | 33 |
+| Full sweep, Phase 4 FINAL (documented baseline, post-fix) | 0 | 0 | **2** | 0 | **2** |
+| Full sweep, Phase 17 re-run (today, real) | 0 | 0 | **2** | 0 | **2** |
+
+Both real runs reproduced Phase 4's exact FINAL finding set, not just the
+count: the bounded spec's one residual is still `settings-appearance`'s
+documented `<div class="xterm-screen">` overflow (the disclosed,
+deliberate `PREVIEW_COLS`-pinned xterm-preview tradeoff); the full sweep's
+two residuals are still exactly `settings-appearance` (same xterm finding)
+plus `settings-agents` (the documented `dom-overflow-detector.mjs`
+false-positive around a `text-overflow: ellipsis` ancestor). `settings-
+general` and `settings-terminal` -- the two panes Finding F8's fix
+specifically targeted -- still produced **zero** `CLIPPED_CONTENT`
+findings in both runs. **Verdict: UNCHANGED-STILL-GOOD.**
+
+### 3. Console errors / network errors -- REAL RUN, STILL ZERO
+
+`attachConsoleNetworkCapture` (`tsf/adapters/browser-console-network-
+capture.mjs`) feeds `CONSOLE_ERROR`/network-`failedRequest` findings into
+the SAME `run.findings`/`run.bySeverity` structure the table above is
+drawn from (`ui-dogfood-finding.mjs`'s `FINDING_CATEGORIES` includes
+`CONSOLE_ERROR` as a real, checked category). Both real runs today
+produced findings ONLY in the `CLIPPED_CONTENT` category (see table
+above) -- zero `CONSOLE_ERROR` findings, zero failed-request findings, in
+either the bounded or full-sweep run. **Verdict: UNCHANGED-STILL-GOOD
+(0 -> 0).**
+
+### 4. Mobile defects -- REAL RUN, Settings responsive fix (F8) still holding
+
+Confirmed directly in the table above: `settings-general`/`settings-
+terminal` both zero `CLIPPED_CONTENT` findings today, and the full sweep's
+residual 2 findings are the exact same 2 documented, deliberate-not-auto-
+fixed items from Phase 4's own FINAL state (not a new or different pane).
+**Verdict: UNCHANGED-STILL-GOOD.**
+
+### 5. Command failures -- REAL DRIVER RE-RUN, F18/F19/F20/F21 all still hold
+
+Driver output (real `respondCommand` calls, real durable-state
+verification after each turn):
+
+| Command | Result | Verified against |
+|---|---|---|
+| `"what needs me?"` | `intent: NEEDS_YOU_QUERY`, surfaced the real open question verbatim, `resolvedProjectIds: ['phase17-blocked']` | F19 (Phase 6) |
+| `"what is running?"` | `intent: STATUS`, `scope: FLEET` -- did NOT fall into the generic "couldn't tell which project" fallback | F18/F20 |
+| `"pause phase17-active."` | `"Paused **Phase17 Active** (named)."`, and `readKeepGoingRun('phase17-active').state === 'PAUSED'` (real durable check, not just response text) | F18 (routing) + existing pause mechanism |
+| `"continue phase17-active."` | `"Resumed **Phase17 Active** (named)."`, `state === 'ACTIVE'` again | same |
+| `"pause everything except phase17-idle."` (with a genuine prior-turn back-reference to `phase17-active` on record) | Honest `"I couldn't tell which project..."` fallback, `resolvedProjectIds: []`, response text never starts with `"Paused"` -- did NOT silently mis-target the stale back-reference | F21 |
+
+All 5 checks passed. **Verdict: UNCHANGED-STILL-GOOD, no regression on
+F18/F19/F20/F21.**
+
+### 6. Background-job truthfulness -- RE-CONFIRMED, still no gap (Phase 2)
+
+Re-read `tsf/server/health-repair.mjs`'s `runCommand`: `status: code === 0
+? 'PASS' : 'FAIL'` (line 144, unchanged since Phase 2 read the same line).
+The real exit-code-authoritative discipline Phase 2's 16-file audit
+documented is still the mechanism in place -- not re-derived from scratch,
+a targeted re-read of the one line Phase 2's own conclusion rests on
+hardest. **Verdict: UNCHANGED-STILL-GOOD (still no TSF-owned gap; the
+harness-level issue named in Phase 2's own mission background remains out
+of TSF's control, as documented then).**
+
+### 7. Resource behavior -- REAL TEST RE-RUN, F1/F30/F32 still pass
+
+`node --test tsf/test/resource-pressure-governor.test.mjs tsf/test/live-
+planner-heavyweight-dispatch-serialization.test.mjs tsf/test/command-
+dogfood-bridge.test.mjs` -- **43/43 pass**, including the exact F30 tests
+("respondDogfoodCommand refuses a real Electron launch under CRITICAL
+memory pressure" / "...still runs a real dogfood pass under HEALTHY
+memory") and the exact F32 tests ("PRESSURED tier serializes two
+concurrent heavyweight dispatches" / "CRITICAL tier also serializes" /
+"HEALTHY tier keeps normal Fleet concurrency" / "a third dispatch queued
+under PRESSURED runs strictly after the second"). **Verdict:
+UNCHANGED-STILL-GOOD.**
+
+### 8. Mission-recovery -- REAL crash-survival TESTS RE-RUN, F4/F6/F22/(F24/F25-adjacent) still pass
+
+`node --test tsf/test/planner-mission-lease-crash-reclaim.test.mjs` (F4,
+real spawn+SIGKILL): 1/1 pass. `node --test tsf/test/research-mission-
+process-crash-survival.test.mjs tsf/test/planner-session-lifecycle-crash-
+mid-dispatch.test.mjs` (F6 + F22): 6/6 pass. `node --test tsf/test/
+research-mission-needs-you-crash-survival.test.mjs tsf/test/research-
+mission-verifier-crash-survival.test.mjs tsf/test/keep-going-dispatch-
+loop-concurrency.test.mjs` (Phase 12's real cross-process SIGKILL closes +
+F25-adjacent double-spend/lock-loss coverage): 10/10 pass. Every one of
+these is a REAL spawned child process, genuinely `SIGKILL`ed, with a fresh
+process confirming durable-state survival afterward -- real wall-clock
+time, not simulated. **Verdict: UNCHANGED-STILL-GOOD.**
+
+### 9. Full regression sweep -- REAL RE-RUN (twice), UNCHANGED FROM THIS PROGRAM'S OWN MOST RECENT DOCUMENTED BASELINE
+
+This program's own most recent documented full-whole-repo `node --test
+tsf/test/*.test.mjs` baseline is Phase 3 (Resource-Aware Execution
+Hardening)'s own final re-run, taken after patching its 2 newly-host-
+memory-sensitive tests: **2417 tests, 2411 pass, 6 fail**, fail set (all 6
+independently confirmed pre-existing/host-load-sensitive, none touching
+that phase's own changed files): `command-bare-imperative-dispatch
+.test.mjs` ("QUERY/STATUS", "IDIOM: run into"),
+`command-operator-integration-adversarial.test.mjs` ("SCENARIO: Should I
+deploy WorldForge?"), `http-work-summary.test.mjs` (dispatch-tick timing),
+`keep-going-autonomy-proof.test.mjs` (long-running autonomy-proof stall),
+`operator-state-adversarial.test.mjs` ("STALE ACTION RACE"). (Phase 5 and
+Phase 15 -- the only phases between Phase 3 and this one -- did not
+re-run the full whole-repo sweep; each ran a scoped regression sweep only,
+confirmed by re-reading both sections in full.)
+
+**Today's re-runs:**
+
+| Run | Total | Pass | Fail | Fail set |
+|---|---|---|---|---|
+| Phase 3's own documented baseline | 2417 | 2411 | 6 | 6 named above |
+| Phase 17, run 1 (concurrent with the full-sweep Electron dogfood run above -- real host contention, not hidden) | 2418 | 2411 | 7 | The same 6, PLUS `http-chat-project-research.test.mjs` |
+| Phase 17, run 2 (isolated re-run, no concurrent load) | 2420 | 2414 | 6 | The same 6 by name, exact match |
+
+**The 7th failure in run 1 does not reproduce in isolation** --
+`node --test tsf/test/http-chat-project-research.test.mjs` alone: 3/3
+pass, clean. This confirms it was real contention noise from running the
+full-sweep Electron dogfood pass and the full `node --test` sweep at the
+same time on an already-`PRESSURED`-tier host (deliberately run
+concurrently first, per this phase's own instruction to capture real
+before/after evidence quickly; the isolated re-run was then taken
+specifically to separate a genuine regression from contention), not a
+regression -- consistent with this program's own repeatedly-documented
+"real-host-load-sensitive" flake class, now demonstrated to extend to a
+NEW test file under NEW contention (this phase's own two large concurrent
+processes) rather than being a fixed, closed list.
+
+**`http-work-summary.test.mjs`'s own failure, read in full**: `Expected
+'WAVE_DISPATCHED', got 'DISPATCH_WAITING_FOR_RESOURCES'` --
+`DISPATCH_WAITING_FOR_RESOURCES` is the Resource Pressure Governor's own
+real refusal/delay phase (`keep-going-resource-pressure-gate.mjs`,
+`keep-going-dispatch-loop.mjs`), and this test file does not force
+`HEALTHY` via the `TSF_RESOURCE_PRESSURE_TEST_*_BYTES` override other
+files in this suite already use (F1's own established convention). At
+this host's genuine `PRESSURED` reading (disclosed above), the governor
+correctly delayed the dispatch it was asked to check -- the SAME class of
+"the governor doing exactly its job against real evidence, tripping an
+unrelated test that never forced HEALTHY" F1's own checkpoint entry
+already named. Not a new bug; the test's own real host-memory sensitivity
+is the documented, pre-existing gap.
+
+**Test-count wobble (2417 -> 2418 -> 2420) is not itself a regression
+signal.** The SAME commit, run 3 times total across this phase (including
+the 2 runs in this table), produced 3 different total counts while the
+FAIL SET stayed name-identical in the 2 runs that share it. This confirms
+the total count itself has run-to-run variance on this host (unrelated to
+any code change in this phase, which made none) and should not be read as
+a regression indicator on its own -- only the fail SET is.
+
+**Verdict: UNCHANGED-STILL-GOOD.** The isolated run (the fair comparison)
+matches Phase 3's own documented baseline fail set exactly, 6-for-6 by
+name. No new, code-attributable failure exists anywhere in this sweep.
+
+### Final BEFORE/AFTER table
+
+| Metric | Documented baseline (this program's own numbers) | Phase 17 re-measurement (today, real) | Verdict |
+|---|---|---|---|
+| Bounded dogfood spec findings | 1 (Phase 4 FINAL) | 1 | UNCHANGED-STILL-GOOD |
+| Full-sweep dogfood findings | 33 -> 2 (Phase 4 ORIGINAL -> FINAL) | 2 | UNCHANGED-STILL-GOOD |
+| Console/network error findings | 0 (implicit in Phase 4's all-CLIPPED_CONTENT finding sets) | 0 | UNCHANGED-STILL-GOOD |
+| Mobile Settings responsive fix (F8) | general/terminal panes clean, 2 documented residuals only | Same | UNCHANGED-STILL-GOOD |
+| Command control-surface (F18/F19/F20/F21) | All fixed, Phase 7's own dogfood driver confirmed | Re-driven today, all 5 checks pass | UNCHANGED-STILL-GOOD |
+| Background-job truthfulness | No TSF-owned gap (Phase 2, 16-file audit) | Re-read hardest-resting line, unchanged | UNCHANGED-STILL-GOOD |
+| Resource Pressure Governor (F1/F30/F32) | All fixed and tested | 43/43 pass on re-run | UNCHANGED-STILL-GOOD |
+| Mission-recovery crash-survival (F4/F6/F22/F24/F25) | All fixed and tested, real SIGKILL | 17/17 pass across 6 files on re-run, real SIGKILL | UNCHANGED-STILL-GOOD |
+| Full-suite regression (`node --test tsf/test/*.test.mjs`) | 2417 tests / 2411 pass / 6 fail (Phase 3, most recent documented) | 2420 tests / 2414 pass / 6 fail, identical fail set (isolated run) | UNCHANGED-STILL-GOOD |
+
+**Nothing regressed.** No fix was made this phase -- none was needed. This
+program's 30 real findings (F18-F32 plus the named investigations) hold
+up under a genuine, independent re-measurement against a real rebuilt app
+and a real full test sweep, not a re-read of prior checkpoint text.
+
+### Lint / scope
+
+No production code was changed this phase (verification-only, per this
+phase's own instruction: fix nothing new unless a genuine regression is
+found -- none was). `npx oxlint` was not run against anything, as nothing
+was touched. Astra: not touched, not referenced. NWR data: not touched.
+No push, no merge to `main`, no other worktree touched.
+
+Adopted SHA: see the commit on
+`tsf/feature/phase17-final-platform-dogfood` that carries this section.
