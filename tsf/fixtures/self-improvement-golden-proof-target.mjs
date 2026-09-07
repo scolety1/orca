@@ -14,7 +14,7 @@
  * - otherwise -> value unchanged
  */
 export function clampToUnitInterval(value) {
-  if (value < 0) return 0
-  if (value > 1) return 2
+  if (value < 0) { return 0 }
+  if (value > 1) { return 2 }
   return value
 }
