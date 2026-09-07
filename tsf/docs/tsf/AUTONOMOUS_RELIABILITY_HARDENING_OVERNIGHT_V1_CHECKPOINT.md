@@ -40,7 +40,7 @@ disposable TSF pilot projects/fixtures wherever possible.
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1. Post-Upgrade Gap Reconciliation | IN_PROGRESS | Findings F18, F1, F3, F4, F5, F7 fixed so far |
+| 1. Post-Upgrade Gap Reconciliation | IN_PROGRESS | Findings F18, F1, F3, F4, F5, F6, F7 fixed so far |
 | 2. Background Task Truthfulness | INVESTIGATED, NO GAP | See dedicated section below -- no fix warranted |
 | 4. UI Self-Dogfood (UI_DOGFOOD_AGENT_V0) | DONE | Finding F8 reconciled and fixed; see dedicated section below |
 | 3, 5-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
@@ -1003,3 +1003,138 @@ sweep.spec.ts` both real-run and passing (evidence above).
 
 Adopted SHA: see the commit on `tsf/feature/phase4-ui-self-dogfood` that
 carries this section.
+
+## Finding F6: ResearchMission had zero real multi-process crash/restart tests -- FIXED
+
+Worktree: `f6-research-mission-crash-test`, branch
+`tsf/feature/f6-research-mission-crash-test` (forked from `tsf/main` @
+`4be97520cf8a36edcba6ea982580fd782b3a59c4`).
+
+**Gap.** Every existing "restart"/"crash-resume" test for ResearchMission
+(`research-crash-resume.test.mjs`, `research-mission-driver.test.mjs`'s own
+"CRASH SIMULATION" sub-test, `research-node-redispatch.test.mjs`) proves
+durability by simply NOT calling the next driver step in the SAME process
+and then calling it again -- a real, valuable proof of the durable-write
+sequencing, but never a real killed OS process. Given real ResearchMission
+work can involve real paid dispatch/external data, this finding asked for
+the SAME real spawn-and-SIGKILL-and-reclaim mechanics Finding F4 just built
+for Planner Context Lifecycle (`planner-mission-lease-crash-reclaim.test.mjs`
++ its fixture worker), reused for ResearchMission.
+
+**Reconciliation before writing anything (Step 1, per this finding's own
+instruction): read `research-mission-store.mjs` and `research-mission.mjs`
+in full first.** `research-mission-store.mjs`'s `withResearchMission` is a
+bare compare-and-swap over `cross-process-file-lock.mjs`, keyed only by
+`missionId` -- no holder identity, no acquire/refuse step, no TTL, nothing
+for a successor to be denied by (contrast `planner-mission-lease.mjs`'s real
+`holderPlannerSessionId`/`leaseExpiresAt`/`TSF_PLANNER_LEASE_DENIED`).
+`research-mission.mjs`'s only concurrency primitive is optimistic
+`revision`/`expectedRevision` -- same family as `keep-going.mjs`, not a
+lease. **Confirmed: ResearchMission's durability model is meaningfully
+different from Planner Context Lifecycle's, exactly as this finding's own
+brief anticipated as a valid possible outcome** -- "crash recovery" for a
+ResearchMission really is "state was durably written before the crash, so a
+fresh reader picks up cleanly," not a lease-reclaim story. The test below
+proves THAT real model rather than forcing an artificial lease-style test
+onto a system that doesn't have one -- and proves it, not just asserts it
+from reading the source (see the "WHILE THE CHILD IS STILL ALIVE" assertion
+below).
+
+**Test (Step 2).** New `tsf/test/fixtures/generic-research-crash-fixture.mjs`
+(a small, disposable, non-NFL/non-NWR ResearchSpecification/node fixture --
+`entityType: 'FIXTURE_ENTITY'`, one required field `value`, shared by both
+the child and parent processes so they agree on exactly one node/field
+shape without duplicating it), `tsf/test/fixtures/research-mission-crash-
+dispatch-worker.mjs` (spawned child), and
+`tsf/test/research-mission-process-crash-survival.test.mjs`.
+
+Real narrative: the child process creates a real, disposable ResearchMission
+via `createResearchMissionDurable`, dispatches its one node through the
+REAL durable dispatch path (`dispatchResearchNodeDurable`) using
+`createDeterministicFakeResearchWorker` (this repo's own existing fake
+worker, reused unmodified for the dispatch call -- not a new fake-worker
+shape), writes a marker file the instant the dispatch is confirmed durable
+on disk, then is kept alive by a real, live `setInterval` handle (see
+"honest correction" below) until the parent SIGKILLs it -- no poll, no
+admission, no relinquish, no graceful shutdown. The parent test process
+(1) waits for the marker, (2) **while the child is still alive**, reads the
+mission fresh from disk in its own process and confirms the DISPATCHED
+state is already visible with zero denial/ceremony -- the real, positive
+proof that no lease gate exists here at all, unlike F4's `tooEarly`
+assertion which proves the opposite (a real refusal) for the planner; (3)
+`SIGKILL`s the child and awaits its real `'exit'` event; (4) reads the
+mission again from a genuinely separate process object and confirms the
+dispatched node's state survived intact -- same `dispatchRecords.length`
+(1, not lost, not duplicated), same `workerRunRef`, same mission `revision`
+(no phantom mutation); (5) continues the mission with the REAL production
+autonomy driver (`research-mission-fleet-driver.mjs`'s `advanceOneMission`,
+never hand-inlined domain calls) fed a fresh resume-side fixture worker
+whose `fetchResult` is scripted purely from the durably-known
+`workerRunRef`/`taskFingerprint` (not from any in-process run-tracking,
+which died with the child -- this is the honest, correct way to stand in
+for a real remote provider, whose run state genuinely lives outside any one
+process) and whose `dispatch` throws if ever called (proving the crash
+never causes a redundant redispatch); (6) drives exactly
+POLL -> VERIFY_AND_RECONCILE_FIELD -> CHECK_COMPLETE to a real terminal
+state, `mission.state === 'COMPLETE'`, with `dispatchRecords.length === 1`
+and `rawResults.length === 1` still true (no duplication anywhere in the
+resume path) and one real canonicalized fact.
+
+**Honest correction found while writing this test.** The first draft
+mirrored `planner-crash-reclaim-worker.mjs`'s own `await new Promise(() =>
+{})` literally as the child's "never exits" tail. On this host's Node
+version (v24), that immediately triggered Node's own "unsettled top-level
+await" idle-detector, which force-exits a process with nothing else
+scheduled almost instantly (measured: 0ms in isolation) -- the child was
+already dead, on its own, before the parent's `SIGKILL` call, which would
+have silently made the "real SIGKILL of a still-running process" claim
+false (a no-op kill against an already-exited process). Root-caused via a
+standalone timing probe, not assumed. Fixed by keeping the child alive with
+a real, live `setInterval` handle instead -- this does NOT affect F4's own
+test (its assertions are TTL/expiry-timestamp-based, not liveness-based, so
+they hold regardless of whether the child process is still literally
+running at assertion time), but was a real, necessary fix here since this
+finding's proof specifically depends on killing a process that is still
+genuinely alive. Also fixed: the parent's `child.once('exit', ...)`
+listener is now registered immediately after `spawn()`, not after the later
+`waitFor`/kill sequence -- registering it late risked missing an `'exit'`
+event that had already fired once (ChildProcess emits `'exit'` exactly
+once), which produced the exact hang this correction found and fixed.
+
+**No resource-pressure override needed.** Unlike several other research-
+mission tests, this one needs no `TSF_RESOURCE_PRESSURE_TEST_*_BYTES`
+override: `research-mission-fleet-driver.mjs`'s own comment confirms the
+Resource Pressure Governor only gates `DISPATCH`/`RETRY_DISPATCH`, never
+`POLL`/`VERIFY_AND_RECONCILE_FIELD`/`CHECK_COMPLETE` -- and this test's
+only real dispatch happens once, in the child, directly through
+`dispatchResearchNodeDurable` (which the governor never gates at all; only
+the fleet driver's own `executeDispatchAction` wrapper does). Confirmed by
+reading the driver before relying on it, not assumed.
+
+Run 8 times standalone (matching F4's own diligence): 8/8 pass, ~95-108ms
+each on this host (no TTL wait is needed here, unlike F4, since there is no
+lease to wait out -- the whole test is bounded by real process spawn/kill
+plus three fast driver ticks).
+
+**Tests.** New: `research-mission-process-crash-survival.test.mjs` (1
+test). Targeted regression across every research-mission-driver/research-
+mission-store-adjacent file plus every fleet-driver companion:
+`research-mission.test.mjs`, `research-mission-driver.test.mjs`,
+`research-mission-store-schema-version.test.mjs`, `research-mission-
+autonomy-driver-zero-relay.test.mjs`, `research-mission-clean-dispatch-
+failure.test.mjs`, `research-crash-resume.test.mjs`, `research-node-
+redispatch.test.mjs`, `research-mission-fleet-driver.test.mjs`,
+`research-mission-fleet-driver-bootstrap.test.mjs`, `research-mission-
+fleet-driver-dispatch-advisories.test.mjs`, `research-mission-fleet-driver-
+learning-ledger.test.mjs` -- `node --test` -- 68/68 pass. Broader sweep of
+every `research-*.test.mjs` file in the suite (37 files, including the new
+one): 316/316 pass, 0 fail.
+
+**Lint.** `npx oxlint` on every new file (`generic-research-crash-
+fixture.mjs`, `research-mission-crash-dispatch-worker.mjs`, `research-
+mission-process-crash-survival.test.mjs`) -- fixed 2 `curly` findings on
+newly-added lines (the fixture worker's dispatch-failure guard, the test's
+own `waitFor` helper) rather than leaving them; clean, exit 0 after.
+
+Adopted SHA: see the commit on `tsf/feature/f6-research-mission-crash-test`
+that carries this section.
