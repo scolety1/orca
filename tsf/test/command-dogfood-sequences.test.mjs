@@ -17,6 +17,12 @@ const NONEXISTENT = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 const PLANNER_STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
 process.env.TSF_PLANNER_CLAUDE_COMMAND = NONEXISTENT
 process.env.TSF_PLANNER_CODEX_COMMAND = NONEXISTENT
+// Finding F1: synthesizeResearchSpecification/classifyGlobalScope now
+// consult the Resource Pressure Governor -- forces HEALTHY so this file's
+// own assertions never flake on a genuinely shared, loaded host, mirroring
+// chat-dispatch-bridge.test.mjs's own convention.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const { respondCommand } = await import('../server/command-responder.mjs')
 const { readResearchMissionStatus, readActiveResearchPaidApproval } = await import('../server/research-mission-driver.mjs')

@@ -17,6 +17,11 @@ process.env.TSF_UI_STATE_FILE = STATE_FILE
 process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
 process.env.TSF_PLANNER_CODEX_COMMAND = NONEXISTENT
 process.env.STUB_MODE = 'success'
+// Finding F1: classifyGlobalScope now consults the Resource Pressure
+// Governor -- forces HEALTHY so this file's own assertions never flake on a
+// genuinely shared, loaded host, mirroring chat-dispatch-bridge.test.mjs.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 

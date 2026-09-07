@@ -7,6 +7,11 @@ process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(HERE, 'fixtures', 'stub-plann
 process.env.TSF_PLANNER_CODEX_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 process.env.STUB_MODE = 'success'
 process.env.STUB_WBS_MULTI = '1'
+// Finding F1: generateWbs now consults the Resource Pressure Governor --
+// forces HEALTHY so this file's own assertions never flake on a genuinely
+// shared, loaded host, mirroring chat-dispatch-bridge.test.mjs's convention.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const { PLANNER_BASICS_PACK } = await import('../server/planner-eval-cases.mjs')
 const { runPlannerEvalPack } = await import('../server/planner-eval-runner.mjs')

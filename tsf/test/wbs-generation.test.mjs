@@ -8,6 +8,14 @@ const HERE = import.meta.dirname
 const STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
 const NONEXISTENT = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 
+// Finding F1: forces HEALTHY host memory for every test in this file except
+// the ones below that deliberately override deps.collectHostMemoryEvidence
+// (which takes precedence) -- mirrors chat-dispatch-bridge.test.mjs's own
+// convention, keeping this file's other assertions immune to a genuinely
+// shared, loaded host.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
+
 async function withStubEnv(vars, fn) {
   const prior = {}
   for (const key of Object.keys(vars)) {
@@ -78,6 +86,38 @@ test('an idea/client-brief input (no repo) is labeled preliminary', async () => 
       })
       assert.equal(result.ok, true)
       assert.equal(result.preliminary, true)
+    }
+  )
+})
+
+// Finding F1: generateWbs was one of 5 real invokeLiveStructuredAnalysis
+// call sites never consulting the Resource Pressure Governor before
+// spawning a heavyweight LLM-CLI child process.
+test('CRITICAL host memory refuses dispatch before the planner is ever called', async () => {
+  await withStubEnv(
+    { TSF_PLANNER_CLAUDE_COMMAND: STUB, TSF_PLANNER_CODEX_COMMAND: NONEXISTENT, STUB_MODE: 'success' },
+    async () => {
+      const result = await generateWbs({
+        projectId: 'p',
+        ideaBrief: 'x',
+        deps: { collectHostMemoryEvidence: () => ({ availableBytes: 1.6 * 1024 ** 3 }) } // 1.6 GB free -> CRITICAL
+      })
+      assert.equal(result.ok, false)
+      assert.equal(result.reason, 'RESOURCE_PRESSURE_REFUSED')
+    }
+  )
+})
+
+test('HEALTHY host memory still dispatches the real planner call normally', async () => {
+  await withStubEnv(
+    { TSF_PLANNER_CLAUDE_COMMAND: STUB, TSF_PLANNER_CODEX_COMMAND: NONEXISTENT, STUB_MODE: 'success' },
+    async () => {
+      const result = await generateWbs({
+        projectId: 'p',
+        ideaBrief: 'x',
+        deps: { collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }) } // 8 GB free -> HEALTHY
+      })
+      assert.equal(result.ok, true)
     }
   )
 })

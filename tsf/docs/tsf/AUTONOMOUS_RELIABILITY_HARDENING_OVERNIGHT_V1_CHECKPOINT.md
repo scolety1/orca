@@ -135,3 +135,95 @@ of tests assert `classifyIntent(...) === 'GENERAL'` for phrasings that
 `chat-responder.mjs` itself already classifies as `QUESTION`/
 `FEEDBACK_BUG`; out of scope for this fix (not touched).
 `npx oxlint tsf/server/command-responder.mjs` — clean, exit 0.
+
+## Finding F1: Resource Pressure Governor gating gap -- FIXED
+
+Worktree: `f1-resource-governor-gating`, branch
+`tsf/feature/f1-resource-governor-gating` (forked from `tsf/main` @
+`511582f9e3ce40b17bdb18537ef217d5514e2ded`).
+
+**Gap.** `classifyDispatchAdmission` (`tsf/domain/resource-pressure-governor.mjs`)
+was not consulted before 5 real production call sites spawned a heavyweight
+LLM-CLI child process via `invokeLiveStructuredAnalysis`
+(`tsf/server/live-planner.mjs`, a real `child_process.spawn`), unlike the 4
+already-gated sites (`chat-dispatch-bridge.mjs`, `keep-going-dispatch-loop.mjs`
+via `keep-going-resource-pressure-gate.mjs`, `planner-session-lifecycle.mjs`,
+`research-mission-fleet-driver.mjs`).
+
+**Admission-field decision.** All 5 sites reuse the existing
+`'newHeavyweightWorkerDispatch'` admission category -- no new field was
+warranted. Each site is a single, one-shot PLANNER_DEEP
+`invokeLiveStructuredAnalysis` call, the same shape `chat-dispatch-bridge.mjs`
+(work-plan synthesis) and `planner-session-lifecycle.mjs` (planner session
+creation) already gate on that field; none of them dispatch a real paid
+research worker (the `'newResearchWorkers'` category's actual referent), so
+that field was never a fit.
+
+**Fix, per site (fail-honest pattern matched per site's own existing
+convention, not a single copy-pasted shape):**
+- `tsf/server/command-research-spec-synthesis.mjs`
+  (`synthesizeResearchSpecification`, was line 107): refuses with
+  `{ ok:false, reason:'RESOURCE_PRESSURE_REFUSED', detail, tier }`, matching
+  its existing `PLANNER_UNAVAILABLE`/`NEEDS_INPUT` shape family.
+- `tsf/server/command-scope-classifier.mjs` (`classifyGlobalScope`, was line
+  166): skips the live spawn entirely and returns the same
+  `DETERMINISTIC_FALLBACK` shape a live-planner failure already produces,
+  with `plannerFailure: 'RESOURCE_PRESSURE_REFUSED'`.
+- `tsf/server/field-source-reconciliation.mjs` (`reconcileFieldsToHeaders`,
+  was line 47): fails closed to `[]` (no bindings), identical to its
+  existing "planner unavailable" behavior -- an unresolved field stays
+  unresolved, never guessed.
+- `tsf/server/onboarding.mjs` (`analyzeRepository` was line 331,
+  `retryDirectionAnalysis` was line 516): the read-only analysis itself
+  never fails -- `direction` degrades through the existing `shapeDirection`
+  "unavailable" shape (`live:false`, `unavailableReason:
+  'RESOURCE_PRESSURE_REFUSED'`), so repo/health/migration facts still
+  return. `live-planner.mjs`'s `fallbackLabel` gained a friendly label for
+  this reason.
+- `tsf/server/wbs-generation.mjs` (`generateWbs`, was line 113): refuses
+  with `{ ok:false, reason:'RESOURCE_PRESSURE_REFUSED', detail }`, matching
+  its existing failure shape.
+
+Each function gained an optional `deps.collectHostMemoryEvidence` override
+(default: the real `resource-pressure-collector.mjs` collector), mirroring
+`chat-dispatch-bridge.mjs`'s own injection convention, so tests can force a
+tier deterministically instead of depending on real host memory.
+
+**Tests.** 12 new tests (CRITICAL-refuses / HEALTHY-still-dispatches pairs
+per site, `onboarding.mjs` covered twice for its 2 call sites) across
+`command-research-spec-synthesis.test.mjs`, `command-scope-classifier.test.mjs`,
+`field-source-reconciliation.test.mjs`, `wbs-generation.test.mjs`,
+`onboarding.test.mjs`, `onboarding-orca-resilience.test.mjs`. All 88 tests
+across these 6 files pass.
+
+**Real-host side effect discovered while proving this fix.** This host was
+genuinely at ~2.4GB free (CRITICAL tier) while fixing F1 -- once these 5
+sites started honoring the governor for real, every other test file that
+exercises one of them without stubbing host memory started failing against
+the *real* CRITICAL reading (not a bug in the fix -- the governor doing
+exactly its job against real evidence). Diffed a full-suite run against a
+`tsf/main`-baseline full-suite run on the same host to separate genuine
+regressions from this from 12 pre-existing, unrelated flaky/slow-under-load
+failures already present on baseline (confirmed via isolated re-runs).
+Added the same `TSF_RESOURCE_PRESSURE_TEST_TOTAL/FREE_BYTES`-forced-HEALTHY
+header (`chat-dispatch-bridge.test.mjs`'s own established convention) to 14
+downstream test files whose own assertions transitively call one of the 5
+newly-gated functions: `chat-route-context-fallback.test.mjs`,
+`command-dogfood-sequences.test.mjs`, `command-research-bridge.test.mjs`,
+`estimate-adversarial.test.mjs`, `eval-pack-registry.test.mjs`,
+`http-chat-route-context.test.mjs`, `http-estimate-calibration.test.mjs`,
+`http-estimate-client-and-commitments.test.mjs`, `http-estimate.test.mjs`,
+`http-eval.test.mjs`, `http-onboarding.test.mjs`,
+`http-prepare-for-work.test.mjs`, `planner-eval-runner.test.mjs`,
+`web-table-research-worker.test.mjs`. Full-suite result after the fix:
+2332 tests, 2320 pass, 12 fail -- fail set and count now match the
+`tsf/main`-baseline fail set exactly (the 2 residual differences between
+runs are confirmed real-host-load flakes reproduced identically with and
+without this change, not caused by it).
+
+**Lint.** `npx oxlint` clean on every changed file (pre-existing, unrelated
+`curly`/`no-unused-vars` findings on lines this change did not touch are
+untouched, confirmed via before/after diff against the unmodified files).
+
+Adopted SHA: see the commit on `tsf/feature/f1-resource-governor-gating`
+that carries this section.

@@ -21,6 +21,8 @@ import {
 } from '../domain/onboarding.mjs'
 import { assessRepositoryOnboardingHealth } from '../domain/health.mjs'
 import { invokeLiveStructuredAnalysis, providerLabel, fallbackLabel } from './live-planner.mjs'
+import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
+import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 import { findRegisteredOrcaRepo, registerOrcaRepo } from '../adapters/orca-cli-bridge.mjs'
 import { registerProject, setActiveFleet, setWorkSet } from '../domain/portfolio.mjs'
 
@@ -297,12 +299,25 @@ async function gatherRepositoryFacts({ repoPath, handoffText, resolution }) {
   }
 }
 
+// Resource Pressure Governor gate for the one heavyweight LLM-CLI spawn
+// analyzeRepository/retryDirectionAnalysis each make -- reuses the same
+// 'newHeavyweightWorkerDispatch' category chat-dispatch-bridge.mjs/
+// planner-session-lifecycle.mjs already gate real PLANNER_DEEP dispatch on
+// (REUSE_DIRECTLY, not a new category). Never fails the whole read-only
+// analysis under pressure -- degrades `direction` to the same honest
+// unavailable shape a real PROVIDER_ERROR already produces (shapeDirection
+// below), so repo/health/migration facts are still returned.
+function checkDirectionDispatchAdmission(deps) {
+  const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
+  return classifyDispatchAdmission(readHostMemory(), 'newHeavyweightWorkerDispatch')
+}
+
 // Read-only. Never writes to the target repository, TSF state, or Orca.
 // `resolution` (optional): an explicit operator choice among
 // RECONCILIATION_RESOLUTION_MODES, re-applied to a fresh reconciliation —
 // see reconcileHandoff/classifyMigration in domain/onboarding.mjs for what
 // this actually changes (never what `snapshot` itself reports).
-export async function analyzeRepository({ repoPath, handoffText = '', resolution = null }) {
+export async function analyzeRepository({ repoPath, handoffText = '', resolution = null, deps = {} }) {
   const facts = await gatherRepositoryFacts({ repoPath, handoffText, resolution })
   if (!facts.ok) {
     return { ok: false, reason: facts.reason, detail: facts.detail }
@@ -328,23 +343,26 @@ export async function analyzeRepository({ repoPath, handoffText = '', resolution
 
   const orcaCheck = await findRegisteredOrcaRepo(snapshot.root)
 
-  const direction = await invokeLiveStructuredAnalysis({
-    systemPrompt: DIRECTION_SYSTEM_PROMPT,
-    prompt: buildDirectionPrompt({
-      snapshot,
-      discovery,
-      commandGuidance,
-      reconciliation,
-      health,
-      migration
-    }),
-    jsonSchema: DIRECTION_SCHEMA,
-    // Schema-constrained multi-part reasoning genuinely takes longer than a
-    // conversational chat turn (observed ~35s for a small repo, sometimes
-    // 2min+ for a larger real repo with more discovered facts) — this is a
-    // one-shot analysis call, not a responsiveness-sensitive chat reply.
-    timeoutOverrideMs: 180000
-  })
+  const admission = checkDirectionDispatchAdmission(deps)
+  const direction = admission.admitted
+    ? await invokeLiveStructuredAnalysis({
+        systemPrompt: DIRECTION_SYSTEM_PROMPT,
+        prompt: buildDirectionPrompt({
+          snapshot,
+          discovery,
+          commandGuidance,
+          reconciliation,
+          health,
+          migration
+        }),
+        jsonSchema: DIRECTION_SCHEMA,
+        // Schema-constrained multi-part reasoning genuinely takes longer than a
+        // conversational chat turn (observed ~35s for a small repo, sometimes
+        // 2min+ for a larger real repo with more discovered facts) — this is a
+        // one-shot analysis call, not a responsiveness-sensitive chat reply.
+        timeoutOverrideMs: 180000
+      })
+    : { ok: false, reason: 'RESOURCE_PRESSURE_REFUSED', detail: admission.reason }
 
   const projectId = slugify(path.basename(snapshot.root))
 
@@ -506,26 +524,29 @@ export async function resolveReconciliation({ repoPath, handoffText = '', resolu
 // Tim retry a PROVIDER_ERROR/timeout without waiting through the entire
 // analysis again, and without ever fabricating a next mission if the
 // planner is still down.
-export async function retryDirectionAnalysis({ repoPath, handoffText = '', resolution = null }) {
+export async function retryDirectionAnalysis({ repoPath, handoffText = '', resolution = null, deps = {} }) {
   const facts = await gatherRepositoryFacts({ repoPath, handoffText, resolution })
   if (!facts.ok) {
     return { ok: false, reason: facts.reason, detail: facts.detail }
   }
   const { snapshot, discovery, commandGuidance, reconciliation, migration, health } = facts
 
-  const direction = await invokeLiveStructuredAnalysis({
-    systemPrompt: DIRECTION_SYSTEM_PROMPT,
-    prompt: buildDirectionPrompt({
-      snapshot,
-      discovery,
-      commandGuidance,
-      reconciliation,
-      health,
-      migration
-    }),
-    jsonSchema: DIRECTION_SCHEMA,
-    timeoutOverrideMs: 180000
-  })
+  const admission = checkDirectionDispatchAdmission(deps)
+  const direction = admission.admitted
+    ? await invokeLiveStructuredAnalysis({
+        systemPrompt: DIRECTION_SYSTEM_PROMPT,
+        prompt: buildDirectionPrompt({
+          snapshot,
+          discovery,
+          commandGuidance,
+          reconciliation,
+          health,
+          migration
+        }),
+        jsonSchema: DIRECTION_SCHEMA,
+        timeoutOverrideMs: 180000
+      })
+    : { ok: false, reason: 'RESOURCE_PRESSURE_REFUSED', detail: admission.reason }
 
   return { ok: true, direction: shapeDirection(direction) }
 }

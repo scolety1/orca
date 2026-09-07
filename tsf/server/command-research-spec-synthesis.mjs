@@ -18,6 +18,8 @@
 // but structurally-invalid synthesis (e.g. zero expected entities) is
 // still refused, not trusted blindly.
 import { invokeLiveStructuredAnalysis } from './live-planner.mjs'
+import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
+import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 
 const FIELD_VALUE_TYPES = Object.freeze(['string', 'number', 'boolean', 'date'])
 
@@ -103,7 +105,17 @@ export function validateSynthesis(data) {
   return data
 }
 
-export async function synthesizeResearchSpecification({ message, missionId, freeOnly, clock = () => new Date() }) {
+export async function synthesizeResearchSpecification({ message, missionId, freeOnly, clock = () => new Date(), deps = {} }) {
+  // Resource Pressure Governor gate (Finding F1): checked BEFORE the real
+  // heavyweight LLM-CLI spawn below -- reuses the one 'newHeavyweightWorkerDispatch'
+  // category chat-dispatch-bridge.mjs already gates real PLANNER_DEEP dispatch
+  // on (REUSE_DIRECTLY), matching this file's own {ok:false, reason, detail}
+  // failure shape rather than a generic uncaught exception.
+  const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
+  const admission = classifyDispatchAdmission(readHostMemory(), 'newHeavyweightWorkerDispatch')
+  if (!admission.admitted) {
+    return { ok: false, reason: 'RESOURCE_PRESSURE_REFUSED', detail: admission.reason, tier: admission.tier }
+  }
   const live = await invokeLiveStructuredAnalysis({
     systemPrompt: SPEC_SYNTHESIS_SYSTEM_PROMPT,
     prompt: message,

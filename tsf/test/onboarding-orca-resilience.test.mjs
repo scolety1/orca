@@ -19,6 +19,14 @@ const PLANNER_STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
 const ORCA_STUB = path.join(HERE, 'fixtures', 'stub-orca-cli.mjs')
 const NONEXISTENT = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 
+// Finding F1: forces HEALTHY host memory for every test in this file except
+// the ones below that deliberately override deps.collectHostMemoryEvidence
+// (which takes precedence) -- mirrors chat-dispatch-bridge.test.mjs's own
+// convention, keeping this file's other assertions immune to a genuinely
+// shared, loaded host.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
+
 function git(cwd, args) {
   execFileSync('git', args, { cwd, stdio: 'ignore' })
 }
@@ -275,5 +283,43 @@ test('retryDirectionAnalysis: a persistent planner failure is an honest fallback
     assert.equal(result.ok, true)
     assert.equal(result.direction.live, false)
     assert.equal(result.direction.recommendedNextMission, null)
+  })
+})
+
+// Finding F1: retryDirectionAnalysis was one of 5 real invokeLiveStructuredAnalysis
+// call sites never consulting the Resource Pressure Governor before spawning
+// a heavyweight LLM-CLI child process.
+test('retryDirectionAnalysis: CRITICAL host memory refuses the planner spawn honestly -- degrades direction, never throws', async () => {
+  const repoDir = createTempRepo()
+  tracked(repoDir)
+  let gateConsulted = false
+  await withEnv(BASE_ENV, async () => {
+    const result = await retryDirectionAnalysis({
+      repoPath: repoDir,
+      deps: {
+        collectHostMemoryEvidence: () => {
+          gateConsulted = true
+          return { availableBytes: 2 * 1024 ** 3 } // 2 GB free -> CRITICAL
+        }
+      }
+    })
+    assert.equal(result.ok, true, 'the read-only call itself never fails -- only direction degrades')
+    assert.equal(result.direction.live, false)
+    assert.equal(result.direction.unavailableReason, 'RESOURCE_PRESSURE_REFUSED')
+    assert.equal(result.direction.recommendedNextMission, null)
+  })
+  assert.equal(gateConsulted, true, 'the governor gate was actually consulted, not bypassed')
+})
+
+test('retryDirectionAnalysis: HEALTHY host memory still dispatches the real planner call normally', async () => {
+  const repoDir = createTempRepo()
+  tracked(repoDir)
+  await withEnv(BASE_ENV, async () => {
+    const result = await retryDirectionAnalysis({
+      repoPath: repoDir,
+      deps: { collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }) } // 8 GB free -> HEALTHY
+    })
+    assert.equal(result.ok, true)
+    assert.equal(result.direction.live, true)
   })
 })

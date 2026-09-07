@@ -24,6 +24,12 @@ process.env.TSF_UI_STATE_FILE = STATE_FILE
 // command-research-spec-synthesis.test.mjs's own withPlannerEnv pattern).
 process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 process.env.TSF_PLANNER_CODEX_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
+// Finding F1: synthesizeResearchSpecification now consults the Resource
+// Pressure Governor -- forces HEALTHY so this file's own assertions never
+// flake on a genuinely shared, loaded host, mirroring
+// chat-dispatch-bridge.test.mjs's own convention.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const { classifyResearchIntent, respondResearchCommand } = await import('../server/command-research-bridge.mjs')
 const { respondCommand } = await import('../server/command-responder.mjs')

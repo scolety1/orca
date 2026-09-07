@@ -13,6 +13,14 @@ const HERE = import.meta.dirname
 const PLANNER_STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
 const NONEXISTENT = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 
+// Finding F1: forces HEALTHY host memory for every test in this file except
+// the ones below that deliberately override deps.collectHostMemoryEvidence
+// (which takes precedence) -- mirrors chat-dispatch-bridge.test.mjs's own
+// convention, keeping this file's other assertions immune to a genuinely
+// shared, loaded host.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
+
 const { synthesizeResearchSpecification, validateSynthesis } = await import('../server/command-research-spec-synthesis.mjs')
 
 function withPlannerEnv(claudeCommand, extra, fn) {
@@ -79,6 +87,35 @@ test('planner unavailable: an honest PLANNER_UNAVAILABLE failure, never a fabric
     const result = await synthesizeResearchSpecification({ message: 'research anything', missionId: 'mission:synth-unavailable', freeOnly: false })
     assert.equal(result.ok, false)
     assert.equal(result.reason, 'PLANNER_UNAVAILABLE')
+  })
+})
+
+// Finding F1: synthesizeResearchSpecification was one of 5 real
+// invokeLiveStructuredAnalysis call sites never consulting the Resource
+// Pressure Governor before spawning a heavyweight LLM-CLI child process.
+test('CRITICAL host memory refuses dispatch before the planner is ever called', async () => {
+  await withPlannerEnv(PLANNER_STUB, {}, async () => {
+    const result = await synthesizeResearchSpecification({
+      message: 'research something reasonably scoped',
+      missionId: 'mission:synth-resource-pressure',
+      freeOnly: true,
+      deps: { collectHostMemoryEvidence: () => ({ availableBytes: 1.6 * 1024 ** 3 }) } // 1.6 GB free -> CRITICAL
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'RESOURCE_PRESSURE_REFUSED')
+    assert.equal(result.tier, 'CRITICAL')
+  })
+})
+
+test('HEALTHY host memory dispatches the real planner call normally', async () => {
+  await withPlannerEnv(PLANNER_STUB, {}, async () => {
+    const result = await synthesizeResearchSpecification({
+      message: 'research something reasonably scoped',
+      missionId: 'mission:synth-resource-healthy',
+      freeOnly: true,
+      deps: { collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }) } // 8 GB free -> HEALTHY
+    })
+    assert.equal(result.ok, true)
   })
 })
 

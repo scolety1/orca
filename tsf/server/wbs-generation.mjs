@@ -16,6 +16,8 @@
 // runMonteCarloEstimate does 100% of the actual arithmetic.
 import { invokeLiveStructuredAnalysis } from './live-planner.mjs'
 import { normalizeWbs } from '../domain/estimation.mjs'
+import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
+import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 
 const THREE_POINT_SCHEMA = {
   type: 'object',
@@ -104,11 +106,22 @@ function buildEvidencePrompt({ repoEvidence, ideaBrief }) {
 // detail} honestly on any failure -- a schema-violating or domain-invalid
 // LLM response is a real, disclosed failure, never silently patched or
 // guessed into shape.
-export async function generateWbs({ projectId, repoEvidence = null, ideaBrief = null }) {
+export async function generateWbs({ projectId, repoEvidence = null, ideaBrief = null, deps = {} }) {
   if (!!repoEvidence === !!ideaBrief) {
     throw new Error('generateWbs requires exactly one of repoEvidence or ideaBrief')
   }
   const preliminary = !repoEvidence
+
+  // Resource Pressure Governor gate (Finding F1): checked before the real
+  // heavyweight LLM-CLI spawn, matching this function's own {ok:false,
+  // reason, detail} failure shape -- reuses the one 'newHeavyweightWorkerDispatch'
+  // category chat-dispatch-bridge.mjs already gates real PLANNER_DEEP
+  // dispatch on.
+  const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
+  const admission = classifyDispatchAdmission(readHostMemory(), 'newHeavyweightWorkerDispatch')
+  if (!admission.admitted) {
+    return { ok: false, reason: 'RESOURCE_PRESSURE_REFUSED', detail: admission.reason }
+  }
 
   const result = await invokeLiveStructuredAnalysis({
     systemPrompt: WBS_SYSTEM_PROMPT,

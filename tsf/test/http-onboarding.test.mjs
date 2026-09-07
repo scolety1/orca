@@ -25,6 +25,12 @@ process.env.STUB_MODE = 'success'
 process.env.TSF_ORCA_CLI_COMMAND = ORCA_STUB
 process.env.STUB_ORCA_MODE = 'success'
 process.env.STUB_ORCA_REPOS = '[]'
+// Finding F1: analyzeRepository/retryDirectionAnalysis now consult the
+// Resource Pressure Governor -- forces HEALTHY so this file's own
+// assertions never flake on a genuinely shared, loaded host, mirroring
+// chat-dispatch-bridge.test.mjs's own convention.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 

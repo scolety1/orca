@@ -5,6 +5,8 @@
 // below) -- can misidentify a mapping, never fabricate one.
 import { invokeLiveStructuredAnalysis } from './live-planner.mjs'
 import { buildFieldBinding } from '../domain/field-binding.mjs'
+import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
+import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 
 const RECONCILIATION_SCHEMA = {
   type: 'object',
@@ -39,8 +41,18 @@ const SYSTEM_PROMPT = [
 
 // Returns FieldBinding[], possibly shorter than unresolvedFieldNames -- an
 // unaddressed or invalid-header field is simply absent, never guessed.
-export async function reconcileFieldsToHeaders({ headers, unresolvedFieldNames, sourceIdentity }) {
+export async function reconcileFieldsToHeaders({ headers, unresolvedFieldNames, sourceIdentity, deps = {} }) {
   if (unresolvedFieldNames.length === 0) {
+    return []
+  }
+  // Resource Pressure Governor gate (Finding F1): fails closed the same way
+  // an unavailable planner already does below (an empty binding list, never
+  // a guessed match) -- reuses the one 'newHeavyweightWorkerDispatch'
+  // category chat-dispatch-bridge.mjs already gates real PLANNER_DEEP
+  // dispatch on.
+  const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
+  const admission = classifyDispatchAdmission(readHostMemory(), 'newHeavyweightWorkerDispatch')
+  if (!admission.admitted) {
     return []
   }
   const prompt = JSON.stringify({ realColumnHeaders: headers, requestedFieldsNeedingAMatch: unresolvedFieldNames })

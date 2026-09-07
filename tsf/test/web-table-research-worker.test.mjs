@@ -32,6 +32,11 @@ async function withStubEnv(vars, fn) {
 const HERE = import.meta.dirname
 const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-state.test-web-table-worker-${process.pid}.json`)
 process.env.TSF_UI_STATE_FILE = STATE_FILE
+// Finding F1: reconcileFieldsToHeaders now consults the Resource Pressure
+// Governor -- forces HEALTHY so this file's own assertions never flake on a
+// genuinely shared, loaded host, mirroring chat-dispatch-bridge.test.mjs.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 function cleanupStateFile() {
   for (const suffix of ['', '.tmp', '.research.lock']) {
     rmSync(`${STATE_FILE}${suffix}`, { force: true })

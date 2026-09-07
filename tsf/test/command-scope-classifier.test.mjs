@@ -12,6 +12,14 @@ const HERE = import.meta.dirname
 const PLANNER_STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
 const NONEXISTENT = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 
+// Finding F1: forces HEALTHY host memory for every test in this file except
+// the ones below that deliberately override deps.collectHostMemoryEvidence
+// (which takes precedence) -- mirrors chat-dispatch-bridge.test.mjs's own
+// convention, keeping this file's other assertions immune to a genuinely
+// shared, loaded host.
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
+
 const { classifyGlobalScope, buildGlobalAdvisoryText, GLOBAL_SCOPES } = await import('../server/command-scope-classifier.mjs')
 
 function project(id, displayName, sourceClass = 'REAL') {
@@ -71,6 +79,46 @@ test('live planner (stub, real subprocess wiring): a real structured response dr
     else process.env.TSF_PLANNER_CLAUDE_COMMAND = prevClaude
     if (prevCodex === undefined) delete process.env.TSF_PLANNER_CODEX_COMMAND
     else process.env.TSF_PLANNER_CODEX_COMMAND = prevCodex
+    if (prevOverride === undefined) delete process.env.STUB_SCOPE_OVERRIDE
+    else process.env.STUB_SCOPE_OVERRIDE = prevOverride
+  }
+})
+
+// Finding F1: classifyGlobalScope was one of 5 real invokeLiveStructuredAnalysis
+// call sites never consulting the Resource Pressure Governor before spawning
+// a heavyweight LLM-CLI child process.
+test('CRITICAL host memory skips the live planner spawn entirely and falls back to the deterministic classifier', async () => {
+  const prevClaude = process.env.TSF_PLANNER_CLAUDE_COMMAND
+  process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
+  try {
+    const result = await classifyGlobalScope({
+      message: "what's running right now?",
+      deps: { collectHostMemoryEvidence: () => ({ availableBytes: 1 * 1024 ** 3 }) } // 1 GB free -> EMERGENCY
+    })
+    assert.equal(result.scope, 'GLOBAL_STATUS')
+    assert.equal(result.source, 'DETERMINISTIC_FALLBACK')
+    assert.equal(result.plannerFailure, 'RESOURCE_PRESSURE_REFUSED')
+  } finally {
+    if (prevClaude === undefined) delete process.env.TSF_PLANNER_CLAUDE_COMMAND
+    else process.env.TSF_PLANNER_CLAUDE_COMMAND = prevClaude
+  }
+})
+
+test('HEALTHY host memory still dispatches the real live planner call', async () => {
+  const prevClaude = process.env.TSF_PLANNER_CLAUDE_COMMAND
+  const prevOverride = process.env.STUB_SCOPE_OVERRIDE
+  process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
+  process.env.STUB_SCOPE_OVERRIDE = 'GLOBAL_ADVISORY'
+  try {
+    const result = await classifyGlobalScope({
+      message: 'some message the deterministic fallback would call UNCLEAR',
+      deps: { collectHostMemoryEvidence: () => ({ availableBytes: 8 * 1024 ** 3 }) } // 8 GB free -> HEALTHY
+    })
+    assert.equal(result.scope, 'GLOBAL_ADVISORY')
+    assert.equal(result.source, 'LIVE_PLANNER')
+  } finally {
+    if (prevClaude === undefined) delete process.env.TSF_PLANNER_CLAUDE_COMMAND
+    else process.env.TSF_PLANNER_CLAUDE_COMMAND = prevClaude
     if (prevOverride === undefined) delete process.env.STUB_SCOPE_OVERRIDE
     else process.env.STUB_SCOPE_OVERRIDE = prevOverride
   }

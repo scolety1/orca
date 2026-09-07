@@ -699,7 +699,8 @@ export function fallbackLabel(reason) {
     TIMEOUT: 'provider timed out',
     PROVIDER_ERROR: 'provider returned an error',
     MALFORMED_RESPONSE: 'provider returned a malformed response',
-    SPAWN_ERROR: 'could not start the provider process'
+    SPAWN_ERROR: 'could not start the provider process',
+    RESOURCE_PRESSURE_REFUSED: 'host memory under pressure -- refused to spawn a new analysis'
   }
   return `Planner unavailable — using recorded project-state fallback${reason ? ` (${REASONS[reason] ?? reason})` : ''}`
 }

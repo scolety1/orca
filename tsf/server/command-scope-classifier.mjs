@@ -85,6 +85,8 @@
 // terms -- collapsing them into one central enum would be exactly the
 // "second, larger regex/keyword table" this round was told not to build.
 import { invokeLiveStructuredAnalysis } from './live-planner.mjs'
+import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
+import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 
 export const GLOBAL_SCOPES = Object.freeze([
   'GLOBAL_STATUS',
@@ -162,7 +164,22 @@ function deterministicScopeFallback(message) {
 // function that threads one through, even though this call itself doesn't
 // need wall-clock time -- avoids a caller having to special-case this one
 // function's argument shape.
-export async function classifyGlobalScope({ message }) {
+export async function classifyGlobalScope({ message, deps = {} }) {
+  // Resource Pressure Governor gate (Finding F1): under CRITICAL/EMERGENCY,
+  // skip the real LLM-CLI spawn entirely and fall straight to the same
+  // deterministic-fallback shape a live PROVIDER_UNAVAILABLE already
+  // produces below -- reuses the one 'newHeavyweightWorkerDispatch' category
+  // chat-dispatch-bridge.mjs already gates real PLANNER_DEEP dispatch on.
+  const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
+  const admission = classifyDispatchAdmission(readHostMemory(), 'newHeavyweightWorkerDispatch')
+  if (!admission.admitted) {
+    return {
+      scope: deterministicScopeFallback(message),
+      source: 'DETERMINISTIC_FALLBACK',
+      reasoning: null,
+      plannerFailure: 'RESOURCE_PRESSURE_REFUSED'
+    }
+  }
   const live = await invokeLiveStructuredAnalysis({
     systemPrompt: SCOPE_SYSTEM_PROMPT,
     prompt: message,
