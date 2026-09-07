@@ -38,7 +38,8 @@ const DEFAULTS = {
   healthRepairOperations: {}, // operationId -> TSF_HEALTH_REPAIR_OPERATION_V1 (see tsf/domain/health-repair-operation.mjs) -- BUG-05
   plannerMissions: {}, // missionId -> { lease, checkpoint: TSF_PLANNER_MISSION_CHECKPOINT_V1 } (see tsf/server/planner-mission-store.mjs)
   platformLearningLedger: null, // TSF_PLATFORM_LEARNING_LEDGER_V1 singleton, or null before first use (see tsf/domain/platform-learning-ledger.mjs)
-  cleanupRequests: {} // requestId -> TSF_CLEANUP_REQUEST_RECORD_V1 { recommendation, plan, authorization, executions[], receipts[] } (see tsf/server/cleanup-request-store.mjs)
+  cleanupRequests: {}, // requestId -> TSF_CLEANUP_REQUEST_RECORD_V1 { recommendation, plan, authorization, executions[], receipts[] } (see tsf/server/cleanup-request-store.mjs)
+  selfImprovementFindings: {} // findingId -> TSF_SELF_IMPROVEMENT_FINDING_V1 (see tsf/domain/self-improvement-finding.mjs, tsf/server/self-improvement-finding-store.mjs)
   // Resource Pressure Governor leases are NOT stored here -- see
   // server/resource-pressure-lease-store.mjs: they must be host-wide
   // (shared across every worktree's own TSF server process), not scoped to

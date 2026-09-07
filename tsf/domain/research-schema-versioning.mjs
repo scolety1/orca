@@ -125,3 +125,17 @@ const keepGoingRunGuard = buildSchemaVersionGuard('Keep Going run', new Map([[CU
 export const SUPPORTED_KEEP_GOING_RUN_SCHEMA_VERSIONS = keepGoingRunGuard.supportedVersions
 export const assertSupportedKeepGoingRunSchemaVersion = keepGoingRunGuard.assertSupported
 export const migrateKeepGoingRunSchema = keepGoingRunGuard.migrate
+
+// Same guard, for the Native Self-Improvement Loop V1 generic finding record
+// (see self-improvement-finding.mjs's createFinding, schemaVersion
+// 'TSF_SELF_IMPROVEMENT_FINDING_V1'). Wired into
+// self-improvement-finding-store.mjs's readFinding/readAllFindings/
+// withFinding -- same F4 gap-avoidance as every guard above.
+export const CURRENT_SELF_IMPROVEMENT_FINDING_SCHEMA_VERSION = 'TSF_SELF_IMPROVEMENT_FINDING_V1'
+const selfImprovementFindingGuard = buildSchemaVersionGuard(
+  'self-improvement finding',
+  new Map([[CURRENT_SELF_IMPROVEMENT_FINDING_SCHEMA_VERSION, (finding) => finding]])
+)
+export const SUPPORTED_SELF_IMPROVEMENT_FINDING_SCHEMA_VERSIONS = selfImprovementFindingGuard.supportedVersions
+export const assertSupportedSelfImprovementFindingSchemaVersion = selfImprovementFindingGuard.assertSupported
+export const migrateSelfImprovementFindingSchema = selfImprovementFindingGuard.migrate
