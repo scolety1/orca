@@ -35,7 +35,8 @@ const DEFAULTS = {
   estimateActuals: {}, // projectId -> TSF_ESTIMATE_ACTUAL_V1[] (see tsf/domain/estimate-calibration.mjs)
   evalRuns: {}, // packId -> TSF_EVAL_RUN_RESULT_V1[], append-only (see tsf/server/eval-http-routes.mjs)
   prepareForWorkOperations: {}, // operationId -> TSF_PREPARE_FOR_WORK_OPERATION_V1 (see tsf/domain/prepare-for-work-operation.mjs)
-  healthRepairOperations: {} // operationId -> TSF_HEALTH_REPAIR_OPERATION_V1 (see tsf/domain/health-repair-operation.mjs) -- BUG-05
+  healthRepairOperations: {}, // operationId -> TSF_HEALTH_REPAIR_OPERATION_V1 (see tsf/domain/health-repair-operation.mjs) -- BUG-05
+  plannerMissions: {} // missionId -> { lease, checkpoint: TSF_PLANNER_MISSION_CHECKPOINT_V1 } (see tsf/server/planner-mission-store.mjs)
   // Resource Pressure Governor leases are NOT stored here -- see
   // server/resource-pressure-lease-store.mjs: they must be host-wide
   // (shared across every worktree's own TSF server process), not scoped to
