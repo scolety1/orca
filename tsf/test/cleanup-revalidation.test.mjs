@@ -61,22 +61,49 @@ test('PATH-ALIAS/JUNCTION fixture: a real Windows junction pointing INTO a prote
   }
   const realTarget = path.join(ROOT, 'real-protected-target')
   mkdirSync(realTarget)
-  // tmpdir() on this host can itself resolve through an 8.3 short-name
-  // alias (e.g. "codex-~1" vs "codex-agent") -- register the PROTECTED
-  // path by its OS-canonical form too, exactly as the real production
-  // registry-seeding path would (resolveCanonicalPath), so this test
-  // isolates the junction alias as the one thing under test.
-  const canonicalRealTarget = await resolveCanonicalPath(realTarget)
+  // collectFreshSafetyContext itself now canonicalizes every registry entry
+  // (Phase 14 fix, see canonicalizeRegistryPaths in cleanup-revalidation.mjs)
+  // -- registering the raw, un-resolved realTarget string here is exactly
+  // what a real caller/env-var config does; no pre-resolution needed.
   const junction = path.join(ROOT, 'alias-junction')
   symlinkSync(realTarget, junction, 'junction')
 
-  const registry = { paths: [canonicalRealTarget], branches: [] }
+  const registry = { paths: [realTarget], branches: [] }
   const { context, resolvedRealPath } = await collectFreshSafetyContext(
     { targetIdentity: { realPath: junction }, callerProtectedRegistry: registry },
     clock
   )
+  const canonicalRealTarget = await resolveCanonicalPath(realTarget)
   assert.equal(resolvedRealPath.toLowerCase(), canonicalRealTarget.toLowerCase())
   assert.equal(context.protectedPath, true, 'the junction alias must not be usable to dodge the real-path protected check')
+})
+
+test('SECURITY (Phase 14, real bug fixed): a protected registry entry configured via an ALIAS (e.g. a junction, exactly how TSF_CLEANUP_EXTRA_PROTECTED_PATHS or any callerProtectedRegistry is realistically supplied) still protects the SAME real directory when a candidate targets it directly, bypassing the alias entirely', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('junctions are a Windows-specific mechanism')
+    return
+  }
+  const realProtectedTarget = path.join(ROOT, 'registry-alias-real-target')
+  mkdirSync(realProtectedTarget)
+  const operatorConfiguredAlias = path.join(ROOT, 'registry-alias-operator-alias')
+  symlinkSync(realProtectedTarget, operatorConfiguredAlias, 'junction')
+
+  // The registry records the ALIAS, unresolved -- exactly what an operator
+  // typing TSF_CLEANUP_EXTRA_PROTECTED_PATHS, or any programmatic
+  // callerProtectedRegistry, would naturally supply.
+  const registry = { paths: [operatorConfiguredAlias], branches: [] }
+  // The candidate never mentions the alias at all -- it names the real
+  // directory directly, exactly like a targetIdentity.realPath a caller
+  // supplied via a different, non-aliased route would.
+  const { context } = await collectFreshSafetyContext(
+    { targetIdentity: { realPath: realProtectedTarget }, callerProtectedRegistry: registry },
+    clock
+  )
+  assert.equal(
+    context.protectedPath,
+    true,
+    'a protected path registered via an alias must still protect the same real directory reached directly -- before the Phase 14 fix this was false (VULNERABLE: bypassed the protected-path check entirely)'
+  )
 })
 
 test('collectFreshSafetyContext checkGit=true reflects real, live git dirty/clean state', async () => {

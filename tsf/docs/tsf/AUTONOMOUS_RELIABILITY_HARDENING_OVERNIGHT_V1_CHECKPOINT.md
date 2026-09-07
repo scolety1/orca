@@ -2153,3 +2153,233 @@ showing zero net changes after each revert:
 
 Adopted SHA: see the commit on `tsf/feature/phase13-evaluation-quality`
 that carries this section.
+
+## Phase 14: Security / Authority Boundary Review -- 1 real bug found, reproduced, and fixed (Cleanup V1 protected-path registry); the other 7 areas held up
+
+Bounded adversarial pass hunting specifically for CONFUSED-DEPUTY bugs: one
+project/mission/session's authority exercised against a DIFFERENT one's
+resources, or a stale/wrong identity used to authorize something -- the same
+class of bug F21 (Phase 7) turned out to be. Every area below was
+investigated via real code reads end to end (not doc summaries); areas 2-5
+also got a real, disposable-fixture reproduction attempt, not just static
+reading.
+
+### 1. Command authority (`command-responder.mjs`, `project-name-resolver.mjs`, `chat-dispatch-bridge.mjs`) -- CONFIRMED SAFE, no new gap
+
+Read the full project-resolution -> dispatch path end to end, specifically
+hunting for another F21-shaped gap (a quantifier/back-reference falling
+through to the wrong project's real mutation call). Found none: the PAUSE/
+RESUME branch's `quantified` guard (F21's own fix) and the main dispatch
+branch's pre-existing `resolveAllProjectsQuantifier`-before-back-reference
+ordering are the ONLY two places `lastReferencedProjectId` feeds a real
+mutation, and both now correctly refuse to fall through when a quantifier is
+present with no named exact match. `project-name-resolver.mjs`'s
+`resolveProjectsFromText`/`resolveAllProjectsQuantifier` were re-read
+line-by-line: exclusion-clause handling, fuzzy-vs-exact precedence, and the
+"exact always outranks fuzzy, fuzzy never rides along once exact exists"
+contract are all real and consistent -- this file already carries an
+extensive, visible history of prior adversarial-review fixes (documented
+inline) and no further gap was found on this pass.
+`chat-dispatch-bridge.mjs`'s `planAndDispatchFromCommand` fans out
+concurrently via `Promise.allSettled`, but every per-project chain
+(`dispatchOneProject`) closes over its own `project` object with no shared
+mutable state across iterations -- each project gets its own worktree, own
+`resolveRepositoryIdentity` call, own Keep Going run keyed by `project.id`;
+no cross-project leakage possible even under real concurrency.
+
+### 2. Provider execution (`safe-provider-launch.mjs`, `live-planner.mjs`, `resolve-agent-entry.mjs`) -- CONFIRMED SAFE
+
+`safe-provider-launch.mjs` is invoked as a genuinely separate OS process per
+launch (an Orca launch profile CLI entry point, never imported into a
+long-running server) -- `cwd`/`CODEX_HOME`/env are process-local by
+construction, so two concurrent dispatches cannot share state; no shared
+module-level mutable state exists in the file. `live-planner.mjs`'s
+`runOnce` always spawns with a FIXED `NEUTRAL_CWD` (a real, documented,
+already-reproduced prior bug fix: rooting it outside any git repo so a
+zero-tool `-p`/print-mode call can't discover this repo's own CLAUDE.md) --
+sharing that cwd across concurrent calls for different projects is safe
+specifically because every PLANNER_DEEP call is `--tools ""` (zero
+filesystem/tool access): the model can only reason over the prompt text,
+which is built fresh per call from `buildProjectContextCapsule(project, ...)`
+and is the only channel carrying project identity. Session affinity
+(`opState.plannerSessions[project.id]`, `orcaSessionId: tsf-planner-chat:
+${project.id}`) is consistently keyed by `project.id` throughout --
+`resumeSessionId` can never be sourced from a different project's stored
+binding. `resolve-agent-entry.mjs` has zero module-level mutable state (pure
+function of `process.env`/`homedir()` per call).
+
+### 3. Authenticated-download bridge (`authenticated-official-download-acquisition.mjs`, `...research-worker.mjs`) -- CONFIRMED SAFE, `assertNoSecretLeakage` re-verified real and wired
+
+Re-read (not trusted from the prior adoption note) the full path: both real
+call sites of `assertNoSecretLeakage` are still present and still on every
+path that touches a session/download result --
+`assertNoSecretLeakage(session, ...)` immediately after
+`sessionProvider.getSession()` returns non-null (before ANY receipt
+function ever sees `session`), and `assertNoSecretLeakage(downloadResult,
+...)` immediately after `downloadFn()` resolves (before the ok/failure
+branch). Confirmed double defense-in-depth: even independent of that guard,
+`web-source-acquisition-receipt.mjs`'s `buildAuthEvidence(session)` never
+spreads the raw session object into a receipt -- it projects an explicit
+3-field allowlist (`mechanism`/`profileIdRef`/`authenticatedAt`) only. No
+receipt-building path (`buildAuthenticatedDownloadReceipt`/
+`buildAuthenticatedDownloadFailureReceipt`) is reachable before both guards
+have already run.
+
+### 4. Cleanup V1 (`cleanup-executor.mjs`, `cleanup-protected-registry.mjs`, `cleanup-revalidation.mjs`, `cleanup-owner-authorization-gate.mjs`) -- 1 REAL BUG FOUND, REPRODUCED, FIXED
+
+**TOCTOU/race (plan-time vs. execution-time target identity): CONFIRMED
+SAFE.** `runGovernedCleanupAction` calls `revalidate` (`collectFreshSafetyContext`)
+three independent times against freshly re-collected evidence -- plan time,
+authorization time, and a third time immediately before the mutating call
+(the documented "race re-check") -- and the mutate function is invoked with
+`resolvedRealPath` from THAT THIRD call, never a stale earlier one. The
+existing `cleanup-executor-worktree-adversarial.test.mjs` RACE-BETWEEN-
+AUDIT-AND-EXECUTION test already proves this against a real fixture
+(3-call-counting `revalidate` stub); re-read and re-confirmed correct, no
+new gap.
+
+**Protected-path registry canonicalization: REAL BUG, reproduced live,
+fixed.** `domain/cleanup-protected-registry.mjs`'s `isProtectedPath` header
+claims "Registry entries are normalized the same way at compare time" as
+the candidate path -- true only for the cheap string `normalize()` (slash/
+case), NOT for real OS-level canonicalization. Only the CANDIDATE path
+(`targetIdentity.realPath`) was ever passed through
+`resolveCanonicalPath` (which follows symlinks/junctions/8.3 short names to
+their true target); the protected registry itself
+(`defaultProtectedRegistry`'s hardcoded paths, the operator-configurable
+`TSF_CLEANUP_EXTRA_PROTECTED_PATHS` env var, and any programmatic
+`callerProtectedRegistry`) was used as a raw, literal string, never
+resolved. **Reproduced live with a real Windows junction** (disposable
+fixtures only, `%TEMP%`-scoped, never touching `C:\TSF_ORCA`/`C:\NWR`): a
+protected path registered via an alias (a junction standing in for any
+real-world alias -- a symlinked data volume, a mapped path, an 8.3
+short-name form Windows' own `TEMP` env var already exhibits on this exact
+host) did NOT protect the identical real directory when a candidate
+`targetIdentity.realPath` named it directly, bypassing the alias entirely --
+`context.protectedPath` came back `false` for a target that WAS, physically,
+the protected directory. The existing
+`cleanup-revalidation.test.mjs` junction test had (unknowingly) worked
+around this exact gap by pre-resolving the registry entry with
+`resolveCanonicalPath` before registering it -- its own comment claimed
+that was "exactly as the real production registry-seeding path would," which
+was false; the real seeding path (`cleanup-protected-registry-defaults.mjs`)
+never does this.
+
+**Fix** (`tsf/server/cleanup-revalidation.mjs`): added
+`canonicalizeRegistryPaths`, which resolves every registry path entry
+through the SAME `resolveCanonicalPath` already used for the candidate,
+falling back to the literal string when resolution fails (a configured
+protected path that doesn't currently exist on this host must still
+protect by literal match, never silently drop protection) -- called once,
+in `collectFreshSafetyContext`, before `isProtectedPath` -- so every one of
+the three revalidation calls in the governed pipeline (plan/authorization/
+race-recheck) gets the fix automatically, no other caller of
+`isProtectedPath` exists in `server/`. `isProtectedPath` itself stays pure/
+no-I/O per its own architectural discipline; canonicalization happens in
+the one real caller instead. Updated `isProtectedPath`'s own header comment
+(it made the same false claim the test did) to accurately describe the
+caller's responsibility.
+
+**Tests.** `tsf/test/cleanup-revalidation.test.mjs`: corrected the existing
+junction test's misleading comment/setup (registers the RAW alias now,
+since the fix makes pre-resolution unnecessary) and added a new,
+explicitly-named security regression test ("SECURITY (Phase 14, real bug
+fixed): a protected registry entry configured via an ALIAS ... still
+protects the SAME real directory when a candidate targets it directly") that
+fails against the pre-fix code and passes against the fix -- verified both
+ways (ran against `git stash`-baseline: fails as expected; against the fix:
+passes).
+
+Verified NOT a git-level cleanliness bypass: `mutationParams.checkGit` is
+caller-controllable, but `executeRemoveDisposableWorktree`'s
+`gitWorktreeRemove` calls plain `git worktree remove` (no `--force`) --
+git's own real refusal for a dirty tracked worktree is the actual, structural
+backstop regardless of whether the caller opted into the additional
+`checkGit` pre-check; only untracked/gitignored content needs the
+quarantine-copy step, which always runs first. Verified `checkActiveMissionReference`
+(the cross-project-worktree guard) is real, durable-store-backed evidence,
+not a guess -- a worktree belonging to another project's non-COMPLETE
+planner mission is a hard `PROTECTED`-tier blocker regardless of lease
+liveness ("Sleep != complete").
+
+**Lint.** `npx oxlint tsf/server/cleanup-revalidation.mjs
+tsf/domain/cleanup-protected-registry.mjs tsf/test/cleanup-revalidation.test.mjs`
+-- clean, exit 0. Line counts: `cleanup-revalidation.mjs` 109 lines,
+`cleanup-protected-registry.mjs` 64 lines -- both well under the 600-line cap.
+
+**Tests.** `node --test tsf/test/cleanup-revalidation.test.mjs` -- 9/9 pass
+(1 new). Regression sweep, every `cleanup-*.test.mjs` file (15 files): 132/132
+pass.
+
+### 5. Filesystem paths / local artifact ingestion (`owner-supplied-local-artifact-acquisition.mjs`) -- disclosed gap, confirmed NOT currently reachable by an untrusted caller
+
+`acquireOwnerSuppliedLocalArtifact` performs `readFile(filePath, 'utf-8')`
+with genuinely zero path validation, canonicalization, or scope
+restriction -- a caller-supplied `filePath` is read exactly as given, `../`
+traversal and all, no denylist check against the protected-path registry
+Cleanup V1 enforces. This is real and disclosed here, not silently passed
+over. However, traced every real production writer of the field that
+reaches it (`request.localArtifactCandidates`, `sourcePolicy.
+localArtifactCandidates`): `domain/research-node.mjs`'s
+`buildBoundedResearchRequest` copies `sourcePolicy` verbatim from
+`mission.specification` -- the mission's IMMUTABLE specification, set once
+at mission creation, "never from worker-supplied input" per its own header
+-- and a whole-codebase grep found zero production code path (LLM prompt,
+planner bridge, autonomous worker) that ever writes
+`localArtifactCandidates` today; only test fixtures do. Combined with this
+path's own explicit, structural design (`ownerAssertion.assertedBy` is
+mandatory and required, `ownerProvenance.independentlyVerified` is
+hardcoded `false`, receipts are marked `ASSERTED_UNLOGGED` -- the whole
+mode is documented as "CALLER-ASSERTED ONLY, never independently verified,"
+i.e. Tim pointing this at his own local file is the entire intended use
+case, not a sandboxed/untrusted input), there is currently no confused-
+deputy path here: nothing short of a direct, structured mission-
+specification write (equivalent to Tim's own authorship) can reach this
+function. Not fixed -- restricting `filePath` to some arbitrary "allowed
+scope" would break the feature's actual purpose (reading any file Tim
+points it at) without closing a real reachable gap today. Flagged as a real
+condition to re-check if `localArtifactCandidates` ever becomes
+autonomously/LLM-populated in a future phase -- at that point this file
+would need real path validation.
+
+### 6. Project attribution -- CONFIRMED SAFE, structurally enforced
+
+Every durable-record creation path checked traces its owning id back to a
+structurally-fixed source, never a caller-suppliable parameter divorced
+from that source: `PlannerSessionLifecycle` fixes `missionId` at
+construction and every mutator (`_mutate`, `dispatchWorkerForTask`, etc.)
+reads/writes exclusively via `this.missionId` -- there is no per-call
+missionId parameter anywhere in the class that could diverge from the
+instance's own. `research-node.mjs`'s `buildBoundedResearchRequest` derives
+`nodeId`/`scope` from the `node`/`mission` objects themselves, never from
+caller input. `chat-dispatch-bridge.mjs`'s dispatch loop keys every Keep
+Going run/worktree/identity lookup off `project.id` from the resolved
+project object, never a separately-threaded id string.
+
+### 7. Planner takeover (`planner-mission-lease.mjs`, `planner-session-lifecycle.mjs`) -- CONFIRMED SAFE, no missionId/leaseId mixup
+
+Read `_requireLease`/`_mutate` closely, hunting specifically for a
+copy-paste-shaped "check lease A, mutate mission B" bug. Found none:
+`_mutate` calls `readPlannerMissionRecord(this.missionId)` then
+`this._requireLease(record)` then `mutateCheckpoint(this.missionId, ...)`
+-- all three reference the SAME `this.missionId`, the instance's own fixed
+field, with no alternate id ever substituted. `_requireLease` checks
+`lease.holderPlannerSessionId !== this.plannerSessionId` against the lease
+embedded in the record it was just handed (from that same
+`this.missionId` read) -- there is no code path where a lease fetched for
+one missionId gates a mutation applied to another. Every other mutator
+(`dispatchWorkerForTask`, `recordWorkerResult`, `raiseNeedsYou`, etc.) goes
+through `_mutate`, so this guarantee is structural, not per-method
+discipline that could drift.
+
+### 8. Cross-project targeting, summary
+
+Areas 1, 2, 3, 6, 7 held up with real evidence and no fix needed. Area 5 is
+a disclosed, currently-unreachable gap (not fixed, condition to re-check
+noted). Area 4 had one real, reproduced, now-fixed bug (protected-path
+registry canonicalization) -- fixed with a minimal, reused-mechanism change
+plus a real regression test. No fabricated findings; nothing reported here
+that a real repro or a real code trace did not confirm.
+
+Adopted SHA: see the commit on
+`tsf/feature/phase14-security-authority-review` that carries this section.

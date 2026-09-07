@@ -33,8 +33,13 @@ export function mergeProtectedRegistry(a, b) {
 // True if `realPath` IS, or is nested under, any registered protected path.
 // `realPath` must already be the OS-resolved real path (server's job, via
 // resource-auditor-path-identity.mjs's resolveCanonicalPath) so a junction/
-// case alias cannot dodge this check. Registry entries are normalized the
-// same way at compare time.
+// case alias cannot dodge this check -- and (Phase 14 security finding)
+// `registry.paths` must ALSO already be OS-resolved by the same caller
+// (server/cleanup-revalidation.mjs's canonicalizeRegistryPaths) before
+// reaching here: this function only does the cheap string normalize()
+// below, which cannot see through a registry entry that is itself a
+// junction/symlink/short-name alias of the real protected directory. A
+// caller that skips that resolution silently under-protects.
 export function isProtectedPath(realPath, registry, { caseInsensitiveFs = process.platform === 'win32' } = {}) {
   if (!realPath || !Array.isArray(registry?.paths) || registry.paths.length === 0) {
     return false

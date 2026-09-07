@@ -38,6 +38,29 @@ export function probeFileLock(filePath) {
   }
 }
 
+// Security finding (Phase 14): isProtectedPath's own header claims registry
+// entries are "normalized the same way at compare time" as the candidate --
+// true only for the cheap string normalize() both sides get, NOT for real
+// OS-level canonicalization. Only the candidate ever went through
+// resolveCanonicalPath. A protected entry recorded (by a human typing
+// TSF_CLEANUP_EXTRA_PROTECTED_PATHS, or any callerProtectedRegistry) via
+// ANY alias of the real target -- a junction, a symlink, an 8.3 short name,
+// a differently-cased mount -- silently failed to match a candidate that
+// reached the identical real directory by a different path. Reproduced live
+// with a real Windows junction: an operator-configured protected path
+// registered through an alias did not protect the same directory when
+// targeted directly. Registry entries now get the exact same
+// resolveCanonicalPath treatment as the candidate, with the same honest
+// fallback (keep the literal string when resolution fails, e.g. the path
+// doesn't exist on this host -- never silently drop a configured
+// protection just because it isn't currently reachable).
+async function canonicalizeRegistryPaths(registry) {
+  const paths = await Promise.all(
+    registry.paths.map(async (entry) => (await resolveCanonicalPath(entry)) ?? entry)
+  )
+  return { ...registry, paths }
+}
+
 // `checkGit`/`checkFileLock` are booleans the caller sets per action class
 // (e.g. worktree-removal checks git cleanliness; a plain artifact quarantine
 // checks the file lock instead) -- a field is only included in the returned
@@ -49,7 +72,9 @@ export async function collectFreshSafetyContext(
   clock
 ) {
   const realPath = (await resolveCanonicalPath(targetIdentity.realPath)) ?? targetIdentity.realPath
-  const registry = mergeProtectedRegistry(defaultProtectedRegistry(), callerProtectedRegistry)
+  const registry = await canonicalizeRegistryPaths(
+    mergeProtectedRegistry(defaultProtectedRegistry(), callerProtectedRegistry)
+  )
 
   const context = {
     evidenceObservedAt: isoNow(clock),
