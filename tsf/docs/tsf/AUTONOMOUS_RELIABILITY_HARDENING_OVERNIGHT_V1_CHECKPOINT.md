@@ -40,8 +40,9 @@ disposable TSF pilot projects/fixtures wherever possible.
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1. Post-Upgrade Gap Reconciliation | IN_PROGRESS | Audit agent dispatched |
-| 2-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
+| 1. Post-Upgrade Gap Reconciliation | IN_PROGRESS | Findings F18, F1, F3, F4 fixed so far |
+| 2. Background Task Truthfulness | INVESTIGATED, NO GAP | See dedicated section below -- no fix warranted |
+| 3-17 | NOT_STARTED | Ranked and sequenced after Phase 1's gap matrix |
 
 ## TSF_POST_UPGRADE_GAP_MATRIX
 
@@ -483,3 +484,130 @@ itself pre-dates and does not satisfy that same rule).
 
 Adopted SHA: see the commit on `tsf/feature/f4-planner-durability-hardening`
 that carries this section.
+
+## Phase 2: Background Task Truthfulness -- INVESTIGATED, NO GAP FOUND (no fix)
+
+Worktree: `phase2-background-task-truthfulness`, branch
+`tsf/feature/phase2-background-task-truthfulness` (forked from `tsf/main` @
+`d1f29dc95fa655d08328f307becc6eb5c91c2d35`).
+
+**Mission background.** Multiple real missions in this session's own history
+observed `node --test` exit 0 with every test visibly passing, while the
+HOST/HARNESS-level background-task mechanism (the Claude Code CLI/Agent SDK
+that runs an agent via `run_in_background`, launched via the Bash tool or the
+Agent tool) reported `status='failed'` anyway. That harness is not TSF or
+Orca's own code -- no access to its source, not attempted here (correctly
+filed as harness product feedback in this session's own prior history, not a
+TSF bug, each time it recurred). This phase's real job was to check whether
+TSF's OWN code has an ANALOGOUS gap: any place TSF tracks/reports a real
+background job's outcome (Keep Going dispatch, Research Mission polling,
+Cleanup V1 execution, eval-pack runs, provider-CLI launch) by something
+weaker than the real process exit code -- stdout-content inference, a
+timeout heuristic treated as failure-proof, an assumed-success default, or a
+status written before the process genuinely finished.
+
+**Method.** Every `child_process` boundary in `tsf/` was enumerated
+(`spawn`/`execFile`/`execFileSync`, `grep -rn` across `tsf/adapters`,
+`tsf/server`, `tsf/providers`) and read in full, not sampled -- 16
+non-test files construct or read a real child process:
+
+| File | What it spawns | Exit-code authority |
+|---|---|---|
+| `tsf/providers/safe-provider-launch.mjs` | The real Codex/Claude CLI (interactive, `stdio: 'inherit'`) | `child.on('exit', (code, signal) => process.exitCode = signal ? 1 : (code ?? 1))` -- real code/signal propagated as this wrapper process's own exit code, nothing else consulted |
+| `tsf/server/live-planner.mjs` (`spawnAgent`/`runOnce`) | Headless `claude -p` / `codex exec` for PLANNER_DEEP | `outcome.code !== 0` -> `PROVIDER_ERROR` BEFORE any stdout parsing; JSON parse failure and `parsed.is_error` are separate, later checks -- a non-zero exit can never be masked by well-formed-looking stdout |
+| `tsf/adapters/orca-cli-bridge.mjs`, `orca-orchestration-bridge.mjs`, `orca-capacity-bridge.mjs` | Real `orca` CLI subcommands (repo/worktree/orchestration/account) | Identical shared pattern: `timedOut` check, then `code !== 0` -> `CLI_ERROR` (exit code/stderr authoritative), only then JSON-parsed, only then `parsed.ok === false` checked |
+| `tsf/server/health-repair.mjs` (`runCommand`/`runBaselineVerification`) | The repo's own real discovered test/build/lint/typecheck command (this IS the `node --test`-shaped case the mission background describes) | `status: code === 0 ? 'PASS' : 'FAIL'` -- the function's own header comment states the discipline explicitly: "this function's own job is only to observe the real exit code, honestly, never to interpret or patch it"; stdout/stderr are captured only as `outcome.stdout`/`stderr` evidence attached to the verdict, never consulted to override it |
+| `tsf/adapters/security-scanner-adapter.mjs` | An operator-configured external security scanner | `code !== 0` -> `SCANNER_ERROR`, checked before JSON parse; module header states "never silently treated as a clean scan" as an explicit acceptance item |
+| `tsf/server/cleanup-git-worktree-inventory.mjs`, `resource-auditor-git-object-store.mjs`, `resource-auditor-path-identity.mjs`, `repository-identity.mjs`, `planner-mission-repo-state.mjs` | Real read-only `git` commands | All use `promisify(execFile)`/`execFileSync`, which reject/throw on a real non-zero exit by Node's own contract -- every caller wraps in try/catch and returns `{ok:false}`/`null`, never a fabricated success |
+| `tsf/adapters/git-identity.mjs` (Safe Update Manager) | Real `git rev-parse`/`merge-base --is-ancestor`/`merge --ff-only`/`reset --hard` | `resolve({ok: code === 0, code, ...})`; `isAncestor` additionally distinguishes git's own real exit-1-means-false convention from an actual error (`code === 1` only) -- never conflates "false" with "broken" |
+| `tsf/server/cleanup-session-retirement.mjs`, `health-repair.mjs` (`killProcessTree`) | `taskkill`/`SIGTERM` on timeout | Fire-and-forget process-tree cleanup only, not a status determination -- no outcome is reported from these calls |
+| `tsf/server/open-url-command.mjs` | Platform `start`/`open`/`xdg-open` to launch a URL in the default browser | Detached, fire-and-forget, no status returned to any caller at all -- correctly makes no truthfulness claim in the first place (nothing to falsify) |
+
+**Keep Going's own wave-settlement (`tsf/server/keep-going-dispatch-loop.mjs`
+`settleStep`).** Keep Going does not itself spawn the dispatched Claude/Codex
+worker process -- it delegates to Orca's orchestration CLI
+(`createOrchestrationTask`/`startOrchestrationWorker`, `orca-orchestration-
+bridge.mjs`, table above) and settles a wave by polling
+`listOrchestrationTasks` and comparing the real returned `task.status`
+against `COMPLETED_STATUSES = {'completed','succeeded'}` /
+`FAILED_STATUSES = {'failed','error'}`; anything else (including `'unknown'`
+for a task id Orca doesn't return) falls into `PENDING`, never assumed
+COMPLETED. The module's own header comment already discloses the one honest
+limitation here: `PENDING` conflates "worker-start's CLI call succeeded" with
+"the agent process itself has actually started its own real work" -- a real,
+disclosed gap, but not a truthfulness violation (it never reports something
+as done that isn't). Where this settlement's real authority ultimately
+bottoms out -- Orca's own internal computation of `task.status` -- is Orca
+core (Electron/TypeScript, `src/`), a different codebase this phase's
+INVESTIGATE list did not name and this phase did not audit; TSF's own
+polling/comparison logic against whatever Orca reports is itself correct and
+fail-closed.
+
+**`tsf/server/research-mission-driver.mjs`
+(`pollAndAdmitResearchNodeDurable`)** and **`research-mission-fleet-driver.mjs`
+(`advanceOneMission`'s `CHECK_COMPLETE` branch)** were read in full. Neither
+spawns a local child process for the research worker itself -- every real
+research worker adapter (`exa-research-worker.mjs`, `parallel-research-
+worker.mjs`, `web-table-research-worker.mjs`, `llm-latent-knowledge-research-
+worker.mjs`, `authenticated-official-download-research-worker.mjs`,
+`owner-supplied-local-artifact-research-worker.mjs`) is an HTTP/API-backed
+adapter, not a local process launch, so "real exit code" has no literal
+referent there; `fetched.status !== 'READY'` is treated as `ready: false`
+(never assumed done), and mission completion (`CHECK_COMPLETE`) is gated on
+`computeCompletenessMetrics` over real canonicalFacts/conflicts -- explicitly
+never on `node.status` alone (the driver's own comment states this).
+
+**`tsf/server/cleanup-executor.mjs` (Cleanup V1) /
+`tsf/domain/cleanup-lifecycle.mjs`.** `runGovernedCleanupAction`'s real
+mutate dispatch (`ACTION_EXECUTORS`) is wrapped in a single try/catch:
+`completeCleanupExecution` runs only on the `mutate(...)` promise resolving
+without throwing, and every real mutate function
+(`cleanup-executor-worktree-actions.mjs`, `cleanup-executor-artifact-
+actions.mjs`) throws with a real `.code` the instant its own underlying git/
+fs call reports `{ok: false}` (itself sourced from the exit-code-authoritative
+`cleanup-git-worktree-inventory.mjs` above) -- there is no path where a
+mutate function's real underlying failure is swallowed into a fabricated
+`COMPLETED`.
+
+**`tsf/domain/evaluation-pack.mjs` / `tsf/server/eval-http-routes.mjs`
+(eval-pack runs).** `runEvalPack` never spawns anything itself (pure scoring
+over an already-produced `actualOutputsByCaseId` map, by design -- see its
+own header comment); a case with no actual output supplied is explicitly
+`{passed: false, errored: true}`, never silently skipped or counted as a
+pass (matches its own documented acceptance item: "a broken/incomplete run
+must never be misreported as a clean pass"). `eval-http-routes.mjs` itself
+has no process-spawning or `status ===`/`.ok` outcome logic of its own to
+audit.
+
+**Pipe-exit-code-masking sub-task (lower priority, per the mission
+directive).** `grep -rn 'execSync(.*\|'` across all of `tsf/` returned zero
+matches -- no TSF script composes a real command through a shell pipe
+(`| tail`, `| head`, or otherwise) before checking `$?`/its own promise
+rejection. The `node --test | tail`-shaped exit-code-masking pattern
+(Phase 1's F9) has no TSF-owned instance.
+
+**Conclusion.** Every TSF-owned process-outcome boundary this phase's
+INVESTIGATE list named, plus every other real `child_process` construction
+site in `tsf/adapters`, `tsf/server`, and `tsf/providers` (16 non-test files,
+enumerated exhaustively above, not sampled), already treats the real process
+exit code (and, where meaningful, stderr) as the sole authoritative success/
+failure signal -- consistently checked BEFORE any stdout content is parsed
+or trusted, with JSON-parse failures and content-shape failures kept as
+separate, later, honestly-distinct failure reasons rather than folded into
+or allowed to override the exit-code verdict. No case was found where "the
+process produced plausible-looking stdout" or "the call didn't throw
+synchronously" stood in for the real exit code. This is a genuine, valuable
+negative finding, not an absence of effort: the codebase's own established
+"honest-failure convention" (named explicitly in comments across
+`repository-identity.mjs`, `resource-auditor-path-identity.mjs`,
+`cleanup-git-worktree-inventory.mjs`, and others) is real, consistently
+applied, and independently re-verified here rather than assumed from prior
+checkpoint entries. No fix was made -- inventing one against a problem that
+does not exist in this codebase would violate this program's own "do not
+manufacture a finding" instruction.
+
+**Lint.** No files were changed this phase (investigation-only); `npx
+oxlint` was not run against anything, as nothing was touched.
+
+Adopted SHA: see the commit on `tsf/feature/phase2-background-task-
+truthfulness` that carries this section (docs-only commit; no code change).
