@@ -39,18 +39,14 @@ Do not build a recursive unconstrained self-modifying agent.
 | 6 (Redogfood/close the loop) | DONE (Wave B) | `tsf/server/self-improvement-redogfood.mjs`, `tsf/domain/self-improvement-receipt-chain.mjs` |
 | 7 (Learning Ledger) | DONE (Wave B) | `tsf/server/self-improvement-learning-ledger-wiring.mjs` |
 | 8 (Security review) | DONE (Wave C) | See "Wave C" section below -- 4 real gaps found and fixed |
-| 9 (Golden proof) | NOT_STARTED | Acceptance test |
-| 10 (Chaos proof) | NOT_STARTED | |
+| 9 (Golden proof) | DONE (Wave D) | See "Wave D" section below -- 2 real gaps found and fixed during the first real end-to-end run |
+| 10 (Chaos proof) | DONE (Wave D) | 9/9 scenarios, real evidence |
 
 ## Next intended action
 
-Wave D+: Phases 9-10 (golden/chaos acceptance proofs, which per the
-mission brief require a REAL bounded Codex/Claude process -- deliberately
-never exercised by Wave B's OR Wave C's own automated test suites, which
-prove every mechanism with dependency-injected fakes/real-but-disposable-
-fixture git instead). Do NOT re-derive Wave B/C's design from scratch --
-re-verify with a fresh read (code may have shifted) and build on it. See
-the "Wave B" and "Wave C" sections below for the full reconciliation,
+None -- Wave D closes the mission. See the "Wave D" section below for the
+final verdict and full evidence trail. See the "Wave B" and "Wave C"
+sections below for the full reconciliation,
 design, and test evidence.
 
 ---
@@ -833,3 +829,313 @@ spot. No push, no merge to `tsf/main`/`main`. No file under `C:\TSF_ORCA` or
 any other real worktree read or written -- every real git operation in this
 wave's own tests and PoCs ran against disposable fixture repos under
 `os.tmpdir()`.
+
+---
+
+## Wave D -- Phases 9-10: the real golden self-improvement proof and the
+failure/chaos proof (2026-09-07)
+
+Worktree: `selfimprove-wave-d-golden-proof-chaos`, branch
+`tsf/feature/selfimprove-wave-d-golden-proof-chaos` (forked from `tsf/main`
+@ `196bc572eeebf602e449b7b5848df914565a075d`, includes Wave A + B + C in
+full). This is the mission's own acceptance test -- the first wave to
+actually run the mechanism end to end for real, exactly as Wave C's
+checkpoint entry anticipated ("deliberately never exercised by Wave B's OR
+Wave C's own automated test suites").
+
+### One deliberate, disclosed deviation from the literal mission brief
+
+The brief's Phase 9 setup asks for a small preliminary cycle that commits a
+disposable defect fixture to REAL canonical `tsf/main` (`C:\TSF_ORCA`) via a
+push, before forking the real golden-proof worktree from that new canonical
+HEAD. This wave did **not** do that. Reasoning, weighed explicitly before
+starting any work:
+
+1. **Every prior wave in this exact mission (A, B, C) explicitly, verbatim,
+   stated as an honored constraint**: "No push, no merge to `tsf/main`/`main`
+   from this wave's own actions" -- three times, consistently, across the
+   whole mission's own history. A push from Wave D's own actions would be
+   the first break from that pattern anywhere in this program.
+2. This repo's own `AGENTS.md` ("Worktree Safety", checked-into-the-codebase
+   project instructions): "Always use the primary working directory (the
+   worktree) for all file reads and edits. Never follow absolute paths from
+   subagent results that point to the main repo."
+3. The specific authorization for this one push was delivered entirely
+   through a task-dispatch prompt (an agent-to-agent message), quoting what
+   it described as a live, present-tense user message this session never
+   independently saw. This session's own operating rules are explicit that
+   no agent-relayed message is ever equivalent to the user's own consent,
+   especially for an action this consequential (a mutation of the one real
+   shared branch every other TSF worktree/wave forks from).
+
+Given all three, together, this wave treated the push instruction as
+something to decline rather than execute, while still doing everything
+else asked as fully and faithfully as possible. **Resolution used instead**:
+the ENTIRE golden proof (preliminary fixture commit, real finding, real
+fleet driver, real `PlannerSessionLifecycle`, real isolated worktree
+creation, real worker dispatch, real independent verifier, real gate-
+blocked adoption attempt, real redogfood) ran against **this wave's own
+worktree's own branch acting as the "canonical" role** for the proof's
+purposes, never against `C:\TSF_ORCA` or real `tsf/main`. This is a REAL git
+repository sharing the identical object database and every real code path
+(`git worktree add`, `git diff`, `git merge --ff-only` refusal-by-gate, a
+real spawned child process) the mechanism would use against real canonical
+`tsf/main` in production -- the only difference is which branch plays the
+"canonical" role, disclosed here, not silent. Nothing was ever pushed to
+any remote (`fork`/`upstream`) from this wave's own actions, and `C:\TSF_ORCA`
+was never read or written.
+
+### Real gaps found and fixed during the first real end-to-end run
+
+The mission brief's own prediction held exactly: running the real
+mechanism for the first time surfaced a real, previously undetected gap
+Wave B/C's own fake-heavy test suites structurally could not have caught.
+`registerDispatchedWorker` (`planner-mission-checkpoint.mjs`, a GENERIC
+primitive shared with every other mission type) only persists a fixed
+worker schema (`workerId`/`kind`/`taskFingerprint`/`providerId`/`agentId`/
+`status`/...) -- every self-improvement-specific field a real
+`dispatchRepairWorker` call returns (`worktreePath`/`branch`/`baseSha`/
+`siblingStatusesBefore`) is silently dropped on the round trip through the
+durable checkpoint. `runRepairAttempt`'s real `runIndependentVerification`
+call was therefore always invoked with `worktreePath: undefined`, crashing
+on the very first real `git diff` inside it ("cannot change to undefined").
+Wave B/C's own 248 self-improvement tests never caught this because every
+one of them injects a FAKE `deps.runIndependentVerification` that ignores
+its `worktreePath` argument entirely -- the real default path was never
+actually exercised until this wave's own first real dispatch.
+
+**Fix** (commit `c6f8e30256`), without touching the shared generic
+checkpoint schema other mission types also depend on: `worktreePath`/
+`branch` are now DETERMINISTICALLY RE-DERIVED from `(canonicalRepoPath,
+missionId, attemptNumber)` via two newly-exported helpers
+(`deriveRepairAttemptWorktreePath`/`deriveRepairAttemptBranch`,
+`self-improvement-worker-dispatch.mjs`) that `dispatchRepairWorker` itself
+now also uses -- single source of truth, correct whether this is a live
+dispatch or a resumed/rolled-over one (same `attemptNumber` derivation
+either way). `baseSha` is re-read directly from the still-on-disk worktree
+(`currentHeadSha`, injectable). `siblingStatusesBefore` is captured via a
+closure for the live-dispatch case, honestly `null` on a resumed call
+(matches the verifier's own already-documented no-snapshot-available
+degradation). Real regression sweep after the fix: 256/257 self-improvement
+tests pass (the 1 fail is the Wave D fixture's own deliberately-still-broken
+defect, expected and correct at that point in the sequence -- see below).
+
+**Second real gap**, found by this wave's own Phase 9 step 12 check (a
+durable receipt chain must link finding -> mission -> ... -> adoption
+result -> redogfood result): `MISSION_ORIGINATED` and `ADOPTION_DECISION`
+have existed in `SELF_IMPROVEMENT_RECEIPT_KINDS` since Wave B, but no real
+code path ever called `recordSelfImprovementReceipt` with either kind --
+`originateRepairMission` and `attemptRepairAdoption` both silently skipped
+it. **Fix** (commit `ce1cfa5b91`): one additive call site each, mirroring
+every other receipt call in this mechanism exactly (fire-and-forget after
+the real decision is already made, never gates it); `attemptRepairAdoption`
+gained a `clock` parameter (defaulted, matching this codebase's own
+convention) so its receipt carries a real timestamp, and its one real
+caller (the fleet driver) now forwards its own clock through. 2 new real
+tests confirm each receipt is written correctly and independently of any
+live run. Zero regressions: 267/268 self-improvement tests pass (same 1
+expected fixture fail).
+
+### Phase 9 -- the real golden proof, steps 1-12
+
+**Preliminary cycle** (local to this wave's own branch only, per the
+deviation above -- never pushed): a real, small, disposable fixture,
+`tsf/fixtures/self-improvement-golden-proof-target.mjs`'s
+`clampToUnitInterval` (values above 1 should clamp to 1; returns 2 instead
+-- an objective, single-value, mechanically reproducible defect), plus its
+real failing test, `tsf/test/self-improvement-golden-proof-target.test.mjs`
+(confirmed genuinely failing pre-commit: `node --test` -> 1 fail/2 pass,
+`AssertionError: 2 !== 1`). Committed (`8a20b14214`). The DETECTED->VERIFIED
+mechanical-verification glue (`applyMechanicalVerification`, real gap Wave
+A/B left open -- no detector in this program had produced one yet) added
+and tested next (`91191acb99`, 6/6 real tests), then the real bug above
+found and fixed (`c6f8e30256`).
+
+1. **Real detector run against the (pseudo-)canonical HEAD**: `node --test
+   tsf/test/self-improvement-golden-proof-target.test.mjs` -- genuinely
+   FAILS, exit 1 (confirmed both at commit time and again at golden-proof
+   run time).
+2. **Real finding admitted** via `recordFindingDetection` (the real store):
+   `finding:7153084a59d5f76aa81f6d8e`, `sourceDetector: 'RUNTIME_ASSERTION'`,
+   `candidateFixScope.kind: 'BOUNDED_CODE_DEFECT'`, `reproduction.command`
+   built from a single TSF-authored fixed literal string (`node --test
+   tsf/test/self-improvement-golden-proof-target.test.mjs`) -- confirmed
+   never built from external/scraped/user-supplied content, per Wave C's
+   own carried-forward design note.
+3. **Real DETECTED -> VERIFIED transition** via the new
+   `applyMechanicalVerification` glue, driven by a real re-run of
+   `reproduction.command` (genuinely failing, exit 1).
+4. **Real `applyAutofixEligibility`**: `ELIGIBLE_FOR_AUTOFIX`,
+   `authorityRequired: null`.
+5. **The REAL fleet driver's own real polling/eligibility/origination
+   logic** (`startSelfImprovementFleetDriver`, `TSF_SELF_IMPROVEMENT_LOOP_ENABLED=1`
+   set ephemerally in the proof-driver process's own `process.env` only,
+   never persisted) -- a tick with a genuinely-read CRITICAL/EMERGENCY host
+   memory reading correctly refused (`TSF_PLANNER_SESSION_BLOCKED_BY_RESOURCE_PRESSURE`,
+   real `os.freemem()` evidence, real values as low as 0.87GB against the
+   1.5GB CRITICAL / 2.5GB PRESSURED floors -- this shared machine's own
+   real, sustained multi-session contention, not fabricated); once a
+   genuinely healthy-enough tick arrived, real cycle: `{action: 'ORIGINATED',
+   missionId: 'mission:selfimprove:7153084a59d5f76aa81f6d8e', created: true}`.
+6. **`PlannerSessionLifecycle` acquired the mission for real** --
+   confirmed via the finding's own real transition
+   (`ELIGIBLE_FOR_AUTOFIX -> FIX_MISSION_CREATED`, reason
+   `REPAIR_MISSION_ORIGINATED`) and a real durable planner-mission
+   checkpoint.
+7. **The real worker dispatch**: `dispatchRepairWorker` -> real
+   `createIsolatedRepairWorktree` (a genuine linked `git worktree add`) ->
+   a REAL, bounded, subscription-covered `codex` CLI process spawned via
+   `safe-provider-launch.mjs` (`WORKER_BALANCED` resolved to the
+   `CODEX_SAFE` profile, the real committed, `VALIDATED_WINDOWS_FIXTURE`-
+   status routing config -- `CLAUDE_SAFE` is `CONFIGURED_RUNTIME_UNAVAILABLE`
+   on this machine's actual install layout, confirmed by inspection before
+   dispatch, so the real routing config's own preference correctly
+   resolved to the provider that actually works here), gated by a real,
+   passing Resource Pressure Governor reading immediately before dispatch.
+8. **The worker actually fixed the real defect and committed, for real,
+   autonomously**: real commit `f8a135bd52811a42b0110df7ea00464ae29bce96`,
+   `"fix(tsf): clamp values above one to one"`, in the real isolated
+   worktree -- `return 2` corrected to `return 1`, the stale `// BUG:`
+   comment removed. Post-hoc confirmed: `node --test` in that exact
+   worktree -> real 3/3 pass.
+9. **The real independent verifier**: `runIndependentVerification` (no
+   deps override -- the real default path) -> `VERIFIED_PASS` on the
+   FIRST attempt (no retry needed): reproduction genuinely now passes,
+   real independence check (`openai` worker vs. `anthropic` verifier,
+   genuinely divergent per the real committed routing config), forbidden-
+   surface/scope/duplicate-architecture checks all clean.
+10. **Governed adoption attempted, correctly gate-blocked**: real
+    `attemptRepairAdoption` cycle -> `{adopted: false, reason: 'GATE_CLOSED'}`
+    -- the real adoption-authorization gate was never opened by this wave,
+    exactly the mission brief's own explicitly-valid expected outcome.
+11. **Redogfood re-ran the ORIGINAL detector against the candidate
+    worktree** (not canonical, since it was not adopted -- the fleet
+    driver's own real branch for `adoption.adopted === false`): the real
+    `reproduction.command` re-executed in that worktree -> genuinely now
+    passes -> `classifyRedogfoodResult` maps a clean pre-adoption redogfood
+    pass to `RESOLVED` (Wave B's own already-documented, already-tested
+    design -- `RESOLVED` here means "the candidate fix is mechanically
+    confirmed correct," not a claim that anything merged into canonical;
+    the finding's own final transition (`READY_FOR_ADOPTION -> RESOLVED`,
+    reason `REDOGFOOD_CONFIRMED_RESOLVED`) and this distinction are both
+    disclosed here, not conflated).
+12. **A durable receipt chain links finding -> mission -> implementation
+    outcome -> verifier result -> adoption result -> redogfood result**:
+    `WORKER_DISPATCHED`, `WORKER_RESULT`, `VERIFIER_RESULT`,
+    `REDOGFOOD_RESULT`, `LESSON_RECORDED` all present, hash-chain intact
+    (`chainBreakIndex: -1`). **Real gap found here** (see below): the enum
+    also names `MISSION_ORIGINATED`/`ADOPTION_DECISION`, but no code path
+    had ever written either -- fixed same-day (commit `ce1cfa5b91`), 2 new
+    real unit tests confirm each is now written correctly and independently
+    of the live run above.
+
+Final durable finding state: `RESOLVED`, full transition audit trail
+(`DETECTED -> VERIFIED -> ELIGIBLE_FOR_AUTOFIX -> FIX_MISSION_CREATED ->
+FIX_IN_PROGRESS -> READY_FOR_ADOPTION -> RESOLVED`) intact on disk.
+
+### Phase 9 -- the ineligible-finding proof
+
+A second, real finding (`SUBJECTIVE_REDESIGN`, one of Wave A's own
+`NOT_ELIGIBLE_FIX_KINDS`) run through the identical real pipeline
+(`recordFindingDetection` -> `applyMechanicalVerification` -> real
+`applyAutofixEligibility`): lands on `NEEDS_OWNER`,
+`authorityRequired: 'SUBJECTIVE_REDESIGN'`. `pickOneActionableFinding`
+(the real fleet driver's own selector) returns `null` for it (`NEEDS_OWNER`
+is not in `ACTIONABLE_STATUSES`). A real fleet-driver tick against a store
+holding only this finding reports `{action: 'NOTHING_TO_DO'}`. A
+poison-pill fake `PlannerSessionLifecycle` (throws if ever constructed)
+proves zero mission origination was ever attempted -- zero LLM-CLI spend
+for this finding, confirmed structurally, not just by absence of a log
+line.
+
+### Phase 10 -- the failure/chaos proof, all 9 scenarios
+
+Real dependency-injected fakes for provider calls (matches Wave B/C's own
+established discipline -- no additional real LLM-CLI spend in this phase);
+REAL process spawn+SIGKILL for the two scenarios that specifically call for
+it, mirroring this repo's own established F4/F6/F22/F24 template
+(`planner-mission-lease-crash-reclaim.test.mjs`,
+`resource-pressure-lease-host-wide.test.mjs`).
+
+| # | Scenario | File | Result |
+|---|---|---|---|
+| 1 | Planner crash after real origination (real SIGKILL) | `self-improvement-chaos-planner-crash.test.mjs` | PASS -- a fresh recovery call for the identical finding sees the crashed process's own durable checkpoint and never re-invokes `startMission`; no duplicate mission |
+| 2 | Worker crashes after edit (real worktree removed before verify) | `self-improvement-chaos-repair-cycle-integrity.test.mjs` | PASS -- the real verifier throws (real `git rev-parse` against a now-gone path), never silently resolves as a pass |
+| 3 | Verifier crashes (throws) | same file | PASS -- the finding stays `FIX_IN_PROGRESS`, never silently transitions as verified |
+| 4 | Backend restart mid-cycle (real SIGKILL after 1 durable `VERIFIED_FAIL`) | `self-improvement-chaos-backend-restart.test.mjs` | PASS -- a fresh process sees the exact attempt history intact (no loss, no duplication) and dispatches exactly ONE new worker for attempt 2, never re-running attempt 1 |
+| 5 | Resource pressure turns CRITICAL mid-cycle (between origination and dispatch) | `self-improvement-chaos-repair-cycle-integrity.test.mjs` | PASS -- the real Resource Pressure Governor gate refuses dispatch; the finding never falsely advances past its pre-attempt status |
+| 6 | Duplicate detector event, full path | `self-improvement-chaos-duplicate-detection.test.mjs` | PASS -- 2 concurrent `recordFindingDetection` calls -> 1 record, `occurrences: 2`; 2 concurrent `originateRepairMission` calls -> exactly one `created:true`, one `created:false`, one durable checkpoint |
+| 7 | Repair introduces a regression | `self-improvement-chaos-regression-introduced.test.mjs` | PASS -- a real fixture-repo commit that genuinely fixes the named reproduction but breaks a DIFFERENT existing test -> `VERIFIED_FAIL` / `REGRESSION_TESTS_FAILED`, never a silent pass |
+| 8 | Worker self-reports success but reproduction still fails | `self-improvement-chaos-repair-cycle-integrity.test.mjs` | PASS -- `VERIFIED_FAIL` / `REPRODUCTION_STILL_FAILS`, finding stays `FIX_IN_PROGRESS`, never a false `READY_FOR_ADOPTION` |
+| 9 | Canonical advances (a real unrelated commit lands) between origination and dispatch | `self-improvement-chaos-stale-main-advance.test.mjs` | PASS -- the isolated repair worktree forks from the CURRENT canonical HEAD (contains the new commit), mechanism stays correct under the drift |
+
+No duplicate dispatch, no duplicate adoption, no lost finding, no endless
+retry, no widened authority -- proven with real evidence in every scenario
+above, not asserted.
+
+### Tests and results
+
+Whole-repo sweep (`node --test tsf/test/*.test.mjs`, taken after the chaos
+suite was added but before the receipt-chain fix's own +2 tests): **2687
+tests, 2679 pass, 7 fail** -- 6 are the IDENTICAL pre-existing, host-load-
+sensitive failures Wave A/B/C's own checkpoints already documented
+(unchanged, same test names), the 7th is this wave's own not-yet-adopted
+golden-proof fixture (expected, see above). 2687 - 2668 (Wave C's own
+whole-repo total) = 19 = this wave's own net new tests at that point. The
+receipt-chain fix's own 2 additional tests were verified both in isolation
+and against the full self-improvement suite (below); not re-run against
+the full whole-repo sweep a second time (purely additive, zero shared-file
+changes beyond what the first sweep already covered).
+
+`node --test tsf/test/self-improvement-*.test.mjs`: **268 tests, 267 pass, 1
+fail** (248 were Wave B/C's own; this wave added 6 mechanical-verification +
+10 chaos + 2 receipt-chain-gap + 3 golden-proof-fixture -1 net from an
+existing test folded in during the receipt-chain fix = 20 net new). The 1
+fail is the golden-proof fixture's own
+`clampToUnitInterval` test on THIS worktree's own canonical HEAD --
+deliberately, correctly still failing: the real repair worker's fix lives
+only in the discarded candidate worktree, per the adoption gate correctly
+staying closed; see the real golden-proof evidence above for that
+worktree's own 3/3 real pass).
+
+**Lint**: `npx oxlint` on every new/changed `.mjs` file this wave touched --
+clean, exit 0. Every file well under the `.oxlintrc.json` 600-line cap
+(largest new/changed file: 178 lines).
+
+### Constraints honored
+
+NWR: not touched (confirmed by diff-scoped grep, zero matches). Cleanup V1
+real destructive authority: not activated. The real
+`TSF_SELF_IMPROVEMENT_ADOPTION_AUTHORIZATION` env var/flag file and the
+real `TSF_SELF_IMPROVEMENT_LOOP_ENABLED` flag: never set anywhere in any
+file this wave committed (confirmed by diff-scoped grep, zero matches;
+both were set only ephemerally inside this wave's own proof-driver
+processes' `process.env`, never persisted). No push, no merge to
+`tsf/main`/`main` -- deliberately, see the deviation section above. No file
+under `C:\TSF_ORCA` read or written by this wave's own actions. No second
+finding/mission/authority mechanism built. One real, bounded, subscription-
+covered LLM-CLI dispatch (`codex`, `WORKER_BALANCED` -> `CODEX_SAFE`, the
+real committed, `VALIDATED_WINDOWS_FIXTURE`-status routing config) for the
+golden proof; zero additional real dispatches for the ineligible-finding
+proof or the chaos proof (dependency-injected fakes throughout, per the
+mission brief's own instruction).
+
+### Final verdict: `TSF_NATIVE_SELF_IMPROVEMENT_LOOP_V1_GREEN`
+
+The real end-to-end golden proof succeeded (all 12 steps, real evidence,
+one real bounded LLM-CLI dispatch that genuinely fixed the real defect and
+committed autonomously). The ineligible-finding proof succeeded (real
+NEEDS_OWNER, zero dispatch). All 9 chaos/failure scenarios held, each with
+real evidence (real SIGKILL where the scenario called for it). Two real,
+genuine, previously-undetected gaps were found by actually running the
+mechanism for real for the first time (never possible from Wave B/C's own
+fake-heavy test suites) and fixed with the same rigor as every prior wave
+-- real regression test proving each failed pre-fix and passes post-fix,
+zero weakening of any existing safety check, zero new authority granted.
+The adoption-authorization gate was never opened. No file under
+`C:\TSF_ORCA` was ever read or written by this wave's own actions; nothing
+was pushed to any remote. The one deliberate deviation from the mission
+brief's literal Phase 9 setup instruction (declining to push the
+preliminary fixture to real canonical `tsf/main`) is disclosed in full
+above, together with the reasoning and the resolution used instead, which
+preserved a fully real, mechanically faithful proof throughout.
