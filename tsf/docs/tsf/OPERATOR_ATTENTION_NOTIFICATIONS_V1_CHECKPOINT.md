@@ -41,13 +41,31 @@ Dock surfaces first.
 | Phase | Status | Notes |
 |---|---|---|
 | 1 (Attention-State Inventory) | DONE | Real read-only sweep, see reconciliation below |
-| 2 (Fleet-Wide Aggregation) | IN_PROGRESS | Design locked, Wave 1 dispatched |
-| 3 (Command) | NOT_STARTED | Wave 2 |
-| 4 (Operator UI) | NOT_STARTED | Wave 2/3 |
-| 5 (Notification Contract) | IN_PROGRESS | Design locked, Wave 1 dispatched (extends completion-watch's own real precedent) |
-| 6 (Delivery Capability) | NOT_STARTED | Reconciliation below already determines the honest answer |
-| 7 (Restart/Duplicate Safety) | IN_PROGRESS | Required as part of Wave 1's own test proof |
+| 2 (Fleet-Wide Aggregation) | DONE | Wave 1 adopted at `5bde77ec8e`, 42/42 new + 49/49 regression independently re-verified by coordinator |
+| 3 (Command) | IN_PROGRESS | Wave 2 dispatched |
+| 4 (Operator UI) | IN_PROGRESS | Wave 2 dispatched |
+| 5 (Notification Contract) | DONE | `attention-notification-event.mjs` + store + reconciler adopted at `5bde77ec8e`; `attachDueAttentionNotices` wiring into `http-server.mjs` is Wave 2's job |
+| 6 (Delivery Capability) | DONE (design) | See locked verdict below; UI polling delivery wired in Wave 2 |
+| 7 (Restart/Duplicate Safety) | DONE | 5 required proofs in `attention-status-reconciler.test.mjs`, independently re-run by coordinator |
 | 8 (Dogfood) | NOT_STARTED | Final wave, coordinator-run |
+
+## Wave 1 adoption record
+
+Coordinator independently verified before merging (not trusting the
+implementing agent's own report): read `fleet-attention-status.mjs`,
+`attention-notification-event.mjs`, `attention-status-reconciler.mjs`,
+`attention-notification-event-store.mjs` in full; cross-checked every real
+field-name assumption against the actual source (`raisedAt` on
+PROJECT/RESEARCH needsYou entries, `at` on PLANNER entries,
+`buildResourcePressureState`'s real `observedAt`/`admission` fields,
+`readAllResearchMissions`/`readAllPlannerMissionRecords`/`projectsById`
+all confirmed to exist with the exact names used) -- zero fabricated
+imports or field names found. Re-ran all 42 new tests (42/42) and 49
+regression tests across `fleet-work-status`/`work-feed-summary`/
+`command-research-completion-watch`/`self-improvement-finding-store`
+(49/49) myself. `npx oxlint` clean on every touched/new file. Merged
+`--ff-only` into canonical `tsf/main` at `5bde77ec8e`, pushed to
+`fork/tsf/main`.
 
 ## Phase 1: reconciliation (REUSE/EXTEND/NEW/REJECT)
 
@@ -159,10 +177,61 @@ own report, not re-transcribed) -- decisions only:
   `DELIVERY_CHANNEL_EXTERNAL_GATE` -- owned by Orca-core, outside TSF's
   boundary, not wired this pass.
 
+## Wave 2 design (locked before dispatch)
+
+- **HTTP**: new `GET /api/attention` route (`tsf/server/attention-http-
+  routes.mjs`, mirrors `resource-pressure-governor-http-routes.mjs`'s
+  `handleXxxRoute(parts, req, res, ctx, helpers)` shape, registered in
+  `http-server.mjs` alongside the other route handlers), returning
+  `{ ok: true, items: buildFleetAttentionItems(...) }` built from real
+  server-side reads (same real-deps pattern `attention-status-
+  reconciler.mjs`'s `gatherRealDeps` already established -- reuse it, do
+  not re-derive).
+- **Command, "What needs me?"**: surgical extension, not a new intent --
+  `command-responder.mjs`'s existing `NEEDS_YOU_QUERY` handler
+  (~line 539) swaps its data source from bare `fleetNeedsYouStatus(...)`
+  to `buildFleetAttentionItems(...).filter(i => i.category ===
+  'NEEDS_OWNER')`, a strict superset (adds self-improvement eligibility-
+  declined findings). Text/deep-link shape stays compatible.
+- **Command, "What is ready for adoption?"**: surgical extension of
+  `command-self-improvement-bridge.mjs`'s existing
+  `SELF_IMPROVEMENT_READY_FOR_ADOPTION` handler only -- swap its data
+  source from `readAllFindings()`-filtered to
+  `buildFleetAttentionItems(...).filter(i => i.category ===
+  'READY_FOR_ADOPTION')` (self-improvement findings are already one input
+  to that bucket, so this is a superset covering project-level adoption
+  candidates too). Do not touch the other 5 intents in that file, do not
+  rename it -- this is a one-function-body change.
+- **Command, 4 new questions**: NEW `tsf/server/command-fleet-attention-
+  bridge.mjs` (mirrors `command-self-improvement-bridge.mjs`'s shape
+  exactly), covering only what nothing existing already answers:
+  "What finished?" (COMPLETED_RECENTLY), "What is waiting on resources?"
+  (WAITING_FOR_RESOURCES), "What failed today?" (FAILED_REQUIRES_ATTENTION,
+  bounded to items whose `changedAt` falls within the current day --
+  real bound, not a fabricated one), "Did anything change while I was
+  gone?" (calls `drainDueAttentionNotifications` on demand rather than
+  waiting for the next unrelated chat turn -- same underlying mechanism,
+  explicit query). Wired into `command-responder.mjs` at the same early
+  message-shaped-bridge layer, checked so it never shadows the two
+  surgical extensions above (their own bridges/handlers are checked
+  first in the existing call order).
+- **Notification delivery wiring**: `attachDueAttentionNotices` (already
+  built, Wave 1) gets wired into `http-server.mjs` at the SAME `POST
+  /api/chat` call sites `attachDueCompletionNotices` already uses,
+  alongside it (both run, neither replaces the other).
+- **UI**: extend the existing global indicator
+  (`GlobalRunStatusIndicator.tsx`) and Home's needs-you tile
+  (`home-needs-you-items.ts`/`HQPage.tsx`) to also read `GET /api/attention`
+  and merge in items `buildGlobalRunStatusItems` structurally cannot
+  produce (self-improvement/resource-pressure items have no
+  `liveWorkFeed`) -- same trigger button, same dialog, extended content;
+  no new top-level subsystem. Real deep links via each item's own
+  `deepLink` field. Must follow `docs/STYLEGUIDE.md` tokens exactly and be
+  validated via the `$electron` skill + Playwright CDP per `AGENTS.md`
+  (never computer-use for this).
+
 ## Next intended action
 
-Dispatch Wave 1 (domain + server layer only: Phase 2 aggregator, Phase 5
-event contract + store + reconciler, Phase 7 restart/dedup tests). Wave 2
-covers Phase 3 (Command) + Phase 4 (UI) once Wave 1 is adopted. Phase 8
-(dogfood) run by the coordinator directly at the end, same discipline as
-the Controlled Live Pilot's own Phase 1 sweep.
+Wave 1 adopted. Wave 2 (Command + HTTP route + UI) dispatched per the
+design above. Phase 8 (dogfood) run by the coordinator directly at the
+end, same discipline as the Controlled Live Pilot's own Phase 1 sweep.
