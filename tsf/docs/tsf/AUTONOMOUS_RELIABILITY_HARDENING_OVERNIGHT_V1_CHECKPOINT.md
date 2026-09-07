@@ -2904,3 +2904,136 @@ instruction. NWR data: not touched.
 
 Adopted SHA: see the commit on
 `tsf/feature/phase11-provider-worker-resilience` that carries this section.
+
+## Phase 8: Planner Lifecycle Chaos Test -- Finding F24, FIXED (real TOCTOU in `_mutate`'s lease enforcement); one new real coverage gap closed with a passing test; three scenarios confirmed already sound
+
+Worktree: `phase8-planner-lifecycle-chaos`, branch
+`tsf/feature/phase8-planner-lifecycle-chaos` (forked from `tsf/main` @
+`77b7482a90e4e44abf311a4b92a0db3ea03af23a`).
+
+**Method.** Read F4 (real cross-process crash-reclaim, `planner-mission-lease-crash-reclaim.test.mjs`)
+and F22 (planner dispatch double-spend on crash-mid-dispatch, the
+`recordDispatchAttempt`/`resolveDispatchAttempt`/`classifyPlannerDispatchAmbiguity`
+ledger in `planner-mission-checkpoint.mjs`) checkpoint sections in full before
+touching anything, then read every real Planner Context Lifecycle production
+file (`planner-mission-checkpoint.mjs`, `planner-mission-lease.mjs`,
+`planner-mission-store.mjs`, `planner-session-lifecycle.mjs`,
+`planner-mission-repo-state.mjs`) and every existing test that exercises them,
+line by line, before writing a single new test -- per-scenario reconciliation
+below cites exactly what was read.
+
+### Scenario-by-scenario reconciliation
+
+| Scenario | Verdict | Evidence |
+|---|---|---|
+| Planned rollover | Already covered | `planner-session-lifecycle-golden-rollover.test.mjs` -- planner A dispatches/raises Needs-You/checkpoints/relinquishes, a genuinely independent planner B object hydrates from the durable store only, proves zero re-dispatch, resolves inherited state, completes the mission. Read in full; no gap. |
+| Planner process exit | Already covered | `planner-mission-lease-crash-reclaim.test.mjs` (F4) -- a REAL spawned child process holding the lease is SIGKILLed; a successor is refused before real TTL expiry (proves the lease was genuinely live), then reclaims after, with intact worker state and passing `assertRepoStateContinuity`. Read in full; no gap. |
+| Backend restart | Not meaningfully different from "planner process exit" here -- already covered by the same test | Confirmed via a real code read: `PlannerSessionLifecycle` holds no state beyond `missionId`/`plannerSessionId`/injected `deps`; every read re-hits the durable file-backed store (the class's own header comment states this explicitly). `grep -rn "new PlannerSessionLifecycle"` across `tsf/` found it constructed ONLY in tests/fixtures -- no production HTTP-route/server file wires it in yet, so there is no additional "backend" concept (an in-memory singleton, a live socket, cached state) for a restart to threaten beyond what F4's crash-reclaim already proves: a fresh process, with no memory of any prior instance, reading only the durable store. Not re-tested as a separate scenario -- would be a duplicate of F4's own proof, not a new one. |
+| Stale planner lease | Already covered | `planner-mission-lease.test.mjs`'s pure-function stale-reclaim test (fake clock) + F4's real end-to-end crash-reclaim (real TTL, real process). Read in full; no gap. |
+| Concurrent takeover attempt (TWO successors racing a STALE lease) | Real coverage gap -- closed with a new real test (mechanism confirmed sound, no fix needed) | `planner-mission-lease-cross-process.test.mjs` only races two processes for an EMPTY (never-held) lease slot; F4's crash-reclaim test proves exactly ONE successor reclaiming a stale lease. Neither combines "stale lease left by a real crashed holder" + "two real successor processes racing for it AT ONCE" -- confirmed absent by reading both files in full. New: `planner-mission-lease-concurrent-takeover.test.mjs` (spawns a real holder via the existing `planner-crash-reclaim-worker.mjs` fixture, SIGKILLs it, waits past real TTL, then fires two real successor processes at `PlannerSessionLifecycle.acquireLeaseAndHydrate` -- the full end-to-end hydrate path, not just the bare lease primitive -- via a new fixture, `planner-mission-lease-concurrent-successor-worker.mjs`). Result: exactly one winner every run (4 consecutive runs, no flake), the loser gets a typed `TSF_PLANNER_LEASE_DENIED`, the winner's hydrated checkpoint is intact (`missionGoal`, `workerCount` both correct) -- the cross-process file lock (`cross-process-file-lock.mjs`, already reused by every lease operation) serializes stale-reclaim exactly like it serializes empty-slot acquire. No fix needed; the mechanism generalizes correctly. |
+| Worker finishes during rollover | **Real defect found and fixed -- Finding F24** | See below. |
+| Verifier finishes during rollover | Same defect, same fix (Finding F24) | Same `_mutate` mechanism `recordVerifierResult` funnels through -- see below. |
+| Needs You created during rollover | Same defect, same fix (Finding F24) | Same `_mutate` mechanism `raiseNeedsYou` funnels through -- see below. |
+| Resource pressure during hydration | Confirmed by design, not a gap -- documented with a new test | `_assertResourceAdmission()` is called exactly ONCE, synchronously, at the top of `acquireLeaseAndHydrate`/`startMission` -- never re-consulted afterward. Confirmed deliberate, not an oversight: everything after the gate (the lease file-lock read/write, a JSON-parse checkpoint read, `assertRepoStateContinuity`'s string compare, `observeCanonicalRepoState`'s one `git rev-parse`) is cheap, bounded, allocation-free work -- unlike `dispatchWorkerForTask`'s real external provider call (the actual long-running operation in this class), there is nothing here for a pressure spike to meaningfully interrupt. Per-task heavyweight-dispatch admission is a DIFFERENT layer's documented job (`chat-dispatch-bridge.mjs`, per `ADMISSION_FIELD`'s own comment in `planner-session-lifecycle.mjs`), not duplicated in this class. New test added to `planner-session-lifecycle-resource-governance.test.mjs` proves `collectHostMemoryEvidence` is consulted exactly once per hydrate (a stateful mock that turns CRITICAL after its first call still lets hydration complete) -- confirms the single-gate design by direct observation, not just a code read. |
+| Provider failure during transition (dispatchWorker failing/succeeding exactly during a lease handoff) | Already sound under a genuinely different, realer timing than F22's own test -- confirmed with a new test | F22's own reproduction (`planner-session-lifecycle-crash-mid-dispatch.test.mjs`) forces its race by patching `_mutate`'s call count -- a valid proof of the ledger's logic, but a simulated single-planner-crash timing, not a real lease-expiry-during-a-still-running-call. New: `planner-session-lifecycle-dispatch-lease-handoff.test.mjs` -- planner A's real `dispatchWorker` call is genuinely slow (400ms) and still in flight when its real 200ms lease TTL elapses (no synthetic patching); a real successor B takes over via genuine TTL expiry mid-call, tries the same task, and is correctly refused (`TSF_PLANNER_DISPATCH_AMBIGUOUS`, real dispatcher never called twice); A's own dispatch call, whose real provider call genuinely succeeded, is refused at its post-dispatch commit (`TSF_PLANNER_LEASE_NOT_HELD`) rather than silently landing or silently vanishing -- the durable record shows the same honest "1 unresolved attempt, 0 registered workers" signature F22 designed for. Passes cleanly; F22's ledger design generalizes correctly to this realer timing without further changes. |
+
+### Finding F24: `PlannerSessionLifecycle._mutate`'s lease check was a TOCTOU race -- a stale planner could still commit a write after a real successor had already taken over -- REPRODUCED and FIXED
+
+**Gap.** `_mutate` (`planner-session-lifecycle.mjs`) read the current record,
+asserted the caller still held the live lease (`_requireLease`), and only
+THEN called `mutateCheckpoint` to perform the actual durable write. The
+lease check and the write were never atomic together: `mutateCheckpoint`
+(`planner-mission-store.mjs`) applied its `checkpointMutator` unconditionally
+inside its own cross-process file lock, with no awareness of WHO was
+supposed to be writing. In-process, no `await` separates the two steps, so
+the window is normally sub-millisecond -- but it is real, not theoretical: a
+genuinely separate OS process (exactly what a rollover/crash-reclaim
+successor is) can land its own lease takeover in that gap. A stale planner
+whose pre-flight check had already passed could still commit its write
+afterward, unconditionally -- two planners mutating the same mission
+concurrently, a direct violation of the single-authoritative-planner
+guarantee `_mutate`'s own comment claims to enforce ("structurally prevents
+a preempted/stale planner ... from mutating mission state after a successor
+took over"). This affected every mutator that funnels through `_mutate`:
+`recordWorkerResult`, `recordVerifierResult`, `raiseNeedsYou`,
+`resolveNeedsYou`, `recordDecision`, `advancePhase`, `checkpoint`, and the
+post-dispatch resolve/register commit inside `dispatchWorkerForTask`.
+
+**Reproduction.** New `tsf/test/planner-session-lifecycle-rollover-race.test.mjs`:
+widens the real (normally sub-millisecond) window deterministically, the
+same way F22's own test made its race deterministic (patching `_mutate` for
+exact timing) -- every function called is the REAL production function
+(`readPlannerMissionRecord`, `_requireLease`, `mutateCheckpoint`, the domain
+mutators), just reimplemented as one continuous async call with an explicit
+`await` inserted where production code has none, so a real successor's real
+takeover (genuine TTL expiry, a real `PlannerSessionLifecycle` instance,
+real durable writes) reliably lands inside that window on every run instead
+of by chance. Three scenarios (worker result, verifier result, Needs-You),
+each: planner A's pre-flight check passes genuinely (real live lease at that
+instant); a real planner B then takes over via real TTL expiry and commits
+its OWN real work; A's now-delayed write is attempted. Confirmed against the
+unmodified code (`git stash` on `planner-mission-store.mjs`/
+`planner-session-lifecycle.mjs`): all 3 scenarios' "A's write, landing after
+B's takeover, is refused" assertion FAILED -- A's write landed unconditionally
+every time (`Missing expected rejection`), and the follow-up assertion
+confirmed A's stale content had actually overwritten/co-mingled with B's
+durable state. Real defect, reproduced directly, not hypothesized.
+
+**Fix.** No new lease/checkpoint/dispatch-tracking mechanism -- reuses the
+existing pure `isPlannerMissionLeaseLive` domain function
+(`planner-mission-lease.mjs`) and the existing lease shape already durable in
+every mission record. `mutateCheckpoint` (`planner-mission-store.mjs`) gains
+an optional 4th parameter, `{ requireLeaseHolder }`: when passed a
+`plannerSessionId`, it re-asserts (live lease AND held by that exact session)
+ATOMICALLY inside the SAME file lock the write itself takes, throwing the
+same `TSF_PLANNER_LEASE_NOT_HELD` `_requireLease` already throws if not.
+Optional, defaulting to off, so every pre-existing direct caller
+(`cleanup-active-mission-check.test.mjs` and 4 other test files that seed a
+checkpoint via `mutateCheckpoint` with no lease semantics in play,
+`planner-mission-store.test.mjs`'s own direct tests) is unaffected --
+confirmed by reading every call site before shipping the change.
+`PlannerSessionLifecycle._mutate` now passes
+`{ requireLeaseHolder: this.plannerSessionId }`; the fast pre-flight
+`_requireLease` read is UNCHANGED and kept (cheap early rejection avoids
+wasted mutator work for an obviously-lost session) -- the atomic check inside
+the lock is what actually closes the race, not a replacement for the
+pre-flight one.
+
+**Tests.** `planner-session-lifecycle-rollover-race.test.mjs`: 3 scenarios x
+3 sub-tests = 9 tests, all passing post-fix, all reproduced-failing pre-fix
+via `git stash` (documented above). Full regression:
+`node --test tsf/test/planner-mission-*.test.mjs tsf/test/planner-session-lifecycle-*.test.mjs`
+-- 72/72 pass (includes the 3 new/changed files from this phase plus every
+pre-existing file in this family). Broader sweep of every OTHER file that
+calls `mutateCheckpoint` directly (`command-followup-context.test.mjs`,
+`cleanup-stacked-blockers-adversarial.test.mjs`, `cleanup-revalidation.test.mjs`,
+`cleanup-executor-worktree-adversarial.test.mjs`,
+`cleanup-active-mission-check.test.mjs`) -- 46/46 pass, confirming the
+optional 4th-parameter change is genuinely additive. Full-suite sweep
+(`node --test tsf/test/*.test.mjs`): 2399 tests, 2393 pass, 6 fail -- all 6
+are a subset of the SAME candidate set this program's own F1/F4/F11
+checkpoint entries already document as pre-existing, real-host-load-sensitive,
+unrelated to any file this phase touched (`command-bare-imperative-dispatch.test.mjs`'s
+"QUERY/STATUS"/"IDIOM"/"WorldForge" phrasing gaps, `http-work-summary.test.mjs`'s
+dispatch-tick timing test, `keep-going-autonomy-proof.test.mjs`'s long-running
+autonomy proof, `operator-state-adversarial.test.mjs`'s "STALE ACTION RACE").
+None of the 6 touch `planner-mission-store.mjs`, `planner-session-lifecycle.mjs`,
+or any file this phase changed.
+
+**Lint.** `npx oxlint` on every changed/new file (`planner-mission-store.mjs`,
+`planner-session-lifecycle.mjs`, `planner-session-lifecycle-rollover-race.test.mjs`,
+`planner-mission-lease-concurrent-takeover.test.mjs`,
+`planner-mission-lease-concurrent-successor-worker.mjs`,
+`planner-session-lifecycle-dispatch-lease-handoff.test.mjs`,
+`planner-session-lifecycle-resource-governance.test.mjs`) -- clean, exit 0.
+Every changed file stays well under the 600-line cap (largest is
+`planner-session-lifecycle.mjs` at 270 lines).
+
+Astra: not touched, not referenced. NWR data: not touched -- every new test
+uses small, disposable, hermetic fixtures (`mission:rollover-race-*`,
+`mission:concurrent-takeover-fixture`, `mission:dispatch-lease-handoff-fixture`,
+`mission:resource-gov-single-gate`), each in its own isolated
+`TSF_UI_STATE_FILE`.
+
+Adopted SHA: see the commit on `tsf/feature/phase8-planner-lifecycle-chaos`
+that carries this section.

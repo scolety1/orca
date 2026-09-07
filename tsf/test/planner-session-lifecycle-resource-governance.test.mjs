@@ -66,6 +66,44 @@ test('Resource Pressure Governor gates planner session creation/hydration', asyn
       const hydrated = await plannerB.acquireLeaseAndHydrate()
       assert.equal(hydrated.missionGoal, 'g')
     })
+
+    // Phase 8 (Planner Lifecycle Chaos Test) reconciliation: _assertResourceAdmission
+    // is a single up-front gate (called once, before the lease acquire/read/
+    // continuity-check sequence), never re-consulted mid-hydration. Confirmed
+    // deliberate, not a gap: (1) collectHostMemoryEvidence is called exactly
+    // once per hydrate -- proven directly below, not assumed from a code read;
+    // (2) everything AFTER the gate (acquirePlannerLease's file-lock read/
+    // write, readPlannerMissionRecord's JSON parse, assertRepoStateContinuity's
+    // string compare, observeRepoState's single `git rev-parse`) is cheap,
+    // bounded, read-mostly work with no allocation proportional to mission
+    // size or duration -- unlike dispatchWorkerForTask's real external
+    // provider call, there is no long-running operation here for a pressure
+    // spike to meaningfully interrupt. Per-task heavyweight-dispatch admission
+    // (the actual unbounded-duration risk) is a DIFFERENT layer's job
+    // (chat-dispatch-bridge.mjs, per ADMISSION_FIELD's own comment), not
+    // duplicated in this lifecycle class.
+    await t.test('resource pressure is gated once, up front -- a spike immediately after the check does not abort an already-admitted hydrate (single gate, not a continuous guard, by design)', async () => {
+      const missionId = 'mission:resource-gov-single-gate'
+      const healthyMemory = () => ({ totalBytes: 16 * GB, freeBytes: 8 * GB, availableBytes: 8 * GB, usedPercent: 50 })
+
+      const plannerA = new PlannerSessionLifecycle({ missionId, plannerSessionId: 'planner-A', deps: { clock, collectHostMemoryEvidence: healthyMemory } })
+      await plannerA.startMission({ missionGoal: 'g', phase: 'BUILD', repoState })
+      await plannerA.relinquish()
+
+      let calls = 0
+      const criticalAfterFirstCall = () => {
+        calls += 1
+        // HEALTHY only for the one up-front admission check; every
+        // subsequent call (there must be none) would see CRITICAL.
+        return calls === 1
+          ? { totalBytes: 16 * GB, freeBytes: 8 * GB, availableBytes: 8 * GB, usedPercent: 50 }
+          : { totalBytes: 16 * GB, freeBytes: 1 * GB, availableBytes: 1 * GB, usedPercent: 92 }
+      }
+      const plannerB = new PlannerSessionLifecycle({ missionId, plannerSessionId: 'planner-B', deps: { clock, collectHostMemoryEvidence: criticalAfterFirstCall, observeRepoState: () => repoState } })
+      const hydrated = await plannerB.acquireLeaseAndHydrate()
+      assert.equal(hydrated.missionGoal, 'g', 'hydration completes on the single up-front HEALTHY reading')
+      assert.equal(calls, 1, 'collectHostMemoryEvidence is consulted exactly once per hydrate -- confirms the single-gate design, not an assumption')
+    })
   } finally {
     cleanupStateFile()
   }

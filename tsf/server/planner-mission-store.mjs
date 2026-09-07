@@ -13,6 +13,7 @@ import { assertSupportedPlannerMissionCheckpointSchemaVersion } from '../domain/
 import { getStateFilePath, loadState, saveState } from './data-store.mjs'
 import {
   acquirePlannerMissionLease,
+  isPlannerMissionLeaseLive,
   relinquishPlannerMissionLease,
   renewPlannerMissionLease
 } from '../domain/planner-mission-lease.mjs'
@@ -100,11 +101,30 @@ export async function relinquishPlannerLease(missionId, plannerSessionId, clock)
 // --- Checkpoint operations: apply a pure domain mutator (from
 // planner-mission-checkpoint.mjs) to whatever checkpoint is currently
 // durable, atomically. `checkpointMutator(currentCheckpointOrNull, clock)`.
-
-export async function mutateCheckpoint(missionId, checkpointMutator, clock) {
+//
+// Phase 8 finding: PlannerSessionLifecycle._mutate's own lease check
+// (readPlannerMissionRecord + a live-holder assertion) ran BEFORE this call,
+// outside the file lock -- a stale/preempted session that passed that
+// pre-flight check could still land its write here if a successor reclaimed
+// the lease in the gap between the two (a real TOCTOU: no `await` separates
+// them in-process, but a genuinely separate OS process can reclaim in that
+// gap, and cross-process is exactly the crash/rollover case this store
+// exists for). `requireLeaseHolder` re-asserts holder identity ATOMICALLY
+// inside the same lock the write itself uses, closing that window -- optional
+// so every pre-existing direct caller (cleanup/test fixtures seeding a
+// checkpoint with no lease semantics in play) is unaffected.
+export async function mutateCheckpoint(missionId, checkpointMutator, clock, { requireLeaseHolder } = {}) {
   let nextCheckpoint
   await withPlannerMissionRecord(missionId, (current) => {
     const record = current ?? { lease: null, checkpoint: null }
+    if (requireLeaseHolder) {
+      const now = clock()
+      if (!isPlannerMissionLeaseLive(record.lease, now) || record.lease.holderPlannerSessionId !== requireLeaseHolder) {
+        const error = new Error(`planner session ${requireLeaseHolder} does not currently hold the mission lease for ${missionId}`)
+        error.code = 'TSF_PLANNER_LEASE_NOT_HELD'
+        throw error
+      }
+    }
     nextCheckpoint = checkpointMutator(record.checkpoint, clock)
     return { ...record, checkpoint: nextCheckpoint }
   })

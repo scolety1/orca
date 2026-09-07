@@ -86,11 +86,17 @@ export class PlannerSessionLifecycle {
 
   // Any mutation must be made by the live lease holder -- structurally
   // prevents a preempted/stale planner (still alive in-process, but rolled
-  // over) from mutating mission state after a successor took over (2D).
+  // over) from mutating mission state after a successor took over (2D). The
+  // read here is a fast pre-flight rejection only (cheap, avoids doing
+  // mutator work for an obviously-lost session); requireLeaseHolder below
+  // re-asserts it ATOMICALLY inside mutateCheckpoint's own lock, which is
+  // what actually closes the race (Phase 8 finding: a rollover landing in
+  // the gap between this read and the write below used to be able to slip a
+  // stale planner's write through).
   async _mutate(checkpointMutator) {
     const record = readPlannerMissionRecord(this.missionId)
     this._requireLease(record)
-    return mutateCheckpoint(this.missionId, (current) => checkpointMutator(current, this.deps.clock), this.deps.clock)
+    return mutateCheckpoint(this.missionId, (current) => checkpointMutator(current, this.deps.clock), this.deps.clock, { requireLeaseHolder: this.plannerSessionId })
   }
 
   async startMission({ missionGoal, phase, repoState }) {
