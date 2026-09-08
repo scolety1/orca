@@ -299,6 +299,38 @@ function resourcePressureItem(resourcePressureState) {
   }
 }
 
+// Resource-Wait Auto-Resume V1: the fleet-wide resourcePressureItem above
+// answers "is the HOST under pressure" but never names WHICH project is
+// waiting or whether it needs Tim at all -- the exact gap that let a
+// resource wait read as indistinguishable from a genuine STALLED failure.
+// Read directly off each run's own durable checkpoint/pendingDispatch
+// (no separate resourcePressureState needed -- unlike the host-level item
+// above, this is honest even when host memory currently isn't being
+// re-measured for this request) so "why isn't EasyLife running" and "will
+// Nytheria start on its own" both have a real, per-project, always-
+// available answer.
+function resourceBlockedRunItems(keepGoingRuns, displayNameById) {
+  return Object.entries(keepGoingRuns)
+    .filter(([, run]) => run.state === 'ACTIVE' && run.checkpoints.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES')
+    .map(([projectId, run]) => {
+      const lastCheckpoint = run.checkpoints.at(-1)
+      const willAutoResume = !!run.pendingDispatch
+      return {
+        id: `run:${projectId}:waitingForResources`,
+        category: 'WAITING_FOR_RESOURCES',
+        severity: DEFAULT_SEVERITY_BY_CATEGORY.WAITING_FOR_RESOURCES,
+        project: projectRef(displayNameById, projectId),
+        label: displayNameById.get(projectId) ?? projectId,
+        reason: willAutoResume
+          ? `waiting for host memory to ease (${lastCheckpoint.note ?? 'resource pressure'}) -- will resume automatically, no action needed`
+          : `waiting for host memory to ease (${lastCheckpoint.note ?? 'resource pressure'}) -- this run has no recorded first-wave dispatch to auto-resume yet`,
+        changedAt: lastCheckpoint.at,
+        deepLink: { kind: 'PROJECT', id: projectId },
+        source: { kind: 'KEEP_GOING_RUN', id: projectId }
+      }
+    })
+}
+
 export function buildFleetAttentionItems({
   projects,
   keepGoingRuns = {},
@@ -321,7 +353,8 @@ export function buildFleetAttentionItems({
     ...blockedItems(workSummary.blocked, researchMissions, displayNameById),
     ...completedRecentlyItems(projects, keepGoingRuns, researchMissions, clock, displayNameById),
     ...selfImprovementItems(selfImprovementFindings, displayNameById),
-    ...holdItems(projectExecutionHolds, displayNameById)
+    ...holdItems(projectExecutionHolds, displayNameById),
+    ...resourceBlockedRunItems(keepGoingRuns, displayNameById)
   ]
   const resourceItem = resourcePressureItem(resourcePressureState)
   if (resourceItem) { items.push(resourceItem) }

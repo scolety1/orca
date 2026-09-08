@@ -249,6 +249,19 @@ export function projectKeepGoingRun(run, clock) {
     // WORKING/VERIFYING/REVISION instead of the real STALLED, a genuine
     // drift between the two projections of the same run.
     inFlightWaveStalled: !!(run.inFlightWave && lastCheckpoint?.phase === 'WAVE_STALLED'),
+    // Resource-Wait Auto-Resume V1: same "expose exactly the boolean the
+    // client needs, never the raw domain internal" pattern as
+    // dispatchTickActive/inFlightWaveStalled above. True only when a real,
+    // durable pending-first-wave-dispatch record exists (recordPendingDispatch,
+    // keep-going-dispatch-loop.mjs) -- i.e. the Keep Going fleet driver
+    // will automatically retry the SAME already-attempted dispatch the
+    // moment the Resource Pressure Governor admits it, with no operator
+    // action needed. False (not merely absent) when the run is waiting for
+    // a reason a driver can't resolve on its own (e.g. still PLANNING, no
+    // wave ever attempted) -- lastCheckpoint.note already carries the real,
+    // human-readable resource-tier reason, not duplicated here.
+    willAutoResume:
+      lastCheckpoint?.phase === 'DISPATCH_WAITING_FOR_RESOURCES' && !!run.pendingDispatch,
     createdAt: run.createdAt,
     updatedAt: run.updatedAt
   }

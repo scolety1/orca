@@ -324,6 +324,11 @@ test('POST tick under CRITICAL host memory returns DISPATCH_WAITING_FOR_RESOURCE
       const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
       const got = await getRes.json()
       assert.equal(got.started, true, 'the run itself remains ACTIVE, not paused or failed')
+      // Resource-Wait Auto-Resume V1: the real HTTP route path durably
+      // records the exact candidateWorkItems this refused attempt tried to
+      // place, and the operator-facing projection honestly reports that a
+      // driver will replay them automatically -- no human needs to re-tick.
+      assert.equal(got.willAutoResume, true)
     } finally {
       // Restored to this file's own forced-HEALTHY default for every
       // other test.

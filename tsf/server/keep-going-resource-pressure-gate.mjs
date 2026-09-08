@@ -13,6 +13,7 @@
 // look like a failure.
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 import { classifyDispatchAdmission as classifyAdmission } from '../domain/resource-pressure-governor.mjs'
+import { checkpointRun, recordPendingDispatch } from '../domain/keep-going.mjs'
 
 export const DEFAULT_RESOURCE_PRESSURE = Object.freeze({ collectHostMemoryEvidence })
 
@@ -24,4 +25,49 @@ export const DEFAULT_RESOURCE_PRESSURE = Object.freeze({ collectHostMemoryEviden
 // or refusal wording can't silently drift between the three.
 export function classifyDispatchAdmission(resourcePressure) {
   return classifyAdmission(resourcePressure.collectHostMemoryEvidence(), 'newHeavyweightWorkerDispatch')
+}
+
+// Resource-Wait Auto-Resume V1: the real, durable side effect of a refused
+// dispatchStep call in keep-going-dispatch-loop.mjs -- extracted here for
+// the same reason this whole file already exists (that module was already
+// near its own max-lines cap). Phase 12 (category 8)'s own checkpoint
+// (durably records the refusal, was: vanished with zero trace) and this
+// program's pendingDispatch record (the exact candidateWorkItems this
+// refused attempt tried to place as the run's FIRST wave -- waves.length
+// === 0 only; a run with an existing wave already has a real, working
+// continuation path via reconcileSettledRun/buildContinuationWorkItem in
+// keep-going-fleet-driver.mjs, which needs no help from this field) are
+// written together here. pendingDispatch is written on every refusal, not
+// just the first (a later, corrected candidateWorkItems is always what a
+// resume replays), independent of the checkpoint dedup (a separate,
+// log-spam concern) -- this is what lets the fleet driver retry the SAME
+// originally-intended dispatch automatically once resources allow, with no
+// human re-supplying it.
+export async function recordResourceRefusal(store, projectId, candidateWorkItems, admission, clock) {
+  const current = store.readRun(projectId)
+  if (!current) {
+    return
+  }
+  const alreadyCheckpointed = current.checkpoints.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES'
+  if (current.waves.length !== 0 && alreadyCheckpointed) {
+    return
+  }
+  await store.withRun(projectId, (r) => {
+    if (!r) {
+      return r
+    }
+    let n = r
+    if (r.waves.length === 0) {
+      n = recordPendingDispatch(n, candidateWorkItems, clock, n.revision)
+    }
+    if (n.checkpoints.at(-1)?.phase !== 'DISPATCH_WAITING_FOR_RESOURCES') {
+      n = checkpointRun(
+        n,
+        { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: admission.reason ?? admission.tier ?? null, evidence: [] },
+        clock,
+        n.revision
+      )
+    }
+    return n
+  })
 }

@@ -2,7 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ATTENTION_CATEGORIES, buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
 import { createProjectExecutionHold, releaseProjectExecutionHold } from '../domain/project-execution-hold.mjs'
-import { createOvernightRun, markStalled, raiseNeedsYou, completeRun } from '../domain/keep-going.mjs'
+import {
+  createOvernightRun,
+  markStalled,
+  raiseNeedsYou,
+  completeRun,
+  checkpointRun,
+  recordPendingDispatch
+} from '../domain/keep-going.mjs'
 import {
   addResearchNode,
   createResearchMission,
@@ -316,6 +323,49 @@ test('resource pressure: appears only at CRITICAL/EMERGENCY, never fabricates a 
   const emergencyItems = buildFleetAttentionItems({ projects: [], resourcePressureState: emergency, clock })
   assert.equal(emergencyItems.length, 1)
   assert.equal(emergencyItems[0].id, 'resource-pressure:EMERGENCY')
+})
+
+test('Resource-Wait Auto-Resume V1: a per-project resource-blocked run appears WITHOUT needing resourcePressureState, and honestly distinguishes will-auto-resume from will-not', () => {
+  let waiting = newRun('r1', 'p1')
+  waiting = recordPendingDispatch(waiting, [{ id: 't1', scope: ['**/*'], worktree: '/wt' }], clock, waiting.revision)
+  waiting = checkpointRun(waiting, { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' }, clock, waiting.revision)
+
+  const items = buildFleetAttentionItems({
+    projects: [project('p1', { displayName: 'Project One' })],
+    keepGoingRuns: { p1: waiting },
+    resourcePressureState: null, // deliberately absent -- this item must not depend on it
+    clock
+  })
+  const item = items.find((i) => i.id === 'run:p1:waitingForResources')
+  assert.ok(item, 'a resource-blocked run must appear even with no resourcePressureState supplied')
+  assert.equal(item.category, 'WAITING_FOR_RESOURCES')
+  assert.equal(item.project.id, 'p1')
+  assert.match(item.reason, /will resume automatically/)
+
+  // A run resource-refused before this feature existed (or one refused for
+  // any reason other than a genuine dispatch attempt) has no pendingDispatch
+  // -- must be reported honestly as NOT auto-resuming, never claim it will.
+  let stuck = newRun('r2', 'p2')
+  stuck = checkpointRun(stuck, { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' }, clock, stuck.revision)
+  const stuckItems = buildFleetAttentionItems({
+    projects: [project('p2', { displayName: 'Project Two' })],
+    keepGoingRuns: { p2: stuck },
+    resourcePressureState: null,
+    clock
+  })
+  const stuckItem = stuckItems.find((i) => i.id === 'run:p2:waitingForResources')
+  assert.ok(stuckItem)
+  assert.doesNotMatch(stuckItem.reason, /will resume automatically/)
+
+  // A run whose last checkpoint is NOT a resource wait produces no item here.
+  const settled = completeRun(newRun('r3', 'p3'), clock)
+  const noItems = buildFleetAttentionItems({
+    projects: [project('p3', { displayName: 'Project Three' })],
+    keepGoingRuns: { p3: settled },
+    resourcePressureState: null,
+    clock
+  })
+  assert.equal(noItems.find((i) => i.id === 'run:p3:waitingForResources'), undefined)
 })
 
 test('determinism: calling with the same input twice produces byte-identical output, including ids', () => {

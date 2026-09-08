@@ -59,7 +59,7 @@ import {
 import { fetchCapacitySnapshot } from '../adapters/orca-capacity-bridge.mjs'
 import { isoNow } from '../domain/canonical.mjs'
 import { decideCapacityAction } from '../domain/capacity-policy.mjs'
-import { DEFAULT_RESOURCE_PRESSURE, classifyDispatchAdmission } from './keep-going-resource-pressure-gate.mjs'
+import { DEFAULT_RESOURCE_PRESSURE, classifyDispatchAdmission, recordResourceRefusal } from './keep-going-resource-pressure-gate.mjs'
 import {
   checkpointRun,
   claimTick,
@@ -340,11 +340,10 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
   // concurrent full-suite/pilot/research-worker categories).
   const admission = classifyDispatchAdmission(resourcePressure)
   if (!admission.admitted) {
-    // Phase 12 (category 8): durably records the refusal (was: vanished with
-    // zero trace) -- lock-free read first, write only on a real transition.
-    if (store.readRun(projectId)?.checkpoints.at(-1)?.phase !== 'DISPATCH_WAITING_FOR_RESOURCES') {
-      await store.withRun(projectId, (r) => (!r || r.checkpoints.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES' ? r : checkpointRun(r, { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: admission.reason ?? admission.tier ?? null, evidence: [] }, clock, r.revision)))
-    }
+    // Phase 12 (category 8) + Resource-Wait Auto-Resume V1: durably records
+    // the refusal and the pending first-wave dispatch a driver can later
+    // retry -- see keep-going-resource-pressure-gate.mjs's own header.
+    await recordResourceRefusal(store, projectId, candidateWorkItems, admission, clock)
     return { action: 'DISPATCH_WAITING_FOR_RESOURCES', ...admission }
   }
 

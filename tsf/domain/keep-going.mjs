@@ -109,6 +109,18 @@ export function createOvernightRun(
     revision: 0,
     waves: [],
     inFlightWave: null,
+    // Resource-Wait Auto-Resume V1: the exact candidateWorkItems a caller
+    // most recently tried to dispatch as this run's FIRST wave, durably
+    // persisted the moment a real dispatch attempt is refused by the
+    // Resource Pressure Governor (see recordPendingDispatch below) --
+    // never populated for anything but a genuinely-attempted, real
+    // dispatch (never invented). This is what lets a driver resume the
+    // SAME originally-intended work automatically once resources allow,
+    // without a human re-supplying it. Cleared the moment a real wave
+    // actually dispatches (dispatchWave, below) -- from that point on the
+    // run has a real wave to settle/reconcile instead, the normal
+    // (already-solved) continuation path.
+    pendingDispatch: null,
     tickLock: null,
     // Set durably by claimTick the instant a DISPATCH claim is granted --
     // BEFORE any real Orca CLI call runs -- and cleared by releaseTick once
@@ -454,6 +466,32 @@ export function dispatchWave(run, wavePlan, dispatchRecords, clock, expectedRevi
     wavePlan,
     dispatchRecords: [...dispatchRecords],
     dispatchedAt: isoNow(clock)
+  }
+  // A real wave now exists -- any earlier pending-first-wave record (see
+  // recordPendingDispatch) is resolved; the normal settle/reconcile path
+  // owns this run from here on.
+  next.pendingDispatch = null
+  next.revision += 1
+  next.updatedAt = isoNow(clock)
+  return next
+}
+
+// Resource-Wait Auto-Resume V1: durably records the exact candidateWorkItems
+// a real dispatch attempt just tried to place as this run's first wave,
+// refused only by the Resource Pressure Governor (never by a planning/
+// validation failure -- callers should not call this for anything but a
+// genuine resource refusal). Idempotent in effect: calling it again with
+// the same items while still refused is harmless; the fleet driver only
+// ever reads the most recently recorded attempt.
+export function recordPendingDispatch(run, candidateWorkItems, clock, expectedRevision) {
+  assertExpectedRevision(run, expectedRevision)
+  if (!Array.isArray(candidateWorkItems) || candidateWorkItems.length === 0) {
+    throw new Error('recordPendingDispatch requires at least one candidate work item')
+  }
+  const next = deepClone(run)
+  next.pendingDispatch = {
+    candidateWorkItems: deepClone(candidateWorkItems),
+    recordedAt: isoNow(clock)
   }
   next.revision += 1
   next.updatedAt = isoNow(clock)

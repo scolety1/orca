@@ -116,7 +116,29 @@ async function advanceOneProject(projectId, clock, deps) {
   }
 
   if (run.waves.length === 0) {
-    // Genuinely PLANNING -- no first wave has ever been dispatched. Out of
+    // Resource-Wait Auto-Resume V1: a run with NO durably-recorded
+    // pendingDispatch has genuinely never had its first wave planned at
+    // all -- still out of this driver's scope by design (deciding WHAT the
+    // first wave should be is real judgment, Command/chat's job at Start
+    // time, never invented here). But a run that already had a real first-
+    // wave dispatch attempt refused only by the Resource Pressure Governor
+    // (recordPendingDispatch, keep-going-dispatch-loop.mjs) has a durable
+    // record of the EXACT, already-authorized work that attempt tried to
+    // place -- retrying it here replays the same already-decided dispatch,
+    // not inventing a new one, so it belongs in this driver's scope after
+    // all. Same tickKeepGoingRun mechanic as every other path here: if
+    // resources still refuse, this is just another honest
+    // DISPATCH_WAITING_FOR_RESOURCES tick, never a duplicate/new run.
+    if (run.pendingDispatch?.candidateWorkItems?.length) {
+      const result = await tickKeepGoingRun(
+        projectId,
+        run.pendingDispatch.candidateWorkItems,
+        clock,
+        deps.tickDeps ?? {}
+      )
+      return { projectId, action: 'RESUMED_PENDING_DISPATCH', tickResult: result }
+    }
+    // Genuinely PLANNING -- no first wave has ever been attempted. Out of
     // this driver's scope by design; report it honestly rather than
     // silently skip with no trace.
     return {

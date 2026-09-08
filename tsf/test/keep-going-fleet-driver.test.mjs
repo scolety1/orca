@@ -4,7 +4,7 @@ import path from 'node:path'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { createOvernightRun, planWave, dispatchWave } from '../domain/keep-going.mjs'
+import { createOvernightRun, planWave, dispatchWave, recordPendingDispatch } from '../domain/keep-going.mjs'
 import { verificationVerdictPath } from '../server/settled-run-reconciler.mjs'
 import {
   driveOneCycle,
@@ -147,6 +147,40 @@ test("driveOneCycle skips a PLANNING run with no waves -- not this driver's job"
     },
     clock
   )
+  const store = makeFakeStore({ p: run })
+  const [result] = await driveOneCycle(['p'], clock, { store })
+  assert.equal(result.action, 'SKIPPED')
+  assert.match(result.reason, /awaiting an initial wave/)
+})
+
+test('driveOneCycle automatically resumes a run whose first-wave dispatch was refused by the Resource Pressure Governor, using the SAME durably-recorded candidateWorkItems -- no human re-supplies them', async () => {
+  let run = createOvernightRun(
+    { id: 'r', projectId: 'p', originalGoal: 'x', acceptanceCriteria: ['A'], usageMode: 'BALANCED' },
+    clock
+  )
+  const pendingItems = [{ id: 'w1', scope: ['**/*'], worktree: '/wt' }]
+  run = recordPendingDispatch(run, pendingItems, clock, 0)
+  const store = makeFakeStore({ p: run })
+  const tickDeps = { store, orchestration: okOrchestration() }
+
+  const [result] = await driveOneCycle(['p'], clock, { store, tickDeps })
+  assert.equal(result.action, 'RESUMED_PENDING_DISPATCH')
+  // Real resources are HEALTHY in this test file (forced at top) -- the
+  // resumed dispatch genuinely succeeds using the exact recorded items,
+  // never a fabricated/different work item.
+  assert.equal(result.tickResult.action, 'WAVE_DISPATCHED')
+  const after = store.readRun('p')
+  assert.equal(after.waves.length, 0, 'not settled yet, but a real wave is now in flight')
+  assert.ok(after.inFlightWave)
+  assert.equal(after.pendingDispatch, null, 'resolved the moment a real wave dispatched')
+})
+
+test('driveOneCycle still honestly skips a PLANNING run with no waves and no recorded pending dispatch -- never invents work to resume', async () => {
+  const run = createOvernightRun(
+    { id: 'r', projectId: 'p', originalGoal: 'x', acceptanceCriteria: ['A'], usageMode: 'BALANCED' },
+    clock
+  )
+  assert.equal(run.pendingDispatch, null)
   const store = makeFakeStore({ p: run })
   const [result] = await driveOneCycle(['p'], clock, { store })
   assert.equal(result.action, 'SKIPPED')
