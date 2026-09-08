@@ -33,7 +33,7 @@ notification service.
 | Phase | Status | Notes |
 |---|---|---|
 | 1 (Planner Needs-You UI) | DONE | Wave A adopted at `66d29e238e`, independently re-verified (93+119 tests) |
-| 2 (http-server split) | NOT_STARTED | |
+| 2 (http-server split) | DONE | Wave B adopted at `7fa1ffd1e7` -- 875->488 lines, chat-http-routes.mjs extracted, max-lines violation resolved, equivalence independently re-proven (208+2763 tests) |
 | 3 (Orca-core notification reconciliation) | DONE | `ORCA_CORE_GAP` -- requirement packet at `816a007904`, no code change (correct per its own verdict) |
 | 4 (Attention UX dogfood) | NOT_STARTED | Depends on 1-3 landing |
 | 5 (Self-improvement observability) | DONE | Wave A adopted at `66d29e238e`, Command phrasing broadened, no new intents |
