@@ -153,6 +153,34 @@ answers "what version am I running"/"is the UI current" from this same
 real read -- no new persistent UI surface, per the mission's own "don't
 expose implementation noise" instruction.
 
+## 10a. Real regression found and fixed post-adoption (`git stash`-cross-worktree agent, then coordinator)
+
+The stale-UI-build-prevention subagent, after its own worktree was
+retired post-merge, kept investigating a loose thread on its own
+initiative and reported a real, live-confirmed follow-up: the new
+`triggerUiRebuildIfStale` call in `startStandaloneServer` was
+unconditional, so ANY test spawning a real server with no `uiDistDir`
+override (the common case -- a fresh temp dir always looks
+`UI_BUNDLE_STALE`) would attempt a genuine `npm run build`. This is what
+actually explained the real 147s stall in `keep-going-autonomy-proof.
+test.mjs` during the earlier full-suite run (§14 originally attributed
+this to pure environmental flakiness -- that conclusion was based on an
+isolated re-run where the UI bundle happened to already be fresh from an
+earlier manual rebuild in the same session, masking the real cause).
+
+Fixed the same session, same pattern as `TSF_KEEP_GOING_FLEET_DRIVER`:
+added `TSF_UI_AUTO_REBUILD=1`, set only in `main.mjs`'s real live-plugin
+`realSpawnFn`, gating the trigger in `http-server.mjs`. Also made `uiDir`
+injectable (mirroring the existing `uiDistDir` option) for direct,
+isolated testing. 4 new tests (2 proving the gate's on/off behavior
+directly) + 13 regression tests re-run, all pass; the real autonomy-proof
+test re-verified passing reliably post-fix (125s, well inside its 450s
+timeout -- still real overhead when that ONE test's own local UI bundle
+is genuinely stale, since it deliberately exercises the true production
+activation path including real env vars, but no longer a systemic cost
+imposed on every other server-spawning test by a shared default). Adopted
+as `2785e4396ff5792594f9871be3ee62090623d553`.
+
 ## 10. Low-RAM execution findings
 
 Real host memory oscillated CRITICAL/EMERGENCY for nearly the entire
@@ -263,7 +291,8 @@ prevention were both verified in isolation (Playwright/typecheck/oxlint,
 
 - `e8d9e16be88723bc47ce9e697f95351c7c728b6d` -- Resource-Wait Auto-Resume V1
 - `7631c7ffb11ad971aa201bf7ad55eccaca762501` -- Stale UI Build Prevention + Runtime Identity Operator Proof V1
-- `8c79b92c3166e9d0239ea60ed98ad66a0be95178` -- AppShell responsive fix (final, current `tsf/main`)
+- `8c79b92c3166e9d0239ea60ed98ad66a0be95178` -- AppShell responsive fix
+- `2785e4396ff5792594f9871be3ee62090623d553` -- UI-rebuild trigger test-scope fix (§10a, final, current `tsf/main`)
 
 ## 16. Owner gates still open
 
@@ -292,18 +321,19 @@ prevention were both verified in isolation (Playwright/typecheck/oxlint,
 
 ## 18. Final tsf/main / fork SHA
 
-`8c79b92c3166e9d0239ea60ed98ad66a0be95178` on both `tsf/main` (canonical,
+`2785e4396ff5792594f9871be3ee62090623d553` on both `tsf/main` (canonical,
 `C:\TSF_ORCA`) and `fork` (`scolety1/orca`) -- confirmed matching via
 `git ls-remote fork tsf/main`.
 
 ## 19. Final worktree inventory
 
-- `C:/TSF_ORCA` -- canonical, `tsf/main` @ `8c79b92c31`
+- `C:/TSF_ORCA` -- canonical, `tsf/main` @ `2785e4396f`
 - `C:/Users/codex-agent/orca/workspaces/TSF_ORCA/dataset-research-engine-v0`
   -- pre-existing, unrelated to this mission, left untouched
-- All 3 of this mission's own worktrees (resource-wait-auto-resume-v1,
-  stale-ui-build-prevention-v1, appshell-responsive-v1) retired via
-  `git worktree remove --force` + branch deletion after merge.
+- All 4 of this mission's own worktrees (resource-wait-auto-resume-v1,
+  stale-ui-build-prevention-v1, appshell-responsive-v1,
+  ui-rebuild-test-scope-fix-v1) retired via `git worktree remove --force`
+  + branch deletion after merge.
 - The two real, provisioned wave-1 Orca worktrees for Nytheria/EasyLife
   (from the prior mission, still real and clean) are kept, unchanged,
   ready for their now-seeded `pendingDispatch` to actually use once
