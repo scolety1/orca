@@ -176,6 +176,28 @@
     color: var(--muted-foreground);
     line-height: 1.55;
   }
+  /* Stale-UI-build-prevention spec: same visual language as #stalled-hint
+     (reused, not redesigned), with a status-blocked border so a genuinely
+     terminal state reads as distinct from the ordinary "still waiting"
+     hint above it. */
+  #build-failed-hint {
+    display: none;
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--status-blocked);
+    font-size: 13px;
+    color: var(--foreground);
+    line-height: 1.55;
+  }
+  #build-failed-hint code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--input);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
 </style>
 </head>
 <body>
@@ -201,6 +223,19 @@
       This is unusually long, even for a slow cold start. Orca is still open and
       working towards this, so there's nothing to redo -- if it hasn't resolved after
       several more minutes, it may be worth restarting Orca once.
+    </div>
+    <!-- Stale-UI-build-prevention spec: a real, terminal answer -- shown only
+         once the backend has itself reported GET /api/runtime-identity state
+         BUILD_FAILED (a real npm run build attempt failed), never for an
+         ordinary in-progress rebuild (that keeps the ordinary spinner/text
+         above, see checkRuntimeIdentity() below). -->
+    <div id="build-failed-hint">
+      <strong>The UI update failed to build:</strong> <span id="build-failed-reason"></span>
+      <div class="hint">
+        You can keep using Thousand Sunny Fleet, but the interface shown may be out of
+        date until this is fixed. This needs a manual fix on the machine running the
+        TSF backend -- check the reason above, then restart the TSF server once fixed.
+      </div>
     </div>
   </div>
 
@@ -386,6 +421,42 @@
     document.getElementById('status-dot').classList.add('stalled');
   }
 
+  // Stale-UI-build-prevention spec: once the backend itself answers
+  // healthy, ALSO check whether the UI bundle it's about to serve is
+  // genuinely current before ever navigating there -- reuses the existing
+  // GET /api/runtime-identity endpoint (now build-state-aware; see
+  // ui-build-orchestrator.mjs) rather than adding a second check. Returns
+  // 'READY' (safe to navigate -- UP_TO_DATE, LIVE_RUNTIME_STALE, and
+  // UNKNOWN all fall here: this page only ever gates on the UI-bundle axis,
+  // never on whether the backend itself needs a restart, and a genuinely
+  // unreachable/malformed answer from this diagnostic endpoint fails open
+  // rather than blocking navigation forever on a check that didn't even
+  // exist before this feature), 'BUILDING' (UI_BUNDLE_STALE or UI_BUILDING
+  // -- keep polling, never navigate yet), or 'BUILD_FAILED' (terminal --
+  // shows the real captured reason, never silently proceeds to the stale
+  // bundle while claiming freshness).
+  async function checkRuntimeIdentity() {
+    try {
+      const res = await fetch(TSF_URL + '/api/runtime-identity', { cache: 'no-store' });
+      if (!res.ok) {
+        return 'READY';
+      }
+      const body = await res.json();
+      if (body.state === 'BUILD_FAILED') {
+        document.getElementById('build-failed-reason').textContent =
+          body.reason || 'unknown reason';
+        document.getElementById('build-failed-hint').style.display = 'block';
+        return 'BUILD_FAILED';
+      }
+      if (body.state === 'UI_BUNDLE_STALE' || body.state === 'UI_BUILDING') {
+        return 'BUILDING';
+      }
+      return 'READY';
+    } catch (e) {
+      return 'READY';
+    }
+  }
+
   // Polls indefinitely -- deliberately never gives up on its own. A backend
   // that never becomes reachable is communicated honestly via the escalating
   // messages above, not by the page stopping and going silent.
@@ -395,6 +466,18 @@
     try {
       const res = await fetch(TSF_URL + '/api/meta', { cache: 'no-store' });
       if (res.ok) {
+        const identityState = await checkRuntimeIdentity();
+        if (identityState === 'BUILD_FAILED') {
+          dot.classList.remove('ok');
+          dot.classList.add('stalled');
+          text.textContent = 'UI update failed — see details below.';
+          return;
+        }
+        if (identityState === 'BUILDING') {
+          dot.classList.remove('ok', 'stalled');
+          text.textContent = 'Updating to the latest version…';
+          return;
+        }
         dot.classList.remove('stalled');
         dot.classList.add('ok');
         text.textContent = 'Ready — opening Thousand Sunny Fleet…';

@@ -3,7 +3,13 @@
 // its max-lines budget) rather than inlined, matching this codebase's own
 // established per-route-group extraction convention (capacity-http-
 // routes.mjs, fleet-optimizer-http-routes.mjs, etc.).
-import { getRuntimeIdentity } from './runtime-identity-tracker.mjs'
+//
+// Stale-UI-build-prevention spec: runtime-identity now also reflects
+// whether a rebuild is in progress/failed (getRuntimeIdentityWithBuildState
+// composes the real identity read with ui-build-orchestrator.mjs's own
+// in-memory build-action state) -- the same real read first-run-setup.html
+// and the Command runtime-identity bridge both use.
+import { getRuntimeIdentityWithBuildState } from './ui-build-orchestrator.mjs'
 import { classifyUpdateSafety } from '../domain/update-safety.mjs'
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 
@@ -18,7 +24,7 @@ export async function handleSafeUpdateRoute(
   // served UI bundle genuinely match what's on disk right now, from real
   // git/build identity, never inferred from "files changed" alone.
   if (parts[1] === 'runtime-identity' && req.method === 'GET') {
-    json(res, 200, await getRuntimeIdentity(distDir))
+    json(res, 200, await getRuntimeIdentityWithBuildState(distDir))
     return true
   }
 

@@ -53,6 +53,7 @@ import usageModes from '../routing/usage-modes.v1.json' with { type: 'json' }
 import providerRoles from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
 import { writeRuntimeMetadata } from './runtime-identity-tracker.mjs'
+import { triggerUiRebuildIfStale } from './ui-build-orchestrator.mjs'
 import { bootstrapBackgroundFleetDrivers } from './background-fleet-drivers-bootstrap.mjs'
 import { bootstrapResearchMissionFleetDriverIfEnabled } from './research-mission-fleet-driver-bootstrap.mjs'
 import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
@@ -489,6 +490,18 @@ export function startStandaloneServer(port = 4610, options = {}) {
   writeRuntimeMetadata().catch((error) => {
     console.error('runtime metadata write failed:', error)
   })
+  // Stale-UI-build-prevention spec: the real fix for the production
+  // incident this program exists for (a running backend serving a UI
+  // bundle built from a 12+ commit-stale HEAD, previously requiring a
+  // manual `npm run build`). Same fire-and-forget posture as the three
+  // recovery scans above -- only ever does real work when the freshly-read
+  // identity is genuinely UI_BUNDLE_STALE, never blocks startup on however
+  // long a real `npm run build` takes.
+  triggerUiRebuildIfStale({ uiDir: path.join(import.meta.dirname, '..', 'ui'), distDir }).catch(
+    (error) => {
+      console.error('UI rebuild trigger failed:', error)
+    }
+  )
   bootstrapBackgroundFleetDrivers(server) // see background-fleet-drivers-bootstrap.mjs
   return server
 }

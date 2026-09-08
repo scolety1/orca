@@ -38,6 +38,7 @@ import { shouldRouteToSelfImprovementBridge, respondSelfImprovementCommand } fro
 import { shouldRouteToFleetAttentionBridge, respondFleetAttentionCommand } from './command-fleet-attention-bridge.mjs'
 import { classifyMultiActionEntries, respondMultiActionCommand } from './command-multi-action-bridge.mjs'
 import { shouldRouteToAdoptionCommandBridge, respondAdoptionCommand } from './command-adoption-command-bridge.mjs'
+import { shouldRouteToRuntimeIdentityBridge, respondRuntimeIdentityCommand } from './command-runtime-identity-bridge.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import {
   advisorySafeProjects,
@@ -273,6 +274,19 @@ export async function respondCommand({
     })
     if (fleetAttentionResult) {
       return fleetAttentionResult
+    }
+  }
+  // Stale-UI-build-prevention spec, Phase 7: same early layer as the four
+  // bridges above -- "what version am I running"/"is the UI current" is
+  // never about a registered fleet project either. Pure diagnostic read,
+  // no mutation, no rebuild trigger of its own.
+  if (shouldRouteToRuntimeIdentityBridge(message)) {
+    const runtimeIdentityResult = await respondRuntimeIdentityCommand({
+      message,
+      deps: deps.runtimeIdentity ?? {}
+    })
+    if (runtimeIdentityResult) {
+      return runtimeIdentityResult
     }
   }
   // Multi-Project Command + Real Fleet Orchestration Overnight V1, Part
