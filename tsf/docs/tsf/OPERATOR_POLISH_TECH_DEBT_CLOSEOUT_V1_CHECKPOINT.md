@@ -34,7 +34,7 @@ notification service.
 |---|---|---|
 | 1 (Planner Needs-You UI) | NOT_STARTED | |
 | 2 (http-server split) | NOT_STARTED | |
-| 3 (Orca-core notification reconciliation) | NOT_STARTED | Read-only investigation first |
+| 3 (Orca-core notification reconciliation) | DONE | `ORCA_CORE_GAP` -- requirement packet at `816a007904`, no code change (correct per its own verdict) |
 | 4 (Attention UX dogfood) | NOT_STARTED | Depends on 1-3 landing |
 | 5 (Self-improvement observability) | NOT_STARTED | |
 
