@@ -9,7 +9,7 @@
 // enables the loop -- answering these questions requires no authority this
 // bridge doesn't already have as a plain reader.
 import { readAllFindings } from './self-improvement-finding-store.mjs'
-import { buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
+import { buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
 import { gatherRealFleetAttentionInputs } from './attention-status-reconciler.mjs'
 
 // Order matters (most specific first), same convention as
@@ -69,7 +69,10 @@ function listOrNone(findings, noneText) {
   return findings.map(findingSummaryLine).join('\n')
 }
 
-const RESPOND = ({ intent, text }) => ({
+// resultItems (Part A2): honestly [] unless the branch actually built its
+// answer from buildFleetAttentionItems (AttentionItem[]) -- never fabricated
+// for a branch that only ever read raw finding records.
+const RESPOND = ({ intent, text, resultItems }) => ({
   intent,
   decisionClass: 'RECOMMEND_AND_PROCEED',
   text,
@@ -77,7 +80,8 @@ const RESPOND = ({ intent, text }) => ({
   providerLabel: 'PLANNER_DEEP · real read from the durable self-improvement finding store, no mutation',
   live: true,
   resolvedProjectIds: [],
-  scope: 'SELF_IMPROVEMENT'
+  scope: 'SELF_IMPROVEMENT',
+  resultItems: resultItems ?? []
 })
 
 // deps.readAllFindings lets tests inject a fixed store snapshot -- same
@@ -95,9 +99,24 @@ export async function respondSelfImprovementCommand({ message, deps = {} }) {
       return RESPOND({ intent, text: 'No self-improvement findings recorded yet -- a real detector sweep has not surfaced anything.' })
     }
     const bySeverity = all.reduce((acc, f) => ({ ...acc, [f.severity]: (acc[f.severity] ?? 0) + 1 }), {})
+    // Part A2: reuses buildFleetAttentionItems' own selfImprovementItems
+    // projection (never a second, hand-rolled finding->AttentionItem
+    // mapping) so this answer's resultItems carry real project attribution
+    // and a real category, exactly like the READY_FOR_ADOPTION branch below.
+    const needsRealFleetReadForAll = deps.projects === undefined || deps.keepGoingRuns === undefined
+    const realInputsForAll = needsRealFleetReadForAll ? gatherRealFleetAttentionInputs() : null
+    const allResultItems = buildFleetAttentionItems({
+      projects: deps.projects ?? realInputsForAll.projects,
+      keepGoingRuns: deps.keepGoingRuns ?? realInputsForAll.keepGoingRuns,
+      researchMissions: deps.researchMissions ?? realInputsForAll?.researchMissions ?? {},
+      plannerMissionRecords: deps.plannerMissionRecords ?? realInputsForAll?.plannerMissionRecords ?? {},
+      selfImprovementFindings: rawStore,
+      resourcePressureState: null
+    }).filter((i) => i.source.kind === 'SELF_IMPROVEMENT_FINDING')
     return RESPOND({
       intent,
-      text: [`${all.length} self-improvement finding(s) on record:`, ...all.map(findingSummaryLine), `By severity: ${JSON.stringify(bySeverity)}`].join('\n')
+      text: [`${all.length} self-improvement finding(s) on record:`, ...all.map(findingSummaryLine), `By severity: ${JSON.stringify(bySeverity)}`].join('\n'),
+      resultItems: allResultItems.map(trimAttentionItem)
     })
   }
 
@@ -146,7 +165,8 @@ export async function respondSelfImprovementCommand({ message, deps = {} }) {
       // the old caption claimed a blanket "adoption gate is closed" for
       // every item here, which overclaimed for those. Kept the reassurance
       // (nothing was auto-merged) without misattributing why.
-      text: `Ready for adoption (nothing here has been auto-merged -- self-improvement fixes stay behind their own owner-authorization gate; project candidates await your normal review):\n${lines.length ? lines.join('\n') : 'Nothing is ready for adoption right now.'}`
+      text: `Ready for adoption (nothing here has been auto-merged -- self-improvement fixes stay behind their own owner-authorization gate; project candidates await your normal review):\n${lines.length ? lines.join('\n') : 'Nothing is ready for adoption right now.'}`,
+      resultItems: readyItems.map(trimAttentionItem)
     })
   }
 

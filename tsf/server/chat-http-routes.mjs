@@ -242,7 +242,18 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
             // from prose.
             resolvedProjectIds: commandResult.resolvedProjectIds ?? [],
             researchMissionId: commandResult.researchMissionId ?? null,
-            scope: commandResult.scope ?? null
+            scope: commandResult.scope ?? null,
+            // Multi-Project Command + Real Fleet Orchestration Overnight V1,
+            // Part A2: a real, bounded, trimmed AttentionItem[] projection
+            // (fleet-attention-status.mjs's own trimAttentionItem) --
+            // present only when this turn's answer actually came from a
+            // bridge that produced real AttentionItem[] (NEEDS_YOU_QUERY,
+            // the fleet-attention/self-improvement bridges' item-producing
+            // intents, the multi-action bridge); every other answer type
+            // honestly persists an empty array, never a fabricated one, so
+            // command-referent-resolution.mjs never resolves a referring
+            // phrase against stale/invented items.
+            resultItems: commandResult.resultItems ?? []
           }
         ].slice(-200)
         saveState({ ...freshState, chatThreads: threads })

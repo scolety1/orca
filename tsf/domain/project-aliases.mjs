@@ -17,7 +17,15 @@ const DEFAULT_PROJECT_ALIASES = {
   nytheria: 'worldforge-sablewake-live-runtime-repair-v3',
   worldforge: 'worldforge-sablewake-live-runtime-repair-v3',
   nwr: 'niners-war-room',
-  'niners war room': 'niners-war-room'
+  'niners war room': 'niners-war-room',
+  // Multi-Project Command + Real Fleet Orchestration Overnight V1: real,
+  // single, unambiguous project confirmed in this mission's own pre-build
+  // investigation (repo C:\Dev\easylifehq.github.io, id
+  // easylifehq-github-io) -- same real gap this file's own header
+  // describes for Nytheria, just not yet closed for this project.
+  easylife: 'easylifehq-github-io',
+  easyworkouts: 'easylifehq-github-io',
+  'easy workouts': 'easylifehq-github-io'
 }
 
 export function loadProjectAliases(env = process.env) {

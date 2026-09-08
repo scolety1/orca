@@ -18,6 +18,8 @@ import { createOrcaWorktree, findRegisteredOrcaRepo } from '../adapters/orca-cli
 import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
+import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
+import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 
 const WORK_PLAN_SYSTEM_PROMPT = [
   'You are the TSF (Thousand Sunny Fleet) Planner producing a BOUNDED, SAFE',
@@ -163,6 +165,29 @@ export async function planAndDispatchFromChat({
       reason: 'RUN_NOT_DISPATCHABLE',
       detail: recoveryHintFor(existingRun.state),
       run: existingRun
+    }
+  }
+
+  // Multi-Project Command + Real Fleet Orchestration Overnight V1, Part B:
+  // the ONE real admission choke point for new heavyweight dispatch --
+  // every caller of planAndDispatchFromChat (the single-project chat route,
+  // AND command-responder.mjs's multi-project dispatchAndRespond/
+  // respondMultiActionCommand via planAndDispatchFromCommand's
+  // dispatchOneProject) funnels through here, so a held project is refused
+  // honestly no matter which surface dispatched to it -- never a second,
+  // parallel admission check invented per caller. Checked before the
+  // Resource Pressure Governor gate below for the same "don't pay for a
+  // live planner call you're about to refuse anyway" reasoning that gate's
+  // own comment already states, and before the live planner call for the
+  // identical reason.
+  const readHold = deps.readProjectExecutionHold ?? readProjectExecutionHold
+  const hold = readHold(project.id)
+  if (isProjectExecutionHoldActive(hold)) {
+    return {
+      ok: false,
+      reason: 'PROJECT_EXECUTION_HOLD_ACTIVE',
+      detail: `this project is under an execution hold (${hold.reason}${hold.note ? `: ${hold.note}` : ''}, set by ${hold.setBy}) -- release the hold before dispatching new work`,
+      hold
     }
   }
 

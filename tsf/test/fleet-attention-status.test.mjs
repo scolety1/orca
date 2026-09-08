@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ATTENTION_CATEGORIES, buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
+import { ATTENTION_CATEGORIES, buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
+import { createProjectExecutionHold, releaseProjectExecutionHold } from '../domain/project-execution-hold.mjs'
 import { createOvernightRun, markStalled, raiseNeedsYou, completeRun } from '../domain/keep-going.mjs'
 import {
   addResearchNode,
@@ -174,6 +175,54 @@ test('BLOCKED_EXTERNAL: a BLOCKED research mission appears with a real changedAt
   assert.equal(items[0].reason, 'no legal source found')
   assert.equal(items[0].changedAt, mission.updatedAt)
   assert.deepEqual(items[0].deepLink, { kind: 'RESEARCH_MISSION', id: mission.id })
+})
+
+// Multi-Project Command + Real Fleet Orchestration Overnight V1, Part B:
+// a real, active project execution hold is a real, honest BLOCKED_EXTERNAL
+// attention-worthy fact, sourced from the new durable store -- never the
+// legacy mission.blockedReason/research-mission shapes that category
+// already mixes.
+test('BLOCKED_EXTERNAL: an active project execution hold appears, sourced from the real hold record', () => {
+  const p = project('niners-war-room', { displayName: 'NWR' })
+  const hold = createProjectExecutionHold(
+    { projectId: 'niners-war-room', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'OPERATOR_CHAT', note: 'another AI is actively working this repo' },
+    clock
+  )
+  const items = buildFleetAttentionItems({ projects: [p], projectExecutionHolds: { [hold.projectId]: hold }, clock })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'BLOCKED_EXTERNAL')
+  assert.equal(items[0].reason, 'another AI is actively working this repo')
+  assert.deepEqual(items[0].project, { id: 'niners-war-room', displayName: 'NWR' })
+  assert.deepEqual(items[0].source, { kind: 'PROJECT_EXECUTION_HOLD', id: 'niners-war-room' })
+})
+
+test('BLOCKED_EXTERNAL: a RELEASED hold produces no item -- it is no longer a real, live attention fact', () => {
+  const p = project('niners-war-room')
+  const hold = createProjectExecutionHold({ projectId: 'niners-war-room', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'x' }, clock)
+  const released = releaseProjectExecutionHold(hold, { releasedBy: 'x' }, clock)
+  const items = buildFleetAttentionItems({ projects: [p], projectExecutionHolds: { [released.projectId]: released }, clock })
+  assert.deepEqual(items, [])
+})
+
+test('trimAttentionItem: keeps only the bounded referent-resolution fields, honestly null project when absent', () => {
+  const p = project('p1', { displayName: 'P One' })
+  const hold = createProjectExecutionHold({ projectId: 'p1', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'x', note: 'held' }, clock)
+  const [item] = buildFleetAttentionItems({ projects: [p], projectExecutionHolds: { p1: hold }, clock })
+  const trimmed = trimAttentionItem(item)
+  assert.deepEqual(trimmed, {
+    id: item.id,
+    category: 'BLOCKED_EXTERNAL',
+    label: 'P One',
+    project: { id: 'p1', displayName: 'P One' },
+    reason: 'held'
+  })
+  assert.equal('deepLink' in trimmed, false)
+  assert.equal('severity' in trimmed, false)
+  assert.equal('changedAt' in trimmed, false)
+  assert.equal('source' in trimmed, false)
+
+  const noProjectItem = { id: 'x', category: 'NEEDS_OWNER', label: 'L', project: null, reason: 'r' }
+  assert.equal(trimAttentionItem(noProjectItem).project, null)
 })
 
 test('COMPLETED_RECENTLY: excludes legacy ADOPTED projects (Tim already knows -- operator-driven, not a real completion)', () => {

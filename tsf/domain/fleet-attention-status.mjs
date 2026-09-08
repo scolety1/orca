@@ -260,6 +260,29 @@ function selfImprovementItems(selfImprovementFindings, displayNameById) {
 // this codebase (confirmed in the checkpoint doc's own Phase 1 sweep) -- a
 // per-mission wait list would be fabricated. The only honest signal is the
 // live, host-wide tier itself.
+// Multi-Project Command + Real Fleet Orchestration Overnight V1, Part B: a
+// real, active project execution hold is exactly the "known, not urgent,
+// not actionable by Tim right now" shape BLOCKED_EXTERNAL already exists
+// for (see blockedItems above) -- REUSE the category rather than inventing
+// a new one, source it from the new durable store instead of the legacy
+// mission.blockedReason/research-mission shapes that category already
+// mixes.
+function holdItems(projectExecutionHolds, displayNameById) {
+  return Object.values(projectExecutionHolds)
+    .filter((hold) => hold.status === 'ACTIVE')
+    .map((hold) => ({
+      id: `hold:${hold.projectId}`,
+      category: 'BLOCKED_EXTERNAL',
+      severity: DEFAULT_SEVERITY_BY_CATEGORY.BLOCKED_EXTERNAL,
+      project: projectRef(displayNameById, hold.projectId),
+      label: displayNameById.get(hold.projectId) ?? hold.projectId,
+      reason: hold.note ?? `execution held -- ${hold.reason}`,
+      changedAt: hold.setAt,
+      deepLink: { kind: 'PROJECT', id: hold.projectId },
+      source: { kind: 'PROJECT_EXECUTION_HOLD', id: hold.projectId }
+    }))
+}
+
 function resourcePressureItem(resourcePressureState) {
   if (!resourcePressureState) { return null }
   if (!['CRITICAL', 'EMERGENCY'].includes(resourcePressureState.tier)) { return null }
@@ -282,6 +305,7 @@ export function buildFleetAttentionItems({
   researchMissions = {},
   plannerMissionRecords = {},
   selfImprovementFindings = {},
+  projectExecutionHolds = {},
   resourcePressureState = null,
   clock = () => new Date()
 }) {
@@ -296,9 +320,26 @@ export function buildFleetAttentionItems({
     ...readyForAdoptionItems(workSummary.readyForAdoption, displayNameById),
     ...blockedItems(workSummary.blocked, researchMissions, displayNameById),
     ...completedRecentlyItems(projects, keepGoingRuns, researchMissions, clock, displayNameById),
-    ...selfImprovementItems(selfImprovementFindings, displayNameById)
+    ...selfImprovementItems(selfImprovementFindings, displayNameById),
+    ...holdItems(projectExecutionHolds, displayNameById)
   ]
   const resourceItem = resourcePressureItem(resourcePressureState)
   if (resourceItem) { items.push(resourceItem) }
   return items
+}
+
+// Command architecture, referential continuity (Part A2): the bounded,
+// durable per-turn projection of an AttentionItem a later turn's referring
+// phrase ("the stalled one", "the UI one") can resolve against --
+// deliberately smaller than the full item (no deepLink/source/severity/
+// changedAt) to keep the persisted chat record small; every field a real
+// referring-phrase resolution needs is kept.
+export function trimAttentionItem(item) {
+  return {
+    id: item.id,
+    category: item.category,
+    label: item.label,
+    project: item.project ? { id: item.project.id, displayName: item.project.displayName } : null,
+    reason: item.reason
+  }
 }

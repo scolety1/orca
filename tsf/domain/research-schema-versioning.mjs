@@ -155,3 +155,19 @@ const attentionNotificationEventGuard = buildSchemaVersionGuard(
 export const SUPPORTED_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSIONS = attentionNotificationEventGuard.supportedVersions
 export const assertSupportedAttentionNotificationEventSchemaVersion = attentionNotificationEventGuard.assertSupported
 export const migrateAttentionNotificationEventSchema = attentionNotificationEventGuard.migrate
+
+// Same guard, for Multi-Project Command + Real Fleet Orchestration Overnight
+// V1 Part B's durable project execution hold (see
+// project-execution-hold.mjs's createProjectExecutionHold, schemaVersion
+// 'TSF_PROJECT_EXECUTION_HOLD_V1'). Wired into
+// project-execution-hold-store.mjs's readProjectExecutionHold/
+// withProjectExecutionHold -- same fail-closed discipline as every guard
+// above.
+export const CURRENT_PROJECT_EXECUTION_HOLD_SCHEMA_VERSION = 'TSF_PROJECT_EXECUTION_HOLD_V1'
+const projectExecutionHoldGuard = buildSchemaVersionGuard(
+  'project execution hold',
+  new Map([[CURRENT_PROJECT_EXECUTION_HOLD_SCHEMA_VERSION, (hold) => hold]])
+)
+export const SUPPORTED_PROJECT_EXECUTION_HOLD_SCHEMA_VERSIONS = projectExecutionHoldGuard.supportedVersions
+export const assertSupportedProjectExecutionHoldSchemaVersion = projectExecutionHoldGuard.assertSupported
+export const migrateProjectExecutionHoldSchema = projectExecutionHoldGuard.migrate

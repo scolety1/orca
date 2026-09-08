@@ -9,7 +9,7 @@
 // and "what is ready for adoption?" stay in command-responder.mjs's
 // NEEDS_YOU_QUERY handler and command-self-improvement-bridge.mjs
 // respectively (both surgically extended to the same aggregator already).
-import { buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
+import { buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
 import { gatherRealFleetAttentionInputs, drainDueAttentionNotifications } from './attention-status-reconciler.mjs'
 import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
@@ -73,9 +73,14 @@ function projectIdsFrom(items) {
   return [...new Set(items.map((i) => i.project?.id).filter(Boolean))]
 }
 
-// resolvedProjectIds omitted -> honestly empty (no oxlint react/no-object-
-// type-as-default-prop false-positive from a `= []` default parameter).
-const RESPOND = ({ intent, text, resolvedProjectIds }) => ({
+// resolvedProjectIds/resultItems omitted -> honestly empty (no oxlint
+// react/no-object-type-as-default-prop false-positive from a `= []`
+// default parameter). resultItems (Part A2): a bounded, trimmed projection
+// of the real AttentionItem[] this answer was actually built from, so a
+// later turn's referring phrase can resolve against it -- honestly absent
+// for FLEET_ATTENTION_CHANGED_WHILE_AWAY, which is sourced from drained
+// notices, not AttentionItem[].
+const RESPOND = ({ intent, text, resolvedProjectIds, resultItems }) => ({
   intent,
   decisionClass: 'RECOMMEND_AND_PROCEED',
   text,
@@ -83,7 +88,8 @@ const RESPOND = ({ intent, text, resolvedProjectIds }) => ({
   providerLabel: 'PLANNER_DEEP · real read from the fleet-wide attention aggregator, no mutation',
   live: true,
   resolvedProjectIds: resolvedProjectIds ?? [],
-  scope: 'FLEET_ATTENTION'
+  scope: 'FLEET_ATTENTION',
+  resultItems: resultItems ?? []
 })
 
 export async function respondFleetAttentionCommand({ message, clock = () => new Date(), deps = {} }) {
@@ -96,7 +102,8 @@ export async function respondFleetAttentionCommand({ message, clock = () => new 
     return RESPOND({
       intent,
       text: `Recently completed:\n${listOrNone(items, 'Nothing has completed recently.')}`,
-      resolvedProjectIds: projectIdsFrom(items)
+      resolvedProjectIds: projectIdsFrom(items),
+      resultItems: items.map(trimAttentionItem)
     })
   }
 
@@ -108,7 +115,8 @@ export async function respondFleetAttentionCommand({ message, clock = () => new 
     return RESPOND({
       intent,
       text: `Waiting on resources:\n${listOrNone(items, 'Nothing is currently waiting on host resources.')}`,
-      resolvedProjectIds: projectIdsFrom(items)
+      resolvedProjectIds: projectIdsFrom(items),
+      resultItems: items.map(trimAttentionItem)
     })
   }
 
@@ -119,7 +127,8 @@ export async function respondFleetAttentionCommand({ message, clock = () => new 
     return RESPOND({
       intent,
       text: `Failed today:\n${listOrNone(items, 'Nothing has failed today.')}`,
-      resolvedProjectIds: projectIdsFrom(items)
+      resolvedProjectIds: projectIdsFrom(items),
+      resultItems: items.map(trimAttentionItem)
     })
   }
 

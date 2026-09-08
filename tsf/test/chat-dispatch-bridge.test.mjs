@@ -559,3 +559,70 @@ test('an invalid plan (missing acceptance criteria) is rejected before ever touc
   assert.equal(result.reason, 'TSF_INVALID_PLAN_CAPSULE')
   assert.equal(store.readRun(), null)
 })
+
+// Multi-Project Command + Real Fleet Orchestration Overnight V1, Part B:
+// the ONE real admission choke point every new-dispatch caller funnels
+// through -- an active project execution hold refuses honestly before ever
+// calling the (costly, live) planner, same ordering discipline as the
+// Resource Pressure Governor gate above.
+test('an active project execution hold refuses dispatch before ever calling the planner', async () => {
+  const store = makeFakeStore()
+  let plannerCalled = false
+  const activeHold = {
+    schemaVersion: 'TSF_PROJECT_EXECUTION_HOLD_V1',
+    projectId: PROJECT.id,
+    status: 'ACTIVE',
+    reason: 'EXTERNAL_WORK_ACTIVE',
+    note: 'another AI is actively working this repo',
+    setBy: 'OPERATOR_CHAT',
+    setAt: clock().toISOString()
+  }
+  const result = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead',
+    placement,
+    identity,
+    clock,
+    deps: {
+      ...baseDeps(store),
+      readProjectExecutionHold: () => activeHold,
+      invokeLiveStructuredAnalysis: async () => {
+        plannerCalled = true
+        return workPlanResponse()
+      }
+    }
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'PROJECT_EXECUTION_HOLD_ACTIVE')
+  assert.match(result.detail, /EXTERNAL_WORK_ACTIVE/)
+  assert.match(result.detail, /another AI is actively working this repo/)
+  assert.equal(plannerCalled, false, 'no live call attempted for a held project')
+  assert.equal(store.readRun(), null, 'no run was created for a held project')
+})
+
+test('a RELEASED hold no longer refuses dispatch -- release is real, not cosmetic', async () => {
+  const store = makeFakeStore()
+  const releasedHold = {
+    schemaVersion: 'TSF_PROJECT_EXECUTION_HOLD_V1',
+    projectId: PROJECT.id,
+    status: 'RELEASED',
+    reason: 'EXTERNAL_WORK_ACTIVE',
+    setBy: 'OPERATOR_CHAT',
+    setAt: clock().toISOString(),
+    releasedBy: 'OPERATOR_CHAT',
+    releasedAt: clock().toISOString()
+  }
+  const result = await planAndDispatchFromChat({
+    project: PROJECT,
+    message: 'go ahead',
+    placement,
+    identity,
+    clock,
+    deps: {
+      ...baseDeps(store),
+      readProjectExecutionHold: () => releasedHold,
+      invokeLiveStructuredAnalysis: async () => workPlanResponse()
+    }
+  })
+  assert.equal(result.ok, true)
+})

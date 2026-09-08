@@ -28,7 +28,7 @@ import {
   fleetResearchStatus,
   fleetWorkStatus
 } from '../domain/fleet-work-status.mjs'
-import { buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
+import { buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
@@ -36,6 +36,8 @@ import { shouldRouteToResearchBridge, respondResearchCommand } from './command-r
 import { shouldRouteToDogfoodBridge, respondDogfoodCommand } from './command-dogfood-bridge.mjs'
 import { shouldRouteToSelfImprovementBridge, respondSelfImprovementCommand } from './command-self-improvement-bridge.mjs'
 import { shouldRouteToFleetAttentionBridge, respondFleetAttentionCommand } from './command-fleet-attention-bridge.mjs'
+import { classifyMultiActionEntries, respondMultiActionCommand } from './command-multi-action-bridge.mjs'
+import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import {
   advisorySafeProjects,
   buildGlobalAdvisoryText,
@@ -272,6 +274,23 @@ export async function respondCommand({
       return fleetAttentionResult
     }
   }
+  // Multi-Project Command + Real Fleet Orchestration Overnight V1, Part
+  // A4: same early layer as the four bridges above (this IS about
+  // registered fleet projects, unlike those, so it's checked last of the
+  // early-layer group, right before ordinary intent/project classification
+  // takes over) -- genuinely DISTINCT actions naming DIFFERENT projects in
+  // one message ("leave NWR alone, adopt Nytheria and keep going, EasyLife
+  // needs work"), never collapsed into a per-project chat capsule and never
+  // a second Command system: classifyMultiActionEntries' own gate is
+  // deliberately conservative so an ordinary same-action-to-N-projects
+  // message (dispatchAndRespond's own existing job) or a plain multi-project
+  // status question is never rerouted here.
+  const aliasesForMultiAction = aliases ?? loadProjectAliases()
+  const multiActionEntries = classifyMultiActionEntries(message, projects, aliasesForMultiAction)
+  if (multiActionEntries) {
+    return respondMultiActionCommand({ message, projects, opState, clock, deps, entries: multiActionEntries })
+  }
+
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
   const resolution = resolveProjectsFromText(message, projects, { aliases })
@@ -599,7 +618,12 @@ export async function respondCommand({
               : 'PLANNER_DEEP · deterministic fallback scope classification (live planner unavailable), grounded in real outstanding Needs You state',
           live: false,
           resolvedProjectIds: linkedProjectIds,
-          scope: scopeFor(linkedProjectIds)
+          scope: scopeFor(linkedProjectIds),
+          // Part A2: this answer really did come from buildFleetAttentionItems
+          // (AttentionItem[]) -- a bounded, trimmed projection is persisted so
+          // a later turn's referring phrase ("the stalled one") can resolve
+          // against it.
+          resultItems: items.map(trimAttentionItem)
         }
       }
       if (classification.scope === 'RESEARCH_REQUEST') {
