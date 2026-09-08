@@ -167,7 +167,7 @@ test('REQUIRED PROOF: each of the 6 real questions reads the correct real findin
 
   const readyForAdoption = await respondSelfImprovementCommand({ message: 'what is ready for adoption?', deps })
   assert.match(readyForAdoption.text, /surface-ready/)
-  assert.match(readyForAdoption.text, /adoption gate is closed/)
+  assert.match(readyForAdoption.text, /nothing here has been auto-merged/)
 
   const whyNot = await respondSelfImprovementCommand({ message: "why wasn't this auto-fixed?", deps })
   assert.match(whyNot.text, /surface-not-eligible/)
@@ -200,5 +200,5 @@ test('SELF_IMPROVEMENT_READY_FOR_ADOPTION: a project-level (non-self-improvement
     }
   })
   assert.match(result.text, /Project One/)
-  assert.match(result.text, /adoption gate is closed/)
+  assert.match(result.text, /nothing here has been auto-merged/)
 })

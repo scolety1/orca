@@ -42,8 +42,8 @@ Dock surfaces first.
 |---|---|---|
 | 1 (Attention-State Inventory) | DONE | Real read-only sweep, see reconciliation below |
 | 2 (Fleet-Wide Aggregation) | DONE | Wave 1 adopted at `5bde77ec8e`, 42/42 new + 49/49 regression independently re-verified by coordinator |
-| 3 (Command) | IN_PROGRESS | Wave 2 dispatched |
-| 4 (Operator UI) | IN_PROGRESS | Wave 2 dispatched |
+| 3 (Command) | DONE | Wave 2 adopted at `7ee0958850`, independently re-verified |
+| 4 (Operator UI) | DONE | Wave 2 adopted; 2 disclosed bounded residual gaps, see adoption record |
 | 5 (Notification Contract) | DONE | `attention-notification-event.mjs` + store + reconciler adopted at `5bde77ec8e`; `attachDueAttentionNotices` wiring into `http-server.mjs` is Wave 2's job |
 | 6 (Delivery Capability) | DONE (design) | See locked verdict below; UI polling delivery wired in Wave 2 |
 | 7 (Restart/Duplicate Safety) | DONE | 5 required proofs in `attention-status-reconciler.test.mjs`, independently re-run by coordinator |
@@ -230,8 +230,64 @@ own report, not re-transcribed) -- decisions only:
   validated via the `$electron` skill + Playwright CDP per `AGENTS.md`
   (never computer-use for this).
 
+## Wave 2 adoption record
+
+Coordinator independently verified before merging: read every diff in
+full (`attention-http-routes.mjs`, `command-fleet-attention-bridge.mjs`,
+the surgical `NEEDS_YOU_QUERY`/`SELF_IMPROVEMENT_READY_FOR_ADOPTION`
+extensions, `http-server.mjs`'s wiring, and every touched UI file --
+`global-run-status.ts`, `GlobalRunStatusIndicator.tsx`,
+`home-needs-you-items.ts`, `HQPage.tsx`, `work-feed-lookup.ts`, `types.ts`,
+`api.ts`, `use-api.ts`). Re-ran every new/touched test file myself: 16
+new server tests + 73 across the surgically-extended command files + 42
+Wave 1 regression (all still pass after the reconciler's small
+`gatherRealDeps`/`gatherRealFleetAttentionInputs` split) + full `tsf/test`
+suite (2747/2754 -- the 6 failures reproduced identically in files this
+wave never touched; 2 re-run in full isolation, `operator-state-
+adversarial.test.mjs` 9/9 and `command-adversarial-corpus.test.mjs` 37/37,
+confirming shared-host timing contention, not a regression, consistent
+with 15 concurrent peer sessions observed on this box at verification
+time). UI: `tsc -b --noEmit` clean, `npm test` 113/113.
+
+Verified the `use-api.ts` `reload` identity-instability fix is genuinely
+pre-existing (checked out Wave 1's own baseline `HQPage.tsx` and confirmed
+its `reloadAll` useCallback already composed `reloadPortfolio`/`reloadWork`
+the same way before Wave 2 touched anything) -- not introduced by this
+wave, correctly disclosed rather than silently folded in.
+
+**Coordinator fix during review**: `command-self-improvement-bridge.mjs`'s
+`SELF_IMPROVEMENT_READY_FOR_ADOPTION` response caption previously claimed
+"adoption gate is closed" for every listed item, but now also lists
+project-level Keep Going adoption candidates, which are never subject to
+the self-improvement adoption gate (a separate, unrelated authority) --
+overclaiming why nothing was auto-merged. Reworded to attribute each kind
+correctly; updated the 2 test assertions that matched the old literal
+string; re-verified 7/7 still pass.
+
+**Disclosed, bounded residual gaps** (not blocking, honestly documented
+rather than silently left implicit):
+1. A Planner Context Lifecycle `needsYou` item is a real `NEEDS_OWNER`
+   attention item (visible via Command's "what needs me?", now correctly
+   extended) but is NOT yet merged into `GlobalRunStatusIndicator`/HQ's
+   Needs You tile -- `selectExtraAttentionItems`/
+   `buildSelfImprovementNeedsYouItems` only cover self-improvement findings
+   and resource pressure (the coordinator's own Wave 2 design spec did not
+   name planner items as a UI target). Low severity: planner missions are
+   an internal surface, and the item is not invisible -- only absent from
+   the one UI surface, still answerable via chat.
+2. `http-server.mjs` was already 11 lines over the 600-line `max-lines`
+   budget before this mission (611 lines, confirmed via isolated lint of
+   the pre-Wave-2 commit); Wave 2's 5-line wiring addition brings it to
+   616. Per `AGENTS.md`, no disable/bump was added (correct) -- the
+   underlying file deserves a real split, out of this mission's scope.
+
+Merged `--ff-only` into canonical `tsf/main`, pushed to `fork/tsf/main`.
+
 ## Next intended action
 
-Wave 1 adopted. Wave 2 (Command + HTTP route + UI) dispatched per the
-design above. Phase 8 (dogfood) run by the coordinator directly at the
-end, same discipline as the Controlled Live Pilot's own Phase 1 sweep.
+Waves 1 and 2 adopted. Phase 8 (dogfood): coordinator runs disposable
+missions directly (mirroring the Controlled Live Pilot's own Phase 1
+sweep discipline) to prove completion/Needs-You/ready-for-adoption/
+resource-wait/failure each really appear in the aggregator, Command, and
+the notification-event log with correct deduplication -- then write the
+final `TSF_OPERATOR_ATTENTION_NOTIFICATIONS_V1_GREEN` report.

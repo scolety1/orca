@@ -117,7 +117,13 @@ export async function respondSelfImprovementCommand({ message, deps = {} }) {
     const lines = readyItems.map((i) => `- **${i.severity}** ${i.label}: ${i.reason}`)
     return RESPOND({
       intent,
-      text: `Ready for adoption (adoption gate is closed -- nothing here has been auto-merged):\n${lines.length ? lines.join('\n') : 'Nothing is ready for adoption right now.'}`
+      // Coordinator adoption-review fix: this now also lists project-level
+      // Keep Going adoption candidates, which are never subject to the
+      // self-improvement adoption gate (a separate, unrelated authority) --
+      // the old caption claimed a blanket "adoption gate is closed" for
+      // every item here, which overclaimed for those. Kept the reassurance
+      // (nothing was auto-merged) without misattributing why.
+      text: `Ready for adoption (nothing here has been auto-merged -- self-improvement fixes stay behind their own owner-authorization gate; project candidates await your normal review):\n${lines.length ? lines.join('\n') : 'Nothing is ready for adoption right now.'}`
     })
   }
 
