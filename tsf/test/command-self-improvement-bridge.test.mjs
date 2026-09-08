@@ -39,6 +39,59 @@ test('classifySelfImprovementIntent does not hijack ordinary chat', () => {
   assert.equal(classifySelfImprovementIntent('what did the research find?'), null)
 })
 
+// Operator Polish + Tech Debt Closeout V1, Wave A, Phase 5: 3 of the 4
+// mission-requested phrasings broaden an EXISTING intent's trigger regex
+// (no new intent, no duplicated handler); the 4th ("what's ready for
+// adoption?") already matched before this change.
+test('classifySelfImprovementIntent: broadened phrasing "What did TSF fix by itself?" now classifies as SELF_IMPROVEMENT_RESOLVED', () => {
+  assert.equal(classifySelfImprovementIntent('What did TSF fix by itself?'), 'SELF_IMPROVEMENT_RESOLVED')
+  assert.equal(classifySelfImprovementIntent('what did tsf fix on its own?'), 'SELF_IMPROVEMENT_RESOLVED')
+  assert.equal(classifySelfImprovementIntent('what did tsf fix itself?'), 'SELF_IMPROVEMENT_RESOLVED')
+})
+
+test('classifySelfImprovementIntent: old SELF_IMPROVEMENT_RESOLVED phrasing still classifies correctly (no regression)', () => {
+  assert.equal(classifySelfImprovementIntent('what fixed itself successfully?'), 'SELF_IMPROVEMENT_RESOLVED')
+  assert.equal(classifySelfImprovementIntent('self-fixed?'), 'SELF_IMPROVEMENT_RESOLVED')
+})
+
+// The broadened SELF_IMPROVEMENT_RESOLVED trigger must not hijack a message
+// that merely mentions research or an unrelated PR fix.
+test('classifySelfImprovementIntent: the broadened "what did TSF fix" trigger does not hijack unrelated messages', () => {
+  assert.equal(classifySelfImprovementIntent('what did the research find?'), null)
+  assert.equal(classifySelfImprovementIntent('what did you fix in the PR?'), null)
+})
+
+test('classifySelfImprovementIntent: broadened phrasing "What needs approval?" now classifies as SELF_IMPROVEMENT_READY_FOR_ADOPTION', () => {
+  assert.equal(classifySelfImprovementIntent('What needs approval?'), 'SELF_IMPROVEMENT_READY_FOR_ADOPTION')
+})
+
+test('classifySelfImprovementIntent: old SELF_IMPROVEMENT_READY_FOR_ADOPTION phrasings still classify correctly (no regression)', () => {
+  assert.equal(classifySelfImprovementIntent('what is ready for adoption?'), 'SELF_IMPROVEMENT_READY_FOR_ADOPTION')
+  assert.equal(classifySelfImprovementIntent("what's ready to adopt?"), 'SELF_IMPROVEMENT_READY_FOR_ADOPTION')
+})
+
+// "What's ready for adoption?" already matched before this change --
+// verified with no code change needed for this specific phrasing.
+test("classifySelfImprovementIntent: \"What's ready for adoption?\" already matches SELF_IMPROVEMENT_READY_FOR_ADOPTION", () => {
+  assert.equal(classifySelfImprovementIntent("What's ready for adoption?"), 'SELF_IMPROVEMENT_READY_FOR_ADOPTION')
+})
+
+// "What needs approval?" must never collide with command-scope-classifier's
+// own NEEDS_YOU_QUERY phrasing ("what needs me") -- distinct anchors.
+test('classifySelfImprovementIntent: the broadened "what needs approval" trigger does not collide with "what needs me"', () => {
+  assert.equal(classifySelfImprovementIntent('what needs me?'), null)
+})
+
+test('classifySelfImprovementIntent: broadened phrasing "Why didn\'t TSF fix this?" now classifies as SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED', () => {
+  assert.equal(classifySelfImprovementIntent("Why didn't TSF fix this?"), 'SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED')
+  assert.equal(classifySelfImprovementIntent("why didn't tsf fix that?"), 'SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED')
+  assert.equal(classifySelfImprovementIntent("why didn't tsf fix it?"), 'SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED')
+})
+
+test('classifySelfImprovementIntent: old SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED phrasing still classifies correctly (no regression)', () => {
+  assert.equal(classifySelfImprovementIntent("why wasn't this auto-fixed?"), 'SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED')
+})
+
 test('shouldRouteToSelfImprovementBridge mirrors classifySelfImprovementIntent', () => {
   assert.equal(shouldRouteToSelfImprovementBridge('what did TSF find?'), true)
   assert.equal(shouldRouteToSelfImprovementBridge('hello'), false)

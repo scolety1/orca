@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildHomeNeedsYouItems,
-  buildSelfImprovementNeedsYouItems,
+  buildOtherNeedsYouItems,
   countDistinctNeedsYouProjects,
   homeNeedsYouItemKey
 } from './home-needs-you-items.ts'
@@ -95,19 +95,20 @@ function attentionItem(overrides: Partial<AttentionItem> = {}): AttentionItem {
   }
 }
 
-test('buildSelfImprovementNeedsYouItems: empty input -> no items', () => {
-  assert.deepEqual(buildSelfImprovementNeedsYouItems([]), [])
+test('buildOtherNeedsYouItems: empty input -> no items', () => {
+  assert.deepEqual(buildOtherNeedsYouItems([]), [])
 })
 
-test('buildSelfImprovementNeedsYouItems: a real NEEDS_OWNER self-improvement finding appears, with an honest null project when none exists', () => {
-  const items = buildSelfImprovementNeedsYouItems([attentionItem()])
+test('buildOtherNeedsYouItems: a real NEEDS_OWNER self-improvement finding appears, with an honest null project when none exists', () => {
+  const items = buildOtherNeedsYouItems([attentionItem()])
   assert.equal(items.length, 1)
-  assert.equal(items[0].findingId, 'finding:x')
+  assert.equal(items[0].id, 'finding:x')
   assert.equal(items[0].label, 'some-surface')
   assert.equal(items[0].projectId, null)
+  assert.equal(items[0].kind, 'SELF_IMPROVEMENT_FINDING')
 })
 
-test('buildSelfImprovementNeedsYouItems: excludes non-self-improvement NEEDS_OWNER items and non-NEEDS_OWNER self-improvement items', () => {
+test('buildOtherNeedsYouItems: excludes non-self-improvement NEEDS_OWNER items and non-NEEDS_OWNER self-improvement items', () => {
   const projectNeedsOwner = attentionItem({
     id: 'needsyou:PROJECT:1',
     source: { kind: 'KEEP_GOING_RUN', id: 'p1' }
@@ -117,10 +118,66 @@ test('buildSelfImprovementNeedsYouItems: excludes non-self-improvement NEEDS_OWN
     category: 'READY_FOR_ADOPTION',
     source: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:y' }
   })
-  assert.deepEqual(buildSelfImprovementNeedsYouItems([projectNeedsOwner, readyForAdoption]), [])
+  assert.deepEqual(buildOtherNeedsYouItems([projectNeedsOwner, readyForAdoption]), [])
 })
 
-test('buildSelfImprovementNeedsYouItems: a finding with a real project carries its real projectId', () => {
-  const items = buildSelfImprovementNeedsYouItems([attentionItem({ project: { id: 'proj-1', displayName: 'Project One' } })])
+test('buildOtherNeedsYouItems: a finding with a real project carries its real projectId', () => {
+  const items = buildOtherNeedsYouItems([attentionItem({ project: { id: 'proj-1', displayName: 'Project One' } })])
   assert.equal(items[0].projectId, 'proj-1')
+})
+
+function plannerAttentionItem(overrides: Partial<AttentionItem> = {}): AttentionItem {
+  return attentionItem({
+    id: 'needsyou:PLANNER:entry-1',
+    label: 'mission-alpha',
+    reason: 'Should this go forward with option A or B?',
+    changedAt: '2026-09-05T00:00:00.000Z',
+    deepLink: { kind: 'PLANNER_MISSION', id: 'mission-1' },
+    source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-1' },
+    ...overrides
+  })
+}
+
+test('buildOtherNeedsYouItems: a real planner needsYou item appears, with an honest null project (no project association exists on a planner checkpoint)', () => {
+  const items = buildOtherNeedsYouItems([plannerAttentionItem()])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].id, 'needsyou:PLANNER:entry-1')
+  assert.equal(items[0].label, 'mission-alpha')
+  assert.equal(items[0].reason, 'Should this go forward with option A or B?')
+  assert.equal(items[0].projectId, null)
+  assert.equal(items[0].kind, 'PLANNER_MISSION_NEEDS_YOU')
+})
+
+// Dedup must be id-based, never label-based: two distinct planner missions
+// can genuinely raise a needsYou question with the exact same label text.
+test('buildOtherNeedsYouItems: two distinct planner missions with the same label text both appear, never merged (id-based, not label-based)', () => {
+  const missionA = plannerAttentionItem({ id: 'needsyou:PLANNER:entry-a', source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-a' } })
+  const missionB = plannerAttentionItem({ id: 'needsyou:PLANNER:entry-b', source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-b' } })
+  const items = buildOtherNeedsYouItems([missionA, missionB])
+  assert.equal(items.length, 2)
+  assert.equal(new Set(items.map((i) => i.id)).size, 2)
+})
+
+// Restart-equivalent idempotency: the SAME planner mission's needsYou item
+// observed across two consecutive GET /api/attention-shaped calls (the same
+// content-derived id both times) must never duplicate when merged.
+test('buildOtherNeedsYouItems: the same planner needsYou item observed twice (two consecutive attention snapshots) never duplicates by id', () => {
+  const first = plannerAttentionItem()
+  const second = plannerAttentionItem()
+  const ids = new Set([...buildOtherNeedsYouItems([first]), ...buildOtherNeedsYouItems([second])].map((i) => i.id))
+  assert.equal(ids.size, 1)
+})
+
+// A planner needsYou item's id shape (`needsyou:PLANNER:...`) can never
+// collide with a self-improvement finding's id shape (`finding:...`).
+test('buildOtherNeedsYouItems: a planner item and a self-improvement item with the same label text are distinct by id, never merged', () => {
+  const planner = plannerAttentionItem({ label: 'same-label' })
+  const selfImprovement = attentionItem({ label: 'same-label' })
+  const items = buildOtherNeedsYouItems([planner, selfImprovement])
+  assert.equal(items.length, 2)
+  assert.equal(new Set(items.map((i) => i.id)).size, 2)
+  assert.deepEqual(
+    items.map((i) => i.kind).sort(),
+    ['PLANNER_MISSION_NEEDS_YOU', 'SELF_IMPROVEMENT_FINDING'].sort()
+  )
 })

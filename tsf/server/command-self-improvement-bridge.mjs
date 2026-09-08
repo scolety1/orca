@@ -18,10 +18,33 @@ import { gatherRealFleetAttentionInputs } from './attention-status-reconciler.mj
 // the broad "what did TSF find" vocabulary and must be checked first so
 // the catch-all never swallows them.
 const INTENT_PATTERNS = [
-  { id: 'SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED', test: (msg) => /\bwhy\s+(wasn'?t|was\s+not|isn'?t|is\s+not)\s+(this|that|it)\s+auto[- ]?fixed\b/i.test(msg) },
+  // Broadened for "Why didn't TSF fix this?" -- anchored to "tsf fix"
+  // plus a pronoun, so it never loosens into a generic "why wasn't X done"
+  // catch-all.
+  {
+    id: 'SELF_IMPROVEMENT_WHY_NOT_AUTOFIXED',
+    test: (msg) =>
+      /\bwhy\s+(wasn'?t|was\s+not|isn'?t|is\s+not)\s+(this|that|it)\s+auto[- ]?fixed\b/i.test(msg) ||
+      /\bwhy\s+didn'?t\s+tsf\s+fix\s+(this|that|it)\b/i.test(msg)
+  },
   { id: 'SELF_IMPROVEMENT_FAILED_VERIFICATION', test: (msg) => /\bwhat\s+failed\s+verification\b/i.test(msg) },
-  { id: 'SELF_IMPROVEMENT_READY_FOR_ADOPTION', test: (msg) => /\bwhat'?s?\s+(is\s+)?ready\s+for\s+adoption\b|\bready\s+to\s+adopt\b/i.test(msg) },
-  { id: 'SELF_IMPROVEMENT_RESOLVED', test: (msg) => /\bwhat\s+fixed\s+itself(\s+successfully)?\b|\bself[- ]?fixed\b/i.test(msg) },
+  // Broadened for "What needs approval?" -- distinct anchor from
+  // command-scope-classifier.mjs's NEEDS_YOU_QUERY ("what needs me") and
+  // command-fleet-attention-bridge.mjs's intents, so this never shadows or
+  // collides with either.
+  {
+    id: 'SELF_IMPROVEMENT_READY_FOR_ADOPTION',
+    test: (msg) => /\bwhat'?s?\s+(is\s+)?ready\s+for\s+adoption\b|\bready\s+to\s+adopt\b|\bwhat\s+needs\s+approval\b/i.test(msg)
+  },
+  // Broadened for "What did TSF fix by itself?" -- anchored to "tsf fix"
+  // plus one of these completions, so it never matches an unrelated
+  // "what did TSF find"/"what did you fix" message.
+  {
+    id: 'SELF_IMPROVEMENT_RESOLVED',
+    test: (msg) =>
+      /\bwhat\s+fixed\s+itself(\s+successfully)?\b|\bself[- ]?fixed\b/i.test(msg) ||
+      /\bwhat\s+did\s+tsf\s+fix\s+(by\s+itself|on\s+its\s+own|itself)\b/i.test(msg)
+  },
   { id: 'SELF_IMPROVEMENT_IN_PROGRESS', test: (msg) => /\bwhat\s+(is\s+it|are\s+you)\s+fixing\b|\bwhat'?s?\s+it\s+fixing\b/i.test(msg) },
   { id: 'SELF_IMPROVEMENT_ALL_FINDINGS', test: (msg) => /\bwhat\s+did\s+tsf\s+find\b|\bself[- ]?improvement\s+findings?\b|\btsf\s+findings?\b/i.test(msg) }
 ]

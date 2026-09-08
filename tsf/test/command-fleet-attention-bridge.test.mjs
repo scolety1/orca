@@ -115,6 +115,11 @@ test('REQUIRED PROOF: zero collision with messages already owned elsewhere', () 
   assert.equal(classifyFleetAttentionRequest('what failed verification?'), null)
   assert.equal(classifyFleetAttentionRequest('research the market size for widgets'), null)
   assert.equal(classifyFleetAttentionRequest('build a dataset of companies'), null)
+  // Operator Polish V1, Wave A, Phase 5: the 3 broadened self-improvement
+  // phrasings must not collide with this bridge's own intents either.
+  assert.equal(classifyFleetAttentionRequest('What did TSF fix by itself?'), null)
+  assert.equal(classifyFleetAttentionRequest('What needs approval?'), null)
+  assert.equal(classifyFleetAttentionRequest("Why didn't TSF fix this?"), null)
 })
 
 test('shouldRouteToFleetAttentionBridge mirrors classifyFleetAttentionRequest', () => {

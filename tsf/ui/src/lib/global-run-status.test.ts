@@ -187,6 +187,22 @@ test('selectExtraAttentionItems: includes every self-improvement-sourced item an
   )
 })
 
+// Operator Polish V1, Wave A: a planner needsYou item has no liveWorkFeed of
+// its own (same reasoning as a self-improvement finding), so it must merge
+// into this indicator's combined list too.
+test('selectExtraAttentionItems: includes a planner-mission-needsYou-sourced item', () => {
+  const plannerNeedsYou = attentionItem({
+    id: 'needsyou:PLANNER:entry-1',
+    project: null,
+    deepLink: { kind: 'PLANNER_MISSION', id: 'mission-1' },
+    source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-1' }
+  })
+  const projectNeedsOwner = attentionItem({ id: 'needsyou:PROJECT:1', source: { kind: 'KEEP_GOING_RUN', id: 'p1' } })
+
+  const result = selectExtraAttentionItems([plannerNeedsYou, projectNeedsOwner])
+  assert.deepEqual(result.map((i) => i.id), ['needsyou:PLANNER:entry-1'])
+})
+
 test('resolveAttentionDeepLink: a PROJECT deep link resolves to the real project route; every other kind is honestly null (no route exists yet)', () => {
   assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'PROJECT', id: 'proj-1' } })), '/projects/proj-1')
   assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'RESEARCH_MISSION', id: 'm1' } })), null)
@@ -214,4 +230,30 @@ test('attentionItemToGlobalRunStatusItem: uses the real project displayName when
   )
   assert.equal(mapped.displayName, 'Project One')
   assert.equal(mapped.linkTo, '/projects/proj-1')
+})
+
+// Operator Polish V1, Wave A: a planner needsYou item has a real label/
+// reason/changedAt but honestly no project and no route yet -- must map
+// through with a null link, never a fabricated one.
+test('attentionItemToGlobalRunStatusItem: a planner needsYou item maps with honest null project and null link', () => {
+  const mapped = attentionItemToGlobalRunStatusItem(
+    attentionItem({
+      id: 'needsyou:PLANNER:entry-1',
+      project: null,
+      label: 'mission-alpha',
+      reason: 'Should this go forward with option A or B?',
+      changedAt: '2026-09-05T00:00:00.000Z',
+      deepLink: { kind: 'PLANNER_MISSION', id: 'mission-1' },
+      source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-1' }
+    })
+  )
+  assert.deepEqual(mapped, {
+    id: 'needsyou:PLANNER:entry-1',
+    displayName: 'mission-alpha',
+    runId: null,
+    state: 'NEEDS_OWNER',
+    reason: 'Should this go forward with option A or B?',
+    lastCheckpointAt: '2026-09-05T00:00:00.000Z',
+    linkTo: null
+  })
 })

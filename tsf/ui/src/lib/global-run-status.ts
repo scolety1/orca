@@ -93,13 +93,17 @@ export function resolveAttentionDeepLink(item: AttentionItem): string | null {
 // Items buildGlobalRunStatusItems (above) structurally cannot produce --
 // no run/liveWorkFeed exists for a self-improvement finding at all (any
 // category it can reach: NEEDS_OWNER, FAILED_REQUIRES_ATTENTION, or
-// READY_FOR_ADOPTION), and the host-wide resource-pressure item has no
-// project/run of its own either. Every OTHER attention category
+// READY_FOR_ADOPTION), a planner needsYou entry has no Keep Going run of
+// its own either (a planner checkpoint has no project association --
+// fleet-attention-status.mjs), and the host-wide resource-pressure item
+// has no project/run of its own. Every OTHER attention category
 // (project-level NEEDS_OWNER/STALLED/READY_FOR_ADOPTION/COMPLETED_RECENTLY)
 // already reaches this indicator via its own real liveWorkFeed, so
 // including it here too would double-count the same real fact.
 export function selectExtraAttentionItems(items: AttentionItem[]): AttentionItem[] {
-  return items.filter((i) => i.source.kind === 'SELF_IMPROVEMENT_FINDING' || i.category === 'WAITING_FOR_RESOURCES')
+  return items.filter(
+    (i) => i.source.kind === 'SELF_IMPROVEMENT_FINDING' || i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' || i.category === 'WAITING_FOR_RESOURCES'
+  )
 }
 
 export function attentionItemToGlobalRunStatusItem(item: AttentionItem): GlobalRunStatusItem {

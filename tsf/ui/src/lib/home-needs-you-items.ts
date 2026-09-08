@@ -43,20 +43,30 @@ export function countDistinctNeedsYouProjects(items: HomeNeedsYouItem[]): number
   return new Set(items.map((item) => item.id)).size
 }
 
-// Operator Attention V1, Wave 2: a self-improvement finding the eligibility
-// classifier declined to autofix (real gap -- previously invisible on Home
-// entirely, only reachable via chat). Not a WorkItem (no project may exist
-// -- `project` is honestly null when a finding has none), so this is its
-// own small shape rather than forced into HomeNeedsYouItem.
-export type SelfImprovementNeedsYouItem = {
-  findingId: string
+// Operator Attention V1, Wave 2 + Operator Polish V1, Wave A: a NEEDS_OWNER
+// item with no project-run correlation of its own -- a self-improvement
+// finding the eligibility classifier declined to autofix, or a planner
+// mission's own needsYou checkpoint (no project exists on a planner
+// checkpoint at all -- fleet-attention-status.mjs). Neither is a WorkItem,
+// so this is its own small shape rather than forced into HomeNeedsYouItem.
+// `id` is the item's own real, content-derived attention id (never
+// label-derived) so two items can never spuriously dedup/collide.
+export type OtherNeedsYouItem = {
+  id: string
   label: string
   reason: string
   projectId: string | null
+  kind: 'SELF_IMPROVEMENT_FINDING' | 'PLANNER_MISSION_NEEDS_YOU'
 }
 
-export function buildSelfImprovementNeedsYouItems(attentionItems: AttentionItem[]): SelfImprovementNeedsYouItem[] {
+export function buildOtherNeedsYouItems(attentionItems: AttentionItem[]): OtherNeedsYouItem[] {
   return attentionItems
-    .filter((i) => i.category === 'NEEDS_OWNER' && i.source.kind === 'SELF_IMPROVEMENT_FINDING')
-    .map((i) => ({ findingId: i.source.id ?? i.id, label: i.label, reason: i.reason, projectId: i.project?.id ?? null }))
+    .filter((i) => i.category === 'NEEDS_OWNER' && (i.source.kind === 'SELF_IMPROVEMENT_FINDING' || i.source.kind === 'PLANNER_MISSION_NEEDS_YOU'))
+    .map((i) => ({
+      id: i.id,
+      label: i.label,
+      reason: i.reason,
+      projectId: i.project?.id ?? null,
+      kind: i.source.kind as OtherNeedsYouItem['kind']
+    }))
 }

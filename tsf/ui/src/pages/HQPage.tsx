@@ -17,7 +17,7 @@ import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
 import {
   buildHomeNeedsYouItems,
-  buildSelfImprovementNeedsYouItems,
+  buildOtherNeedsYouItems,
   countDistinctNeedsYouProjects,
   homeNeedsYouItemKey
 } from '@/lib/home-needs-you-items'
@@ -55,11 +55,13 @@ function SectionTitle({ icon: Icon, children }: { icon: typeof Compass; children
 export function HQPage() {
   const { data: portfolio, loading: pLoading, error: pError, reload: reloadPortfolio } = useApi(() => api.portfolio(), [])
   const { data: work, loading: wLoading, error: wError, reload: reloadWork } = useApi(() => api.work(), [])
-  // Operator Attention V1, Wave 2: a real, currently-invisible gap -- a
-  // self-improvement finding the eligibility classifier declined to autofix
-  // (NEEDS_OWNER) never reached Home before. Deliberately non-blocking (no
-  // loading/error gate below) -- this tile's existing project-based data is
-  // never held up by this additional real source.
+  // Operator Attention V1, Wave 2 + Operator Polish V1, Wave A: a real,
+  // currently-invisible gap -- a self-improvement finding the eligibility
+  // classifier declined to autofix, or a planner mission's own needsYou
+  // checkpoint (NEEDS_OWNER, no project of its own) never reached Home
+  // before. Deliberately non-blocking (no loading/error gate below) --
+  // this tile's existing project-based data is never held up by this
+  // additional real source.
   const { data: attention, reload: reloadAttention } = useApi(() => api.attention(), [])
   const [preparing, setPreparing] = useState(false)
   const [prepareResult, setPrepareResult] = useState<string | null>(null)
@@ -94,7 +96,7 @@ export function HQPage() {
 
   const needsYou = buildHomeNeedsYouItems(work)
   const researchNeedsYou = work.needsYou.filter(isResearchMissionWorkItem)
-  const selfImprovementNeedsYou = attention ? buildSelfImprovementNeedsYouItems(attention.items) : []
+  const otherNeedsYou = attention ? buildOtherNeedsYouItems(attention.items) : []
   const degradedProjects = portfolio.knownProjects.filter((p) => p.healthStatus === 'DEGRADED' || p.healthStatus === 'BLOCKED')
   const activeProjects = work.active.filter((p): p is WorkItem => !isResearchMissionWorkItem(p))
   const activeResearch = work.active.filter(isResearchMissionWorkItem)
@@ -152,10 +154,11 @@ export function HQPage() {
           <CardContent className="p-4">
             <div className="text-[11px] text-muted-foreground">Needs you</div>
             {/* countDistinctNeedsYouProjects stays project-only (its own
-                well-tested contract); self-improvement findings are real
-                but not projects, so their count is added honestly rather
-                than folded into that function's meaning. */}
-            <div className="text-2xl font-semibold">{countDistinctNeedsYouProjects(needsYou) + selfImprovementNeedsYou.length}</div>
+                well-tested contract); self-improvement findings and planner
+                needsYou items are real but not projects, so their count is
+                added honestly rather than folded into that function's
+                meaning. */}
+            <div className="text-2xl font-semibold">{countDistinctNeedsYouProjects(needsYou) + otherNeedsYou.length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -207,7 +210,7 @@ export function HQPage() {
 
       <section className="mb-8">
         <SectionTitle icon={UserCheck}>Needs you</SectionTitle>
-        {needsYou.length === 0 && researchNeedsYou.length === 0 && selfImprovementNeedsYou.length === 0 ? (
+        {needsYou.length === 0 && researchNeedsYou.length === 0 && otherNeedsYou.length === 0 ? (
           <EmptyState
             icon={<CheckCircle2 className="size-6" />}
             title="Nothing needs you right now"
@@ -239,10 +242,11 @@ export function HQPage() {
             {researchNeedsYou.map((item) => (
               <ResearchMissionCard key={item.missionId} item={item} />
             ))}
-            {selfImprovementNeedsYou.map((item) => {
-              // No standalone finding page exists yet -- link to the real
-              // owning project when one is known, otherwise render a plain,
-              // non-clickable card rather than a link to nowhere.
+            {otherNeedsYou.map((item) => {
+              // No standalone finding/planner-mission page exists yet --
+              // link to the real owning project when one is known,
+              // otherwise render a plain, non-clickable card rather than a
+              // link to nowhere (a planner item never has one -- honest).
               const cardBody = (
                 <Card className="border-status-degraded/40 bg-status-degraded/5 transition-colors hover:border-status-degraded/70">
                   <CardContent className="flex items-center justify-between gap-2 p-3">
@@ -250,16 +254,16 @@ export function HQPage() {
                       <div className="text-sm font-medium">{item.label}</div>
                       <div className="text-xs text-muted-foreground">{item.reason}</div>
                     </div>
-                    <Badge variant="degraded">Self-improvement</Badge>
+                    <Badge variant="degraded">{item.kind === 'PLANNER_MISSION_NEEDS_YOU' ? 'Planner' : 'Self-improvement'}</Badge>
                   </CardContent>
                 </Card>
               )
               return item.projectId ? (
-                <Link key={item.findingId} to={projectDeepLinkTo(item.projectId)}>
+                <Link key={item.id} to={projectDeepLinkTo(item.projectId)}>
                   {cardBody}
                 </Link>
               ) : (
-                <div key={item.findingId}>{cardBody}</div>
+                <div key={item.id}>{cardBody}</div>
               )
             })}
           </div>
