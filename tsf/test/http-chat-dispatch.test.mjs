@@ -97,6 +97,38 @@ test('a dispatch-worthy chat message with an explicit placement genuinely dispat
   })
 })
 
+// Coordinator adoption-review finding: chat-dispatch-bridge.mjs's own hold
+// check (Part B) sits inside planAndDispatchFromChat, but THIS route's own
+// dispatchFromChat calls ensureWorktreeForDispatch (a real
+// orca-worktree-create side effect) before ever reaching it -- a held
+// project's direct chat dispatch would still create a real worktree. Real,
+// end-to-end proof the defense-in-depth fix actually stops that, not just
+// that the message is refused.
+test('a held project\'s chat dispatch is refused honestly and never creates a real worktree/Keep Going run', async () => {
+  const { withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
+  const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
+  await withProjectExecutionHold(PROJECT_ID, () =>
+    createProjectExecutionHold(
+      { projectId: PROJECT_ID, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test', note: 'regression proof' },
+      () => new Date()
+    )
+  )
+  await withServer(async (base) => {
+    const { status, body } = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'go ahead and add a bounded doc note',
+      placement: { worktree: REAL_WORKTREE, agent: 'codex' }
+    })
+    assert.equal(status, 200)
+    assert.equal(body.dispatched, false)
+    assert.match(body.text, /execution hold/)
+    assert.match(body.text, /EXTERNAL_WORK_ACTIVE/)
+    assert.match(body.providerLabel, /PROJECT_EXECUTION_HOLD_ACTIVE/)
+    const { readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
+    assert.equal(readKeepGoingRun(PROJECT_ID), null, 'no real Keep Going run was created for the held project')
+  })
+})
+
 test('a follow-up "what is it doing?" after a real dispatch answers from the live run, not a canned/fabricated reply', async () => {
   await withServer(async (base) => {
     const dispatch = await chat(base, {

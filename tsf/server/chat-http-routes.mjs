@@ -27,6 +27,8 @@ import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
 import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
 import { attachDueAttentionNotices } from './attention-status-reconciler.mjs'
+import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
+import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 
 // Configures which real, known project id actually IS TSF's own -- self-
 // repair (domain/self-repair-authority.mjs) can never be authorized for any
@@ -47,6 +49,22 @@ const SELF_REPAIR_PROJECT_ID = process.env.TSF_SELF_REPAIR_PROJECT_ID || null
 async function dispatchFromChat({ project, message, placement, selfRepairFromBranch }) {
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
+  // Coordinator adoption-review fix: planAndDispatchFromChat's own hold
+  // check (chat-dispatch-bridge.mjs) runs too late to stop THIS function's
+  // own ensureWorktreeForDispatch call below -- a held project's chat
+  // dispatch would still create a real worktree before ever reaching that
+  // gate. Same check, defense-in-depth, before any real side effect here.
+  const hold = readProjectExecutionHold(project.id)
+  if (isProjectExecutionHoldActive(hold)) {
+    return {
+      intent,
+      decisionClass,
+      text: `This project is under an execution hold (${hold.reason}${hold.note ? `: ${hold.note}` : ''}, set by ${hold.setBy}) -- release the hold before dispatching new work.`,
+      providerLabel: 'PLANNER_DEEP · dispatch withheld -- PROJECT_EXECUTION_HOLD_ACTIVE',
+      live: false,
+      dispatched: false
+    }
+  }
   let effectivePlacement = placement
   if (!effectivePlacement?.worktree && !effectivePlacement?.workerTerminal) {
     const provisioned = await ensureWorktreeForDispatch(
