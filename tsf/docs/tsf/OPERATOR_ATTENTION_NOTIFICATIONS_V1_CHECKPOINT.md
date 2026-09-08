@@ -47,7 +47,7 @@ Dock surfaces first.
 | 5 (Notification Contract) | DONE | `attention-notification-event.mjs` + store + reconciler adopted at `5bde77ec8e`; `attachDueAttentionNotices` wiring into `http-server.mjs` is Wave 2's job |
 | 6 (Delivery Capability) | DONE (design) | See locked verdict below; UI polling delivery wired in Wave 2 |
 | 7 (Restart/Duplicate Safety) | DONE | 5 required proofs in `attention-status-reconciler.test.mjs`, independently re-run by coordinator |
-| 8 (Dogfood) | NOT_STARTED | Final wave, coordinator-run |
+| 8 (Dogfood) | DONE | Coordinator-run, real seeded durable state, see below |
 
 ## Wave 1 adoption record
 
@@ -283,11 +283,57 @@ rather than silently left implicit):
 
 Merged `--ff-only` into canonical `tsf/main`, pushed to `fork/tsf/main`.
 
+## Phase 8: dogfood (coordinator-run directly)
+
+Ran a disposable Node script (mirroring the Controlled Live Pilot's own
+Phase 1 direct-execution discipline; the codex-blind-probe.mjs pattern
+used earlier this engagement) against an isolated `TSF_UI_STATE_FILE`,
+using ONLY real domain constructors and real store writes -- never
+hand-typed durable records:
+
+- Seeded 3 real self-improvement findings via `createFinding`/
+  `transitionFinding`/`applyAutofixEligibility` + `withFinding`: one
+  `NEEDS_OWNER` (eligibility-declined, low confidence), one
+  `NEEDS_OWNER`/`REPAIR_RETRY_BUDGET_EXCEEDED` (a real failed repair
+  attempt), one `READY_FOR_ADOPTION` (full FIX_MISSION_CREATED ->
+  FIX_IN_PROGRESS -> READY_FOR_ADOPTION path).
+- Seeded one real `ResearchMission` reaching `COMPLETE` via
+  `createResearchMission`/`completeResearchMission` +
+  `withResearchMission` -- the currently-reachable `COMPLETED_RECENTLY`
+  source (a Keep Going run's own `COMPLETED` feed state is a pre-existing,
+  disclosed, not-yet-reachable path per `work-feed-summary.mjs`'s own
+  header -- not fabricated here to force a result).
+- Called `buildFleetAttentionItems(gatherRealDeps(clock))` (the real
+  `GET /api/attention` path) -- all 4 seeded categories present with
+  correct `deepLink`s; also picked up a genuinely pre-existing real
+  project's own `READY_FOR_ADOPTION` candidate already in this
+  environment's project catalog (not seeded by this script), confirming
+  the aggregator reads real, unmediated production state, not only what
+  this dogfood pass injected.
+- Called the real `handleAttentionRoute` HTTP handler directly -> 200,
+  `{ ok: true, items: [...6 items] }`.
+- Called `respondSelfImprovementCommand`/`respondFleetAttentionCommand`
+  with NO injected deps (real store reads) for "what is ready for
+  adoption?" / "what finished?" / "what failed today?" -- each answer
+  correctly named the real seeded record.
+- `reconcileFleetAttentionItems` twice: first call registered 5 new
+  events (the 5 notify-worthy categories), second call against
+  unchanged state registered exactly 0 -- dedup confirmed against real
+  persisted state, not a mocked store.
+- "Did anything change while I was gone?" drained the 5 real notices
+  once, then honestly reported "Nothing changed while you were away." on
+  a second call -- no duplicate delivery.
+- Cleaned up: disposable script deleted, isolated state file removed,
+  `git status` confirmed clean.
+
+**Honest scope note**: `WAITING_FOR_RESOURCES` was validated via Wave
+1/2's own deps-injected test suites (real domain logic, injected tier),
+not a live-induced CRITICAL host-memory event -- deliberately not forced
+on this shared, already-contended host (would risk destabilizing the 15
+other concurrent peer sessions observed on this box). The mechanism is
+identical either way (same `buildFleetAttentionItems`/`transitionSignatureFor`
+code path, tier-driven, no special-cased branch for tests vs. production).
+
 ## Next intended action
 
-Waves 1 and 2 adopted. Phase 8 (dogfood): coordinator runs disposable
-missions directly (mirroring the Controlled Live Pilot's own Phase 1
-sweep discipline) to prove completion/Needs-You/ready-for-adoption/
-resource-wait/failure each really appear in the aggregator, Command, and
-the notification-event log with correct deduplication -- then write the
-final `TSF_OPERATOR_ATTENTION_NOTIFICATIONS_V1_GREEN` report.
+None remaining for this mission. Final report delivered to the user.
