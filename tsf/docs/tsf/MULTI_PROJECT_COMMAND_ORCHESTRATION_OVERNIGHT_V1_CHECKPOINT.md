@@ -127,24 +127,71 @@ authorization phrasing.**
 
 | Part | Status | Notes |
 |---|---|---|
-| A1 (Reconcile before build) | IN_PROGRESS | Dispatching |
-| A2-A6 (Multi-project Command build) | NOT_STARTED | |
-| B (Durable project hold) | NOT_STARTED | Folded into the same wave as A |
-| NWR hold applied | NOT_STARTED | Depends on B landing |
-| C1 (Nytheria existing adoption) | BLOCKED (architectural) | No automated adoption path exists anywhere in TSF -- see finding above. Will report as a genuine, real, hardcoded gate, not attempt to route around it (no direct git-level workaround on the real repo either). |
-| C2 (Nytheria next overnight run) | NOT_STARTED | Real base-branch reconciliation needed given the Sept-2 descendant branch finding above |
-| D1-D4 (EasyLife/EasyWorkouts) | NOT_STARTED | |
+| A1 (Reconcile before build) | DONE | Adopted at `7d62613993`, independently re-verified |
+| A2-A6 (Multi-project Command build) | DONE | 74+126 tests re-verified, 1 real gap found/fixed by coordinator (worktree-before-hold-check) |
+| B (Durable project hold) | DONE | Both real admission choke points now covered |
+| NWR hold applied | IN_PROGRESS | Applying for real now that B is adopted |
+| C1 (Nytheria existing adoption) | BLOCKED (architectural) | No automated adoption path exists anywhere in TSF -- reported honestly, not routed around |
+| C2 (Nytheria next overnight run) | DONE | Real branch `work/worldforge-living-world-vertical-slice-v1-20260907` (commit `9b90989`), continued from the real Sept-2 descendant, independently re-verified by coordinator (ancestry, clean tree, honest commit content) |
+| D1-D4 (EasyLife/EasyWorkouts) | DONE | Real logging flow proven working (UI + Firestore-emulator layers both), no bugs found so no fixes needed, independently re-verified by coordinator (real origin/main sync, real incident history, ports cleaned up) |
 | E (Golden dogfood) | NOT_STARTED | |
 | F (resource/provider behavior) | NOT_STARTED | Absorbs the paused Throughput Dogfood mission's own questions |
 | G (self-improvement tie-in) | NOT_STARTED | Passive -- only if a genuine eligible finding emerges naturally |
 
+## Part A/B adoption record (coordinator independent review)
+
+Read every new domain/server file in full (`project-execution-hold.mjs`,
+`project-execution-hold-store.mjs`, `command-referent-resolution.mjs`,
+`command-multi-action-decomposition.mjs`, `command-multi-action-bridge.mjs`)
+plus the wiring diffs. Manually traced the mission's own literal 3-project
+example ("NWR is being handled by another AI, leave it alone. Nytheria
+looks good, adopt that run and keep going overnight. EasyLife needs
+serious work -- get EasyWorkouts up...") through `decomposeMultiAction`
+by hand and confirmed it produces exactly the 4 actions the mission's own
+spec names. Confirmed `reportAdoptionCandidate` is genuinely report-only
+(never executes an adoption) and `applyExternalWorkHold` genuinely
+persists durably before the response ever claims it did.
+
+**Real gap found and fixed by the coordinator**: `chat-dispatch-bridge.mjs`'s
+own Part B hold check sits inside `planAndDispatchFromChat`, but
+`chat-http-routes.mjs`'s own `dispatchFromChat` (the single-project chat
+route, not the new multi-action bridge) calls `ensureWorktreeForDispatch`
+-- a real `orca worktree create` side effect -- BEFORE ever reaching that
+check. A held project's direct, single-project chat dispatch would still
+create a real worktree before being refused. Fixed with the same check at
+the true first side-effect point, defense-in-depth; a real, end-to-end
+regression test proves no worktree/Keep Going run is created for a held
+project (not just that the message is refused). Commit `7d62613993`.
+
+**Real, unrelated, pre-existing bug found and precisely diagnosed (NOT
+fixed -- out of this mission's scope, not introduced by this build)**:
+`tsf/test/http-chat-live.test.mjs`'s "POST /api/chat returns a genuine
+live response for a real project" test fails 100% deterministically (not
+flaky, confirmed via 3 repeated runs) because `attachDueAttentionNotices`
+unconditionally prepends any due global notice to the NEXT chat response
+regardless of scope -- the `tsf-ui-capability-check` fixture project's own
+baked-in `READY_FOR_ADOPTION` state is eligible on a fresh state file's
+very first reconcile, so it gets prepended to whatever chat response
+follows, breaking this test's `^`-anchored regex. Independently confirmed
+this is NOT introduced by this mission's own work: reproduced identically
+on the much older Operator Attention + Notifications V1 baseline
+(`75db5ab59b`, a disposable worktree, removed after the check) --
+present since that mission first wired `attachDueAttentionNotices` in.
+This corrects an earlier mischaracterization across this engagement's own
+regression sweeps (this exact test name was repeatedly bucketed as "host-
+contention timing flakiness" without re-diagnosing its actual failure
+content each time -- it is real, deterministic, and unrelated). Left
+unfixed as genuinely out of scope for this mission; a real, bounded,
+eligible candidate for a future self-improvement finding or small
+dedicated fix.
+
+Full regression: 74 new Part A/B tests + 126 across the required command-
+layer regression set, all independently re-run by the coordinator, zero
+failures beyond the one confirmed-pre-existing item above. `npx oxlint`
+clean on every new/touched file.
+
 ## Next intended action
 
-Dispatch Part A1 (reconciliation) + A2-A6 (build) + Part B (durable hold)
-as one cohesive wave -- deep session familiarity with command-responder.mjs/
-command-scope-classifier.mjs/chat-dispatch-bridge.mjs/project-name-resolver.mjs/
-fleet-attention-status.mjs already established this whole engagement,
-informing a precise spec. Apply the NWR hold for real once that lands.
-Then Part C2 (informed by the real branch-ancestry finding), Part D (real
-EasyWorkouts repair), Part E (dogfood), Part F (resource report), final
-report.
+Part A/B adopted. Apply the real NWR hold. Part C2/D already independently
+verified complete (see table). Part E (dogfood against the real owner
+instruction), Part F (resource/provider report), final report.
