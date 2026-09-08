@@ -17,6 +17,8 @@ import { classifyDecision, classifyIntent } from './chat-responder.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
+import { classifyAdoptionCommandIntent } from '../domain/command-adoption-execution.mjs'
+import { executeCommandAdoption } from './command-adoption-execution.mjs'
 
 // A2's own required test: the gate this file's caller (command-responder.mjs)
 // uses to decide "is this genuinely a multi-project, multi-action message,
@@ -56,11 +58,12 @@ async function applyExternalWorkHold(project, rawClause, clock, deps) {
   }
 }
 
-// Report-only, always -- the one architecturally hard constraint this whole
-// mission preserves (chat-responder.mjs ~line 552: no automated adoption
-// execution path exists anywhere in TSF). This never performs an adoption,
-// under any authorization phrasing. deps.readAllFindings lets a test inject
-// a fixed store snapshot, same convention as every other bridge here.
+// Report-only fallback -- used when this clause's own adoption language
+// isn't EXPLICIT (classifyAdoptionCommandIntent below routes an explicit
+// "adopt X" to the real execution engine instead; this stays the honest
+// report for "X looks ready" or ambiguous phrasing that doesn't clear that
+// bar). deps.readAllFindings lets a test inject a fixed store snapshot,
+// same convention as every other bridge here.
 function reportAdoptionCandidate(project, opState, clock, deps) {
   const read = deps.readAllFindings ?? readAllFindings
   const items = buildFleetAttentionItems({
@@ -76,9 +79,44 @@ function reportAdoptionCandidate(project, opState, clock, deps) {
     return { text: 'Nothing ready for adoption right now.', category: null, ok: true }
   }
   return {
-    text: `Ready for adoption (${items[0].reason}) -- chat can't adopt it (no automated adoption path exists); use the Adoption tab.`,
+    text: `Ready for adoption (${items[0].reason}) -- say "adopt it" explicitly to have me adopt it, or use the Adoption tab.`,
     category: 'READY_FOR_ADOPTION',
     ok: true
+  }
+}
+
+// Fleet Dispatch Readiness + Explicit Command Adoption V1, Part A: the real
+// execution path, reached only when this CLAUSE's own language is
+// genuinely explicit adoption intent (classifyAdoptionCommandIntent) --
+// never on a bare "adopt" match alone (decomposeMultiAction's own
+// ADOPT_CANDIDATE_REPORT pattern is intentionally broader; this is the
+// narrower, real gate before anything actually executes). Ambiguous
+// phrasing gets the same honest NEEDS_OWNER-shaped refusal
+// command-adoption-command-bridge.mjs's own single-project path uses,
+// never a guess.
+async function executeAdoptionCandidate(project, rawClause, opState, clock, deps) {
+  const classification = classifyAdoptionCommandIntent(rawClause)
+  if (classification === 'AMBIGUOUS') {
+    return { text: `ambiguous adoption language -- won't guess; say "adopt it" explicitly.`, category: null, ok: false }
+  }
+  if (classification === 'NOT_ADOPTION') {
+    return reportAdoptionCandidate(project, opState, clock, deps)
+  }
+  const execute = deps.executeCommandAdoption ?? executeCommandAdoption
+  const result = await execute({ project, clock, deps })
+  if (result.ok) {
+    return {
+      text: result.alreadyIncluded
+        ? `already adopted -- the candidate is already included in canonical at \`${(result.resultingCanonicalSha ?? '').slice(0, 10)}\`.`
+        : `adopted -- canonical advanced from \`${(result.priorCanonicalSha ?? '').slice(0, 10)}\` to \`${result.resultingCanonicalSha.slice(0, 10)}\` (receipt \`${result.receipt.receiptHash.slice(0, 10)}\`).`,
+      category: null,
+      ok: true
+    }
+  }
+  return {
+    text: `couldn't adopt -- ${result.reason}${result.detail ? ` (${result.detail})` : ''}.`,
+    category: result.reason === 'PROJECT_EXECUTION_HOLD_ACTIVE' ? 'BLOCKED_EXTERNAL' : null,
+    ok: false
   }
 }
 
@@ -128,7 +166,7 @@ async function handleEntry(entry, project, opState, clock, deps) {
     return applyExternalWorkHold(project, entry.rawClause, clock, deps)
   }
   if (entry.intent === 'ADOPT_CANDIDATE_REPORT') {
-    return reportAdoptionCandidate(project, opState, clock, deps)
+    return executeAdoptionCandidate(project, entry.rawClause, opState, clock, deps)
   }
   if (entry.intent === 'START_KEEP_GOING' || entry.intent === 'ASSESS_AND_UPGRADE') {
     return dispatchAction(project, entry.rawClause, clock, deps)

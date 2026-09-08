@@ -566,7 +566,8 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       dispatchRecords.push({
         workItemId: item.id,
         scope: item.scope,
-        taskId,
+        // Command Adoption V1 Part A: the candidate worktree, flows through settleStep's own `{...record}` spread into run.waves[] -- no second tracking store.
+        worktree: item.worktree, taskId,
         dispatchId: startResult.result.dispatchId
       })
     }

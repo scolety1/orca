@@ -20,6 +20,7 @@ import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
+import { resolveProjectCanonicalBase } from './project-canonical-base-resolver.mjs'
 
 const WORK_PLAN_SYSTEM_PROMPT = [
   'You are the TSF (Thousand Sunny Fleet) Planner producing a BOUNDED, SAFE',
@@ -335,11 +336,15 @@ export async function planAndDispatchFromChat({
 // createOrcaWorktree, which itself wraps `orca worktree create` -- no
 // worktree-creation logic of TSF's own). `fromBranch` is only ever passed
 // by an already-authorized self-repair caller (see
-// domain/self-repair-authority.mjs); every other caller gets the repo's
-// own default base.
+// domain/self-repair-authority.mjs); every other caller falls through to
+// Part C's real, generic canonical-base resolution below rather than
+// leaving `fromBranch: undefined` for Orca's own CLI to auto-detect (the
+// real root cause of "Could not resolve a default base ref" for a repo with
+// no main/master).
 export async function ensureWorktreeForDispatch(project, deps = {}, { fromBranch } = {}) {
   const findRepo = deps.findRegisteredOrcaRepo ?? findRegisteredOrcaRepo
   const createWorktree = deps.createOrcaWorktree ?? createOrcaWorktree
+  const resolveCanonicalBase = deps.resolveProjectCanonicalBase ?? resolveProjectCanonicalBase
   // Adversarial-review finding: both current callers already guarantee a
   // real, non-null project before reaching here -- guarded explicitly
   // anyway so a future caller gets an honest error instead of an
@@ -363,10 +368,23 @@ export async function ensureWorktreeForDispatch(project, deps = {}, { fromBranch
         "this project's repository is not registered with Orca yet -- register it during onboarding, or supply a manual worktree path"
     }
   }
+  // Part C: a self-repair caller already supplied its own authorized
+  // fromBranch above -- resolved here only for the general case. A
+  // resolution failure is returned as the SAME honest, structured refusal
+  // shape every other gate in this codebase uses, never silently proceeding
+  // with fromBranch: undefined.
+  let effectiveFromBranch = fromBranch
+  if (!effectiveFromBranch) {
+    const resolution = await resolveCanonicalBase(project, deps)
+    if (!resolution.resolved) {
+      return { ok: false, reason: resolution.reason, detail: resolution.detail }
+    }
+    effectiveFromBranch = resolution.ref
+  }
   const created = await createWorktree({
     repoId: registered.repo.id,
     name: `command-${project.id}-${Date.now()}`,
-    fromBranch
+    fromBranch: effectiveFromBranch
   })
   if (!created.ok) {
     return { ok: false, reason: created.reason, detail: created.detail }

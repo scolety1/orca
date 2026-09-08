@@ -37,6 +37,7 @@ import { shouldRouteToDogfoodBridge, respondDogfoodCommand } from './command-dog
 import { shouldRouteToSelfImprovementBridge, respondSelfImprovementCommand } from './command-self-improvement-bridge.mjs'
 import { shouldRouteToFleetAttentionBridge, respondFleetAttentionCommand } from './command-fleet-attention-bridge.mjs'
 import { classifyMultiActionEntries, respondMultiActionCommand } from './command-multi-action-bridge.mjs'
+import { shouldRouteToAdoptionCommandBridge, respondAdoptionCommand } from './command-adoption-command-bridge.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import {
   advisorySafeProjects,
@@ -360,6 +361,39 @@ export async function respondCommand({
       live: false,
       resolvedProjectIds,
       scope: scopeFor(resolvedProjectIds)
+    }
+  }
+
+  // Fleet Dispatch Readiness + Explicit Command Adoption V1, Part A:
+  // single-project (or referent-resolved) explicit adoption -- checked
+  // AFTER the TIM_REQUIRED gate above (an "adopt this candidate"-shaped
+  // TIM_REQUIRED phrasing still refuses exactly as before, never bypassed
+  // by this new engine) and BEFORE ordinary intent/dispatch routing.
+  // exactMatchProjects only ever an EXACT id/displayName match (never
+  // fuzzy), matching this file's own established "only exact is trusted to
+  // act" convention; a referring phrase ("adopt both of those") falls
+  // through to the bridge's own resolveCommandReferent against the prior
+  // turn's real resultItems.
+  if (shouldRouteToAdoptionCommandBridge(message)) {
+    const priorResultItems = (() => {
+      const thread = opState.chatThreads?.__command__ ?? []
+      for (let i = thread.length - 1; i >= 0; i -= 1) {
+        if (thread[i].role === 'assistant' && Array.isArray(thread[i].resultItems)) {
+          return thread[i].resultItems
+        }
+      }
+      return []
+    })()
+    const adoptionResult = await respondAdoptionCommand({
+      message,
+      exactMatchProjects: exactMatches.map((m) => m.project),
+      priorResultItems,
+      projects,
+      clock,
+      deps
+    })
+    if (adoptionResult) {
+      return adoptionResult
     }
   }
 

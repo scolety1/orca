@@ -171,3 +171,17 @@ const projectExecutionHoldGuard = buildSchemaVersionGuard(
 export const SUPPORTED_PROJECT_EXECUTION_HOLD_SCHEMA_VERSIONS = projectExecutionHoldGuard.supportedVersions
 export const assertSupportedProjectExecutionHoldSchemaVersion = projectExecutionHoldGuard.assertSupported
 export const migrateProjectExecutionHoldSchema = projectExecutionHoldGuard.migrate
+
+// Same guard, for Fleet Dispatch Readiness + Explicit Command Adoption V1
+// Part C's durable per-project canonical base ref (see
+// project-canonical-base-store.mjs, schemaVersion
+// 'TSF_PROJECT_CANONICAL_BASE_V1') -- same fail-closed discipline as every
+// guard above.
+export const CURRENT_PROJECT_CANONICAL_BASE_SCHEMA_VERSION = 'TSF_PROJECT_CANONICAL_BASE_V1'
+const projectCanonicalBaseGuard = buildSchemaVersionGuard(
+  'project canonical base',
+  new Map([[CURRENT_PROJECT_CANONICAL_BASE_SCHEMA_VERSION, (base) => base]])
+)
+export const SUPPORTED_PROJECT_CANONICAL_BASE_SCHEMA_VERSIONS = projectCanonicalBaseGuard.supportedVersions
+export const assertSupportedProjectCanonicalBaseSchemaVersion = projectCanonicalBaseGuard.assertSupported
+export const migrateProjectCanonicalBaseSchema = projectCanonicalBaseGuard.migrate

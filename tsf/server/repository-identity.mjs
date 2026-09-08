@@ -70,3 +70,53 @@ export async function resolveRepositoryIdentity(worktreePath) {
     return { ok: false, reason: 'GIT_COMMAND_FAILED', detail: error.message }
   }
 }
+
+// Part C (canonical base-ref resolution): a real, minimal git probe for
+// "does this repo have a standard main/master default" -- reuses this
+// module's own git() helper rather than inventing a third git-invocation
+// path (adapters/git-identity.mjs is the other real one; that one is scoped
+// to TSF's own canonical repo governance and deliberately not imported by
+// this general-purpose module). Checks local branches only (never remote
+// tracking refs, which may not exist for an offline/local-only repo) --
+// `git branch --list` never throws for a missing branch, so both outcomes
+// are read from one honest local-ref inspection, never a symbolic-ref guess
+// that could point at a branch that doesn't actually exist locally.
+export async function detectRepoDefaultBranch(root) {
+  if (!root || !existsSync(root)) {
+    return { ok: false, reason: 'REPOSITORY_UNAVAILABLE', detail: `path does not exist: ${root}` }
+  }
+  try {
+    const branches = (await git(root, ['branch', '--list', 'main', 'master']))
+      .split('\n')
+      .map((line) => line.replace(/^\*?\s*/, '').trim())
+      .filter(Boolean)
+    if (branches.includes('main')) {
+      return { ok: true, hasStandardDefault: true, defaultBranch: 'main' }
+    }
+    if (branches.includes('master')) {
+      return { ok: true, hasStandardDefault: true, defaultBranch: 'master' }
+    }
+    return { ok: true, hasStandardDefault: false, defaultBranch: null }
+  } catch (error) {
+    return { ok: false, reason: 'GIT_COMMAND_FAILED', detail: error.message }
+  }
+}
+
+// Real, narrow existence check for an arbitrary branch ref -- used by
+// project-canonical-base-resolver.mjs to catch a stale explicit
+// configuration (one that points at a branch no longer present locally)
+// rather than assuming it is still valid.
+export async function branchExistsLocally(root, ref) {
+  if (!root || !existsSync(root)) {
+    return { ok: false, reason: 'REPOSITORY_UNAVAILABLE', detail: `path does not exist: ${root}` }
+  }
+  try {
+    const branches = (await git(root, ['branch', '--list', ref]))
+      .split('\n')
+      .map((line) => line.replace(/^\*?\s*/, '').trim())
+      .filter(Boolean)
+    return { ok: true, exists: branches.includes(ref) }
+  } catch (error) {
+    return { ok: false, reason: 'GIT_COMMAND_FAILED', detail: error.message }
+  }
+}

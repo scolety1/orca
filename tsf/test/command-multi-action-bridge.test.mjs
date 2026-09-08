@@ -89,8 +89,13 @@ test('respondCommand: the mission\'s own literal message produces a real, groupe
   assert.equal(nwrHold.reason, 'EXTERNAL_WORK_ACTIVE')
   assert.equal(nwrHold.setBy, 'OPERATOR_CHAT')
 
-  // WorldForge: adoption is honestly report-only -- never an execution.
-  assert.match(result.text, /can't adopt/)
+  // WorldForge: Fleet Dispatch Readiness + Explicit Command Adoption V1,
+  // Part A -- explicit "adopt" language now genuinely ATTEMPTS a real
+  // execution (never report-only for explicit intent any more). This
+  // fixture project has no real repository root, so it fails honestly
+  // (never silently claims success, never silently falls back to the old
+  // report-only text).
+  assert.match(result.text, /couldn't adopt/)
   assert.doesNotMatch(result.text, /ADOPT_CANDIDATE_EXECUTE/)
 
   // A4: resultItems reflects the FULL multi-project result set, not one child's.
@@ -120,7 +125,14 @@ test('A5: a held target refuses its own action honestly while the other targets 
       ok: true,
       identity: { root: 'C:/stub-repo', worktree: 'C:/stub-worktree', branch: 'main', head: 'a'.repeat(40), tree: 'a'.repeat(40) }
     }),
-    invokeLiveStructuredAnalysis: async () => ({ ok: false, reason: 'STUBBED_NO_LIVE_CALL', detail: 'test stub -- never a real live call' })
+    invokeLiveStructuredAnalysis: async () => ({ ok: false, reason: 'STUBBED_NO_LIVE_CALL', detail: 'test stub -- never a real live call' }),
+    // Fleet Dispatch Readiness + Explicit Command Adoption V1, Part C:
+    // ensureWorktreeForDispatch now resolves a real canonical base ref
+    // before creating a worktree -- stubbed here (this fixture's `root`
+    // doesn't really exist on disk) so this test still reaches the REAL
+    // hold check it's actually proving, same deps-injection convention as
+    // every other stub above.
+    resolveProjectCanonicalBase: async () => ({ resolved: true, ref: 'main', source: 'REPO_STANDARD_DEFAULT' })
   }
   // A local project list with a real `root` (unlike the shared PROJECTS
   // fixture) -- required to reach past ensureWorktreeForDispatch's own
