@@ -49,7 +49,7 @@ test.beforeEach(() => {
   resetUiBuildActionStateForTest()
 })
 
-test('stale + healthy env triggers a real npm run build via argv spawn (never a shell string)', async () => {
+test('stale + healthy env triggers a real npm run build via the injected spawnFn seam, with the exact fixed (args, cwd) shape defaultSpawn itself receives', async () => {
   const { spawnFn, calls, children } = makeFakeSpawner()
   const trigger = triggerUiRebuildIfStale({
     uiDir: '/fake/tsf/ui',
@@ -179,3 +179,40 @@ test('getRuntimeIdentityWithBuildState composes the real identity read with the 
   children[0].emit('exit', 0)
   await trigger
 })
+
+// Real live-acceptance finding: the desktop's own real npm.cmd spawn threw
+// a real, synchronous `spawn EINVAL` on Windows (CVE-2024-27980 Node
+// hardening refuses to exec a .cmd directly under this module's own former
+// `shell: false` default). Everything above exercises the injectable
+// spawnFn seam with a fake process -- this is the one test that lets
+// triggerUiRebuildIfStale use its REAL default spawn (no spawnFn override)
+// against the real tsf/ui, proving the actual Windows fix, not just the
+// decision logic around it. Real, but bounded and fast (~2s): a real
+// `npm run build`, same one a live desktop launch would run.
+import path from 'node:path'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+
+test(
+  'REAL PROOF: triggerUiRebuildIfStale, with no spawnFn override, actually runs a real npm run build against the real tsf/ui on this host without throwing spawn EINVAL, and build-identity.json advances to the real current HEAD',
+  { skip: process.platform !== 'win32' ? 'Windows-specific spawn fix; nothing to prove on this platform' : false },
+  async () => {
+    const realUiDir = path.join(import.meta.dirname, '..', 'ui')
+    const scratchDistDir = mkdtempSync(path.join(tmpdir(), 'tsf-real-ui-rebuild-proof-'))
+    try {
+      const result = await triggerUiRebuildIfStale({ uiDir: realUiDir, distDir: scratchDistDir })
+      assert.equal(result.ok, true, `real build must succeed, got: ${JSON.stringify(result)}`)
+      assert.equal(getUiBuildActionState().status, 'IDLE', 'self-heals to IDLE on real success')
+      // The real build always writes to the real tsf/ui/dist regardless of
+      // the scratch distDir passed above (that param only controls where
+      // staleness is READ from) -- confirm it actually advanced there.
+      const { getRuntimeIdentity } = await import('../server/runtime-identity-tracker.mjs')
+      const { getCurrentCommit } = await import('../adapters/git-identity.mjs')
+      const disk = await getCurrentCommit(realUiDir)
+      const identity = await getRuntimeIdentity(path.join(realUiDir, 'dist'))
+      assert.equal(identity.uiBundleCommit, disk.commit, 'the real dist build-identity.json now matches the real current HEAD')
+    } finally {
+      rmSync(scratchDistDir, { recursive: true, force: true })
+    }
+  }
+)

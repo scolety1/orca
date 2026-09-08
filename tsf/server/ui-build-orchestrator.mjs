@@ -13,17 +13,46 @@ import path from 'node:path'
 import { getRuntimeIdentity } from './runtime-identity-tracker.mjs'
 import { withBuildActionState } from '../domain/ui-build-state.mjs'
 
-// Same Windows npm.cmd-vs-npm resolution convention already established
-// across this repo's own build scripts (e.g. config/scripts/check-react-
-// doctor-changed.mjs's `pnpm.cmd` on win32) -- npm on Windows is a .cmd
-// shim, not a directly-spawnable .exe, so a bare 'npm' fails without a
-// shell hop (which this codebase's spawn convention deliberately avoids).
-function npmCommand() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm'
-}
-
+// Real live-acceptance finding: npm on Windows is a `.cmd` shim, not a
+// directly-spawnable .exe -- naming `npm.cmd` and spawning it with
+// `shell: false` (this codebase's own default spawn convention) throws a
+// real, synchronous `spawn EINVAL` on current Node (the engine's own
+// CVE-2024-27980 hardening refuses to directly exec a `.bat`/`.cmd`
+// without going through a real shell) -- reproduced live on this exact
+// host/Node version.
+//
+// First attempt reused Orca-core's own real, already-adopted fix for
+// exactly this problem (src/main/claude-accounts/windows-command-
+// invocation.ts's buildWindowsCommandInvocation -- explicit
+// `cmd.exe /d /v:off /s /c "<quoted line>"`, `shell: false`,
+// `windowsVerbatimArguments: true`) reimplemented natively (TSF's own
+// worktree must never import Orca-core source directly). That fixed the
+// EINVAL crash but then hit a SECOND, real, empirically-confirmed bug
+// specific to this real npm.cmd (`C:\Program Files\nodejs\npm.cmd`)'s own
+// internal script: it re-derives its real npm-cli.js path via a nested
+// `FOR /F` capturing `node npm-prefix.js`'s own output, and -- reproduced
+// directly, isolated flag-by-flag -- that inner resolution becomes
+// unreliable specifically when BOTH the executable name and its arguments
+// are individually quoted before being handed through cmd.exe's `/c`
+// (regardless of which of /d, /v:off, /s were present), intermittently
+// resolving a nonexistent `<cwd>\node_modules\npm\bin\npm-cli.js` instead
+// of the real global one. Not a TSF-side bug to route around by more
+// clever quoting; a real fragility in that specific npm.cmd script under
+// that specific invocation shape.
+//
+// The call this module ever makes is always the same two fixed literals
+// (`spawnFn(['run', 'build'], uiDir)`, this file's only call site) --
+// never caller-influenced, dynamic, or dependent on any value this module
+// receives from an untrusted source, so the shell-injection concern
+// `shell: false` normally guards against does not apply here. `shell:
+// true` with a single literal string (not an array -- an array under
+// `shell: true` triggers Node's own DEP0190 unescaped-concatenation
+// warning even though nothing here is actually unsafe to concatenate)
+// is empirically verified reliable (multiple repeated real runs, real
+// successful `vite build` output) and is the fix actually adopted here.
 function defaultSpawn(args, cwd) {
-  return spawn(npmCommand(), args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const command = process.platform === 'win32' ? `npm.cmd ${args.join(' ')}` : `npm ${args.join(' ')}`
+  return spawn(command, { cwd, shell: true, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 // In-memory only, by design (see header). IDLE until a rebuild is ever
