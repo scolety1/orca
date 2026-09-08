@@ -187,6 +187,36 @@ test('selectExtraAttentionItems: includes every self-improvement-sourced item an
   )
 })
 
+// Operator Polish + Tech Debt Closeout V1, Phase 4 dogfood (real, found-in-
+// the-real-browser regression): a PROJECT_ADOPTION_CANDIDATE-sourced
+// READY_FOR_ADOPTION item (the legacy/fixture adoption-candidate path, no
+// Keep Going run at all) has no liveWorkFeed of its own either -- was
+// previously silently dropped from both this indicator's badge count and
+// its dialog list, undercounting a real /api/attention item.
+test('selectExtraAttentionItems: includes a PROJECT_ADOPTION_CANDIDATE-sourced READY_FOR_ADOPTION item (no liveWorkFeed exists for it)', () => {
+  const adoptionCandidateReady = attentionItem({
+    id: 'run:proj-1:readyForAdoption',
+    category: 'READY_FOR_ADOPTION',
+    project: { id: 'proj-1', displayName: 'Project One' },
+    deepLink: { kind: 'PROJECT', id: 'proj-1' },
+    source: { kind: 'PROJECT_ADOPTION_CANDIDATE', id: 'proj-1' }
+  })
+  const runSourcedReady = attentionItem({
+    id: 'run:proj-2:readyForAdoption',
+    category: 'READY_FOR_ADOPTION',
+    project: { id: 'proj-2', displayName: 'Project Two' },
+    deepLink: { kind: 'PROJECT', id: 'proj-2' },
+    source: { kind: 'KEEP_GOING_RUN', id: 'proj-2' }
+  })
+
+  const result = selectExtraAttentionItems([adoptionCandidateReady, runSourcedReady])
+  assert.deepEqual(
+    result.map((i) => i.id),
+    ['run:proj-1:readyForAdoption'],
+    'the run-sourced one already reaches the indicator via buildGlobalRunStatusItems -- merging it here too would double-count'
+  )
+})
+
 // Operator Polish V1, Wave A: a planner needsYou item has no liveWorkFeed of
 // its own (same reasoning as a self-improvement finding), so it must merge
 // into this indicator's combined list too.
