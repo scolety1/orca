@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { startStandaloneServer } from '../server/http-server.mjs'
+import { getUiBuildActionState, resetUiBuildActionStateForTest } from '../server/ui-build-orchestrator.mjs'
 
 // M6: startStandaloneServer previously had no direct test coverage at all
 // (only ever exercised manually, e.g. M4's real restart proof) -- this
@@ -29,6 +30,53 @@ test('the standalone server serves both /api and the static tsf/ui build from on
   } finally {
     await new Promise((resolve) => server.close(resolve))
     rmSync(distDir, { recursive: true, force: true })
+  }
+})
+
+// Resource-scoping finding (this session's own full-suite run): without
+// this gate, ANY test spawning a real server with no build-identity.json
+// in its distDir (both tests above included -- a fresh temp dir always
+// looks UI_BUNDLE_STALE) would trigger a real `npm run build` attempt.
+// TSF_UI_AUTO_REBUILD=1 is only ever set by the real live-plugin spawn
+// path (main.mjs's realSpawnFn), mirroring TSF_KEEP_GOING_FLEET_DRIVER.
+test('startStandaloneServer never triggers a real UI rebuild by default (no TSF_UI_AUTO_REBUILD) even against a genuinely stale distDir', async () => {
+  resetUiBuildActionStateForTest()
+  const distDir = mkdtempSync(path.join(tmpdir(), 'tsf-standalone-ui-gate-'))
+  const uiDir = mkdtempSync(path.join(tmpdir(), 'tsf-standalone-uidir-gate-'))
+  delete process.env.TSF_UI_AUTO_REBUILD
+  const server = startStandaloneServer(0, { uiDistDir: distDir, uiDir })
+  try {
+    await new Promise((resolve) => server.once('listening', resolve))
+    // Give any (incorrectly) fired fire-and-forget trigger a real chance
+    // to have started before asserting it never did.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    assert.equal(getUiBuildActionState().status, 'IDLE', 'no rebuild should ever be attempted for a test-spawned server')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+    rmSync(distDir, { recursive: true, force: true })
+    rmSync(uiDir, { recursive: true, force: true })
+  }
+})
+
+test('startStandaloneServer DOES attempt a real UI rebuild when TSF_UI_AUTO_REBUILD=1 is explicitly set (the real live-plugin-spawn opt-in)', async () => {
+  resetUiBuildActionStateForTest()
+  const distDir = mkdtempSync(path.join(tmpdir(), 'tsf-standalone-ui-gate-on-'))
+  const uiDir = mkdtempSync(path.join(tmpdir(), 'tsf-standalone-uidir-gate-on-'))
+  process.env.TSF_UI_AUTO_REBUILD = '1'
+  const server = startStandaloneServer(0, { uiDistDir: distDir, uiDir })
+  try {
+    await new Promise((resolve) => server.once('listening', resolve))
+    // uiDir has no node_modules -- the orchestrator's own real, honest
+    // FAILED path (never an uncontrolled npm install), but proves the
+    // gate let the real attempt through at all.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.notEqual(getUiBuildActionState().status, 'IDLE', 'the real opt-in must actually reach the orchestrator')
+  } finally {
+    delete process.env.TSF_UI_AUTO_REBUILD
+    resetUiBuildActionStateForTest()
+    await new Promise((resolve) => server.close(resolve))
+    rmSync(distDir, { recursive: true, force: true })
+    rmSync(uiDir, { recursive: true, force: true })
   }
 })
 

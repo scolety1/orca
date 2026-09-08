@@ -43,11 +43,23 @@ function realSpawnFn(serverEntryPath, port) {
     // is the same real, live-plugin-only opt-in for Research's own
     // autonomous heartbeat (hands-on pilot round 3 -- Research Autonomy
     // Bootstrap; see research-mission-fleet-driver-bootstrap.mjs).
+    // TSF_UI_AUTO_REBUILD: '1' -- same real-live-plugin-only opt-in
+    // pattern: stale-UI-build-prevention's real `npm run build` trigger
+    // (ui-build-orchestrator.mjs) exists to fix a live desktop incident,
+    // never to add real wall-clock build cost to an ephemeral test
+    // server. Without this gate a test spawning a real server against the
+    // genuine tsf/ui/dist (any test with no uiDistDir override -- e.g.
+    // keep-going-autonomy-proof.test.mjs's real backend-restart proof)
+    // would trigger a real build whenever that shared bundle happens to be
+    // stale relative to disk during active development, adding real,
+    // uncontrolled contention alongside hundreds of concurrently-running
+    // tests (a real finding from this session's own full-suite run).
     env: {
       ...env,
       TSF_API_PORT: String(port),
       TSF_KEEP_GOING_FLEET_DRIVER: '1',
-      TSF_RESEARCH_MISSION_FLEET_DRIVER: '1'
+      TSF_RESEARCH_MISSION_FLEET_DRIVER: '1',
+      TSF_UI_AUTO_REBUILD: '1'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   })

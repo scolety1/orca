@@ -435,6 +435,10 @@ export function createRequestHandler(options = {}) {
 // else) -- so this serves tsf/ui's built dist directly instead of 404ing.
 export function startStandaloneServer(port = 4610, options = {}) {
   const distDir = options.uiDistDir ?? path.join(import.meta.dirname, '..', 'ui', 'dist')
+  // Injectable the same way uiDistDir already is -- lets a test point a
+  // real (env-var-gated) rebuild attempt at an isolated scratch dir
+  // instead of the real tsf/ui, without needing to mock the spawn itself.
+  const uiDir = options.uiDir ?? path.join(import.meta.dirname, '..', 'ui')
   const handler = createRequestHandler({ uiDistDir: distDir })
   const serveStaticUi = createStaticUiHandler(distDir)
   const server = createServer((req, res) =>
@@ -497,11 +501,21 @@ export function startStandaloneServer(port = 4610, options = {}) {
   // recovery scans above -- only ever does real work when the freshly-read
   // identity is genuinely UI_BUNDLE_STALE, never blocks startup on however
   // long a real `npm run build` takes.
-  triggerUiRebuildIfStale({ uiDir: path.join(import.meta.dirname, '..', 'ui'), distDir }).catch(
-    (error) => {
+  //
+  // Opt-in via TSF_UI_AUTO_REBUILD=1 -- same real-live-plugin-spawn-only
+  // gate as TSF_KEEP_GOING_FLEET_DRIVER above (main.mjs's realSpawnFn),
+  // deliberately NOT set for any test-spawned server. A real, live-
+  // confirmed finding (this session's own full-suite run): without this
+  // gate, any test spawning a real server against the genuine tsf/ui/dist
+  // -- with no isolated uiDistDir override -- triggers a real `npm run
+  // build` whenever that shared bundle happens to be stale relative to
+  // disk during active development, adding real, uncontrolled wall-clock
+  // contention alongside hundreds of concurrently-running tests.
+  if (process.env.TSF_UI_AUTO_REBUILD === '1') {
+    triggerUiRebuildIfStale({ uiDir, distDir }).catch((error) => {
       console.error('UI rebuild trigger failed:', error)
-    }
-  )
+    })
+  }
   bootstrapBackgroundFleetDrivers(server) // see background-fleet-drivers-bootstrap.mjs
   return server
 }
