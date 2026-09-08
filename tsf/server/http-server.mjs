@@ -35,6 +35,7 @@ import {
   handleHealthRepairRoute,
   recoverInterruptedHealthRepairOperations
 } from './health-repair-http-routes.mjs'
+import { recoverStaleStalledKeepGoingRuns } from './keep-going-stalled-run-recovery.mjs'
 import { handleResourceAuditorRoute } from './resource-auditor-http-routes.mjs'
 import { handleCleanupRoute } from './cleanup-http-routes.mjs'
 import { handleProjectMemoryRoute } from './project-memory-http-routes.mjs'
@@ -470,6 +471,15 @@ export function startStandaloneServer(port = 4610, options = {}) {
   // selected actions are durable operations too.
   recoverInterruptedHealthRepairOperations().catch((error) => {
     console.error('health-repair recovery scan failed:', error)
+  })
+  // Fleet Dispatch Readiness Overnight V1, Part H: same reacquire-on-
+  // startup posture as the two scans above -- a Keep Going run that's
+  // been STALLED past its own configured threshold gets one real, bounded,
+  // retry-budget-aware recovery attempt every time a server starts, so a
+  // mission never silently rots for days just because no chat message
+  // happened to tick it in the meantime.
+  recoverStaleStalledKeepGoingRuns().catch((error) => {
+    console.error('stalled Keep Going run recovery scan failed:', error)
   })
   // Safe Update Manager (spec Phase 5): records this real process's own
   // PID/commit/startedAt so a later checker can tell a genuinely-alive
