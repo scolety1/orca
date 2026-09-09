@@ -698,6 +698,24 @@
       "rootCause": "ADOPTION_NEGATION_PATTERN's bare \"not\"/\"no\" trigger (deliberately broad, matching this codebase's own established \"broad-but-safe beats narrow-but-dangerous\" precedent for a consequential-action gate) had no idiom exclusion beyond \"never mind\" -- common hedges (\"no rush\", \"not gonna lie\", \"no worries\") and the genuine double-negative idiom \"no reason not to\" (meaning \"you SHOULD\") all false-positived to NOT_ADOPTION, silently blocking a legitimate request the operator would have had to restate. Confirmed fail-safe (under-acts, never wrongly executes) before the fix. Fixed by extending IDIOMATIC_NON_NEGATION with these four named idioms, the same established pattern already used for \"never mind\" -- not an attempt at general double-negative parsing. Verified every genuine negation (including the subtle single-negative \"there is no reason to adopt it,\" as opposed to the double-negative idiom \"no reason NOT to\") still correctly refuses.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/command-adoption-execution.test.mjs"
+    },
+    {
+      "caseId": "CASE-34",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation, Priority 6 -- lightweight structured fuzzing infrastructure, the mission's own \"testing infrastructure itself is a product deliverable\" directive",
+      "userTurn": [
+        "(generated) adversarial-formatting combinations: unicode, emoji, nested quotes, CRLF/LF, Windows paths, Markdown, partial JSON, command-like filenames, very long lines -- spliced around and without real trigger vocabulary"
+      ],
+      "expectedParentIntent": "N/A -- robustness/crash fuzzing, not a specific incident",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "a crash",
+        "a fabricated project match not present in the input",
+        "an unrecognized intent/decision/adoption-class label"
+      ],
+      "status": "NOT_A_BUG_CONFIRMED_SAFE",
+      "rootCause": "Not a bug -- a new, permanent, seeded (mulberry32) fuzz harness (test/control-plane-structured-fuzz.test.mjs) covering classifyIntent/classifyDecision, classifyAdoptionCommandIntent, decomposeMultiAction, and resolveProjectsFromText against ~2300 generated combinations of the mission-directive's own named adversarial-formatting dimensions (unicode, emoji, nested/mismatched quotes, CRLF/LF, Windows paths, Markdown syntax, partial/malformed JSON, command-like filenames, very long single tokens) both spliced around real trigger vocabulary (adopt/pause/research/run) and as pure noise with no recognizable content at all. Zero crashes, zero fabricated project matches, zero unrecognized classification labels found across 3 stable, deterministic reruns. Confirms real robustness that was previously unverified for these specific dimensions -- kept as a permanent regression asset, not a throwaway script.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/control-plane-structured-fuzz.test.mjs"
     }
   ]
 }
