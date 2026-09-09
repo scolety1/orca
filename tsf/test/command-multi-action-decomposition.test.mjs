@@ -70,3 +70,75 @@ test('no separate chat threads required -- one decomposeMultiAction call covers 
   const entries = decomposeMultiAction(MESSAGE, PROJECTS, aliases)
   assert.ok(entries.length >= 4)
 })
+
+// FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
+// Exhaustive Gauntlet V1, Batch 2): a negated adoption clause and a
+// genuine adoption clause for a DIFFERENT project used to decompose into
+// the SAME intent (ADOPT_CANDIDATE_REPORT, negation-blind), so the outer
+// gate (classifyMultiActionEntries) never saw 2 distinguishing intents and
+// the whole message fell through to a single-message-level classifier
+// that wrongly refused BOTH projects. ADOPT_CANDIDATE_DECLINED is real,
+// distinct decomposition output that fixes this at its root.
+test('a negated adoption clause decomposes to ADOPT_CANDIDATE_DECLINED, distinct from an affirmed adoption clause for a different project', () => {
+  const entries = decomposeMultiAction("Don't adopt niners-war-room; adopt EasyLifeHQ.", PROJECTS, aliases)
+  const nwr = entries.find((e) => e.target === 'niners-war-room')
+  const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
+  assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
+  assert.equal(easyLife.intent, 'ADOPT_CANDIDATE_REPORT')
+})
+
+for (const message of ["Do not adopt niners-war-room.", "Don't adopt niners-war-room.", "Never adopt niners-war-room."]) {
+  test(`ADOPT_CANDIDATE_DECLINED, not ADOPT_CANDIDATE_REPORT, for a genuinely negated single-clause adoption request -- "${message}"`, () => {
+    const entries = decomposeMultiAction(message, PROJECTS, aliases)
+    const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+    assert.ok(forNwr.length > 0, 'must still resolve the target')
+    assert.ok(forNwr.every((e) => e.intent !== 'ADOPT_CANDIDATE_REPORT'), 'must never carry the unnegated report intent')
+    assert.ok(forNwr.some((e) => e.intent === 'ADOPT_CANDIDATE_DECLINED'))
+  })
+}
+
+// "Hold off on adopting X" genuinely matches BOTH EXTERNAL_WORK_HOLD's own
+// "hold off" pattern and the negated-adoption pattern -- a real, correct
+// double-match (this phrasing IS both a hold request and an adoption
+// decline), not a bug. Checked separately so it's not conflated with the
+// simpler single-intent cases above.
+test('"hold off on adopting X" carries BOTH EXTERNAL_WORK_HOLD and ADOPT_CANDIDATE_DECLINED, never the unnegated ADOPT_CANDIDATE_REPORT', () => {
+  const entries = decomposeMultiAction('Hold off on adopting niners-war-room.', PROJECTS, aliases)
+  const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+  const intents = new Set(forNwr.map((e) => e.intent))
+  assert.ok(intents.has('ADOPT_CANDIDATE_DECLINED'))
+  assert.ok(!intents.has('ADOPT_CANDIDATE_REPORT'))
+})
+
+// Adversarial-review findings (Batch 2, 2nd pass) -- the first fix only
+// handled the semicolon/period-separated phrasing; these two realistic
+// alternate phrasings reproduced the identical bug (a negation on one
+// project wrongly suppressing a different project's own, separate,
+// legitimate adoption request).
+test('adversarial-review fix: "and"-joined negated/affirmed adoption for DIFFERENT targets is correctly split, not shared', () => {
+  const entries = decomposeMultiAction("Don't adopt niners-war-room and adopt EasyLifeHQ.", PROJECTS, aliases)
+  const nwr = entries.find((e) => e.target === 'niners-war-room')
+  const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
+  assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
+  assert.equal(easyLife.intent, 'ADOPT_CANDIDATE_REPORT')
+})
+
+test('adversarial-review fix: comma-fragmented negation ("Do not, under any circumstances, adopt X") is not lost by clause-splitting', () => {
+  const entries = decomposeMultiAction('Do not, under any circumstances, adopt niners-war-room, but please adopt EasyLifeHQ.', PROJECTS, aliases)
+  const nwr = entries.find((e) => e.target === 'niners-war-room')
+  const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
+  assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
+  assert.equal(easyLife.intent, 'ADOPT_CANDIDATE_REPORT')
+})
+
+// Regression guard: a genuinely SHARED/compound instruction across
+// multiple targets (one verb, a shared object list) must not be split
+// apart and must keep the SAME intent for every named target -- the "and"
+// split is verb-lookahead-gated specifically so this never breaks.
+test('a genuine shared adoption request across two projects ("adopt A and B") is NOT split -- both keep the same real intent', () => {
+  const entries = decomposeMultiAction('adopt niners-war-room and worldforge-sablewake-live-runtime-repair-v3', PROJECTS, aliases)
+  const nwr = entries.find((e) => e.target === 'niners-war-room')
+  const worldforge = entries.find((e) => e.target === 'worldforge-sablewake-live-runtime-repair-v3')
+  assert.equal(nwr.intent, 'ADOPT_CANDIDATE_REPORT')
+  assert.equal(worldforge.intent, 'ADOPT_CANDIDATE_REPORT')
+})

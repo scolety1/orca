@@ -161,3 +161,27 @@ test('A5: a TIM_REQUIRED clause on one target refuses that action only, independ
   assert.match(result.text, /\*\*Worldforge-Sablewake-Live-Runtime-Repair-V3\*\*/)
   assert.doesNotMatch(result.text, /Worldforge-Sablewake-Live-Runtime-Repair-V3[\s\S]*consequential decision/)
 })
+
+// FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
+// Exhaustive Gauntlet V1, Batch 2): "Don't adopt NWR; adopt EasyLife." used
+// to have the WHOLE message refused (both projects), because both clauses
+// decomposed to the same negation-blind ADOPT_CANDIDATE_REPORT intent, so
+// classifyMultiActionEntries' own >=2-distinguishing-intents gate never
+// fired and the message fell through to the single-message-level
+// classifyAdoptionCommandIntent check instead -- which correctly found the
+// negation, but has no per-target concept at all, so it wrongly suppressed
+// EasyLife's completely separate, legitimate request too.
+test('A5/Batch-2: a negated adoption request for one project never suppresses a genuine, separate adoption request for a different project in the same message', async () => {
+  const message = "Don't adopt niners-war-room; adopt EasyLifeHQ."
+  const gated = classifyMultiActionEntries(message, PROJECTS, undefined)
+  assert.ok(gated, 'the negation-aware decomposition must clear the multi-action gate')
+  const result = await respondCommand({ message, projects: PROJECTS, opState, clock })
+  assert.equal(result.intent, 'MULTI_ACTION')
+  // NWR: honestly reported, never executed.
+  assert.match(result.text, /Niners War Room[\s\S]*(?:nothing ready for adoption|couldn't adopt)/i)
+  // EasyLifeHQ: a REAL adoption attempt was made (not silently skipped) --
+  // it fails here only because this fixture has no real repository root,
+  // never because of NWR's unrelated negation.
+  assert.match(result.text, /EasyLifeHQ[\s\S]*couldn't adopt/i)
+  assert.doesNotMatch(result.text, /EasyLifeHQ[\s\S]*nothing ready for adoption/i)
+})

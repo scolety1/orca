@@ -206,6 +206,20 @@ const IDIOMATIC_NON_NEGATION = /\bnever\s+mind\b/gi
 const ADOPTION_NEGATION_PATTERN =
   /\b(?:do not|don'?t|never|won'?t|refuse(?:d|s)?\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\s+on)?|pass on|not(?!\s+sure\b)|no|isn'?t|aren'?t|shouldn'?t|wouldn'?t|couldn'?t|can'?t|cannot)\b[\s\S]{0,60}?\b(?:adopt|accept|approve)\w*\b/i
 
+// Exported so domain/command-multi-action-decomposition.mjs's own
+// ADOPT_CANDIDATE_REPORT clause pattern can reuse this exact, hardened
+// negation check rather than reinventing a second, independently-drifting
+// one -- see that module's own header for why: a message like "Don't adopt
+// NWR; adopt EasyLife" needs each CLAUSE judged on its own (this function
+// is already clause-safe -- it operates on whatever text it's given, never
+// assumes it's the whole message), not this module's own single-message-
+// level classifyAdoptionCommandIntent (which has no concept of multiple
+// targets/clauses at all and would wrongly negate the whole message).
+export function negatesAdoptionVerb(text) {
+  const withoutIdioms = String(text ?? '').replace(IDIOMATIC_NON_NEGATION, ' ')
+  return ADOPTION_NEGATION_PATTERN.test(withoutIdioms)
+}
+
 export function classifyAdoptionCommandIntent(message) {
   const text = String(message ?? '')
   if (!ADOPTION_VERB_PATTERN.test(text)) {
@@ -213,8 +227,7 @@ export function classifyAdoptionCommandIntent(message) {
     // "probably fine" all land here, honestly not this engine's concern.
     return 'NOT_ADOPTION'
   }
-  const withoutIdioms = text.replace(IDIOMATIC_NON_NEGATION, ' ')
-  if (ADOPTION_NEGATION_PATTERN.test(withoutIdioms)) {
+  if (negatesAdoptionVerb(text)) {
     // A clearly negated adoption verb is not "ambiguous" -- the owner is
     // being perfectly clear that they do NOT want adoption executed.
     // Report-only, same as no adoption verb being present at all.

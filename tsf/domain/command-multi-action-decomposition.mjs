@@ -18,10 +18,31 @@
 // and can't act on adoption" refusal -- this module's whole intent taxonomy
 // respects that architectural fact, not works around it).
 import { loadProjectAliases } from './project-aliases.mjs'
+import { negatesAdoptionVerb } from './command-adoption-execution.mjs'
 
+// FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
+// Exhaustive Gauntlet V1, Batch 2): "Don't adopt NWR; adopt EasyLife."
+// used to have BOTH clauses classify as the plain ADOPT_CANDIDATE_REPORT
+// (the bare-word pattern below has no negation awareness of its own), so
+// classifyMultiActionEntries' own gate (server/command-multi-action-
+// bridge.mjs -- requires >=2 DISTINGUISHING intents, not just >=2 targets)
+// never fired, and the WHOLE message fell through to the single-message-
+// level classifyAdoptionCommandIntent check instead -- which correctly
+// finds the negation, but has no concept of multiple targets/clauses, so
+// it refused the ENTIRE message, wrongly suppressing EasyLife's completely
+// separate, legitimate adoption request too. ADOPT_CANDIDATE_DECLINED is a
+// real, distinct intent (not a duplicate label) precisely so the outer
+// gate sees 2 genuinely different actions and routes through this
+// module's own per-clause decomposition -- server/command-multi-action-
+// bridge.mjs's executeAdoptionCandidate already independently re-derives
+// NOT_ADOPTION vs EXECUTE_ADOPTION from each clause's own raw text via
+// classifyAdoptionCommandIntent, so both ids are handled by the exact same
+// safe, already-correct execution function; this only fixes the GATE that
+// decides whether that per-clause logic ever runs.
 export const MULTI_ACTION_INTENTS = Object.freeze([
   'EXTERNAL_WORK_HOLD',
   'ADOPT_CANDIDATE_REPORT',
+  'ADOPT_CANDIDATE_DECLINED',
   'START_KEEP_GOING',
   'ASSESS_AND_UPGRADE',
   'STATUS_QUERY',
@@ -32,15 +53,42 @@ function escapeRegExp(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// Deliberately simpler than project-name-resolver.mjs's own splitClauses:
-// no exclusion-cue awareness is needed here (an exclusion IS a real intent
-// in this module's taxonomy -- EXTERNAL_WORK_HOLD -- never a silent drop),
-// so this only needs the same sentence/comma/"but" boundaries for natural
-// per-action clause scoping.
+// Adversarial-review finding (Batch 2, 2nd pass): the original comma/"but"
+// clause boundary reproduced the EXACT bug this batch fixed, via other
+// realistic phrasing, in two distinct ways:
+//
+// (1) "Don't adopt A and adopt B." never split on "and" at all, so BOTH
+// projects shared the identical clause text -- the negated verb applying
+// to A bled into B's own classification too (both got ADOPT_CANDIDATE_
+// DECLINED). Fixed by ALSO splitting on "and" -- but only when "and" is
+// immediately followed by a known action verb (a lookahead, not a bare
+// \band\b): "adopt A and B ready" / "adopt that run and keep going
+// overnight" are genuine single-clause compounds (one verb, a shared
+// object list, or two actions for the SAME already-established target) and
+// must NOT split, or a legitimate shared/compound instruction loses one of
+// its targets/intents entirely (this exact shape is the file's own literal
+// mission-example fixture). "and adopt B" / "and keep going" (a NEW verb
+// opening what reads as an independent clause) SHOULD split. The verb list
+// below is this file's own known action vocabulary -- not general English.
+//
+// (2) "Do not, under any circumstances, adopt A, but adopt B." used to
+// comma-split "Do not" away from "adopt A" into two separate clauses
+// before either was attributed to a target -- "Do not" alone names no
+// project, so it never even reached A's own accumulated segment text, and
+// A's segment ("adopt niners-war-room" alone) read as unnegated. Fixed by
+// no longer treating a bare comma as its own clause boundary at all --
+// negatesAdoptionVerb's own bounded-character-gap design (domain/
+// command-adoption-execution.mjs) already tolerates comma-punctuated
+// negation WITHIN one clause; the bug was this module fragmenting the
+// clause before that check ever ran, not the check itself. Every existing
+// fixture's real target attribution is unaffected: every comma this file's
+// own tests exercise separates two clauses about the SAME already-current
+// target, never two DIFFERENT targets' own mentions.
+const AND_SPLIT_VERB_LOOKAHEAD = '(?:adopt|accept|approve|reject|fix|pause|hold|research|keep|assess|upgrade)\\w*\\b'
 function splitClauses(message) {
   return String(message)
     .replace(/--|—/g, '.')
-    .split(/[.!?\n;]+|,|\bbut\b/i)
+    .split(new RegExp(`[.!?\\n;]+|\\bbut\\b|\\band(?=\\s+${AND_SPLIT_VERB_LOOKAHEAD})`, 'i'))
     .map((c) => c.trim())
     .filter(Boolean)
 }
@@ -112,7 +160,12 @@ const INTENT_PATTERNS = [
     id: 'EXTERNAL_WORK_HOLD',
     test: (t) => /\b(is\s+)?being\s+handled\s+by\s+(another|a\s+different)\s+(ai|agent|process)\b/i.test(t) || /\bleave\s+(it|that|this|\S+)\s+alone\b/i.test(t) || /\bhold\s+off\b/i.test(t)
   },
-  { id: 'ADOPT_CANDIDATE_REPORT', test: (t) => /\badopt(ed|ing)?\b/i.test(t) },
+  // Split by negation (see the module-header comment above) -- reuses the
+  // exact same hardened negation check the single-message adoption
+  // classifier uses, so the two never drift apart on what counts as a
+  // negated adoption verb.
+  { id: 'ADOPT_CANDIDATE_REPORT', test: (t) => /\badopt(ed|ing)?\b/i.test(t) && !negatesAdoptionVerb(t) },
+  { id: 'ADOPT_CANDIDATE_DECLINED', test: (t) => /\badopt(ed|ing)?\b/i.test(t) && negatesAdoptionVerb(t) },
   { id: 'START_KEEP_GOING', test: (t) => /\bkeep\s+going\b/i.test(t) || /\bovernight\b/i.test(t) },
   {
     id: 'ASSESS_AND_UPGRADE',

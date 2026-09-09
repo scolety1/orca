@@ -165,7 +165,14 @@ async function handleEntry(entry, project, opState, clock, deps) {
   if (entry.intent === 'EXTERNAL_WORK_HOLD') {
     return applyExternalWorkHold(project, entry.rawClause, clock, deps)
   }
-  if (entry.intent === 'ADOPT_CANDIDATE_REPORT') {
+  // ADOPT_CANDIDATE_DECLINED (a real, distinct decomposition-level intent --
+  // see domain/command-multi-action-decomposition.mjs's own header) is
+  // routed to the exact same function: executeAdoptionCandidate already
+  // independently re-derives NOT_ADOPTION vs EXECUTE_ADOPTION from THIS
+  // clause's own raw text, so a genuinely negated clause safely reports
+  // rather than executes either way -- the distinct id only exists so the
+  // outer classifyMultiActionEntries gate sees 2 real, different actions.
+  if (entry.intent === 'ADOPT_CANDIDATE_REPORT' || entry.intent === 'ADOPT_CANDIDATE_DECLINED') {
     return executeAdoptionCandidate(project, entry.rawClause, opState, clock, deps)
   }
   if (entry.intent === 'START_KEEP_GOING' || entry.intent === 'ASSESS_AND_UPGRADE') {

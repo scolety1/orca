@@ -150,6 +150,22 @@
       "status": "REGRESSION_LOCKED",
       "detail": "chat-responder.mjs STATUS/FINISHED/NEXT_ACTION intents + command-responder.mjs NEEDS_YOU_QUERY; multiple prior dogfood-finding fixes (Phase 7 apostrophe/synonym gaps) already regression-locked.",
       "regressionTestFile": "test/chat-responder.test.mjs, test/command-responder.test.mjs"
+    },
+    {
+      "caseId": "CASE-12",
+      "source": "Real, live-confirmed P0 found in Batch 2 of this program (the disclosed reverse-false-negative gap from Batch 1's own report)",
+      "userTurn": ["Don't adopt NWR; adopt EasyLife.", "Do not adopt niners-war-room. Adopt EasyLifeHQ."],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "expectedChildActions": [
+        { "project": "niners-war-room", "intent": "ADOPT_CANDIDATE_DECLINED", "expectedSideEffects": [] },
+        { "project": "easylifehq-github-io", "intent": "ADOPT_CANDIDATE_REPORT", "expectedSideEffects": ["real executeCommandAdoption attempt, subject to normal revalidation"] }
+      ],
+      "expectedAuthorityClass": "PER_TARGET -- a negation on one target must never suppress a different target's independent authority",
+      "forbiddenSideEffects": ["NWR adoption execution", "EasyLifeHQ's adoption request being silently dropped because of NWR's unrelated negation"],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "domain/command-multi-action-decomposition.mjs's ADOPT_CANDIDATE_REPORT pattern had no negation awareness, so a negated clause and an affirmed clause for a DIFFERENT project decomposed to the SAME intent -- the outer classifyMultiActionEntries gate (server/command-multi-action-bridge.mjs, requires >=2 DISTINGUISHING intents) never fired, and the whole message fell through to the single-message-level classifyAdoptionCommandIntent (domain/command-adoption-execution.mjs), which has no per-target concept at all and wrongly refused BOTH projects.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-multi-action-decomposition.test.mjs, test/command-multi-action-bridge.test.mjs"
     }
   ]
 }
