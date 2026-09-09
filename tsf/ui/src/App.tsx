@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { CommandDockProvider } from '@/lib/command-dock-context'
+import { CommandConversationProvider } from '@/lib/command-conversation-context'
 import { AppShell } from '@/components/AppShell'
 import { HQPage } from '@/pages/HQPage'
 import { CommandPage } from '@/pages/CommandPage'
@@ -23,25 +24,32 @@ export function App() {
     <TooltipProvider delayDuration={400}>
       {/* Global Command Dock V1: above the router so the dock's open state,
           conversation, and route context survive every navigation -- never
-          re-created per route. */}
+          re-created per route. Full Command Mode: CommandConversationProvider
+          holds the actual conversation (messages/draft/attachments/etc, see
+          its own header) so the dock's floating panel and the full-page
+          /command view -- two separate CommandPanel mounts -- read and write
+          the exact same state; collapsing one back into the other loses
+          nothing. */}
       <CommandDockProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route element={<AppShell />}>
-              <Route path="/" element={<HQPage />} />
-              <Route path="/command" element={<CommandPage />} />
-              <Route path="/work" element={<WorkPage />} />
-              <Route path="/projects" element={<ProjectsPage />} />
-              <Route path="/projects/add" element={<AddProjectPage />} />
-              <Route path="/projects/:id" element={<ProjectDetailPage />} />
-              <Route path="/agents" element={<AgentsPage />} />
-              <Route path="/evaluation" element={<EvaluationPage />} />
-              <Route path="/fleet" element={<FleetPage />} />
-              <Route path="/health-repair" element={<HealthRepairCenterPage />} />
-              <Route path="/more" element={<MorePage />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
+        <CommandConversationProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route element={<AppShell />}>
+                <Route path="/" element={<HQPage />} />
+                <Route path="/command" element={<CommandPage />} />
+                <Route path="/work" element={<WorkPage />} />
+                <Route path="/projects" element={<ProjectsPage />} />
+                <Route path="/projects/add" element={<AddProjectPage />} />
+                <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                <Route path="/agents" element={<AgentsPage />} />
+                <Route path="/evaluation" element={<EvaluationPage />} />
+                <Route path="/fleet" element={<FleetPage />} />
+                <Route path="/health-repair" element={<HealthRepairCenterPage />} />
+                <Route path="/more" element={<MorePage />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </CommandConversationProvider>
       </CommandDockProvider>
     </TooltipProvider>
   )

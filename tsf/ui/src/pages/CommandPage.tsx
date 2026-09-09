@@ -1,11 +1,12 @@
-import { RefreshCw } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Minimize2, RefreshCw } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
 import { CommandPanel } from '@/components/command/CommandPanel'
 import { LoadingState, ErrorState, EmptyState } from '@/components/States'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { useCommandDock } from '@/lib/command-dock-context'
 
 // The conversational front door to the existing project planners, Health
 // Repair, Prepare for Work, Work Set, Keep Going, Fleet Optimizer, and Orca
@@ -14,18 +15,39 @@ import { Button } from '@/components/ui/button'
 // both read the same real aggregator (GET /api/fleet/status, backed by
 // domain/fleet-work-status.mjs -- also what GET /api/work uses), so a
 // sentence in chat and a row in this table can never disagree.
+//
+// Full Command Mode: this IS the "expand"/full-screen destination
+// GlobalCommandDock's own "Full view" link opens -- the SAME conversation
+// (CommandConversationProvider, above the router) that the dock's floating
+// panel shows, not a second one. "Collapse" below re-opens the dock
+// (useCommandDock().open()) and returns to wherever this view was reached
+// from, so the exact same in-progress conversation, draft, and attachments
+// reappear as the floating panel with nothing lost.
 export function CommandPage() {
   const { data: statuses, loading, error, reload } = useApi(() => api.fleetStatus(), [])
+  const { open } = useCommandDock()
+  const navigate = useNavigate()
+
+  function collapse() {
+    open()
+    navigate(-1)
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">Command</h1>
-        <p className="text-sm text-muted-foreground">
-          Ask what&apos;s running, name a project to work on it, or name several to prepare and
-          start them together. Command routes through your existing planners, Health Repair, Prepare
-          for Work, and Keep Going -- it never runs a second execution engine of its own.
-        </p>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Command</h1>
+          <p className="text-sm text-muted-foreground">
+            Ask what&apos;s running, name a project to work on it, or name several to prepare and
+            start them together. Command routes through your existing planners, Health Repair, Prepare
+            for Work, and Keep Going -- it never runs a second execution engine of its own.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={collapse} className="shrink-0 gap-1.5">
+          <Minimize2 className="size-3.5" />
+          Collapse to dock
+        </Button>
       </header>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_380px]">

@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import Markdown from 'react-markdown'
 import { AlertTriangle, Paperclip, SendHorizontal, ShieldAlert, Sparkles, X } from 'lucide-react'
@@ -11,19 +11,7 @@ import { cn } from '@/lib/cn'
 import { scrollTranscriptToBottom } from '@/lib/chat-transcript-scroll'
 import { extractAttachmentContext } from '@/lib/migration-context-attachments'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
-import type { ChatMessage, ChatResponse } from '@/lib/types'
-
-type Attachment = {
-  name: string
-  size: number
-  type: string
-  extractedText: string | null
-}
-
-type CommandMessage = ChatMessage & {
-  resolvedProjectIds?: string[]
-  scope?: ChatResponse['scope']
-}
+import { useCommandConversation, type CommandMessage } from '@/lib/command-conversation-context'
 
 // Memoized so typing in the composer (draft/attachments/selfRepair state,
 // all local to CommandPanel) never re-renders the transcript -- without
@@ -104,10 +92,16 @@ export const CommandTranscript = memo(function CommandTranscript({
 // back here as a "Targeting" chip row. No manual worktree field: Command
 // never asks for a filesystem path (chat-dispatch-bridge.mjs's
 // ensureWorktreeForDispatch auto-provisions one). History is session-local
-// here (not reloaded from a persisted thread on mount) -- a disclosed,
-// intentional scope cut for this pass; each turn IS still durably recorded
-// server-side per project (or under a shared command thread for fleet-wide
-// turns), same as any other chat turn.
+// (held in CommandConversationProvider, not reloaded from a persisted
+// thread on mount) -- a disclosed, intentional scope cut for this pass;
+// each turn IS still durably recorded server-side per project (or under a
+// shared command thread for fleet-wide turns), same as any other chat
+// turn. Full Command Mode: the actual conversation state lives in
+// useCommandConversation() (command-conversation-context.tsx), not local
+// useState -- this component itself is mounted twice (the dock's floating
+// panel, the full-page /command view), and both need to show the exact
+// same in-progress conversation, draft, and attachments; only DOM refs
+// below stay per-mount.
 // routeContext (optional): the current page's project, if any (Global
 // Command Dock V1) -- shown back as a "Context: X" chip so Tim knows what
 // page he opened the dock from. Never forced into scope: it's threaded as
@@ -117,17 +111,24 @@ export const CommandTranscript = memo(function CommandTranscript({
 // always wins (see http-server.mjs's chat route). No second Command
 // engine, no duplicated resolution logic.
 export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => void; routeContext?: { projectId: string; displayName: string } | null } = {}) {
-  const [messages, setMessages] = useState<CommandMessage[]>([])
-  const [draft, setDraft] = useState('')
-  const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [providerLabel, setProviderLabel] = useState<string | null>(null)
-  const [live, setLive] = useState<boolean | null>(null)
-  // Off by default, per operator decision: TSF self-repair is authorized
-  // ONLY by this explicit toggle plus an exact project name match -- never
-  // inferred from message prose (domain/self-repair-authority.mjs).
-  const [selfRepair, setSelfRepair] = useState(false)
+  const {
+    messages,
+    addMessage,
+    draft,
+    setDraft,
+    attachments,
+    setAttachments,
+    sending,
+    setSending,
+    error,
+    setError,
+    providerLabel,
+    setProviderLabel,
+    live,
+    setLive,
+    selfRepair,
+    setSelfRepair
+  } = useCommandConversation()
   const viewportRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
@@ -147,10 +148,7 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
       : ''
     setSending(true)
     setError(null)
-    setMessages((prev) => [
-      ...prev,
-      { role: 'user', content: text + attachmentNote, at: new Date().toISOString() }
-    ])
+    addMessage({ role: 'user', content: text + attachmentNote, at: new Date().toISOString() })
     setDraft('')
     setAttachments([])
     const attachmentMeta = attachments.map((a) => ({
@@ -169,18 +167,15 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
       )
       setProviderLabel(result.providerLabel)
       setLive(result.live ?? false)
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: result.text,
-          at: new Date().toISOString(),
-          decisionClass: result.decisionClass,
-          intent: result.intent,
-          resolvedProjectIds: result.resolvedProjectIds,
-          scope: result.scope
-        }
-      ])
+      addMessage({
+        role: 'assistant',
+        content: result.text,
+        at: new Date().toISOString(),
+        decisionClass: result.decisionClass,
+        intent: result.intent,
+        resolvedProjectIds: result.resolvedProjectIds,
+        scope: result.scope
+      })
       onActivity?.()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach Command right now.')
