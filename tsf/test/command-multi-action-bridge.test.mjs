@@ -185,3 +185,26 @@ test('A5/Batch-2: a negated adoption request for one project never suppresses a 
   assert.match(result.text, /EasyLifeHQ[\s\S]*couldn't adopt/i)
   assert.doesNotMatch(result.text, /EasyLifeHQ[\s\S]*nothing ready for adoption/i)
 })
+
+// FIXED (real, BLOCKING, confirmed via real end-to-end dispatch --
+// adversarial review, Batch 3): "Don't keep going on niners-war-room;
+// EasyLifeHQ needs serious work." used to actually dispatch a brand-new
+// Keep Going mission for niners-war-room despite the explicit "Don't" --
+// nothing downstream of the decomposer caught it (the per-clause
+// TIM_REQUIRED check doesn't recognize "keep going"/"assess" as
+// consequential at all). This is a real end-to-end proof through the
+// actual dispatch pipeline (same dispatchDeps-stubbing convention as the
+// "A5: a held target" test above) that this negated clause now produces
+// zero dispatch.
+test('Batch-3: a negated "keep going" request never dispatches real work, even when a genuine request for a different project is in the same message', async () => {
+  // MULTI_ACTION_DECLINED (domain/command-multi-action-decomposition.mjs)
+  // is a pure, synchronous, zero-I/O branch -- no dispatch stubbing is
+  // needed to prove NWR gets no action; EasyLifeHQ's own real attempt is
+  // allowed to fail honestly (no real repo root in this fixture), which is
+  // exactly what "not a fabricated success" looks like.
+  const message = "Don't keep going on niners-war-room; EasyLifeHQ needs serious work."
+  const result = await respondCommand({ message, projects: PROJECTS, opState, clock })
+  assert.equal(result.intent, 'MULTI_ACTION')
+  assert.match(result.text, /Niners War Room[\s\S]*no action taken/i)
+  assert.doesNotMatch(result.text, /Niners War Room[\s\S]*(?:new mission started|dispatched)/i)
+})

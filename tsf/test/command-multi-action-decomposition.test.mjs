@@ -142,3 +142,52 @@ test('a genuine shared adoption request across two projects ("adopt A and B") is
   assert.equal(nwr.intent, 'ADOPT_CANDIDATE_REPORT')
   assert.equal(worldforge.intent, 'ADOPT_CANDIDATE_REPORT')
 })
+
+// FIXED (real, BLOCKING, live-confirmed via real end-to-end dispatch --
+// Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 3
+// adversarial review): unlike ADOPT_CANDIDATE_REPORT/DECLINED,
+// START_KEEP_GOING/ASSESS_AND_UPGRADE had ZERO negation awareness --
+// "Don't keep going on niners-war-room" classified as a real, positive
+// START_KEEP_GOING action, which server/command-multi-action-bridge.mjs
+// routes straight to a REAL Keep Going dispatch. MULTI_ACTION_DECLINED is
+// the fix.
+test('a negated "keep going" clause decomposes to MULTI_ACTION_DECLINED, never the real-dispatching START_KEEP_GOING', () => {
+  const entries = decomposeMultiAction("Don't keep going on niners-war-room.", PROJECTS, aliases)
+  const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+  assert.ok(forNwr.some((e) => e.intent === 'MULTI_ACTION_DECLINED'))
+  assert.ok(forNwr.every((e) => e.intent !== 'START_KEEP_GOING'))
+})
+
+test('a negated "assess/upgrade" clause decomposes to MULTI_ACTION_DECLINED, never the real-dispatching ASSESS_AND_UPGRADE', () => {
+  const entries = decomposeMultiAction("Don't assess niners-war-room.", PROJECTS, aliases)
+  const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+  assert.ok(forNwr.some((e) => e.intent === 'MULTI_ACTION_DECLINED'))
+  assert.ok(forNwr.every((e) => e.intent !== 'ASSESS_AND_UPGRADE'))
+})
+
+test('a negated keep-going clause for one target never suppresses a genuine keep-going/assess request for a different target', () => {
+  const entries = decomposeMultiAction("Don't keep going on niners-war-room; EasyLifeHQ needs serious work.", PROJECTS, aliases)
+  const nwr = entries.find((e) => e.target === 'niners-war-room')
+  const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
+  assert.equal(nwr.intent, 'MULTI_ACTION_DECLINED')
+  assert.equal(easyLife.intent, 'ASSESS_AND_UPGRADE')
+})
+
+// Adversarial-review findings (Batch 3, 2nd pass): the "please" filler
+// tolerance in the "and"-split lookahead missed a comma directly after
+// "please" and a second filler word.
+test('adversarial-review fix: "and please, adopt X" (comma after please) still splits correctly', () => {
+  const entries = decomposeMultiAction("Don't adopt niners-war-room and please, adopt EasyLifeHQ.", PROJECTS, aliases)
+  const nwr = entries.find((e) => e.target === 'niners-war-room')
+  const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
+  assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
+  assert.equal(easyLife.intent, 'ADOPT_CANDIDATE_REPORT')
+})
+
+test('adversarial-review fix: "and please just adopt X" (two filler words) still splits correctly', () => {
+  const entries = decomposeMultiAction('Don\'t adopt niners-war-room and please just adopt EasyLifeHQ.', PROJECTS, aliases)
+  const nwr = entries.find((e) => e.target === 'niners-war-room')
+  const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
+  assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
+  assert.equal(easyLife.intent, 'ADOPT_CANDIDATE_REPORT')
+})

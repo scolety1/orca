@@ -178,6 +178,17 @@ async function handleEntry(entry, project, opState, clock, deps) {
   if (entry.intent === 'START_KEEP_GOING' || entry.intent === 'ASSESS_AND_UPGRADE') {
     return dispatchAction(project, entry.rawClause, clock, deps)
   }
+  // Adversarial-review finding (Batch 3, BLOCKING): unlike adoption,
+  // dispatchAction (below) has no independent re-derivation/safety check
+  // of its own -- it goes straight to a real planAndDispatchFromCommand
+  // call. A negated START_KEEP_GOING/ASSESS_AND_UPGRADE clause must never
+  // reach that function at all; MULTI_ACTION_DECLINED is a real,
+  // decomposition-level-only signal (domain/command-multi-action-
+  // decomposition.mjs already confirmed the clause is genuinely negated)
+  // that this is a safe, honest "no action taken" report instead.
+  if (entry.intent === 'MULTI_ACTION_DECLINED') {
+    return { text: 'no action taken -- you said not to.', category: null, ok: true }
+  }
   return reportStatus(project, opState, clock)
 }
 

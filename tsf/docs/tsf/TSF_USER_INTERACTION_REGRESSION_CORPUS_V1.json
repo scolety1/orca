@@ -166,6 +166,46 @@
       "rootCause": "domain/command-multi-action-decomposition.mjs's ADOPT_CANDIDATE_REPORT pattern had no negation awareness, so a negated clause and an affirmed clause for a DIFFERENT project decomposed to the SAME intent -- the outer classifyMultiActionEntries gate (server/command-multi-action-bridge.mjs, requires >=2 DISTINGUISHING intents) never fired, and the whole message fell through to the single-message-level classifyAdoptionCommandIntent (domain/command-adoption-execution.mjs), which has no per-target concept at all and wrongly refused BOTH projects.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/command-multi-action-decomposition.test.mjs, test/command-multi-action-bridge.test.mjs"
+    },
+    {
+      "caseId": "CASE-13",
+      "source": "Real, live-confirmed P0 found by independent adversarial review of CASE-12's own fix (Batch 2, 2nd pass)",
+      "userTurn": ["Don't adopt niners-war-room and adopt EasyLifeHQ.", "Do not, under any circumstances, adopt niners-war-room, but please adopt EasyLifeHQ."],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "expectedChildActions": [
+        { "project": "niners-war-room", "intent": "ADOPT_CANDIDATE_DECLINED" },
+        { "project": "easylifehq-github-io", "intent": "ADOPT_CANDIDATE_REPORT" }
+      ],
+      "forbiddenSideEffects": ["EasyLifeHQ's adoption suppressed by NWR's unrelated negation, via alternate phrasing the first CASE-12 fix did not cover"],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "domain/command-multi-action-decomposition.mjs's splitClauses never split on bare \"and\" at all (so two different targets joined by \"and\" shared one clause's negated verb), and treated every bare comma as a clause boundary (so \"Do not, under any circumstances, adopt X\" fragmented the negation away from its own verb before target attribution ran). Fixed by adding a verb-lookahead-gated \"and\" split and removing bare-comma as a boundary.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-multi-action-decomposition.test.mjs, test/tsf-conversational-control-plane-golden-path-eval.test.mjs"
+    },
+    {
+      "caseId": "CASE-14",
+      "source": "Real finding from this mission's own Batch 4 generated combinatorial matrix (not from adversarial review -- from the golden-path eval catching its own generated cases)",
+      "userTurn": ["Don't adopt niners-war-room; accept EasyLifeHQ.", "Don't adopt niners-war-room and please adopt EasyLifeHQ."],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "domain/command-multi-action-decomposition.mjs's ADOPT_CANDIDATE_REPORT/DECLINED patterns matched only bare \"adopt\", narrower than domain/command-adoption-execution.mjs's own ADOPTION_VERB_PATTERN (adopt/accept/approve) -- \"accept EasyLifeHQ\" fell through to GENERAL in the decomposer, reproducing CASE-12's bug for that verb choice. Separately, the and-split lookahead required the verb IMMEDIATELY after \"and\", missing \"and please adopt X\". Both fixed by exporting/reusing the shared vocabulary (hasAdoptionVerb) and tolerating one filler word in the lookahead.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/tsf-conversational-control-plane-golden-path-eval.test.mjs"
+    },
+    {
+      "caseId": "CASE-15",
+      "source": "Real, BLOCKING, live-confirmed P0 found by independent adversarial review of Batch 3's own fixes (2nd pass) -- confirmed end-to-end via real dispatch, more severe than CASE-12/13/14 since the consequence is a real Keep Going dispatch, not merely a mis-worded report",
+      "userTurn": ["Don't keep going on niners-war-room; EasyLifeHQ needs serious work.", "Don't assess niners-war-room; keep going on EasyLifeHQ."],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "expectedChildActions": [
+        { "project": "niners-war-room", "intent": "MULTI_ACTION_DECLINED", "expectedSideEffects": [] },
+        { "project": "easylifehq-github-io", "intent": "ASSESS_AND_UPGRADE or START_KEEP_GOING", "expectedSideEffects": ["real planAndDispatchFromCommand attempt"] }
+      ],
+      "forbiddenSideEffects": ["a real Keep Going mission dispatched for the negated target"],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "Unlike ADOPT_CANDIDATE_REPORT/DECLINED, START_KEEP_GOING and ASSESS_AND_UPGRADE (domain/command-multi-action-decomposition.mjs) had ZERO negation awareness at all -- confirmed via real end-to-end respondCommand -> classifyMultiActionEntries -> respondMultiActionCommand -> handleEntry -> dispatchAction -> planAndDispatchFromCommand that this actually dispatched a brand-new Keep Going mission for the negated project. Nothing downstream caught it: the per-clause TIM_REQUIRED check does not recognize \"keep going\"/\"assess\" as consequential at all. Fixed by generalizing the negation-detection design (a reusable isVerbNegated helper, not adoption-specific) and adding a new MULTI_ACTION_DECLINED intent routed to a safe, zero-I/O \"no action taken\" report.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-multi-action-decomposition.test.mjs, test/command-multi-action-bridge.test.mjs"
     }
   ]
 }

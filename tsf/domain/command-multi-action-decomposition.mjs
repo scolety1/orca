@@ -18,7 +18,41 @@
 // and can't act on adoption" refusal -- this module's whole intent taxonomy
 // respects that architectural fact, not works around it).
 import { loadProjectAliases } from './project-aliases.mjs'
-import { negatesAdoptionVerb } from './command-adoption-execution.mjs'
+import { negatesAdoptionVerb, hasAdoptionVerb } from './command-adoption-execution.mjs'
+
+// Adversarial-review finding (Batch 3, BLOCKING, real dispatch confirmed
+// end-to-end): unlike ADOPT_CANDIDATE_REPORT/DECLINED, START_KEEP_GOING and
+// ASSESS_AND_UPGRADE had ZERO negation awareness at all -- "Don't keep
+// going on niners-war-room; EasyLifeHQ needs serious work." classified
+// "Don't keep going on niners-war-room" as a real, positive START_KEEP_GOING
+// action (the bare "keep going" pattern doesn't care about "Don't" at all),
+// which server/command-multi-action-bridge.mjs's handleEntry routes
+// straight to dispatchAction -> planAndDispatchFromCommand -> a REAL new
+// Keep Going mission dispatch. Nothing downstream catches this: the
+// per-clause TIM_REQUIRED check (chat-responder.mjs's own classifyDecision
+// on the rawClause) doesn't recognize "keep going"/"assess" as
+// consequential at all, so it never fires either. This is the exact same
+// negation-leak class already fixed for adoption, just with real DISPATCH
+// as the consequence instead of a mis-worded report -- arguably more
+// severe. Generalized here (not adoption-specific) since the negation
+// vocabulary/bounded-gap design is identical regardless of which verb it
+// guards.
+const NEGATION_TRIGGER_SOURCE =
+  "(?:do not|don'?t|never|won'?t|refuse(?:d|s)?\\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\\s+on)?|pass on|not(?!\\s+sure\\b)|no|isn'?t|aren'?t|shouldn'?t|wouldn'?t|couldn'?t|can'?t|cannot)"
+const NEVER_MIND_IDIOM = /\bnever\s+mind\b/gi
+
+// `verbSources`: an array of regex SOURCE strings (not compiled patterns)
+// for the verb/phrase this action's own INTENT_PATTERNS entry already
+// matches on -- checked independently so a negation bound to ONE verb
+// shape (e.g. "keep going") doesn't require rebuilding a single giant
+// combined regex per action.
+function isVerbNegated(text, verbSources) {
+  const withoutIdiom = String(text ?? '').replace(NEVER_MIND_IDIOM, ' ')
+  return verbSources.some((verbSource) => new RegExp(`\\b${NEGATION_TRIGGER_SOURCE}\\b[\\s\\S]{0,60}?(?:${verbSource})`, 'i').test(withoutIdiom))
+}
+
+const KEEP_GOING_VERB_SOURCES = ['keep\\s+going', 'overnight']
+const ASSESS_VERB_SOURCES = ['needs?\\s+(?:serious\\s+)?work', 'get\\s+.+?\\s+up', 'upgrade', 'assess']
 
 // FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
 // Exhaustive Gauntlet V1, Batch 2): "Don't adopt NWR; adopt EasyLife."
@@ -45,6 +79,14 @@ export const MULTI_ACTION_INTENTS = Object.freeze([
   'ADOPT_CANDIDATE_DECLINED',
   'START_KEEP_GOING',
   'ASSESS_AND_UPGRADE',
+  // A single shared id for a negated START_KEEP_GOING/ASSESS_AND_UPGRADE
+  // clause (see the negation-awareness comment above) -- deliberately NOT
+  // a per-action *_DECLINED variant like adoption's own: neither of these
+  // two real actions has adoption's own independent, real-state-grounded
+  // re-derivation function to route a declined variant through, so this
+  // is routed to a single, generic, safe "no action taken" report instead
+  // (server/command-multi-action-bridge.mjs's handleEntry).
+  'MULTI_ACTION_DECLINED',
   'STATUS_QUERY',
   'GENERAL'
 ])
@@ -84,7 +126,18 @@ function escapeRegExp(s) {
 // fixture's real target attribution is unaffected: every comma this file's
 // own tests exercise separates two clauses about the SAME already-current
 // target, never two DIFFERENT targets' own mentions.
-const AND_SPLIT_VERB_LOOKAHEAD = '(?:adopt|accept|approve|reject|fix|pause|hold|research|keep|assess|upgrade)\\w*\\b'
+// Golden-path-eval finding (Batch 4) + adversarial-review finding (Batch 3,
+// 2nd pass): "and please adopt EasyLifeHQ" didn't split -- the lookahead
+// required the verb IMMEDIATELY after "and", but a polite filler word
+// ("please") commonly sits between them; the first fix tolerated exactly
+// one filler word with a literal following space, still missing "and
+// please, adopt X" (comma right after "please") and "and please just adopt
+// X" (two filler words). Tolerates a bounded (0-2) repetition of known
+// filler words, each followed by whitespace-or-comma-or-both -- still not
+// arbitrary text, so "and X Y" (a shared object list, no filler, no known
+// verb) still correctly does not split.
+const AND_SPLIT_FILLER = '(?:(?:please|just|simply)[,\\s]+){0,2}'
+const AND_SPLIT_VERB_LOOKAHEAD = `${AND_SPLIT_FILLER}(?:adopt|accept|approve|reject|fix|pause|hold|research|keep|assess|upgrade)\\w*\\b`
 function splitClauses(message) {
   return String(message)
     .replace(/--|—/g, '.')
@@ -161,15 +214,29 @@ const INTENT_PATTERNS = [
     test: (t) => /\b(is\s+)?being\s+handled\s+by\s+(another|a\s+different)\s+(ai|agent|process)\b/i.test(t) || /\bleave\s+(it|that|this|\S+)\s+alone\b/i.test(t) || /\bhold\s+off\b/i.test(t)
   },
   // Split by negation (see the module-header comment above) -- reuses the
-  // exact same hardened negation check the single-message adoption
-  // classifier uses, so the two never drift apart on what counts as a
-  // negated adoption verb.
-  { id: 'ADOPT_CANDIDATE_REPORT', test: (t) => /\badopt(ed|ing)?\b/i.test(t) && !negatesAdoptionVerb(t) },
-  { id: 'ADOPT_CANDIDATE_DECLINED', test: (t) => /\badopt(ed|ing)?\b/i.test(t) && negatesAdoptionVerb(t) },
-  { id: 'START_KEEP_GOING', test: (t) => /\bkeep\s+going\b/i.test(t) || /\bovernight\b/i.test(t) },
+  // exact same hardened negation check AND the exact same verb vocabulary
+  // (hasAdoptionVerb -- adopt/accept/approve, not just bare "adopt") the
+  // single-message adoption classifier uses, so the two never drift apart
+  // on what counts as an adoption verb or a negated one.
+  { id: 'ADOPT_CANDIDATE_REPORT', test: (t) => hasAdoptionVerb(t) && !negatesAdoptionVerb(t) },
+  { id: 'ADOPT_CANDIDATE_DECLINED', test: (t) => hasAdoptionVerb(t) && negatesAdoptionVerb(t) },
+  {
+    id: 'START_KEEP_GOING',
+    test: (t) => (/\bkeep\s+going\b/i.test(t) || /\bovernight\b/i.test(t)) && !isVerbNegated(t, KEEP_GOING_VERB_SOURCES)
+  },
   {
     id: 'ASSESS_AND_UPGRADE',
-    test: (t) => /\bneeds?\s+(serious\s+)?work\b/i.test(t) || /\bget\s+.+?\s+up\b/i.test(t) || /\bupgrade\b/i.test(t) || /\bassess\b/i.test(t)
+    test: (t) =>
+      (/\bneeds?\s+(serious\s+)?work\b/i.test(t) || /\bget\s+.+?\s+up\b/i.test(t) || /\bupgrade\b/i.test(t) || /\bassess\b/i.test(t)) &&
+      !isVerbNegated(t, ASSESS_VERB_SOURCES)
+  },
+  {
+    id: 'MULTI_ACTION_DECLINED',
+    test: (t) => {
+      const hasKeepGoing = /\bkeep\s+going\b/i.test(t) || /\bovernight\b/i.test(t)
+      const hasAssess = /\bneeds?\s+(serious\s+)?work\b/i.test(t) || /\bget\s+.+?\s+up\b/i.test(t) || /\bupgrade\b/i.test(t) || /\bassess\b/i.test(t)
+      return (hasKeepGoing && isVerbNegated(t, KEEP_GOING_VERB_SOURCES)) || (hasAssess && isVerbNegated(t, ASSESS_VERB_SOURCES))
+    }
   },
   { id: 'STATUS_QUERY', test: (t) => /\bstatus\b/i.test(t) || /\bwhat'?s\s+(going\s+on|happening)\b/i.test(t) || /\bhow'?s\s+it\s+going\b/i.test(t) }
 ]

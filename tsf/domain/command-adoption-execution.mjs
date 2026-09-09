@@ -167,6 +167,20 @@ export function revalidateCommandAdoptionCandidate({
 const ADOPTION_VERB_PATTERN = /\b(adopt(ed|ing|s)?|accept(ed|ing|s)?|approve[sd]?)\b/i
 const HEDGE_PATTERN = /\b(maybe|perhaps|not sure|unsure|should i|should we|might|could we|possibly|i think|i guess|wonder(ing)?|what if)\b/i
 const TRAILING_QUESTION_PATTERN = /\?\s*$/
+
+// Golden-path-eval finding (Batch 4 combinatorial matrix -- Full
+// Conversational Control Plane Exhaustive Gauntlet V1): domain/command-
+// multi-action-decomposition.mjs's own ADOPT_CANDIDATE_REPORT pattern used
+// a narrower, independently-drifted verb match (bare "adopt" only, missing
+// "accept"/"approve") than THIS module's own ADOPTION_VERB_PATTERN --
+// "accept EasyLifeHQ" fell through to GENERAL in the decomposer, so a
+// message like "Don't adopt NWR; accept EasyLifeHQ." never cleared the
+// multi-action gate and reproduced the exact negation-leak bug Batch 2
+// fixed, just via "accept" instead of "adopt". Exported so that module
+// reuses this exact vocabulary instead of a second, narrower one.
+export function hasAdoptionVerb(text) {
+  return ADOPTION_VERB_PATTERN.test(String(text ?? ''))
+}
 // FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
 // Exhaustive Gauntlet V1): "Do not adopt this candidate." used to classify
 // EXECUTE_ADOPTION -- the negation word and the adoption verb both matched,
