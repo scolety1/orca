@@ -43,12 +43,22 @@ test('Planner Chat distinguishes questions, bug feedback, and implementation req
   assert.equal(classifyDecision('Fix this sidebar.', 'FIX_REQUEST'), 'RECOMMEND_AND_PROCEED')
 })
 
-test('bug feedback is recorded in-project without telling Tim to hand it to someone else', () => {
+// Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 9 (real
+// response-truthfulness finding): this test used to assert the response
+// text matches /recorded/i -- checking WORDING, never that anything was
+// actually persisted. respond() is a pure function with no I/O anywhere
+// in its call chain (confirmed: no feedback-store module exists anywhere
+// in this codebase), so "Recorded on X" was a real, confirmed false
+// claim, not a backed statement. Rewritten to assert the real invariant:
+// the response never claims a durable record that doesn't exist, while
+// still naming the project and never claiming Tim must hand it off.
+test('bug feedback names the project and gives a real next step, never a false "recorded" claim with no backing durable write', () => {
   const project = loadRealPilotProjects()[0]
   const result = respond(project, 'The save button is broken.')
   assert.equal(result.intent, 'FEEDBACK_BUG')
-  assert.match(result.text, /recorded/i)
+  assert.doesNotMatch(result.text, /\brecorded\b/i, 'no durable feedback store exists anywhere in this codebase -- must never claim one persisted this')
   assert.match(result.text, new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.match(result.text, /ask me to fix it/i, 'still gives the real, working next step')
   assert.doesNotMatch(result.text, /hand (it|this) (to|off)/i)
 })
 

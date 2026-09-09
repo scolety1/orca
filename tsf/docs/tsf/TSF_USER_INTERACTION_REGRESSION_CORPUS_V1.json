@@ -479,6 +479,22 @@
       "rootCause": "Two separate, real findings: (1) FEEDBACK_BUG's bare \"issue\" keyword matched the pre-existing, already-partially-disclosed \"run into\" encounter-idiom (this file's own DISPATCH_REQUEST comment already excluded it from that pattern, but the exclusion never reached FEEDBACK_BUG) -- \"Run into an issue with WorldForge\" durably recorded spurious project feedback. Fixed with a lookbehind scoped to the exact idiomatic shape (run/ran/running into a/an issue); a real, unhedged report (\"there's an issue with the login button\") still classifies FEEDBACK_BUG, verified with a positive-control test. (2) Three test failures in command-bare-imperative-dispatch.test.mjs and command-operator-integration-adversarial.test.mjs asserted a stale 'GENERAL' expectation for genuinely interrogative sentences -- confirmed via git history that both test files predate the later, deliberate QUESTION intent addition (7701998835, \"recover stranded Chat/Health-Repair/Projects UX work\"). QUESTION is a real, safe, MORE PRECISE classification (never DISPATCH_REQUEST/FIX_REQUEST, never TIM_REQUIRED, and its own real response text never implies an action was taken) -- the tests' own real invariants were never actually broken, so the 3 assertions were updated to the current, correct, safe classification rather than the classifier being changed.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/command-bare-imperative-dispatch.test.mjs, test/command-operator-integration-adversarial.test.mjs"
+    },
+    {
+      "caseId": "CASE-22",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 9 -- a dedicated response-truthfulness audit (mission Phase 10) of every \"recorded\"/claim-bearing response template in server/chat-responder.mjs",
+      "userTurn": [
+        "The save button is broken."
+      ],
+      "expectedParentIntent": "N/A -- single-message intent classification (FEEDBACK_BUG)",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "a response claiming a durable record was written when no feedback-persistence mechanism exists anywhere in this codebase"
+      ],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "respond()'s FEEDBACK_BUG response text said \"Recorded on X\" -- but respond() is a pure function (no I/O anywhere in its own call chain), and chat-http-routes.mjs's groundedResponseWorthy branch calls it directly with no persistence step around it. Confirmed via a codebase-wide search: no feedback-store module exists anywhere (server/ or domain/). This is a real, confirmed violation of the exact \"never a promise with no backing durable record\" invariant this codebase enforces elsewhere (applyExternalWorkHold's own A6 comment). An existing test (test/chat-responder.test.mjs) had locked in the false claim by asserting the WORDING matched /recorded/i, never that anything was actually persisted. Fixed by removing the false claim (not by inventing a new persistence subsystem, which would be a real feature addition, not a bounded reliability fix) -- the response still names the project and still gives the real, working next step (\"ask me to fix it\"). Audited every other \"recorded\"/\"Recorded\" usage in the same file: all others read pre-existing, genuinely durable state (mission.state, health.status, etc.) and are truthful; this was the one isolated violation.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/chat-responder.test.mjs"
     }
   ]
 }

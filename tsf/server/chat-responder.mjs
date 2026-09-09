@@ -657,8 +657,21 @@ function respondQuestion(project) {
   return `I understand this as a question about **${project.displayName}**. I can answer from its recorded project state or the configured planner.`
 }
 
+// Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 9 (real
+// response-truthfulness audit): "Recorded on X" claimed a durable write
+// that never happened -- respond() is a pure function (no I/O anywhere in
+// its own call chain, confirmed via grep: no feedback-store module exists
+// anywhere in this codebase), and chat-http-routes.mjs's own
+// groundedResponseWorthy branch calls respond() directly with no
+// persistence step around it either. This violated the exact "never a
+// promise with no backing durable record" invariant this codebase
+// enforces elsewhere (see applyExternalWorkHold's own A6 comment in
+// server/command-multi-action-bridge.mjs). Fixed by removing the false
+// claim rather than inventing a new persistence subsystem (a real feature,
+// not a bounded reliability fix) -- still names the project and still
+// gives the real, working next step ("ask me to fix it").
 function respondFeedback(project) {
-  return `Recorded on **${project.displayName}**. I understand this as project feedback or a bug report; ask me to fix it when you want a governed implementation mission started.`
+  return `I understand this as project feedback or a bug report about **${project.displayName}** -- there's no durable feedback log to file it in yet; ask me to fix it when you want a governed implementation mission started.`
 }
 
 const RESPONDERS = {
