@@ -1,0 +1,155 @@
+{
+  "schemaVersion": "TSF_USER_INTERACTION_REGRESSION_CORPUS_V1",
+  "createdAt": "2026-09-09",
+  "sourceProgram": "Full Conversational Control Plane Exhaustive Gauntlet V1",
+  "notes": [
+    "Mined from real, durable prior records: tsf/programs/tsf-operator-stabilization-v1/bug-ledger.json (19 bugs, BUG-01..BUG-19), domain/command-referent-resolution.mjs + its tests, domain/project-execution-hold.mjs + its tests, server/project-name-resolver.mjs + command-responder.mjs's own Phase 7 dogfood-finding comments, and this program's own two newly-found-and-fixed P0s (adoption-negation, acknowledgement-consequence).",
+    "status values: REGRESSION_LOCKED (already fixed pre-mission, has a real, currently-passing test), FIXED_THIS_MISSION (newly found and fixed tonight, has a real, currently-passing test), NOT_A_BUG_CONFIRMED_SAFE (investigated, real code already behaves correctly, test added/confirmed), DEFERRED (real gap, deliberately not built -- see detail).",
+    "Every regressionTestFile path is repo-relative from tsf/ and was verified to exist at the time this corpus was written."
+  ],
+  "cases": [
+    {
+      "caseId": "CASE-01",
+      "source": "Live incident, this mission (item 11 of the mission's own 'recent examples')",
+      "priorAssistantState": "Landing Page candidate discussion, candidate.state = READY_FOR_ADOPTION",
+      "userTurn": "awesome! this is so great!",
+      "expectedParentIntent": "ACKNOWLEDGEMENT",
+      "expectedReferencedProjects": ["the project already in conversational scope"],
+      "expectedChildActions": [],
+      "expectedAuthorityClass": "NONE",
+      "expectedSideEffects": [],
+      "forbiddenSideEffects": ["ADOPT", "PUSH", "MERGE", "DEPLOY", "any project state mutation"],
+      "expectedResponseSemantics": "Explicitly states no action was taken; truthfully restates real current state (e.g. READY_FOR_ADOPTION); names the explicit phrase that would authorize the next step. Never a live/free-text LLM call for this shape.",
+      "surfaces": ["PLANNER_CHAT", "GLOBAL_COMMAND"],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "server/chat-responder.mjs's classifyIntent had no ACKNOWLEDGEMENT intent at all -- bare praise fell through to GENERAL, which chat-http-routes.mjs routes to the live, free-text LLM fallback with no deterministic guardrail against the model narrating a false confirmation.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/chat-responder.test.mjs (Phase 4 acknowledgement gauntlet + respondAcknowledgement tests)",
+      "regressionTestFile2": "test/http-chat-acknowledgement-consequence.test.mjs (real end-to-end HTTP reproduction of this exact scenario)"
+    },
+    {
+      "caseId": "CASE-02",
+      "source": "Combinatorial variant of CASE-01 (mission's own required list)",
+      "userTurn": ["looks good", "looks great", "perfect", "love it", "cool thanks", "nice", "sweet", "sick", "exactly", "that's exactly what I wanted", "thank you", "thanks", "👍", "🔥", "Landing Page looks awesome", "Nytheria looks good"],
+      "expectedParentIntent": "ACKNOWLEDGEMENT",
+      "expectedAuthorityClass": "NONE",
+      "forbiddenSideEffects": ["any consequential action"],
+      "status": "FIXED_THIS_MISSION",
+      "regressionTestFile": "test/chat-responder.test.mjs"
+    },
+    {
+      "caseId": "CASE-03",
+      "source": "Explicit-action counterpart (mission's own required list, CORE INVARIANT positive example)",
+      "userTurn": ["awesome, adopt it", "looks good, adopt it", "perfect, deploy it"],
+      "expectedParentIntent": "the SPECIFIC action intent (ADOPTION, or TIM_REQUIRED via decisionClass for deploy), never ACKNOWLEDGEMENT",
+      "expectedAuthorityClass": "EXPLICIT_OWNER_ACTION (still subject to its own normal gating -- e.g. 'deploy it' still requires Tim)",
+      "status": "FIXED_THIS_MISSION",
+      "detail": "This is the negative-space proof for CASE-01/02's fix: the ACKNOWLEDGEMENT pattern is checked LAST in the intent list and is anchored end-to-end, so any message carrying a real action verb never matches it.",
+      "regressionTestFile": "test/chat-responder.test.mjs"
+    },
+    {
+      "caseId": "CASE-04",
+      "source": "Real, live-confirmed P0 found during this mission's own investigation (not in the mission's original list, but the same negation-blindness class as BUG-08 below)",
+      "userTurn": ["Do not adopt this candidate.", "Don't adopt it yet.", "Never adopt the stalled one.", "Don't approve it.", "avoid adopting it for now"],
+      "expectedParentIntent": "NOT_ADOPTION (report-only)",
+      "expectedAuthorityClass": "NONE",
+      "expectedSideEffects": [],
+      "forbiddenSideEffects": ["ADOPT (real branch-advancing execution via executeCommandAdoption)"],
+      "expectedResponseSemantics": "No adoption executes; falls through to ordinary chat handling.",
+      "surfaces": ["GLOBAL_COMMAND"],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "domain/command-adoption-execution.mjs's classifyAdoptionCommandIntent -- the gate that triggers REAL adoption execution -- matched the bare presence of adopt/accept/approve anywhere in the message with NO negation awareness at all. 'Do not adopt this candidate.' classified EXECUTE_ADOPTION.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-adoption-execution.test.mjs"
+    },
+    {
+      "caseId": "BUG-08",
+      "source": "tsf/programs/tsf-operator-stabilization-v1/bug-ledger.json",
+      "userTurn": ["do not deploy this and push it now", "please do not deploy and go ahead and merge this", "deploy it whether tim likes it or not"],
+      "expectedParentIntent": "negated consequential language must classify as restriction, not request",
+      "status": "REGRESSION_LOCKED",
+      "detail": "3 real bugs found across 3 independent-verification rounds in chat-responder.mjs's TIM_REQUIRED negation logic (bare 'and' not a clause boundary; a resulting false-positive on inquiry openers; 'whether...or not'/'no matter' idiom unawareness). Fixed pre-mission; CASE-04 above found the SAME bug class had never been applied to the separate, real-execution-triggering adoption classifier.",
+      "regressionTestFile": "test/chat-responder.test.mjs (BUG-08 comment block, ~line 153+)"
+    },
+    {
+      "caseId": "CASE-05",
+      "source": "Mission's own required list, item 5/6 -- referential continuity",
+      "userTurn": ["the two TSF ones", "the stalled one", "the UI one", "both of those", "leave the NWR one alone"],
+      "expectedParentIntent": "resolves the TARGET(S) from prior conversational referents; never invents an action not present in the current turn",
+      "status": "REGRESSION_LOCKED",
+      "detail": "domain/command-referent-resolution.mjs, real and tested: 'the stalled one' resolves only the FAILED_REQUIRES_ATTENTION item; 'those two' against a 4-item prior turn is honestly ambiguous, never guessed; 'the two TSF ones' matches both real TSF-labeled items only when the count genuinely agrees; a mismatched count is honestly ambiguous rather than silently truncated.",
+      "regressionTestFile": "test/command-referent-resolution.test.mjs"
+    },
+    {
+      "caseId": "CASE-06",
+      "source": "Mission's own required list, item 7 -- quantified/pause project targeting",
+      "userTurn": "pause everything except X (with a stale prior turn referencing a DIFFERENT project Y)",
+      "expectedParentIntent": "must pause every real project except X; must NEVER silently pause the stale back-referenced project Y while claiming success",
+      "status": "REGRESSION_LOCKED",
+      "rootCause": "Phase 7 dogfood finding (command-responder.mjs comment, ~line 574): 'pause everything except X' used to silently fall through to the back-reference resolver, pausing only the stale, unrelated, earlier-referenced project while still claiming success.",
+      "regressionTestFile": "test/command-responder.test.mjs (~line 552-562)"
+    },
+    {
+      "caseId": "CASE-07",
+      "source": "Mission's own required list, item 8 -- NWR external-AI hold",
+      "userTurn": "NWR is being handled by another AI, leave it alone. Nytheria looks good, adopt that run and keep going overnight. EasyLife needs serious work.",
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "expectedChildActions": [
+        { "project": "niners-war-room", "intent": "EXTERNAL_WORK_HOLD" },
+        { "project": "worldforge (Nytheria alias)", "intent": "ADOPT_CANDIDATE_REPORT" },
+        { "project": "easylifehq-github-io", "intent": "START_KEEP_GOING or similar" }
+      ],
+      "status": "REGRESSION_LOCKED",
+      "detail": "domain/project-execution-hold.mjs (the durable HOLD primitive) + domain/command-multi-action-decomposition.mjs's EXTERNAL_WORK_HOLD intent, matching 'is being handled by another/a different ai/agent/process' and 'leave X alone'. This is the mission's own literal example, baked into fixtures verbatim.",
+      "regressionTestFile": "test/command-multi-action-bridge.test.mjs, test/command-multi-action-decomposition.test.mjs"
+    },
+    {
+      "caseId": "CASE-08",
+      "source": "Mission's own required list, item 9 -- explicit owner adoption via Command",
+      "userTurn": ["adopt the Nytheria run", "accept that verified candidate", "the WorldForge one looks good, adopt it", "adopt both of those"],
+      "expectedParentIntent": "ADOPTION",
+      "expectedAuthorityClass": "EXPLICIT_OWNER_ACTION",
+      "expectedSideEffects": ["real executeCommandAdoption call, after full revalidation"],
+      "status": "REGRESSION_LOCKED",
+      "detail": "Now hardened further by CASE-04's negation fix on the same underlying classifyAdoptionCommandIntent function.",
+      "regressionTestFile": "test/command-adoption-execution.test.mjs, test/command-adoption-command-bridge.test.mjs"
+    },
+    {
+      "caseId": "CASE-09",
+      "source": "Prior TSF Software Mission Routing / Project Planner Hotfix V1 (this engagement, immediately preceding mission)",
+      "userTurn": "a long software/product-engineering mission containing research/data subtasks, e.g. containing the literal fragments 'to Codex;' and 'mission'",
+      "expectedParentIntent": "SOFTWARE_PRODUCT_ENGINEERING",
+      "forbiddenSideEffects": ["Dataset Research mission creation from an isolated fragment"],
+      "status": "REGRESSION_LOCKED",
+      "fixSha": "6c7cbad076b01831e082e964ae946e70aeae7410",
+      "regressionTestFile": "test/parent-mission-intent-classification.test.mjs, test/tsf-command-planner-routing-golden-path-eval.test.mjs, test/http-chat-software-mission-routing.test.mjs"
+    },
+    {
+      "caseId": "CASE-10",
+      "source": "Prior mission (same as CASE-09) -- long-input truncation",
+      "userTurn": "a real long-form (16KB-250KB+) mission directive",
+      "expectedResponseSemantics": "The complete raw directive must survive, untruncated, as the durable missionSpec on the created run -- never mutilated before classification/dispatch.",
+      "status": "REGRESSION_LOCKED",
+      "fixSha": "6c7cbad076b01831e082e964ae946e70aeae7410",
+      "regressionTestFile": "test/chat-dispatch-mission-specification.test.mjs"
+    },
+    {
+      "caseId": "BUG-06",
+      "source": "tsf/programs/tsf-operator-stabilization-v1/bug-ledger.json",
+      "userTurn": "the same chat phrasing ('go ahead' etc.) sent twice for the same project",
+      "expectedResponseSemantics": "Must distinguish 'Started a new mission' from 'Added to the mission already running' -- never a generic 'Dispatched...' that hides which happened.",
+      "status": "REGRESSION_LOCKED",
+      "regressionTestFile": "test/chat-dispatch-bridge.test.mjs, test/http-chat-dispatch.test.mjs, test/http-command.test.mjs"
+    },
+    {
+      "caseId": "CASE-11",
+      "source": "Mission's own required list -- durable state queries",
+      "userTurn": ["what's running?", "what needs me?", "what finished?", "why isn't EasyLife running?", "will it resume itself?"],
+      "expectedParentIntent": "STATUS_QUERY family (STATUS/NEXT_ACTION/FINISHED/NEEDS_YOU_QUERY)",
+      "expectedSideEffects": [],
+      "status": "REGRESSION_LOCKED",
+      "detail": "chat-responder.mjs STATUS/FINISHED/NEXT_ACTION intents + command-responder.mjs NEEDS_YOU_QUERY; multiple prior dogfood-finding fixes (Phase 7 apostrophe/synonym gaps) already regression-locked.",
+      "regressionTestFile": "test/chat-responder.test.mjs, test/command-responder.test.mjs"
+    }
+  ]
+}

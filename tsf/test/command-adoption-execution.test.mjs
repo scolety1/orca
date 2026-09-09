@@ -113,6 +113,70 @@ for (const message of ['should I adopt the Nytheria run?', 'not sure whether to 
   })
 }
 
+// FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
+// Exhaustive Gauntlet V1): "Do not adopt this candidate." used to classify
+// EXECUTE_ADOPTION -- the gate that triggers REAL adoption execution never
+// checked whether the adoption verb was actually negated. NEGATED_ACTION_
+// CAN_EXECUTE must be NO.
+for (const message of [
+  "Don't adopt it yet.",
+  'Do not adopt this candidate.',
+  'Never adopt the stalled one.',
+  "Don't approve it.",
+  'avoid adopting it for now',
+  "we previously rejected adopting the stalled one -- don't reconsider that",
+  "Won't adopt that one, it's not ready."
+]) {
+  test(`classifyAdoptionCommandIntent: negated adoption verb NEVER executes -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'NOT_ADOPTION')
+  })
+}
+
+// Adversarial-review findings (2nd pass): the first negation pattern only
+// recognized a hand-picked set of two-word negators within a tight 0-4
+// word gap -- these real, live-reproducible refusals slipped through
+// entirely (bare "not", "hold off (on)"/"pass on" with no negator word at
+// all, and gaps wider than 4 words/tokens with intervening punctuation).
+for (const message of [
+  'not ready to adopt yet',
+  "I'd rather not adopt this one",
+  "we're not adopting this one",
+  'not adopting this one',
+  'not going to adopt this',
+  "let's not adopt this one",
+  'hold off on adopting',
+  'hold off on adopting it',
+  'pass on adopting this one',
+  'do not, under any circumstances right now, adopt this candidate',
+  'please, under absolutely no circumstances whatsoever right now today, adopt this candidate'
+]) {
+  test(`classifyAdoptionCommandIntent: broadened negation vocabulary/gap -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'NOT_ADOPTION')
+  })
+}
+
+// The broadened bare-"not" negation trigger must not swallow "not sure" --
+// that's HEDGE_PATTERN's own, already-tested uncertainty marker (AMBIGUOUS,
+// not a flat refusal) and must keep classifying that way.
+test('classifyAdoptionCommandIntent: "not sure" stays a HEDGE (AMBIGUOUS), not swallowed by the broadened bare-"not" negation trigger', () => {
+  assert.equal(classifyAdoptionCommandIntent('not sure whether to adopt that one'), 'AMBIGUOUS')
+})
+
+// The "never mind" idiom ("disregard that") must not itself be misread as a
+// negation of a genuine adoption request that follows later in the same
+// message.
+test('classifyAdoptionCommandIntent: "never mind" is an idiom, not a negation -- a genuine adoption request after it still executes', () => {
+  assert.equal(classifyAdoptionCommandIntent('Never mind my earlier hesitation, adopt it now.'), 'EXECUTE_ADOPTION')
+})
+
+// Mission's own required positive examples must survive the negation fix
+// completely unchanged.
+for (const message of ['adopt the Nytheria run', 'accept that verified candidate', 'the WorldForge one looks good, adopt it', 'adopt both of those']) {
+  test(`classifyAdoptionCommandIntent: negation fix does not regress a genuine explicit request -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'EXECUTE_ADOPTION')
+  })
+}
+
 // resolveCandidateWorktreeFromRun
 test('resolveCandidateWorktreeFromRun: no run -> null', () => {
   assert.equal(resolveCandidateWorktreeFromRun(null), null)

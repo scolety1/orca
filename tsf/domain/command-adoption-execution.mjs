@@ -167,12 +167,57 @@ export function revalidateCommandAdoptionCandidate({
 const ADOPTION_VERB_PATTERN = /\b(adopt(ed|ing|s)?|accept(ed|ing|s)?|approve[sd]?)\b/i
 const HEDGE_PATTERN = /\b(maybe|perhaps|not sure|unsure|should i|should we|might|could we|possibly|i think|i guess|wonder(ing)?|what if)\b/i
 const TRAILING_QUESTION_PATTERN = /\?\s*$/
+// FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
+// Exhaustive Gauntlet V1): "Do not adopt this candidate." used to classify
+// EXECUTE_ADOPTION -- the negation word and the adoption verb both matched,
+// but nothing checked whether the verb was actually NEGATED. This is the
+// gate that triggers REAL adoption execution (executeCommandAdoption), so a
+// false positive here is a real destructive-action risk, not a cosmetic
+// wording bug. "never mind" is an idiom ("disregard that"), not a negation
+// of whatever verb follows minutes later -- excluded the same way
+// chat-responder.mjs's own IDIOMATIC_NON_NEGATION excludes "or not"/"no
+// matter" from ITS negation check, so it can't itself become a false
+// NOT_ADOPTION on a genuine "never mind, adopt it anyway" reversal.
+const IDIOMATIC_NON_NEGATION = /\bnever\s+mind\b/gi
+// Adversarial-review finding (2nd pass): the first version of this pattern
+// only recognized a hand-picked set of two-word negators within a tight
+// 0-4 word gap of the verb -- real, live-reproducible refusals it missed
+// entirely: bare "not" ("not ready to adopt yet", "we're not adopting
+// this one"), "hold off on"/"pass on" (no negator word at all), and gaps
+// wider than 4 words ("do not, under any circumstances right now, adopt
+// this candidate"). Bare "not"/"no" is deliberately included here even
+// though it's broad -- chat-responder.mjs's own PROHIBITION_MARKERS
+// (hardened across 3 independent-verification rounds, BUG-08 in
+// bug-ledger.json) already proves this exact tradeoff is the right one in
+// this codebase for a consequential-action gate: broad-but-safe (refusing
+// to execute) beats narrow-but-dangerous (a false EXECUTE_ADOPTION). The
+// `(?!\s+sure\b)` exclusion keeps "not sure whether to adopt" correctly
+// falling through to HEDGE_PATTERN's own AMBIGUOUS classification (an
+// uncertainty marker, not a refusal) instead of being swallowed here --
+// the one real collision between the broadened word list and this
+// function's existing, already-tested HEDGE_PATTERN vocabulary.
+// Character-bounded gap (not word-count-bounded): a word-count gap
+// (`(?:\s+\S+){0,N}`) requires a literal space before every gap token,
+// which breaks the moment punctuation sits directly against the negation
+// word ("do not, under any circumstances... adopt" -- the comma right
+// after "not" has no leading space). A plain bounded character span
+// tolerates commas/extra whitespace/newlines the same way real typed
+// English does.
+const ADOPTION_NEGATION_PATTERN =
+  /\b(?:do not|don'?t|never|won'?t|refuse(?:d|s)?\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\s+on)?|pass on|not(?!\s+sure\b)|no|isn'?t|aren'?t|shouldn'?t|wouldn'?t|couldn'?t|can'?t|cannot)\b[\s\S]{0,60}?\b(?:adopt|accept|approve)\w*\b/i
 
 export function classifyAdoptionCommandIntent(message) {
   const text = String(message ?? '')
   if (!ADOPTION_VERB_PATTERN.test(text)) {
     // No adoption verb at all -- "looks good"/"continue"/"what's ready?"/
     // "probably fine" all land here, honestly not this engine's concern.
+    return 'NOT_ADOPTION'
+  }
+  const withoutIdioms = text.replace(IDIOMATIC_NON_NEGATION, ' ')
+  if (ADOPTION_NEGATION_PATTERN.test(withoutIdioms)) {
+    // A clearly negated adoption verb is not "ambiguous" -- the owner is
+    // being perfectly clear that they do NOT want adoption executed.
+    // Report-only, same as no adoption verb being present at all.
     return 'NOT_ADOPTION'
   }
   if (HEDGE_PATTERN.test(text) || TRAILING_QUESTION_PATTERN.test(text)) {

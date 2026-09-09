@@ -476,3 +476,82 @@ test('a genuine deploy/adopt/update QUESTION is never treated as TIM_REQUIRED au
   }
   assert.equal(classifyDecision('deploy WorldForge', classifyIntent('deploy WorldForge')), 'TIM_REQUIRED', 'a genuine bare directive must still require Tim')
 })
+
+// FIXED (real, live-reproduced -- Full Conversational Control Plane
+// Exhaustive Gauntlet V1): "awesome! this is so great!" (and other bare
+// acknowledgement/praise) right after an adoption-readiness discussion must
+// NEVER be treated as though a consequential decision was made. CORE
+// INVARIANT: context may resolve WHAT is being discussed; the CURRENT TURN
+// must supply the verb before any action is implied.
+test('Phase 4 acknowledgement gauntlet: bare praise/acknowledgement classifies ACKNOWLEDGEMENT, never a consequential intent', () => {
+  const cases = [
+    'awesome', 'awesome!', 'awesome!!!', 'this is great', 'this is so great', 'great',
+    'looks great', 'looks good', 'nice', 'perfect', 'sweet', 'cool', 'love it', 'hell yeah',
+    'sick', 'exactly', "that's exactly what I wanted", 'thank you', 'thanks', 'cool thanks',
+    '👍', '🔥', 'Landing Page looks awesome', 'Nytheria looks good'
+  ]
+  for (const message of cases) {
+    assert.equal(classifyIntent(message), 'ACKNOWLEDGEMENT', `expected ACKNOWLEDGEMENT for: "${message}"`)
+    assert.notEqual(classifyDecision(message, classifyIntent(message)), 'TIM_REQUIRED', `must never require Tim for pure acknowledgement: "${message}"`)
+  }
+})
+
+// Adversarial-review findings (2nd pass): emoji directly adjacent to a
+// word (no punctuation between them) stayed one un-matchable segment and
+// fell through to GENERAL -- the exact no-guardrail live-LLM path this fix
+// exists to close, for an extremely natural way to type acknowledgement.
+// Also: "amazing" was recognized inside a praise-verb phrase but not as a
+// bare word, and ":" was not a segment delimiter.
+test('Phase 4 acknowledgement gauntlet: emoji-adjacent-to-word, bare "amazing", and colon-delimited segments all classify ACKNOWLEDGEMENT', () => {
+  const cases = ['👍 thanks!', 'thanks 👍', '🔥🔥 awesome', 'amazing', 'great: thanks']
+  for (const message of cases) {
+    assert.equal(classifyIntent(message), 'ACKNOWLEDGEMENT', `expected ACKNOWLEDGEMENT for: "${message}"`)
+  }
+})
+
+test('Phase 4 acknowledgement gauntlet: explicit-action counterparts are NOT swallowed by acknowledgement -- they still gate correctly', () => {
+  const messages = ['awesome, adopt it', 'looks good — merge it', 'perfect, keep going', 'great, deploy it']
+  for (const message of messages) {
+    assert.notEqual(classifyIntent(message), 'ACKNOWLEDGEMENT', `must not classify as bare acknowledgement: "${message}"`)
+  }
+  assert.equal(classifyIntent('awesome, adopt it'), 'ADOPTION')
+  // The consequential ones must still require Tim regardless of intent id --
+  // decisionClass is computed independently via isConsequentialDirective.
+  assert.equal(classifyDecision('looks good — merge it', classifyIntent('looks good — merge it')), 'TIM_REQUIRED')
+  assert.equal(classifyDecision('great, deploy it', classifyIntent('great, deploy it')), 'TIM_REQUIRED')
+})
+
+test('respondAcknowledgement: the response text NEVER claims an action was taken, and grounds in real candidate/mission state', () => {
+  const project = loadRealPilotProjects()[0]
+  const result = respond(project, 'awesome! this is so great!')
+  assert.equal(result.intent, 'ACKNOWLEDGEMENT')
+  assert.match(result.text, /no action was taken/i)
+  // Truthfully DESCRIBING pre-existing state (this real fixture project
+  // genuinely is ADOPTED) is correct and desired -- what must never appear
+  // is a first-person CLAIM that the current turn caused an action.
+  assert.doesNotMatch(result.text, /\bI(?:'ve| have)?\s+(?:just\s+)?(?:adopted|merged|pushed|deployed|published)\b/i)
+})
+
+// The EXACT reported scenario: "Landing Page / candidate / adoption
+// discussion. User: 'awesome! this is so great!'" -- a real READY_FOR_
+// ADOPTION candidate, then bare enthusiasm. Must explicitly say no action
+// was taken and name the real, pending decision, never imply it was made.
+test('respondAcknowledgement on a READY_FOR_ADOPTION project: explicitly names the pending decision, never implies it was made', () => {
+  const base = loadRealPilotProjects()[0]
+  const project = { ...base, displayName: 'Landing Page', candidate: { ...base.candidate, state: 'READY_FOR_ADOPTION' } }
+  const result = respond(project, 'awesome! this is so great!')
+  assert.equal(result.intent, 'ACKNOWLEDGEMENT')
+  assert.match(result.text, /no action was taken/i)
+  assert.match(result.text, /READY_FOR_ADOPTION/)
+  assert.match(result.text, /adopt it/i)
+  assert.doesNotMatch(result.text, /\bI(?:'ve| have)?\s+(?:just\s+)?adopted\b/i)
+})
+
+test('respondAcknowledgement is a real, zero-LLM-call grounded answer (deterministic, not dependent on any live provider)', () => {
+  const project = loadRealPilotProjects()[0]
+  // Called twice with the same input -- a live LLM call could vary; this
+  // must be byte-identical, proving it is pure/deterministic.
+  const first = respond(project, 'awesome!').text
+  const second = respond(project, 'awesome!').text
+  assert.equal(first, second)
+})

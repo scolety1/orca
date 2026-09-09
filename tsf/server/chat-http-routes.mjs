@@ -350,7 +350,16 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
     // still say "the live Keep Going run" only when that's honestly
     // true, and the more generic "recorded project state" otherwise.
     const feedbackWorthy = ['FEEDBACK_BUG', 'CRITIQUE'].includes(intent)
-    const groundedResponseWorthy = statusWorthy || feedbackWorthy
+    // FIXED (Full Conversational Control Plane Exhaustive Gauntlet V1): a
+    // bare acknowledgement/praise turn must NEVER reach the live, free-text
+    // LLM fallback below -- that's the one path with no deterministic
+    // guardrail against the model's own text narrating or implying a
+    // consequential action (adopt/push/merge/deploy) was taken from mere
+    // enthusiasm. respondAcknowledgement (chat-responder.mjs) is a real,
+    // grounded, zero-LLM-call answer; routed the same way statusWorthy/
+    // feedbackWorthy already are.
+    const acknowledgementWorthy = intent === 'ACKNOWLEDGEMENT'
+    const groundedResponseWorthy = statusWorthy || feedbackWorthy || acknowledgementWorthy
 
     // Project detail's "Research for this project": the SAME real
     // research bridge Command's global scope already uses, just given

@@ -164,6 +164,62 @@ function isConsequentialDirective(message) {
   return false
 }
 
+// See the ACKNOWLEDGEMENT entry in INTENTS below for the full rationale.
+// Segment-based rather than one combined regex, since a real acknowledgement
+// message often chains multiple shapes ("awesome! this is so great!" is a
+// bare word THEN a praise-verb phrase) -- a single anchored alternation
+// cannot express "the whole string is made of N independently-matching
+// pieces" without this kind of decomposition.
+// Adversarial-review finding: "amazing" was only recognized inside the
+// praise-verb phrase ("this is amazing"), not as a bare word ("amazing" on
+// its own fell through to GENERAL) -- the two word lists had silently
+// diverged. Kept in sync now.
+const ACK_WORD = "(?:awesome|great|perfect|nice|sweet|cool|sick|exactly|amazing|love it|hell yeah|thanks?|thank you|sounds good)"
+const ACK_BARE_PATTERN = new RegExp(`^${ACK_WORD}(?:\\s+${ACK_WORD})*$`, 'i')
+const ACK_EXACT_PHRASE_PATTERN = /^that'?s exactly what i (?:wanted|was looking for|needed)$/i
+const ACK_PRAISE_VERB_PATTERN = /^[\w' -]{0,40}?\b(?:looks (?:good|great|awesome|perfect)|is (?:so )?(?:great|awesome|perfect|amazing))\b$/i
+// Real emoji this fires on, kept separate from ACK_EMOJI_STRIP_PATTERN below
+// (that one is used to remove emoji from a segment BEFORE word-matching, so
+// it must match a bare emoji character, not require the whole segment).
+const ACK_EMOJI_PATTERN = /^[👍🔥]+$/u
+// Adversarial-review finding: "👍 thanks!" (emoji directly adjacent to a
+// word, no punctuation between them) stayed one un-matchable segment --
+// neither the bare-word list nor the whole-segment emoji pattern covers an
+// emoji+word mix, so it fell through to GENERAL (the exact no-guardrail
+// live-LLM path this fix exists to close) for an extremely natural way to
+// type acknowledgement. Emoji are stripped from each segment before the
+// word-shaped checks run, so "👍 thanks" and "thanks 👍" both reduce to
+// "thanks" and match ACK_BARE_PATTERN the same way a punctuation-separated
+// "👍! thanks!" already did.
+const ACK_EMOJI_STRIP_PATTERN = /[👍🔥]/gu
+
+function isAcknowledgementSegment(segment) {
+  const withoutEmoji = segment.replace(ACK_EMOJI_STRIP_PATTERN, ' ').trim()
+  if (!withoutEmoji) {
+    // The segment WAS only emoji (already stripped to nothing) -- confirm
+    // against the original so an empty-after-strip segment still counts.
+    return ACK_EMOJI_PATTERN.test(segment)
+  }
+  return ACK_BARE_PATTERN.test(withoutEmoji) || ACK_EXACT_PHRASE_PATTERN.test(withoutEmoji) || ACK_PRAISE_VERB_PATTERN.test(withoutEmoji)
+}
+
+// Duck-typed like a RegExp (classifyIntent below only ever calls
+// `pattern.test(message)`) -- a plain object is clearer here than forcing
+// this decomposition through RegExp.prototype.test's single-string contract.
+const ACKNOWLEDGEMENT_PATTERN = {
+  test(message) {
+    // Adversarial-review finding: ":" was not a segment delimiter
+    // ("great; thanks" matched, "great: thanks" didn't) -- added alongside
+    // the existing sentence-punctuation set.
+    const segments = String(message)
+      .split(/[!.,;:]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (segments.length === 0) return false
+    return segments.every(isAcknowledgementSegment)
+  }
+}
+
 const INTENTS = [
   {
     id: 'STATUS',
@@ -293,6 +349,41 @@ const INTENTS = [
   {
     id: 'FEEDBACK_BUG',
     pattern: /\b(bug|broken|doesn['’]?t work|not working|jumps? around|regression|issue)\b/i
+  },
+  // FIXED (real, live-reproduced -- Full Conversational Control Plane
+  // Exhaustive Gauntlet V1): plain enthusiasm/acknowledgement ("awesome!
+  // this is so great!") right after an adoption-readiness discussion used
+  // to fall all the way through to GENERAL, which chat-http-routes.mjs
+  // routes to a live, free-text LLM call with no deterministic guardrail of
+  // its own -- a real risk that the model's own text narrates or implies a
+  // consequential action (adopt/push/merge/deploy) was taken from mere
+  // enthusiasm. CORE INVARIANT: context may resolve WHAT is being discussed,
+  // but the CURRENT TURN must supply the verb before any action is implied.
+  // Checked LAST, after every intent above with its own real action verb
+  // (ADOPTION/DISPATCH_REQUEST/FIX_REQUEST/RESEARCH/etc.) -- "awesome,
+  // adopt it" still matches ADOPTION first (checked earlier in this same
+  // list) and is completely unaffected; only a message with NO action verb
+  // anywhere reaches this fallback. The response itself (respondAcknowledgement
+  // below) is a grounded, deterministic, zero-LLM-call answer -- this
+  // removes the hallucination risk structurally, not just via a prompt
+  // instruction the model could still ignore.
+  {
+    id: 'ACKNOWLEDGEMENT',
+    // Segment-based, not one giant regex (real messages chain multiple
+    // acknowledgement shapes -- "awesome! this is so great!" is a bare word
+    // THEN a praise-verb phrase). Splits on sentence punctuation and
+    // requires EVERY resulting segment to independently match one of:
+    // (1) one or more bare acknowledgement words, space-separated
+    // ("awesome", "cool thanks"); (2) an exact fixed phrase ("that's
+    // exactly what I wanted"); (3) an optional short leading subject (a
+    // project/candidate name, up to 40 chars, matched lazily so it never
+    // eats the verb) followed by a praise-verb phrase ("Landing Page looks
+    // awesome", "this is so great"); (4) thumbs-up/fire emoji alone. Every
+    // segment must match -- a message that ALSO carries real content
+    // anywhere (e.g. "awesome, adopt it", "cool thanks, but fix the login
+    // bug too") never matches here, exactly the CORE INVARIANT:
+    // acknowledging does not, by itself, ever supply a verb.
+    pattern: ACKNOWLEDGEMENT_PATTERN
   }
 ]
 
@@ -493,6 +584,25 @@ function respondAdoption(project) {
   return `Candidate \`${(project.candidate.head ?? '').slice(0, 10)}\` is **${project.candidate.state}**. ${project.candidate.implementationSummary ?? ''}`.trim()
 }
 
+// FIXED (real, live-reproduced -- Full Conversational Control Plane
+// Exhaustive Gauntlet V1): grounded, deterministic, zero-LLM-call answer
+// for a bare acknowledgement/praise turn -- NEVER claims any action was
+// taken, always restates real current state, and explicitly names what
+// phrase would authorize a real next step (mirrors respondAdoption's own
+// real-state grounding). This is what actually closes the "TSF responded
+// as though the user had made a consequential decision" bug: the response
+// text itself is now impossible to hallucinate into a false confirmation,
+// because it's never generated by a live model at all for this intent.
+function respondAcknowledgement(project) {
+  if (project.candidate?.state === 'READY_FOR_ADOPTION') {
+    return `Glad to hear it! No action was taken -- the candidate for **${project.displayName}** is still **READY_FOR_ADOPTION**, waiting on your decision. Say "adopt it" (or "adopt the candidate") when you want me to move forward with it.`
+  }
+  if (project.mission.state === 'BLOCKED' || project.mission.state === 'BLOCKED_ARCHITECTURAL_CONFLICT') {
+    return `Thanks! No action was taken -- **${project.displayName}** is still **blocked**: ${project.mission.blockedReason ?? 'see Health for details'}.`
+  }
+  return `Thanks! No action was taken -- **${project.displayName}** is currently **${project.mission.state}**. Tell me explicitly what you'd like next (e.g. "adopt it", "fix X", "keep going") and I'll act on that.`
+}
+
 function respondGeneral(project) {
   return `I have recorded state for **${project.displayName}** (mission ${project.mission.state}, health ${project.health.status}) but that phrasing didn't match a specific question I can ground an answer in. Try asking about status, whether it's finished, what's next, why a choice was made, or its health.`
 }
@@ -531,6 +641,7 @@ const RESPONDERS = {
   ADOPTION: respondAdoption,
   QUESTION: respondQuestion,
   FEEDBACK_BUG: respondFeedback,
+  ACKNOWLEDGEMENT: respondAcknowledgement,
   GENERAL: respondGeneral
 }
 
