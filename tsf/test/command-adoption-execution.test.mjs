@@ -177,6 +177,50 @@ for (const message of ['adopt the Nytheria run', 'accept that verified candidate
   })
 }
 
+// Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
+// V1, Batch 5, MOST SEVERE finding this mission): the negator list never
+// generalized the "-n't" contraction family, so every one of these real,
+// clearly-declined adoption requests wrongly classified EXECUTE_ADOPTION --
+// feeding executeCommandAdoption, a real branch-advancing operation.
+for (const message of [
+  "I didn't want to adopt this candidate.",
+  "We haven't decided to adopt this one.",
+  "This project doesn't need to adopt that run.",
+  "She hasn't approved adopting this candidate.",
+  "It wasn't approved for adoption.",
+  "They weren't going to adopt that run.",
+  "You mustn't adopt this candidate.",
+  "You needn't adopt this one."
+]) {
+  test(`classifyAdoptionCommandIntent: the full "-n't" contraction family is recognized as negation, never EXECUTE_ADOPTION -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'NOT_ADOPTION')
+  })
+}
+
+// Adversarial-review finding (BLOCKING, real, verified): a curly/"smart"
+// apostrophe (U+2019 -- the macOS/iOS/Word autocorrect default) reopened
+// this exact P0 class even for the already-covered base "don't". Also
+// covers the archaic/dialectal forms found in the same review pass.
+for (const message of [
+  'I don’t want to adopt this candidate.',
+  'She hasn’t approved adopting this candidate.',
+  "You shan't adopt this candidate.",
+  "You oughtn't adopt this candidate.",
+  "You daren't adopt this candidate."
+]) {
+  test(`classifyAdoptionCommandIntent: curly apostrophes and archaic "-n't" forms are recognized as negation, never EXECUTE_ADOPTION -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'NOT_ADOPTION')
+  })
+}
+
+// Positive control: broadening to "ai" (for "ain't") must not falsely
+// negate genuine words that merely contain that substring.
+for (const word of ['paint', 'complaint', 'saint', 'maintain', 'acquaint']) {
+  test(`classifyAdoptionCommandIntent: the "ai" (ain't) broadening does not falsely match "${word}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(`please ${word} and adopt this candidate`), 'EXECUTE_ADOPTION')
+  })
+}
+
 // resolveCandidateWorktreeFromRun
 test('resolveCandidateWorktreeFromRun: no run -> null', () => {
   assert.equal(resolveCandidateWorktreeFromRun(null), null)

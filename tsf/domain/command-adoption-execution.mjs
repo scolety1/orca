@@ -217,8 +217,39 @@ const IDIOMATIC_NON_NEGATION = /\bnever\s+mind\b/gi
 // after "not" has no leading space). A plain bounded character span
 // tolerates commas/extra whitespace/newlines the same way real typed
 // English does.
-const ADOPTION_NEGATION_PATTERN =
-  /\b(?:do not|don'?t|never|won'?t|refuse(?:d|s)?\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\s+on)?|pass on|not(?!\s+sure\b)|no|isn'?t|aren'?t|shouldn'?t|wouldn'?t|couldn'?t|can'?t|cannot)\b[\s\S]{0,60}?\b(?:adopt|accept|approve)\w*\b/i
+//
+// Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
+// V1, Batch 5, MOST SEVERE finding this mission -- real, live-confirmed:
+// classifyAdoptionCommandIntent(...) returned EXECUTE_ADOPTION, feeding
+// executeCommandAdoption, a real branch-advancing operation): the negator
+// list only spelled out don't/isn't/aren't/shouldn't/wouldn't/couldn't by
+// hand and never generalized the "-n't" contraction family, so the equally
+// common doesn't/didn't/hasn't/haven't/hadn't/wasn't/weren't/mustn't/
+// mightn't/needn't/ain't forms were invisible to this pattern -- "I didn't
+// want to adopt this candidate.", "We haven't decided to adopt this one.",
+// "This project doesn't need to adopt that run.", and "She hasn't approved
+// adopting this candidate." all wrongly classified EXECUTE_ADOPTION. Fixed
+// by generalizing to every standard AUX+"n't" contraction instead of a
+// hand-picked subset (can't/cannot stay listed separately -- "can" takes a
+// single "n" before "'t", not the doubled "-n" every other auxiliary in
+// this family takes, so it doesn't fit the shared pattern).
+// Adversarial-review finding (BLOCKING, real, verified): the straight-quote-
+// only "n'?t" reopened this exact P0 class for the most common real-world
+// apostrophe of all -- the curly/"smart" quote (U+2019) every macOS/iOS/Word
+// default autocorrect produces -- even for the ALREADY-covered base "don't"
+// ("I don’t want to adopt this candidate." wrongly returned
+// EXECUTE_ADOPTION). server/chat-responder.mjs's own PROHIBITION_MARKERS
+// already tolerated both quote styles; this file and domain/command-multi-
+// action-decomposition.mjs's copy did not, an asymmetry this batch's own
+// stated goal ("one vocabulary" across all three checks) had missed. Also
+// adds the archaic/dialectal "-n't" forms found in the same review pass
+// (shan't = "sha"+"n't", not "shall"+"n't"; oughtn't; daren't; amn't).
+const NOT_CONTRACTION_SOURCE =
+  "(?:do|does|did|is|are|was|were|has|have|had|would|should|could|must|might|need|ai|sha|ought|dare|am)n['’]?t"
+const ADOPTION_NEGATION_PATTERN = new RegExp(
+  `\\b(?:do not|${NOT_CONTRACTION_SOURCE}|never|won['’]?t|refuse(?:d|s)?\\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\\s+on)?|pass on|not(?!\\s+sure\\b)|no|can['’]?t|cannot)\\b[\\s\\S]{0,60}?\\b(?:adopt|accept|approve)\\w*\\b`,
+  'i'
+)
 
 // Exported so domain/command-multi-action-decomposition.mjs's own
 // ADOPT_CANDIDATE_REPORT clause pattern can reuse this exact, hardened

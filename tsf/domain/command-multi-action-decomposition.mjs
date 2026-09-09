@@ -37,8 +37,27 @@ import { negatesAdoptionVerb, hasAdoptionVerb } from './command-adoption-executi
 // severe. Generalized here (not adoption-specific) since the negation
 // vocabulary/bounded-gap design is identical regardless of which verb it
 // guards.
+// Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
+// V1, Batch 5): the hand-picked negator list never generalized the
+// "-n't" contraction family beyond don't/isn't/aren't/shouldn't/wouldn't/
+// couldn't -- "niners-war-room doesn't need work." and "... didn't need
+// work." both wrongly fired the real, positive ASSESS_AND_UPGRADE intent
+// (a real planAndDispatchFromCommand dispatch via handleEntry), the exact
+// opposite of what was said. Same root cause and fix as domain/command-
+// adoption-execution.mjs's ADOPTION_NEGATION_PATTERN (found in the same
+// fuzzing pass) -- see that file's own comment for why can't/cannot stay
+// listed separately from the shared "-n't" family.
+// Adversarial-review finding (BLOCKING, real, verified -- same review pass
+// as domain/command-adoption-execution.mjs's own copy of this fix, see that
+// file's header for the full repro/rationale): straight-quote-only "n'?t"
+// reopened this exact P0 class for the curly/"smart" apostrophe (U+2019)
+// every macOS/iOS/Word autocorrect produces by default, even for the
+// already-covered base "don't". Also adds the archaic/dialectal forms
+// (shan't/oughtn't/daren't/amn't) found in the same pass.
+const NOT_CONTRACTION_SOURCE =
+  "(?:do|does|did|is|are|was|were|has|have|had|would|should|could|must|might|need|ai|sha|ought|dare|am)n['’]?t"
 const NEGATION_TRIGGER_SOURCE =
-  "(?:do not|don'?t|never|won'?t|refuse(?:d|s)?\\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\\s+on)?|pass on|not(?!\\s+sure\\b)|no|isn'?t|aren'?t|shouldn'?t|wouldn'?t|couldn'?t|can'?t|cannot)"
+  `(?:do not|${NOT_CONTRACTION_SOURCE}|never|won['’]?t|refuse(?:d|s)?\\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\\s+on)?|pass on|not(?!\\s+sure\\b)|no|can['’]?t|cannot)`
 const NEVER_MIND_IDIOM = /\bnever\s+mind\b/gi
 
 // `verbSources`: an array of regex SOURCE strings (not compiled patterns)

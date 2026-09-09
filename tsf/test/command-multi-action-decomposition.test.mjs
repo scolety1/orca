@@ -227,3 +227,48 @@ for (const message of [
     assert.ok(forNwr.some((e) => e.intent === 'EXTERNAL_WORK_HOLD'))
   })
 }
+
+// Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
+// V1, Batch 5): the negator list never generalized the "-n't" contraction
+// family beyond don't/isn't/aren't/shouldn't/wouldn't/couldn't -- these
+// real, clearly-declined requests wrongly fired the real positive intent
+// (a real planAndDispatchFromCommand dispatch via handleEntry for
+// ASSESS_AND_UPGRADE/START_KEEP_GOING, or a real durable hold write for
+// EXTERNAL_WORK_HOLD), the exact opposite of what was said.
+for (const message of [
+  "niners-war-room doesn't need work. EasyLifeHQ needs serious work.",
+  "niners-war-room didn't need work. EasyLifeHQ needs serious work.",
+  "niners-war-room isn't keeping going overnight. EasyLifeHQ needs serious work.",
+  "niners-war-room doesn't hold off. EasyLifeHQ needs serious work."
+]) {
+  test(`the "-n't" contraction family is recognized as negation, never a real positive action -- "${message}"`, () => {
+    const entries = decomposeMultiAction(message, PROJECTS, aliases)
+    const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+    assert.ok(forNwr.some((e) => e.intent === 'MULTI_ACTION_DECLINED'))
+    assert.ok(forNwr.every((e) => !['ASSESS_AND_UPGRADE', 'START_KEEP_GOING', 'EXTERNAL_WORK_HOLD'].includes(e.intent)))
+  })
+}
+
+// Positive control: genuine present-tense "needs work" phrasing (no
+// negation at all) must survive the contraction-family generalization
+// completely unchanged.
+test('the negation-vocabulary generalization does not regress a genuine, unnegated request', () => {
+  const entries = decomposeMultiAction('niners-war-room needs serious work. EasyLifeHQ needs serious work.', PROJECTS, aliases)
+  assert.ok(entries.filter((e) => e.target === 'niners-war-room').every((e) => e.intent === 'ASSESS_AND_UPGRADE'))
+})
+
+// Adversarial-review finding (BLOCKING, real, verified): a curly/"smart"
+// apostrophe (U+2019) reopened this exact P0 class even for the already-
+// covered base "doesn't". Also covers the archaic "shan't" form found in
+// the same review pass.
+for (const message of [
+  "niners-war-room doesn\u2019t need work. EasyLifeHQ needs serious work.",
+  "niners-war-room shan't need work. EasyLifeHQ needs serious work."
+]) {
+  test(`curly apostrophes and archaic "-n't" forms are recognized as negation, never a real positive action -- "${message}"`, () => {
+    const entries = decomposeMultiAction(message, PROJECTS, aliases)
+    const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+    assert.ok(forNwr.some((e) => e.intent === 'MULTI_ACTION_DECLINED'))
+    assert.ok(forNwr.every((e) => !['ASSESS_AND_UPGRADE', 'START_KEEP_GOING', 'EXTERNAL_WORK_HOLD'].includes(e.intent)))
+  })
+}

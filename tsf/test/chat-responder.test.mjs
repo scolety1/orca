@@ -167,6 +167,22 @@ test('a negation and a chained "go ahead and X" directive joined by "and" is sti
   assert.equal(classifyDecision(message, classifyIntent(message)), 'TIM_REQUIRED')
 })
 
+// Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
+// V1, Batch 5): PROHIBITION_MARKERS never generalized the "-n't"
+// contraction family (doesn't/haven't/etc), the same gap found in
+// domain/command-adoption-execution.mjs and domain/command-multi-action-
+// decomposition.mjs's own negation checks. Lower severity here -- a missed
+// negator here only biases toward the SAFE direction (TIM_REQUIRED, never
+// a false auto-execute) -- fixed anyway for defense-in-depth.
+test("the \"-n't\" contraction family is recognized as a genuine prohibition, not just the hand-picked subset", () => {
+  assert.equal(classifyDecision("This doesn't push to production.", classifyIntent("This doesn't push to production.")), 'AUTO_DECIDE')
+  assert.equal(classifyDecision('We haven\'t deployed this yet.', classifyIntent('We haven\'t deployed this yet.')), 'AUTO_DECIDE')
+})
+
+test('the "-n\'t" contraction generalization does not regress a genuine, unnegated directive', () => {
+  assert.equal(classifyDecision('push this now', classifyIntent('push this now')), 'TIM_REQUIRED')
+})
+
 test('a bare "and" join between two ordinary (non-consequential) actions is unaffected', () => {
   const message = 'test and verify the fix'
   assert.equal(classifyDecision(message, classifyIntent(message)), 'AUTO_DECIDE')
@@ -554,4 +570,14 @@ test('respondAcknowledgement is a real, zero-LLM-call grounded answer (determini
   const first = respond(project, 'awesome!').text
   const second = respond(project, 'awesome!').text
   assert.equal(first, second)
+})
+
+// Adversarial-review finding (BLOCKING sibling fix, real, verified): while
+// this file's own PROHIBITION_MARKERS already tolerated curly apostrophes
+// for won't/can't, its shared NOT_CONTRACTION_SOURCE vocabulary was still
+// missing the archaic forms found in the same review pass as the curly-
+// apostrophe gap in the other two negation checks -- fixed there for
+// consistency.
+test("the archaic \"shan't\" form is recognized as a genuine prohibition", () => {
+  assert.equal(classifyDecision("You shan't push this.", classifyIntent("You shan't push this.")), 'AUTO_DECIDE')
 })

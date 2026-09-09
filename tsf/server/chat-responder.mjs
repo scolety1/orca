@@ -56,8 +56,29 @@ const TIM_REQUIRED_PATTERNS = [
 const BARE_OPENER = /^\s*(?:is|are|was|would|will|should|could|can|what|why|when|whether|how)\b/i
 const TELL_ME_WHETHER =
   /\b(?:tell me|let me know|explain|assess|evaluate|prepare)\b[\s\S]*\bwhether\b/i
-const PROHIBITION_MARKERS =
-  /\b(?:no|not|never|don['’]t|do not|won['’]t|without|isn['’]t|aren['’]t|shouldn['’]t|wouldn['’]t|couldn['’]t|can['’]t|cannot|none of)\b/i
+// Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
+// V1, Batch 5): the hand-picked negator list here had the exact same
+// "-n't" contraction-family gap as domain/command-adoption-execution.mjs's
+// ADOPTION_NEGATION_PATTERN and domain/command-multi-action-
+// decomposition.mjs's NEGATION_TRIGGER_SOURCE (found in the same pass) --
+// missing doesn't/didn't/hasn't/haven't/hadn't/wasn't/weren't/mustn't/
+// mightn't/needn't/ain't. Lower severity here since PROHIBITION_MARKERS
+// only ever narrows isGenuineDirective toward false (non-consequential),
+// so a missed negator biases toward the safe direction (TIM_REQUIRED),
+// never toward a false auto-execute -- fixed anyway for defense-in-depth
+// and so all three negation checks in this codebase share one vocabulary
+// instead of three independently-drifting ones. Also adds the archaic/
+// dialectal forms (shan't/oughtn't/daren't/amn't) found in the same
+// adversarial-review pass that caught this file's sibling copies still
+// missing curly/"smart"-quote (U+2019) tolerance -- this file's own
+// pattern already had that (see won'?t/can'?t below), the gap here was
+// only ever vocabulary breadth, never quote style.
+const NOT_CONTRACTION_SOURCE =
+  "(?:do|does|did|is|are|was|were|has|have|had|would|should|could|must|might|need|ai|sha|ought|dare|am)n['’]?t"
+const PROHIBITION_MARKERS = new RegExp(
+  `\\b(?:no|not|never|do not|${NOT_CONTRACTION_SOURCE}|won['’]?t|without|can['’]?t|cannot|none of)\\b`,
+  'i'
+)
 // Second-independent-verification-pass finding (real, reproduced, pre-
 // existing -- surfaced while re-checking the "and" clause-split fix,
 // unrelated to it): PROHIBITION_MARKERS matches a bare "not"/"no" anywhere
