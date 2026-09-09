@@ -512,6 +512,97 @@
       "rootCause": "respondCritiqueOrFix (shared by CRITIQUE and FIX_REQUEST) said \"I've logged this as feedback on X\" -- the exact same false claim CASE-22 fixed in respondFeedback, and the exact same root cause: respond() is a pure function with no I/O anywhere in its call chain, and no feedback-store module exists anywhere in this codebase. CRITIQUE is not dispatch-worthy so it definitely reaches this path in the real /api/chat flow; FIX_REQUEST normally routes to a real dispatch instead (DISPATCH_WORTHY_INTENTS), but shares the same template function, so fixing it here closes the claim regardless of exact reachability. Fixed the same way as CASE-22: removed the false claim, kept the real, working next step (\"turn it into a bounded mission\").",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/chat-responder.test.mjs"
+    },
+    {
+      "caseId": "CASE-24",
+      "source": "Historical corpus mining (Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation, Priority 1) -- git commit 0f2056b1ea \"Command target-resolution blocker\", a live hands-on finding predating this mission",
+      "userTurn": [
+        "whats the current state of nytheria/worldforge"
+      ],
+      "expectedParentIntent": "GENERAL (fleet status query)",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "fuzzy-matching an unrelated real project (e.g. one literally named \"whats-the-func\") purely because the operator's own question contained generic scaffolding words (\"whats\", \"the\")"
+      ],
+      "status": "REGRESSION_LOCKED",
+      "rootCause": "The exact/alias recognition on the slash form correctly resolved WorldForge, but nothing suppressed the resulting fuzzy noise once a confident alias match already existed elsewhere in the message -- only the `ambiguous` flag ever treated exact as authoritative, not what command-responder.mjs's fleet-status text or resolvedProjectIds actually used. A real project literally named \"whats-the-func\" cleared FUZZY_CONFIDENCE_FLOOR (2/3 tokens = 0.667) purely because \"whats\"/\"the\" are common English words also present in the operator's own question. Fixed in project-name-resolver.mjs with CONVERSATIONAL_STOPWORDS (stripped from the message side only, never from a project's own name tokens) and exact/alias strictly outranking fuzzy in what resolveProjectsFromText actually returns (once any exact/alias signal exists anywhere in the message, fuzzy candidates are dropped from `matches` entirely). Suppressed fuzzy candidates preserved for diagnostics via candidateAlternatives.",
+      "fixSha": "0f2056b1ea",
+      "regressionTestFile": "test/command-target-resolution-blocker.test.mjs"
+    },
+    {
+      "caseId": "CASE-25",
+      "source": "Historical corpus mining (Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation, Priority 1) -- git commit 4332af4e71 \"3rd-pass adversarial-review findings\", found by an independent forked review",
+      "userTurn": [
+        "tsf-orca needs it done, but actually don't touch tsf-orca, fix niners-war-room instead"
+      ],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION or single-project exclusion-scoped targeting",
+      "expectedChildActions": [
+        {
+          "project": "tsf-orca",
+          "intent": "EXCLUDED",
+          "expectedSideEffects": []
+        }
+      ],
+      "forbiddenSideEffects": [
+        "a project named in an earlier, non-excluded clause surviving a later clause that explicitly excludes the same project (the earlier match \"winning\" over the later, corrective exclusion)"
+      ],
+      "status": "REGRESSION_LOCKED",
+      "rootCause": "A match found in an earlier, non-excluded clause survived a later clause explicitly excluding the same project -- the operator's own self-correction (\"but actually don't touch X\") was silently ignored because the earlier positive mention was found first. Fixed in project-name-resolver.mjs: exclusion found ANYWHERE in the message now wins over a match found anywhere -- the safe default when the operator's own words are in tension with each other.",
+      "fixSha": "4332af4e71",
+      "regressionTestFile": "test/command-authority-regression-matrix.test.mjs"
+    },
+    {
+      "caseId": "CASE-26",
+      "source": "Historical corpus mining (Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation, Priority 1) -- same commit as CASE-25 (4332af4e71), a second, distinct finding from the same independent review pass",
+      "userTurn": [
+        "the without-fail worldforge sablewake project and its runtime repair v3 candidate needs review"
+      ],
+      "expectedParentIntent": "GENERAL or software-mission targeting",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "the hyphenated compound \"without-fail\" being read as the real exclusion cue \"without\", wiping an entire clause's legitimate fuzzy tokens and losing the real target"
+      ],
+      "status": "REGRESSION_LOCKED",
+      "rootCause": "FUZZY_EXCLUSION_CUES had no proximity anchor, so the bare word \"without\" matched inside the unrelated hyphenated compound \"without-fail\" and wiped an entire clause's fuzzy tokens, losing the real, intended target. Fixed by excluding \"without\" from the fuzzy-only check (it stays in the proximity-anchored EXCLUSION_PREFIX, where a real \"without X\" exclusion is still safely recognized).",
+      "fixSha": "4332af4e71",
+      "regressionTestFile": "test/command-authority-regression-matrix.test.mjs"
+    },
+    {
+      "caseId": "CASE-27",
+      "source": "Historical corpus mining (Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation, Priority 1) -- git commit 7bef10a93a, a real production bug found via direct classifyIntent verification, live in production before the fix",
+      "userTurn": [
+        "what needs me?",
+        "are there any projects here that are safe to mess around with?",
+        "is there anything safe we can test on?"
+      ],
+      "expectedParentIntent": "NEEDS_YOU_QUERY / GLOBAL_ADVISORY (fleet-wide, project-less)",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "a fleet-wide, project-less question falling through to the generic \"I couldn't tell which project this is about\" fallback instead of a real fleet-wide answer"
+      ],
+      "status": "REGRESSION_LOCKED",
+      "rootCause": "command-responder.mjs's respondCommand only invoked classifyGlobalScope (which correctly resolves these fleet-wide questions) when intent === 'GENERAL'. chat-responder.mjs's QUESTION intent (added later, per its own \"recovered from a stranded uncommitted worktree\" comment) matches any interrogative message that matched nothing more specific -- the same catch-all role GENERAL plays -- but the GENERAL-only gate was never updated when QUESTION was introduced, so these project-less global questions were silently intercepted by QUESTION before classifyGlobalScope ever ran. The exact same class of \"a later-added catch-all intent was never wired into an earlier GENERAL-only gate\" bug this mission's own Batch 8 independently rediscovered in a different gate (FEEDBACK_BUG's idiom exclusion never reaching a sibling pattern) -- confirming this is a recurring architectural hazard in this codebase whenever a new catch-all intent is added, worth remembering for any FUTURE catch-all intent addition. Fixed with a named UNROUTED_QUESTION_INTENTS = Set(['GENERAL', 'QUESTION']) covering both catch-all intents, still current and in use in server/command-responder.mjs.",
+      "fixSha": "7bef10a93a",
+      "regressionTestFile": "test/command-responder.test.mjs, test/command-scope-classifier.test.mjs, test/command-adversarial-corpus.test.mjs"
+    },
+    {
+      "caseId": "CASE-28",
+      "source": "Historical corpus mining (Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation, Priority 1) -- a deliberate, disclosed design limit documented in server/project-name-resolver.mjs, still current",
+      "userTurn": [
+        "don't skip tsf-orca"
+      ],
+      "expectedParentIntent": "N/A -- single-clause exclusion-cue parsing",
+      "expectedChildActions": [
+        {
+          "project": "tsf-orca",
+          "intent": "EXCLUDED (even though the operator meant to INCLUDE it)",
+          "expectedSideEffects": []
+        }
+      ],
+      "forbiddenSideEffects": [],
+      "status": "DEFERRED",
+      "rootCause": "Not a bug -- a deliberate, disclosed design limit. EXCLUSION_PREFIX is a single-negation cue, not a general double-negative parser: \"don't skip X\" (a genuine double negative meaning \"please include X\") still matches the \"skip\"/\"don't touch\" exclusion vocabulary and reads as an exclusion of X -- the opposite of the operator's actual intent. Erring toward excluding when the operator's own words are in tension is the deliberate, safe-default choice for an authorization surface (matching this codebase's own established convention, see domain/self-repair-authority.mjs's identical \"leave an ambiguous case honestly unhandled rather than guess\" precedent) -- not an attempt to correctly resolve arbitrary double negatives. Confirmed still current and accurately disclosed in the code's own comments as of this mission.",
+      "regressionTestFile": "test/command-authority-regression-matrix.test.mjs"
     }
   ]
 }
