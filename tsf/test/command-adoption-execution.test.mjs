@@ -169,6 +169,24 @@ test('classifyAdoptionCommandIntent: "never mind" is an idiom, not a negation --
   assert.equal(classifyAdoptionCommandIntent('Never mind my earlier hesitation, adopt it now.'), 'EXECUTE_ADOPTION')
 })
 
+// Independent red-team finding (RT-04): common hedge idioms using "no"/
+// "not" false-positived to NOT_ADOPTION, silently blocking a legitimate
+// request rather than executing it.
+for (const message of ['no rush, adopt it', 'not gonna lie, adopt it', "there's no reason not to adopt it", 'no worries, adopt EasyLifeHQ']) {
+  test(`classifyAdoptionCommandIntent: a hedge idiom is not a negation, a genuine adoption request still executes -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'EXECUTE_ADOPTION')
+  })
+}
+
+// Positive control: the idiom broadening must not swallow a genuine
+// negation, including the subtle single-negative "no reason to" (as
+// opposed to the double-negative idiom "no reason NOT to" above).
+for (const message of ['Do not adopt this candidate.', "Don't adopt niners-war-room.", 'no, do not adopt that one', 'there is no reason to adopt it']) {
+  test(`classifyAdoptionCommandIntent: the hedge-idiom broadening does not regress a genuine negation -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'NOT_ADOPTION')
+  })
+}
+
 // Mission's own required positive examples must survive the negation fix
 // completely unchanged.
 for (const message of ['adopt the Nytheria run', 'accept that verified candidate', 'the WorldForge one looks good, adopt it', 'adopt both of those']) {
@@ -389,17 +407,17 @@ for (const message of ['adopt the Nytheria run', 'accept that verified candidate
 
 // CASE-31 (DEFERRED, disclosed, not fixed this mission): pins the CURRENT
 // fail-safe behavior for two known, real gaps found by the same
-// adversarial review -- self-correction/quoted-reversal negation scoring,
-// and common hedge idioms false-positiving to NOT_ADOPTION. Both under-
-// act (never wrongly execute); this test exists so the corpus's own
-// regressionTestFile reference for CASE-31 has real, matching coverage,
-// not just an unrelated passing test in the same file.
+// adversarial review -- self-correction/quoted-reversal negation scoring.
+// This test exists so the corpus's own regressionTestFile reference for
+// CASE-31 has real, matching coverage, not just an unrelated passing test
+// in the same file. (The hedge-idiom half of the original RT-04 finding
+// this test used to also pin here -- "no rush"/"not gonna lie"/"no reason
+// not to" -- is now FIXED, see CASE-33 and the positive tests above; still
+// deferred here is only the quote/clause-boundary-unaware negation
+// scoring for self-corrections.)
 for (const message of [
   'The plan said "do not adopt this candidate" but I want you to adopt EasyLifeHQ now.',
-  "Actually, don't adopt EasyLifeHQ, adopt EasyLifeHQ -- go ahead.",
-  'no rush, adopt it',
-  'not gonna lie, adopt it',
-  "there's no reason not to adopt it"
+  "Actually, don't adopt EasyLifeHQ, adopt EasyLifeHQ -- go ahead."
 ]) {
   test(`CASE-31 (deferred, disclosed): pins the current fail-safe (never wrongly EXECUTE_ADOPTION) behavior -- "${message}"`, () => {
     assert.notEqual(classifyAdoptionCommandIntent(message), 'EXECUTE_ADOPTION')

@@ -294,7 +294,17 @@ export function hasAdoptionVerb(text, projects) {
 // chat-responder.mjs's own IDIOMATIC_NON_NEGATION excludes "or not"/"no
 // matter" from ITS negation check, so it can't itself become a false
 // NOT_ADOPTION on a genuine "never mind, adopt it anyway" reversal.
-const IDIOMATIC_NON_NEGATION = /\bnever\s+mind\b/gi
+// Independent red-team finding (Full Conversational Control Plane
+// Exhaustive Gauntlet V1, one-hour continuation, RT-04): common hedge
+// idioms using "no"/"not" false-positived to NOT_ADOPTION, silently
+// blocking a legitimate request rather than executing it -- fails safe
+// (under-acts, never wrongly adopts), but a real, confirmed usability gap.
+// "no reason not to X" is a genuine double negative (meaning "you SHOULD
+// X") -- not an attempt at general double-negative parsing, just one more
+// named idiom alongside "never mind", matching this file's own established
+// convention (extend the idiom list, not the negation-detection shape,
+// when another such idiom is found).
+const IDIOMATIC_NON_NEGATION = /\bnever\s+mind\b|\bno\s+rush\b|\bnot\s+gonna\s+lie\b|\bno\s+worries\b|\bno\s+reason\s+not\s+to\b/gi
 // Adversarial-review finding (2nd pass): the first version of this pattern
 // only recognized a hand-picked set of two-word negators within a tight
 // 0-4 word gap of the verb -- real, live-reproducible refusals it missed
