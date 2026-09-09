@@ -208,3 +208,27 @@ test('Batch-3: a negated "keep going" request never dispatches real work, even w
   assert.match(result.text, /Niners War Room[\s\S]*no action taken/i)
   assert.doesNotMatch(result.text, /Niners War Room[\s\S]*(?:new mission started|dispatched)/i)
 })
+
+// FIXED (real, SHOULD-FIX -- final red-team review): a negated hold
+// request must never write a real, durable execution hold. Real
+// end-to-end proof, checking the actual durable store, not just the
+// response text.
+test('Batch-4: a negated hold request never writes a real, durable project execution hold', async () => {
+  // A fresh, dedicated project id -- PROJECTS' own niners-war-room is
+  // touched by earlier tests in this file (a real, intentionally-durable
+  // hold from the mission-literal-message test), so it is not a clean
+  // slate here.
+  const freshProject = { id: 'batch4-fresh-hold-target', displayName: 'Batch4FreshHoldTarget', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  const before = readProjectExecutionHold(freshProject.id)
+  assert.equal(before, null, 'sanity: no pre-existing hold for this fresh fixture project')
+  // Needs a second, genuinely distinguishing action on a different target
+  // to even reach the multi-action bridge at all (classifyMultiActionEntries
+  // requires >=2 targets by design) -- a single-project hold request never
+  // routes through applyExternalWorkHold in the first place.
+  const message = "Don't leave batch4-fresh-hold-target alone, keep working on it directly. EasyLifeHQ needs serious work."
+  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  assert.equal(result.intent, 'MULTI_ACTION')
+  assert.match(result.text, /Batch4FreshHoldTarget[\s\S]*no action taken/i)
+  const after = readProjectExecutionHold(freshProject.id)
+  assert.equal(after, null, 'no durable hold must have been written')
+})

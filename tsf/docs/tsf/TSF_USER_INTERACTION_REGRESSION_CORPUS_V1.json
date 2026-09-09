@@ -14,13 +14,24 @@
       "priorAssistantState": "Landing Page candidate discussion, candidate.state = READY_FOR_ADOPTION",
       "userTurn": "awesome! this is so great!",
       "expectedParentIntent": "ACKNOWLEDGEMENT",
-      "expectedReferencedProjects": ["the project already in conversational scope"],
+      "expectedReferencedProjects": [
+        "the project already in conversational scope"
+      ],
       "expectedChildActions": [],
       "expectedAuthorityClass": "NONE",
       "expectedSideEffects": [],
-      "forbiddenSideEffects": ["ADOPT", "PUSH", "MERGE", "DEPLOY", "any project state mutation"],
+      "forbiddenSideEffects": [
+        "ADOPT",
+        "PUSH",
+        "MERGE",
+        "DEPLOY",
+        "any project state mutation"
+      ],
       "expectedResponseSemantics": "Explicitly states no action was taken; truthfully restates real current state (e.g. READY_FOR_ADOPTION); names the explicit phrase that would authorize the next step. Never a live/free-text LLM call for this shape.",
-      "surfaces": ["PLANNER_CHAT", "GLOBAL_COMMAND"],
+      "surfaces": [
+        "PLANNER_CHAT",
+        "GLOBAL_COMMAND"
+      ],
       "status": "FIXED_THIS_MISSION",
       "rootCause": "server/chat-responder.mjs's classifyIntent had no ACKNOWLEDGEMENT intent at all -- bare praise fell through to GENERAL, which chat-http-routes.mjs routes to the live, free-text LLM fallback with no deterministic guardrail against the model narrating a false confirmation.",
       "fixSha": "pending adoption -- see this mission's final report",
@@ -30,17 +41,40 @@
     {
       "caseId": "CASE-02",
       "source": "Combinatorial variant of CASE-01 (mission's own required list)",
-      "userTurn": ["looks good", "looks great", "perfect", "love it", "cool thanks", "nice", "sweet", "sick", "exactly", "that's exactly what I wanted", "thank you", "thanks", "👍", "🔥", "Landing Page looks awesome", "Nytheria looks good"],
+      "userTurn": [
+        "looks good",
+        "looks great",
+        "perfect",
+        "love it",
+        "cool thanks",
+        "nice",
+        "sweet",
+        "sick",
+        "exactly",
+        "that's exactly what I wanted",
+        "thank you",
+        "thanks",
+        "👍",
+        "🔥",
+        "Landing Page looks awesome",
+        "Nytheria looks good"
+      ],
       "expectedParentIntent": "ACKNOWLEDGEMENT",
       "expectedAuthorityClass": "NONE",
-      "forbiddenSideEffects": ["any consequential action"],
+      "forbiddenSideEffects": [
+        "any consequential action"
+      ],
       "status": "FIXED_THIS_MISSION",
       "regressionTestFile": "test/chat-responder.test.mjs"
     },
     {
       "caseId": "CASE-03",
       "source": "Explicit-action counterpart (mission's own required list, CORE INVARIANT positive example)",
-      "userTurn": ["awesome, adopt it", "looks good, adopt it", "perfect, deploy it"],
+      "userTurn": [
+        "awesome, adopt it",
+        "looks good, adopt it",
+        "perfect, deploy it"
+      ],
       "expectedParentIntent": "the SPECIFIC action intent (ADOPTION, or TIM_REQUIRED via decisionClass for deploy), never ACKNOWLEDGEMENT",
       "expectedAuthorityClass": "EXPLICIT_OWNER_ACTION (still subject to its own normal gating -- e.g. 'deploy it' still requires Tim)",
       "status": "FIXED_THIS_MISSION",
@@ -50,13 +84,23 @@
     {
       "caseId": "CASE-04",
       "source": "Real, live-confirmed P0 found during this mission's own investigation (not in the mission's original list, but the same negation-blindness class as BUG-08 below)",
-      "userTurn": ["Do not adopt this candidate.", "Don't adopt it yet.", "Never adopt the stalled one.", "Don't approve it.", "avoid adopting it for now"],
+      "userTurn": [
+        "Do not adopt this candidate.",
+        "Don't adopt it yet.",
+        "Never adopt the stalled one.",
+        "Don't approve it.",
+        "avoid adopting it for now"
+      ],
       "expectedParentIntent": "NOT_ADOPTION (report-only)",
       "expectedAuthorityClass": "NONE",
       "expectedSideEffects": [],
-      "forbiddenSideEffects": ["ADOPT (real branch-advancing execution via executeCommandAdoption)"],
+      "forbiddenSideEffects": [
+        "ADOPT (real branch-advancing execution via executeCommandAdoption)"
+      ],
       "expectedResponseSemantics": "No adoption executes; falls through to ordinary chat handling.",
-      "surfaces": ["GLOBAL_COMMAND"],
+      "surfaces": [
+        "GLOBAL_COMMAND"
+      ],
       "status": "FIXED_THIS_MISSION",
       "rootCause": "domain/command-adoption-execution.mjs's classifyAdoptionCommandIntent -- the gate that triggers REAL adoption execution -- matched the bare presence of adopt/accept/approve anywhere in the message with NO negation awareness at all. 'Do not adopt this candidate.' classified EXECUTE_ADOPTION.",
       "fixSha": "pending adoption -- see this mission's final report",
@@ -65,7 +109,11 @@
     {
       "caseId": "BUG-08",
       "source": "tsf/programs/tsf-operator-stabilization-v1/bug-ledger.json",
-      "userTurn": ["do not deploy this and push it now", "please do not deploy and go ahead and merge this", "deploy it whether tim likes it or not"],
+      "userTurn": [
+        "do not deploy this and push it now",
+        "please do not deploy and go ahead and merge this",
+        "deploy it whether tim likes it or not"
+      ],
       "expectedParentIntent": "negated consequential language must classify as restriction, not request",
       "status": "REGRESSION_LOCKED",
       "detail": "3 real bugs found across 3 independent-verification rounds in chat-responder.mjs's TIM_REQUIRED negation logic (bare 'and' not a clause boundary; a resulting false-positive on inquiry openers; 'whether...or not'/'no matter' idiom unawareness). Fixed pre-mission; CASE-04 above found the SAME bug class had never been applied to the separate, real-execution-triggering adoption classifier.",
@@ -74,7 +122,13 @@
     {
       "caseId": "CASE-05",
       "source": "Mission's own required list, item 5/6 -- referential continuity",
-      "userTurn": ["the two TSF ones", "the stalled one", "the UI one", "both of those", "leave the NWR one alone"],
+      "userTurn": [
+        "the two TSF ones",
+        "the stalled one",
+        "the UI one",
+        "both of those",
+        "leave the NWR one alone"
+      ],
       "expectedParentIntent": "resolves the TARGET(S) from prior conversational referents; never invents an action not present in the current turn",
       "status": "REGRESSION_LOCKED",
       "detail": "domain/command-referent-resolution.mjs, real and tested: 'the stalled one' resolves only the FAILED_REQUIRES_ATTENTION item; 'those two' against a 4-item prior turn is honestly ambiguous, never guessed; 'the two TSF ones' matches both real TSF-labeled items only when the count genuinely agrees; a mismatched count is honestly ambiguous rather than silently truncated.",
@@ -95,9 +149,18 @@
       "userTurn": "NWR is being handled by another AI, leave it alone. Nytheria looks good, adopt that run and keep going overnight. EasyLife needs serious work.",
       "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
       "expectedChildActions": [
-        { "project": "niners-war-room", "intent": "EXTERNAL_WORK_HOLD" },
-        { "project": "worldforge (Nytheria alias)", "intent": "ADOPT_CANDIDATE_REPORT" },
-        { "project": "easylifehq-github-io", "intent": "START_KEEP_GOING or similar" }
+        {
+          "project": "niners-war-room",
+          "intent": "EXTERNAL_WORK_HOLD"
+        },
+        {
+          "project": "worldforge (Nytheria alias)",
+          "intent": "ADOPT_CANDIDATE_REPORT"
+        },
+        {
+          "project": "easylifehq-github-io",
+          "intent": "START_KEEP_GOING or similar"
+        }
       ],
       "status": "REGRESSION_LOCKED",
       "detail": "domain/project-execution-hold.mjs (the durable HOLD primitive) + domain/command-multi-action-decomposition.mjs's EXTERNAL_WORK_HOLD intent, matching 'is being handled by another/a different ai/agent/process' and 'leave X alone'. This is the mission's own literal example, baked into fixtures verbatim.",
@@ -106,10 +169,17 @@
     {
       "caseId": "CASE-08",
       "source": "Mission's own required list, item 9 -- explicit owner adoption via Command",
-      "userTurn": ["adopt the Nytheria run", "accept that verified candidate", "the WorldForge one looks good, adopt it", "adopt both of those"],
+      "userTurn": [
+        "adopt the Nytheria run",
+        "accept that verified candidate",
+        "the WorldForge one looks good, adopt it",
+        "adopt both of those"
+      ],
       "expectedParentIntent": "ADOPTION",
       "expectedAuthorityClass": "EXPLICIT_OWNER_ACTION",
-      "expectedSideEffects": ["real executeCommandAdoption call, after full revalidation"],
+      "expectedSideEffects": [
+        "real executeCommandAdoption call, after full revalidation"
+      ],
       "status": "REGRESSION_LOCKED",
       "detail": "Now hardened further by CASE-04's negation fix on the same underlying classifyAdoptionCommandIntent function.",
       "regressionTestFile": "test/command-adoption-execution.test.mjs, test/command-adoption-command-bridge.test.mjs"
@@ -119,7 +189,9 @@
       "source": "Prior TSF Software Mission Routing / Project Planner Hotfix V1 (this engagement, immediately preceding mission)",
       "userTurn": "a long software/product-engineering mission containing research/data subtasks, e.g. containing the literal fragments 'to Codex;' and 'mission'",
       "expectedParentIntent": "SOFTWARE_PRODUCT_ENGINEERING",
-      "forbiddenSideEffects": ["Dataset Research mission creation from an isolated fragment"],
+      "forbiddenSideEffects": [
+        "Dataset Research mission creation from an isolated fragment"
+      ],
       "status": "REGRESSION_LOCKED",
       "fixSha": "6c7cbad076b01831e082e964ae946e70aeae7410",
       "regressionTestFile": "test/parent-mission-intent-classification.test.mjs, test/tsf-command-planner-routing-golden-path-eval.test.mjs, test/http-chat-software-mission-routing.test.mjs"
@@ -144,7 +216,13 @@
     {
       "caseId": "CASE-11",
       "source": "Mission's own required list -- durable state queries",
-      "userTurn": ["what's running?", "what needs me?", "what finished?", "why isn't EasyLife running?", "will it resume itself?"],
+      "userTurn": [
+        "what's running?",
+        "what needs me?",
+        "what finished?",
+        "why isn't EasyLife running?",
+        "will it resume itself?"
+      ],
       "expectedParentIntent": "STATUS_QUERY family (STATUS/NEXT_ACTION/FINISHED/NEEDS_YOU_QUERY)",
       "expectedSideEffects": [],
       "status": "REGRESSION_LOCKED",
@@ -154,14 +232,30 @@
     {
       "caseId": "CASE-12",
       "source": "Real, live-confirmed P0 found in Batch 2 of this program (the disclosed reverse-false-negative gap from Batch 1's own report)",
-      "userTurn": ["Don't adopt NWR; adopt EasyLife.", "Do not adopt niners-war-room. Adopt EasyLifeHQ."],
+      "userTurn": [
+        "Don't adopt NWR; adopt EasyLife.",
+        "Do not adopt niners-war-room. Adopt EasyLifeHQ."
+      ],
       "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
       "expectedChildActions": [
-        { "project": "niners-war-room", "intent": "ADOPT_CANDIDATE_DECLINED", "expectedSideEffects": [] },
-        { "project": "easylifehq-github-io", "intent": "ADOPT_CANDIDATE_REPORT", "expectedSideEffects": ["real executeCommandAdoption attempt, subject to normal revalidation"] }
+        {
+          "project": "niners-war-room",
+          "intent": "ADOPT_CANDIDATE_DECLINED",
+          "expectedSideEffects": []
+        },
+        {
+          "project": "easylifehq-github-io",
+          "intent": "ADOPT_CANDIDATE_REPORT",
+          "expectedSideEffects": [
+            "real executeCommandAdoption attempt, subject to normal revalidation"
+          ]
+        }
       ],
       "expectedAuthorityClass": "PER_TARGET -- a negation on one target must never suppress a different target's independent authority",
-      "forbiddenSideEffects": ["NWR adoption execution", "EasyLifeHQ's adoption request being silently dropped because of NWR's unrelated negation"],
+      "forbiddenSideEffects": [
+        "NWR adoption execution",
+        "EasyLifeHQ's adoption request being silently dropped because of NWR's unrelated negation"
+      ],
       "status": "FIXED_THIS_MISSION",
       "rootCause": "domain/command-multi-action-decomposition.mjs's ADOPT_CANDIDATE_REPORT pattern had no negation awareness, so a negated clause and an affirmed clause for a DIFFERENT project decomposed to the SAME intent -- the outer classifyMultiActionEntries gate (server/command-multi-action-bridge.mjs, requires >=2 DISTINGUISHING intents) never fired, and the whole message fell through to the single-message-level classifyAdoptionCommandIntent (domain/command-adoption-execution.mjs), which has no per-target concept at all and wrongly refused BOTH projects.",
       "fixSha": "pending adoption -- see this mission's final report",
@@ -170,13 +264,24 @@
     {
       "caseId": "CASE-13",
       "source": "Real, live-confirmed P0 found by independent adversarial review of CASE-12's own fix (Batch 2, 2nd pass)",
-      "userTurn": ["Don't adopt niners-war-room and adopt EasyLifeHQ.", "Do not, under any circumstances, adopt niners-war-room, but please adopt EasyLifeHQ."],
+      "userTurn": [
+        "Don't adopt niners-war-room and adopt EasyLifeHQ.",
+        "Do not, under any circumstances, adopt niners-war-room, but please adopt EasyLifeHQ."
+      ],
       "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
       "expectedChildActions": [
-        { "project": "niners-war-room", "intent": "ADOPT_CANDIDATE_DECLINED" },
-        { "project": "easylifehq-github-io", "intent": "ADOPT_CANDIDATE_REPORT" }
+        {
+          "project": "niners-war-room",
+          "intent": "ADOPT_CANDIDATE_DECLINED"
+        },
+        {
+          "project": "easylifehq-github-io",
+          "intent": "ADOPT_CANDIDATE_REPORT"
+        }
       ],
-      "forbiddenSideEffects": ["EasyLifeHQ's adoption suppressed by NWR's unrelated negation, via alternate phrasing the first CASE-12 fix did not cover"],
+      "forbiddenSideEffects": [
+        "EasyLifeHQ's adoption suppressed by NWR's unrelated negation, via alternate phrasing the first CASE-12 fix did not cover"
+      ],
       "status": "FIXED_THIS_MISSION",
       "rootCause": "domain/command-multi-action-decomposition.mjs's splitClauses never split on bare \"and\" at all (so two different targets joined by \"and\" shared one clause's negated verb), and treated every bare comma as a clause boundary (so \"Do not, under any circumstances, adopt X\" fragmented the negation away from its own verb before target attribution ran). Fixed by adding a verb-lookahead-gated \"and\" split and removing bare-comma as a boundary.",
       "fixSha": "pending adoption -- see this mission's final report",
@@ -185,7 +290,10 @@
     {
       "caseId": "CASE-14",
       "source": "Real finding from this mission's own Batch 4 generated combinatorial matrix (not from adversarial review -- from the golden-path eval catching its own generated cases)",
-      "userTurn": ["Don't adopt niners-war-room; accept EasyLifeHQ.", "Don't adopt niners-war-room and please adopt EasyLifeHQ."],
+      "userTurn": [
+        "Don't adopt niners-war-room; accept EasyLifeHQ.",
+        "Don't adopt niners-war-room and please adopt EasyLifeHQ."
+      ],
       "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
       "status": "FIXED_THIS_MISSION",
       "rootCause": "domain/command-multi-action-decomposition.mjs's ADOPT_CANDIDATE_REPORT/DECLINED patterns matched only bare \"adopt\", narrower than domain/command-adoption-execution.mjs's own ADOPTION_VERB_PATTERN (adopt/accept/approve) -- \"accept EasyLifeHQ\" fell through to GENERAL in the decomposer, reproducing CASE-12's bug for that verb choice. Separately, the and-split lookahead required the verb IMMEDIATELY after \"and\", missing \"and please adopt X\". Both fixed by exporting/reusing the shared vocabulary (hasAdoptionVerb) and tolerating one filler word in the lookahead.",
@@ -195,15 +303,59 @@
     {
       "caseId": "CASE-15",
       "source": "Real, BLOCKING, live-confirmed P0 found by independent adversarial review of Batch 3's own fixes (2nd pass) -- confirmed end-to-end via real dispatch, more severe than CASE-12/13/14 since the consequence is a real Keep Going dispatch, not merely a mis-worded report",
-      "userTurn": ["Don't keep going on niners-war-room; EasyLifeHQ needs serious work.", "Don't assess niners-war-room; keep going on EasyLifeHQ."],
+      "userTurn": [
+        "Don't keep going on niners-war-room; EasyLifeHQ needs serious work.",
+        "Don't assess niners-war-room; keep going on EasyLifeHQ."
+      ],
       "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
       "expectedChildActions": [
-        { "project": "niners-war-room", "intent": "MULTI_ACTION_DECLINED", "expectedSideEffects": [] },
-        { "project": "easylifehq-github-io", "intent": "ASSESS_AND_UPGRADE or START_KEEP_GOING", "expectedSideEffects": ["real planAndDispatchFromCommand attempt"] }
+        {
+          "project": "niners-war-room",
+          "intent": "MULTI_ACTION_DECLINED",
+          "expectedSideEffects": []
+        },
+        {
+          "project": "easylifehq-github-io",
+          "intent": "ASSESS_AND_UPGRADE or START_KEEP_GOING",
+          "expectedSideEffects": [
+            "real planAndDispatchFromCommand attempt"
+          ]
+        }
       ],
-      "forbiddenSideEffects": ["a real Keep Going mission dispatched for the negated target"],
+      "forbiddenSideEffects": [
+        "a real Keep Going mission dispatched for the negated target"
+      ],
       "status": "FIXED_THIS_MISSION",
       "rootCause": "Unlike ADOPT_CANDIDATE_REPORT/DECLINED, START_KEEP_GOING and ASSESS_AND_UPGRADE (domain/command-multi-action-decomposition.mjs) had ZERO negation awareness at all -- confirmed via real end-to-end respondCommand -> classifyMultiActionEntries -> respondMultiActionCommand -> handleEntry -> dispatchAction -> planAndDispatchFromCommand that this actually dispatched a brand-new Keep Going mission for the negated project. Nothing downstream caught it: the per-clause TIM_REQUIRED check does not recognize \"keep going\"/\"assess\" as consequential at all. Fixed by generalizing the negation-detection design (a reusable isVerbNegated helper, not adoption-specific) and adding a new MULTI_ACTION_DECLINED intent routed to a safe, zero-I/O \"no action taken\" report.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-multi-action-decomposition.test.mjs, test/command-multi-action-bridge.test.mjs"
+    },
+    {
+      "caseId": "CASE-16",
+      "source": "Real, BLOCKING, live-confirmed P0 found by final independent red-team review (post-Batch-3) -- confirmed end-to-end via a real durable createProjectExecutionHold write, the last remaining unguarded action-creating intent in domain/command-multi-action-decomposition.mjs",
+      "userTurn": [
+        "Don't leave niners-war-room alone, keep working on it directly. EasyLifeHQ needs serious work.",
+        "Don't hold off on niners-war-room. EasyLifeHQ needs serious work.",
+        "niners-war-room is NOT being handled by another AI -- keep working on it directly. EasyLifeHQ needs serious work."
+      ],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "expectedChildActions": [
+        {
+          "project": "niners-war-room",
+          "intent": "MULTI_ACTION_DECLINED",
+          "expectedSideEffects": []
+        },
+        {
+          "project": "easylifehq-github-io",
+          "intent": "ASSESS_AND_UPGRADE",
+          "expectedSideEffects": []
+        }
+      ],
+      "forbiddenSideEffects": [
+        "a real, durable createProjectExecutionHold record written for the negated target (the exact opposite of what the owner said)"
+      ],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "EXTERNAL_WORK_HOLD (domain/command-multi-action-decomposition.mjs) was the one remaining action-creating intent in this file with no negation awareness -- \"Don't leave X alone\", \"Don't hold off on X\", and \"X is NOT being handled by another AI\" all matched the bare, unguarded hold-phrasing patterns and classified as a genuine EXTERNAL_WORK_HOLD, which server/command-multi-action-bridge.mjs's handleEntry routes straight to applyExternalWorkHold -> a real, durable createProjectExecutionHold write. Confirmed end-to-end via a dedicated fresh fixture project (readProjectExecutionHold before/after) that no hold was written once fixed. Fixed by reusing the same generalized isVerbNegated helper from CASE-15's fix (EXTERNAL_HOLD_VERB_SOURCES), guarding EXTERNAL_WORK_HOLD's own pattern, and extending MULTI_ACTION_DECLINED to also catch negated hold-phrasing.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/command-multi-action-decomposition.test.mjs, test/command-multi-action-bridge.test.mjs"
     }

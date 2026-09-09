@@ -53,6 +53,18 @@ function isVerbNegated(text, verbSources) {
 
 const KEEP_GOING_VERB_SOURCES = ['keep\\s+going', 'overnight']
 const ASSESS_VERB_SOURCES = ['needs?\\s+(?:serious\\s+)?work', 'get\\s+.+?\\s+up', 'upgrade', 'assess']
+// Red-team review finding (final pass): EXTERNAL_WORK_HOLD was the one
+// remaining action-creating intent in this file with no negation
+// awareness -- "Don't leave niners-war-room alone, keep working on it",
+// "Don't hold off on niners-war-room", and "niners-war-room is NOT being
+// handled by another AI" all wrongly created a real, durable
+// createProjectExecutionHold record (via applyExternalWorkHold) for the
+// exact opposite of what the owner said.
+const EXTERNAL_HOLD_VERB_SOURCES = [
+  '(?:is\\s+)?being\\s+handled\\s+by\\s+(?:another|a\\s+different)\\s+(?:ai|agent|process)',
+  'leave\\s+(?:it|that|this|\\S+)\\s+alone',
+  'hold\\s+off'
+]
 
 // FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
 // Exhaustive Gauntlet V1, Batch 2): "Don't adopt NWR; adopt EasyLife."
@@ -211,7 +223,11 @@ function segmentByProject(message, projects, aliases) {
 const INTENT_PATTERNS = [
   {
     id: 'EXTERNAL_WORK_HOLD',
-    test: (t) => /\b(is\s+)?being\s+handled\s+by\s+(another|a\s+different)\s+(ai|agent|process)\b/i.test(t) || /\bleave\s+(it|that|this|\S+)\s+alone\b/i.test(t) || /\bhold\s+off\b/i.test(t)
+    test: (t) =>
+      (/\b(is\s+)?being\s+handled\s+by\s+(another|a\s+different)\s+(ai|agent|process)\b/i.test(t) ||
+        /\bleave\s+(it|that|this|\S+)\s+alone\b/i.test(t) ||
+        /\bhold\s+off\b/i.test(t)) &&
+      !isVerbNegated(t, EXTERNAL_HOLD_VERB_SOURCES)
   },
   // Split by negation (see the module-header comment above) -- reuses the
   // exact same hardened negation check AND the exact same verb vocabulary
@@ -235,7 +251,15 @@ const INTENT_PATTERNS = [
     test: (t) => {
       const hasKeepGoing = /\bkeep\s+going\b/i.test(t) || /\bovernight\b/i.test(t)
       const hasAssess = /\bneeds?\s+(serious\s+)?work\b/i.test(t) || /\bget\s+.+?\s+up\b/i.test(t) || /\bupgrade\b/i.test(t) || /\bassess\b/i.test(t)
-      return (hasKeepGoing && isVerbNegated(t, KEEP_GOING_VERB_SOURCES)) || (hasAssess && isVerbNegated(t, ASSESS_VERB_SOURCES))
+      const hasHold =
+        /\b(is\s+)?being\s+handled\s+by\s+(another|a\s+different)\s+(ai|agent|process)\b/i.test(t) ||
+        /\bleave\s+(it|that|this|\S+)\s+alone\b/i.test(t) ||
+        /\bhold\s+off\b/i.test(t)
+      return (
+        (hasKeepGoing && isVerbNegated(t, KEEP_GOING_VERB_SOURCES)) ||
+        (hasAssess && isVerbNegated(t, ASSESS_VERB_SOURCES)) ||
+        (hasHold && isVerbNegated(t, EXTERNAL_HOLD_VERB_SOURCES))
+      )
     }
   },
   { id: 'STATUS_QUERY', test: (t) => /\bstatus\b/i.test(t) || /\bwhat'?s\s+(going\s+on|happening)\b/i.test(t) || /\bhow'?s\s+it\s+going\b/i.test(t) }

@@ -191,3 +191,39 @@ test('adversarial-review fix: "and please just adopt X" (two filler words) still
   assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
   assert.equal(easyLife.intent, 'ADOPT_CANDIDATE_REPORT')
 })
+
+// FIXED (real, SHOULD-FIX, found by the program's final broad red-team
+// review pass): EXTERNAL_WORK_HOLD was the one remaining action-creating
+// intent in this file with no negation awareness -- "Don't leave X alone,
+// keep working on it", "Don't hold off on X", and "X is NOT being handled
+// by another AI" all wrongly classified as a positive EXTERNAL_WORK_HOLD,
+// which server/command-multi-action-bridge.mjs's applyExternalWorkHold
+// routes to a REAL, durable createProjectExecutionHold write for the
+// exact opposite of what the owner said.
+for (const message of [
+  "Don't leave niners-war-room alone, keep working on it directly.",
+  "Don't hold off on niners-war-room.",
+  'niners-war-room is NOT being handled by another AI -- keep working on it directly.'
+]) {
+  test(`a negated hold-request classifies MULTI_ACTION_DECLINED, never the real-hold-creating EXTERNAL_WORK_HOLD -- "${message}"`, () => {
+    const entries = decomposeMultiAction(message, PROJECTS, aliases)
+    const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+    assert.ok(forNwr.some((e) => e.intent === 'MULTI_ACTION_DECLINED'))
+    assert.ok(forNwr.every((e) => e.intent !== 'EXTERNAL_WORK_HOLD'))
+  })
+}
+
+// Positive controls -- the negation fix must not regress the real,
+// affirmative hold-request phrasings (this is the mission's own literal
+// example vocabulary).
+for (const message of [
+  'niners-war-room is being handled by another AI, leave it alone.',
+  'hold off on niners-war-room.',
+  'leave niners-war-room alone.'
+]) {
+  test(`a genuine hold request still correctly fires EXTERNAL_WORK_HOLD -- "${message}"`, () => {
+    const entries = decomposeMultiAction(message, PROJECTS, aliases)
+    const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+    assert.ok(forNwr.some((e) => e.intent === 'EXTERNAL_WORK_HOLD'))
+  })
+}
