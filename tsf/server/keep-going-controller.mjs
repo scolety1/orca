@@ -53,7 +53,8 @@ export function startKeepGoingRun(opState, projectId, params, clock, expectedRev
       usageMode: params.usageMode ?? 'BALANCED',
       constraints: params.constraints ?? [],
       stopConditions: params.stopConditions ?? [],
-      budget: params.budget ?? {}
+      budget: params.budget ?? {},
+      missionSpec: params.missionSpec ?? null
     },
     clock
   )

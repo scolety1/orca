@@ -207,6 +207,7 @@ export async function respondCommand({
   opState,
   clock = () => new Date(),
   deps = {},
+  attachments = [],
   // Adversarial-review finding: without this, a Command-scope /api/chat
   // request that isn't a single confident match re-reads+re-parses
   // TSF_PROJECT_ALIASES_JSON a second time here, after http-server.mjs's
@@ -331,7 +332,8 @@ export async function respondCommand({
       projects: targetProjects,
       message,
       clock,
-      deps
+      deps,
+      attachments
     })
     // BUG-06 (bug-ledger.json): r.detail already states the real outcome
     // (e.g. "new mission started, task X dispatched" vs. "added to running

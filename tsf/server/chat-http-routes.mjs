@@ -46,7 +46,7 @@ const SELF_REPAIR_PROJECT_ID = process.env.TSF_SELF_REPAIR_PROJECT_ID || null
 // 6). `selfRepairFromBranch` is only ever set by an already-authorized
 // self-repair caller (domain/self-repair-authority.mjs); every other
 // caller auto-provisions from the repo's own default base.
-async function dispatchFromChat({ project, message, placement, selfRepairFromBranch }) {
+async function dispatchFromChat({ project, message, placement, selfRepairFromBranch, attachments = [] }) {
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
   // Coordinator adoption-review fix: planAndDispatchFromChat's own hold
@@ -117,7 +117,8 @@ async function dispatchFromChat({ project, message, placement, selfRepairFromBra
     message,
     placement: effectivePlacement,
     identity: { repository: resolved.identity },
-    clock: () => new Date()
+    clock: () => new Date(),
+    attachments
   })
 
   if (!dispatch.ok) {
@@ -189,7 +190,17 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
 
   if (req.method === 'POST') {
     const body = await readBody(req)
-    const message = String(body.message ?? '').slice(0, 4000)
+    // FIXED (TSF Software Mission Routing / Project Planner Hotfix V1):
+    // this used to cap every incoming chat message at 4000 chars -- fine
+    // for a short chat turn, but silently mutilating for a real long-form
+    // software/product-engineering mission (multi-section directives run
+    // tens of KB; the live NWR overnight mission that exposed this was
+    // itself well past 4000 chars). Phase 4/5's "preserve the complete
+    // source directive" requirement is unmet if it's truncated before
+    // classification/dispatch ever sees it. 200000 is a generous real
+    // ceiling (comfortably covers Test Family 5's up-to-64KB long-paste
+    // cases) while still bounding pathological abuse -- not unlimited.
+    const message = String(body.message ?? '').slice(0, 200000)
     if (!message.trim()) {
       json(res, 400, { ok: false, error: 'message is required' })
       return true
@@ -234,7 +245,8 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
           projects,
           opState,
           clock: () => new Date(),
-          aliases: commandAliases
+          aliases: commandAliases,
+          attachments
         })
         const freshState = loadState()
         const threads = { ...freshState.chatThreads }
@@ -364,7 +376,8 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
         project,
         message,
         placement: body.placement,
-        selfRepairFromBranch
+        selfRepairFromBranch,
+        attachments
       })
     } else if (groundedResponseWorthy) {
       result = {

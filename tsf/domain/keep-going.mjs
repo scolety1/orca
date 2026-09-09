@@ -87,7 +87,16 @@ export function createOvernightRun(
     usageMode,
     constraints = [],
     stopConditions = [],
-    budget = {}
+    budget = {},
+    // Long-Form Mission Spec (TSF Software Mission Routing / Project
+    // Planner Hotfix V1, Phase 5): the complete raw directive a chat/
+    // Command dispatch was created from, as ONE durable parent artifact --
+    // extending this existing run schema rather than inventing a second
+    // mission store. Optional/additive: a run started without one (every
+    // pre-existing caller) is unaffected; see
+    // domain/mission-specification.mjs for the shape and
+    // buildMissionSpecification, which callers use to construct this value.
+    missionSpec = null
   },
   clock
 ) {
@@ -105,6 +114,7 @@ export function createOvernightRun(
     constraints: [...constraints],
     stopConditions: [...stopConditions],
     budget: { ...DEFAULT_BUDGET, ...budget },
+    missionSpec,
     state: 'ACTIVE',
     revision: 0,
     waves: [],

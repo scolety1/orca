@@ -34,6 +34,7 @@ import {
 } from './research-mission-driver.mjs'
 import { synthesizeResearchSpecification } from './command-research-spec-synthesis.mjs'
 import { registerResearchCompletionWatch } from './command-research-completion-watch.mjs'
+import { shouldSuppressResearchCreation } from '../domain/parent-mission-intent-classification.mjs'
 
 const PROVIDER_NAME_TO_ID = Object.freeze({ exa: EXA_PROVIDER_ID, parallel: PARALLEL_PROVIDER_ID })
 
@@ -122,15 +123,20 @@ const RESEARCH_INTENT_PATTERNS = [
   // after the research-specific artifact/status/conflict patterns above so
   // none of those get shadowed.
   { id: 'RESEARCH_CANCEL', test: (msg) => /\bcancel\s+(it|that|this|the research|this mission|the mission)\b/i.test(msg) },
-  // Disclosed scope limitation, not fixed here: a bare "research" anywhere
-  // in the message is loose enough to catch a message that mentions
-  // research only in passing about an unrelated fleet project ("I did some
-  // research, now fix WorldForge") -- this mirrors chat-responder.mjs's
-  // own pre-existing, equally broad per-project RESEARCH pattern
-  // (`/\b(research|look into|...)\b/i`), not a new gap this bridge
-  // introduces. "Research X"/"build me a dataset of Y" are the explicitly
-  // required conversational shapes; narrowing this further to reduce false
-  // positives is real follow-up work, not something to guess at silently.
+  // FIXED (TSF Software Mission Routing / Project Planner Hotfix V1): a
+  // bare "research" anywhere in the message used to catch ANY message that
+  // mentions research only in passing, including inside a long software/
+  // product-engineering mission ("...research the best caching approach,
+  // then implement it across the service, add tests, and deploy...") --
+  // two real, independently-reproduced live failures (Global Command and
+  // per-project Planner Chat both hijacked a long NWR software mission
+  // into a Dataset Research request). This pattern still matches (it's
+  // still the correct trigger for a genuine bare research request, e.g.
+  // "research 2019 NFL rookie WRs"); shouldRouteToResearchBridge below is
+  // what now refuses to act on the match when the WHOLE message reads as a
+  // software mission (see domain/parent-mission-intent-classification.mjs
+  // -- PARENT MISSION INTENT MUST WIN). Every other pattern above is
+  // already narrow/mission-context-scoped and was never implicated.
   {
     id: 'RESEARCH_CREATE_OR_CONTINUE',
     test: (msg) => /\bresearch\b|\bbuild (?:me )?(?:a )?dataset\b|\bdataset\s+(?:of|for)\b/i.test(msg)
@@ -173,6 +179,17 @@ export function shouldRouteToResearchBridge(message, opState) {
     return false
   }
   if (MISSION_CONTEXT_DEPENDENT_INTENTS.has(intent) && Object.keys(opState.researchMissions ?? {}).length === 0) {
+    return false
+  }
+  // PARENT MISSION INTENT MUST WIN: a message that only matched via the
+  // broad RESEARCH_CREATE_OR_CONTINUE catch-all is refused here (falls
+  // through to normal project/dispatch routing) when the whole message
+  // reads as a software/product-engineering mission, an explicit dataset-
+  // construction shape isn't present, and research-creation wasn't
+  // negated. Every other, already-narrow research intent (status/
+  // artifacts/cancel/paid-grant/etc. on an EXISTING mission) is
+  // unaffected -- those were never the false-positive source.
+  if (intent === 'RESEARCH_CREATE_OR_CONTINUE' && shouldSuppressResearchCreation(message)) {
     return false
   }
   return true
