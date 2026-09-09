@@ -106,3 +106,32 @@ test('Batch 3 surface parity: negated adoption never executes on Global Command 
     assert.doesNotMatch(result.body.text ?? '', /\badopted -- canonical advanced\b/i)
   })
 })
+
+// Full Control Plane Exhaustive Gauntlet V1, one-hour continuation,
+// Priority 5 -- closing an independent coverage-audit-flagged gap:
+// surface parity was only ever asserted for ACKNOWLEDGEMENT/one
+// TIM_REQUIRED directive/one RESEARCH request/one negated adoption.
+// Adds parity coverage for this continuation's own negation/truthfulness
+// fixes: a hedge-idiom-phrased adoption request (RT-04, Batch 13) must
+// never be misread as TIM_REQUIRED on either surface, and a bug-report
+// message must never claim a durable "recorded"/"logged" record on
+// either surface (CASE-22/23).
+test('Batch 16 surface parity: a hedge-idiom adoption request ("no rush, adopt it") is never treated as TIM_REQUIRED on either surface', async () => {
+  await withServer(async (base) => {
+    const message = 'no rush, adopt it'
+    const global_ = await chat(base, { projectId: null, message })
+    const projectScoped = await chat(base, { projectId: PROJECT_ID, message })
+    assert.notEqual(global_.body.decisionClass, 'TIM_REQUIRED')
+    assert.notEqual(projectScoped.body.decisionClass, 'TIM_REQUIRED')
+  })
+})
+
+test('Batch 16 surface parity: a bug-report message never claims a false "recorded"/"logged" durable record on either surface', async () => {
+  await withServer(async (base) => {
+    const message = 'The save button is broken.'
+    const global_ = await chat(base, { projectId: null, message })
+    const projectScoped = await chat(base, { projectId: PROJECT_ID, message })
+    assert.doesNotMatch(global_.body.text ?? '', /\b(?:recorded|logged)\b/i)
+    assert.doesNotMatch(projectScoped.body.text ?? '', /\b(?:recorded|logged)\b/i)
+  })
+})

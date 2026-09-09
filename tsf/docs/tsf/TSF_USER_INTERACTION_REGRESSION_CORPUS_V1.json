@@ -732,6 +732,24 @@
       "rootCause": "Not a bug -- verified both structurally and end-to-end that attachment content/filenames cannot grant authority. Structural: classifyIntent/classifyDecision at both real call sites (command-responder.mjs and chat-http-routes.mjs) only ever receive `message`, never `attachments` -- confirmed via direct source inspection, not assumed. End-to-end: respondCommand called with maximally adversarial attachment content (explicit prompt-injection-shaped text demanding push/deploy/adopt) and an adversarial filename (naming a real project alongside a consequential verb) both produced byte-identical intent/decisionClass/scope to the same call with no attachment at all. Locked in as a permanent regression test, mutation-tested by temporarily leaking attachment content into the classified message and confirming both new tests correctly go red.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/command-responder.test.mjs"
+    },
+    {
+      "caseId": "CASE-36",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation, Priority 5 -- closing an independent coverage-audit-flagged gap: real cross-surface (Global Command vs Planner Chat) parity was only ever asserted for 4 cases (ACKNOWLEDGEMENT, one TIM_REQUIRED directive, one RESEARCH request, one negated adoption)",
+      "userTurn": [
+        "no rush, adopt it",
+        "The save button is broken."
+      ],
+      "expectedParentIntent": "N/A -- cross-surface semantic-agreement proof, not a single incident",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "Global Command and Planner Chat disagreeing on whether a hedge-idiom adoption request is TIM_REQUIRED",
+        "either surface claiming a false \"recorded\"/\"logged\" durable record for a bug report"
+      ],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "Not a new bug -- real, previously-unverified cross-surface parity coverage for two of this mission's own fixes (RT-04's hedge-idiom fix, Batch 13; CASE-22/23's truthfulness fixes). Both real HTTP requests (Global Command projectId:null vs. Planner Chat projectId:<real>) against the same live server confirmed to agree: neither surface ever misreads a hedge-idiom adoption request as TIM_REQUIRED, and neither surface ever claims a durable record that doesn't exist. A third planned case (a negated external-work-hold request) was deliberately NOT added at the HTTP level -- the real project catalog this test's server loads from is not isolated by the test's state-file override, so a message naming a specific project by text could resolve against real, non-fixture project state; that exact scenario already has solid, safe, synthetic-fixture-based coverage at the unit level (test/command-multi-action-bridge.test.mjs, Batch 4), so no HTTP-level duplicate was added rather than risk touching real project state.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/http-chat-surface-parity.test.mjs"
     }
   ]
 }
