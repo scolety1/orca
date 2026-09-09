@@ -593,9 +593,17 @@ function respondRationale(project) {
   return `No recorded rationale for this project yet.`
 }
 
+// Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 10 (real
+// response-truthfulness audit, 2nd finding of the same class as Batch 9's
+// respondFeedback fix): "I've logged this as feedback on X" claimed a
+// durable write that never happened -- respond() is a pure function with
+// no I/O anywhere in its own call chain, and no feedback-store module
+// exists anywhere in this codebase (confirmed via the same codebase-wide
+// search Batch 9 already ran). Fixed the same way: remove the false
+// claim, keep the real, working next step.
 function respondCritiqueOrFix(project, intent) {
   const verb = intent === 'CRITIQUE' ? 'Noted' : 'Got it'
-  return `${verb}. I can't dispatch a live Orca worker from this chat yet — that path (Wave 5 Run/task/dispatch integration) is still pending. I've logged this as feedback on **${project.displayName}**; the concrete next step is to turn it into a bounded mission the planner can hand to a worker. Want me to draft that mission?`
+  return `${verb}. I can't dispatch a live Orca worker from this chat yet — that path (Wave 5 Run/task/dispatch integration) is still pending, and there's no durable feedback log to file this in either. The concrete next step is to turn it into a bounded mission the planner can hand to a worker, for **${project.displayName}**. Want me to draft that mission?`
 }
 
 function respondResearch(project) {

@@ -591,3 +591,18 @@ test('respondAcknowledgement is a real, zero-LLM-call grounded answer (determini
 test("the archaic \"shan't\" form is recognized as a genuine prohibition", () => {
   assert.equal(classifyDecision("You shan't push this.", classifyIntent("You shan't push this.")), 'AUTO_DECIDE')
 })
+
+// Full Control Plane Exhaustive Gauntlet V1, Batch 10 (real response-
+// truthfulness finding, same class as the FEEDBACK_BUG fix above): the
+// CRITIQUE/FIX_REQUEST response used to say "I've logged this as feedback
+// on X" -- respond() is a pure function with no I/O anywhere in its call
+// chain, and no feedback-store module exists anywhere in this codebase.
+test('CRITIQUE and FIX_REQUEST responses never claim a durable log/record that does not exist', () => {
+  const project = loadRealPilotProjects()[0]
+  for (const message of ['This looks like garbage honestly.', 'Fix this.']) {
+    const result = respond(project, message)
+    assert.doesNotMatch(result.text, /\blogged\b/i, `no feedback-store module exists anywhere in this codebase -- must never claim one logged this ("${message}")`)
+    assert.doesNotMatch(result.text, /\brecorded\b/i, `must never claim a record exists ("${message}")`)
+    assert.match(result.text, new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+})

@@ -495,6 +495,23 @@
       "rootCause": "respond()'s FEEDBACK_BUG response text said \"Recorded on X\" -- but respond() is a pure function (no I/O anywhere in its own call chain), and chat-http-routes.mjs's groundedResponseWorthy branch calls it directly with no persistence step around it. Confirmed via a codebase-wide search: no feedback-store module exists anywhere (server/ or domain/). This is a real, confirmed violation of the exact \"never a promise with no backing durable record\" invariant this codebase enforces elsewhere (applyExternalWorkHold's own A6 comment). An existing test (test/chat-responder.test.mjs) had locked in the false claim by asserting the WORDING matched /recorded/i, never that anything was actually persisted. Fixed by removing the false claim (not by inventing a new persistence subsystem, which would be a real feature addition, not a bounded reliability fix) -- the response still names the project and still gives the real, working next step (\"ask me to fix it\"). Audited every other \"recorded\"/\"Recorded\" usage in the same file: all others read pre-existing, genuinely durable state (mission.state, health.status, etc.) and are truthful; this was the one isolated violation.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/chat-responder.test.mjs"
+    },
+    {
+      "caseId": "CASE-23",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 10 -- same response-truthfulness audit that found CASE-22, second occurrence of the same bug class in the same file",
+      "userTurn": [
+        "This looks like garbage honestly.",
+        "Fix this."
+      ],
+      "expectedParentIntent": "N/A -- single-message intent classification (CRITIQUE / FIX_REQUEST)",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "a response claiming a durable feedback log was written when no such mechanism exists anywhere in this codebase"
+      ],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "respondCritiqueOrFix (shared by CRITIQUE and FIX_REQUEST) said \"I've logged this as feedback on X\" -- the exact same false claim CASE-22 fixed in respondFeedback, and the exact same root cause: respond() is a pure function with no I/O anywhere in its call chain, and no feedback-store module exists anywhere in this codebase. CRITIQUE is not dispatch-worthy so it definitely reaches this path in the real /api/chat flow; FIX_REQUEST normally routes to a real dispatch instead (DISPATCH_WORTHY_INTENTS), but shares the same template function, so fixing it here closes the claim regardless of exact reachability. Fixed the same way as CASE-22: removed the false claim, kept the real, working next step (\"turn it into a bounded mission\").",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/chat-responder.test.mjs"
     }
   ]
 }
