@@ -393,6 +393,35 @@
       "rootCause": "All three of this codebase's independent negation-detection regexes (ADOPTION_NEGATION_PATTERN in domain/command-adoption-execution.mjs, NEGATION_TRIGGER_SOURCE in domain/command-multi-action-decomposition.mjs, and PROHIBITION_MARKERS in server/chat-responder.mjs) hand-picked a subset of English \"-n't\" contractions (don't/isn't/aren't/shouldn't/wouldn't/couldn't) but never generalized the pattern to the full standard auxiliary+\"n't\" family -- doesn't/didn't/hasn't/haven't/hadn't/wasn't/weren't/mustn't/mightn't/needn't/ain't were all invisible to every one of them. Confirmed end-to-end via real classifyAdoptionCommandIntent calls returning EXECUTE_ADOPTION for clearly-declined adoption requests, and real decomposeMultiAction calls firing ASSESS_AND_UPGRADE for a project the owner explicitly said did NOT need work. Fixed by generalizing all three to a single shared NOT_CONTRACTION_SOURCE covering the whole auxiliary family (can't/cannot kept separate -- \"can't\" takes a single \"n\", not the doubled \"-n\" every other auxiliary in this family takes). The chat-responder.mjs instance is lower severity (fail-safe direction only) but was fixed anyway for defense-in-depth. A dedicated, permanent, seeded fuzz harness (test/control-plane-negation-vocabulary-fuzz.test.mjs) was added as the product deliverable that found this class of bug and now guards against its recurrence. Independent adversarial review (post-fix) found the FIRST version of this fix was itself incomplete and BLOCKING: it only accepted a straight apostrophe, so a curly/\"smart\" quote (U+2019 -- the macOS/iOS/Word autocorrect default) reopened the exact same P0 for the already-covered base \"don't\" (e.g. classifyAdoptionCommandIntent(\"I don’t want to adopt this candidate.\") still returned EXECUTE_ADOPTION). Also found archaic/dialectal forms still missing (shan't/oughtn't/daren't/amn't). Both closed in the same batch before adoption, and the permanent fuzz harness itself was strengthened to generate both quote styles plus the archaic forms so this class of regression is caught automatically going forward.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/command-adoption-execution.test.mjs, test/command-multi-action-decomposition.test.mjs, test/chat-responder.test.mjs, test/control-plane-negation-vocabulary-fuzz.test.mjs"
+    },
+    {
+      "caseId": "CASE-18",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 6 -- stateful, multi-turn sequence testing (a phase not previously covered: every prior hold-related test either pre-seeded the hold directly into the store, or checked hold-set-and-used within the SAME message; none verified the real end-to-end cross-turn round trip)",
+      "userTurn": [
+        "Turn 1: \"X is being handled by another AI, leave it alone. Y needs serious work.\" (real chat call, creates a durable hold)",
+        "Turn 2 (a SEPARATE, later chat call): \"X needs serious work. Y: keep going overnight.\"",
+        "Turn 3 (after a direct store release, since chat has no release path -- a disclosed gap): \"X needs serious work. Y: keep going overnight.\" -- must now proceed past the hold gate",
+        "A duplicate/retried Turn 1 (the exact same message sent twice as two separate calls) -- must be idempotent"
+      ],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "expectedChildActions": [
+        {
+          "project": "X",
+          "intent": "EXTERNAL_WORK_HOLD then a later real dispatch attempt refused with PROJECT_EXECUTION_HOLD_ACTIVE",
+          "expectedSideEffects": [
+            "one durable createProjectExecutionHold record, never a second on retry"
+          ]
+        }
+      ],
+      "forbiddenSideEffects": [
+        "a dispatch succeeding for a project under an active hold set in an earlier turn",
+        "a duplicate/retried hold-request turn overwriting the original setAt or appending a second SET history entry",
+        "a released hold permanently blocking all future dispatch attempts"
+      ],
+      "status": "NOT_A_BUG_CONFIRMED_SAFE",
+      "rootCause": "Not a bug -- this batch verified, with real code across genuinely separate respondCommand calls (never a single function invoked twice, never a pre-seeded store write), that: (1) a hold created via one real chat turn correctly blocks a dispatch attempted in a later, independent turn (the real hold check lives inside planAndDispatchFromChat, confirmed reachable from the multi-action bridge's dispatchAction, not just the single-action path already tested elsewhere); (2) releasing a hold (via direct store call -- chat has no release path, a separately disclosed gap) correctly lets a later turn dispatch again, proving the hold is not permanently stuck; (3) a duplicate/retried hold-request turn is idempotent (no second SET history entry, original setAt preserved) under real, separate calls. All three were previously unverified end-to-end and are now locked in as permanent regression tests. Mutation-tested: disabling the real hold check in server/chat-dispatch-bridge.mjs turns both the new Batch-6 cross-turn test and the pre-existing same-message A5 test red.",
+      "fixSha": "N/A -- no fix required, coverage-only",
+      "regressionTestFile": "test/command-multi-action-bridge.test.mjs"
     }
   ]
 }

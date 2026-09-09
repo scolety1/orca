@@ -29,7 +29,7 @@ test.after(cleanupStateFile)
 const { respondCommand } = await import('../server/command-responder.mjs')
 const { classifyMultiActionEntries } = await import('../server/command-multi-action-bridge.mjs')
 const { readProjectExecutionHold, withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
-const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
+const { createProjectExecutionHold, releaseProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 const { createOvernightRun, completeRun } = await import('../domain/keep-going.mjs')
 
 const clock = () => new Date('2026-09-07T09:00:00.000Z')
@@ -231,4 +231,88 @@ test('Batch-4: a negated hold request never writes a real, durable project execu
   assert.match(result.text, /Batch4FreshHoldTarget[\s\S]*no action taken/i)
   const after = readProjectExecutionHold(freshProject.id)
   assert.equal(after, null, 'no durable hold must have been written')
+})
+
+// Full Control Plane Exhaustive Gauntlet V1, Batch 6: STATEFUL, MULTI-TURN
+// sequence coverage. Every hold-related test above either pre-seeds the
+// hold directly into the store, or checks a hold set and used within the
+// SAME message -- none had ever verified the real, end-to-end, CROSS-TURN
+// round trip: a hold created through one genuine chat call correctly
+// blocks a dispatch attempted in a completely SEPARATE, later chat call.
+// The comment on dispatchAction (above) already claimed this works via
+// planAndDispatchFromChat's own real hold check -- verified true here with
+// real code across two independent respondCommand calls, not assumed.
+function stubbedDispatchDeps() {
+  return {
+    findRegisteredOrcaRepo: async () => ({ ok: true, registered: true, repo: { id: 'stub-repo' } }),
+    createOrcaWorktree: async () => ({ ok: true, worktreePath: 'C:/stub-worktree' }),
+    resolveRepositoryIdentity: async () => ({
+      ok: true,
+      identity: { root: 'C:/stub-repo', worktree: 'C:/stub-worktree', branch: 'main', head: 'a'.repeat(40), tree: 'a'.repeat(40) }
+    }),
+    invokeLiveStructuredAnalysis: async () => ({ ok: false, reason: 'STUBBED_NO_LIVE_CALL', detail: 'test stub -- never a real live call' }),
+    resolveProjectCanonicalBase: async () => ({ resolved: true, ref: 'main', source: 'REPO_STANDARD_DEFAULT' })
+  }
+}
+const STATEFUL_PROJECTS = [
+  project('batch6-held-project', 'Batch6HeldProject', { root: 'C:/stub-repo-root' }),
+  project('batch6-other-project', 'Batch6OtherProject', { root: 'C:/stub-repo-root' })
+]
+
+test('Batch-6: a hold created via one real chat turn blocks a dispatch attempted in a SEPARATE, later chat turn', async () => {
+  const dispatchDeps = stubbedDispatchDeps()
+  const turn1 = 'batch6-held-project is being handled by another AI, leave it alone. batch6-other-project needs serious work.'
+  await respondCommand({ message: turn1, projects: STATEFUL_PROJECTS, opState, clock, deps: dispatchDeps })
+  assert.equal(readProjectExecutionHold('batch6-held-project')?.status, 'ACTIVE')
+
+  // A genuinely separate later call -- not the same message, not a
+  // pre-seeded store write.
+  const turn2 = 'batch6-held-project needs serious work. batch6-other-project: keep going overnight.'
+  const result = await respondCommand({ message: turn2, projects: STATEFUL_PROJECTS, opState, clock, deps: dispatchDeps })
+  assert.match(result.text, /Batch6HeldProject[\s\S]*couldn't start[\s\S]*PROJECT_EXECUTION_HOLD_ACTIVE/)
+  // The unrelated project's own dispatch attempt still reaches the same
+  // real downstream (fails only at the stubbed live-call point, never at
+  // a hold it was never under).
+  assert.match(result.text, /Batch6OtherProject[\s\S]*STUBBED_NO_LIVE_CALL/)
+})
+
+test('Batch-6: releasing a hold (even though chat has no release path -- a disclosed gap) lets a LATER turn dispatch again', async () => {
+  const dispatchDeps = stubbedDispatchDeps()
+  const heldProject = project('batch6-release-then-redispatch', 'Batch6ReleaseThenRedispatch', { root: 'C:/stub-repo-root' })
+  const otherProject = project('batch6-release-then-redispatch-other', 'Batch6ReleaseThenRedispatchOther', { root: 'C:/stub-repo-root' })
+  const projects = [heldProject, otherProject]
+
+  const turn1 = 'batch6-release-then-redispatch is being handled by another AI, leave it alone. batch6-release-then-redispatch-other needs serious work.'
+  await respondCommand({ message: turn1, projects, opState, clock, deps: dispatchDeps })
+  assert.equal(readProjectExecutionHold(heldProject.id)?.status, 'ACTIVE')
+
+  await withProjectExecutionHold(heldProject.id, (current) =>
+    releaseProjectExecutionHold(current, { releasedBy: 'test-operator' }, clock)
+  )
+  assert.equal(readProjectExecutionHold(heldProject.id)?.status, 'RELEASED')
+
+  const turn3 = 'batch6-release-then-redispatch needs serious work. batch6-release-then-redispatch-other: keep going overnight.'
+  const result = await respondCommand({ message: turn3, projects, opState, clock, deps: dispatchDeps })
+  assert.doesNotMatch(result.text, /Batch6ReleaseThenRedispatch\*\*[\s\S]*PROJECT_EXECUTION_HOLD_ACTIVE/)
+  assert.match(result.text, /Batch6ReleaseThenRedispatch\*\*[\s\S]*STUBBED_NO_LIVE_CALL/)
+})
+
+test('Batch-6: a duplicate/retried hold-request turn is idempotent -- no second SET record, original setAt preserved', async () => {
+  const heldProject = project('batch6-duplicate-hold-turn', 'Batch6DuplicateHoldTurn')
+  const otherProject = project('batch6-duplicate-hold-turn-other', 'Batch6DuplicateHoldTurnOther')
+  const projects = [heldProject, otherProject]
+  const message = 'batch6-duplicate-hold-turn is being handled by another AI, leave it alone. batch6-duplicate-hold-turn-other needs serious work.'
+
+  await respondCommand({ message, projects, opState, clock })
+  const first = readProjectExecutionHold(heldProject.id)
+
+  // A genuinely separate second call with the EXACT same message -- a
+  // real duplicate-delivery/retry scenario, not a single function call
+  // invoked twice in the same tick.
+  await respondCommand({ message, projects, opState, clock })
+  const second = readProjectExecutionHold(heldProject.id)
+
+  assert.equal(second.setAt, first.setAt, 'a duplicate turn must never overwrite the original setAt')
+  assert.equal(second.history.length, first.history.length, 'a duplicate turn must never append a second SET history entry')
+  assert.equal(second.history.length, 1)
 })
