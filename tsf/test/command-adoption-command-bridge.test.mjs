@@ -174,3 +174,32 @@ test('respondAdoptionCommand: a single exact-matched project still adopts normal
   assert.deepEqual(calledProjectIds, ['batch12-project-y-solo'])
   assert.equal(result.decisionClass, 'RECOMMEND_AND_PROCEED')
 })
+
+// CASE-32 (DEFERRED, disclosed, not fixed this mission): domain/command-
+// multi-action-decomposition.mjs's own comma-boundary limitation means a
+// bare-comma-joined, different-verb, different-project clause ("pause A,
+// adopt B") still gives BOTH projects the shared ADOPT_CANDIDATE_REPORT
+// intent -- but CASE-29's own fix at THIS layer (exactMatchProjects.length
+// > 1 refuses rather than adopts all of them) is the real safety net that
+// closes the dangerous consequence for this exact message shape. This
+// test pins that end-to-end guarantee so the corpus's own regressionTestFile
+// reference for CASE-32 has real, matching coverage.
+test('CASE-32 (deferred, disclosed): the decomposer-level comma-bleed never reaches a real adoption, because CASE-29\'s own multi-match refusal still applies', async () => {
+  const projectA = project('case32-project-a', 'Case32ProjectA')
+  const projectB = project('case32-project-b', 'Case32ProjectB')
+  const calledProjectIds = []
+  const result = await respondAdoptionCommand({
+    message: 'pause case32-project-a, adopt case32-project-b',
+    exactMatchProjects: [projectA, projectB],
+    projects: [projectA, projectB],
+    clock,
+    deps: {
+      executeCommandAdoption: async ({ project: p }) => {
+        calledProjectIds.push(p.id)
+        return { ok: true, alreadyIncluded: false, priorCanonicalSha: 'a'.repeat(40), resultingCanonicalSha: 'b'.repeat(40), receipt: { receiptHash: 'c'.repeat(40) } }
+      }
+    }
+  })
+  assert.deepEqual(calledProjectIds, [], 'no real adoption attempt for either project despite the decomposer-level comma-bleed')
+  assert.equal(result.decisionClass, 'NEEDS_OWNER')
+})

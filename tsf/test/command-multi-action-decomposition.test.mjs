@@ -272,3 +272,23 @@ for (const message of [
     assert.ok(forNwr.every((e) => !['ASSESS_AND_UPGRADE', 'START_KEEP_GOING', 'EXTERNAL_WORK_HOLD'].includes(e.intent)))
   })
 }
+
+// Independent adversarial-review finding (BLOCKING, same mission, same
+// fix class as domain/command-adoption-execution.mjs's own accept/
+// approve allowlist redesign): a co-mentioned real project name inside an
+// unrelated accept/approve sentence must never itself trigger
+// ADOPT_CANDIDATE_REPORT for that project -- decomposeMultiAction now
+// threads `projects` through to hasAdoptionVerb's own allowlist check.
+test('accept/approve object-recognition allowlist applies inside decomposeMultiAction too -- an unrelated co-mention never triggers ADOPT_CANDIDATE_REPORT', () => {
+  const entries = decomposeMultiAction('approve the budget for easylifehq-github-io. niners-war-room needs serious work.', PROJECTS, aliases)
+  const forEasyLife = entries.filter((e) => e.target === 'easylifehq-github-io')
+  assert.ok(forEasyLife.every((e) => e.intent !== 'ADOPT_CANDIDATE_REPORT'), `expected no ADOPT_CANDIDATE_REPORT, got ${JSON.stringify(forEasyLife)}`)
+})
+
+// Positive control: a genuine "accept <ProjectName>" request inside a
+// multi-project message still correctly fires ADOPT_CANDIDATE_REPORT.
+test('accept/approve object-recognition allowlist does not regress a genuine accept request inside decomposeMultiAction', () => {
+  const entries = decomposeMultiAction('accept easylifehq-github-io. niners-war-room needs serious work.', PROJECTS, aliases)
+  const forEasyLife = entries.filter((e) => e.target === 'easylifehq-github-io')
+  assert.ok(forEasyLife.some((e) => e.intent === 'ADOPT_CANDIDATE_REPORT'))
+})

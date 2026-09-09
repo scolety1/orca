@@ -253,8 +253,16 @@ const INTENT_PATTERNS = [
   // (hasAdoptionVerb -- adopt/accept/approve, not just bare "adopt") the
   // single-message adoption classifier uses, so the two never drift apart
   // on what counts as an adoption verb or a negated one.
-  { id: 'ADOPT_CANDIDATE_REPORT', test: (t) => hasAdoptionVerb(t) && !negatesAdoptionVerb(t) },
-  { id: 'ADOPT_CANDIDATE_DECLINED', test: (t) => hasAdoptionVerb(t) && negatesAdoptionVerb(t) },
+  // Independent adversarial-review finding (BLOCKING, same mission, same
+  // vulnerability class as domain/command-adoption-execution.mjs's own
+  // ADOPTION_VERB_PATTERN fix -- see that file's header for the full
+  // rationale): hasAdoptionVerb's accept/approve object-recognition
+  // allowlist needs real project context to distinguish "approve the
+  // budget for WorldForge" from "accept WorldForge" -- threaded through
+  // here via `projects` (the same full registered-project list this
+  // module's own caller already has).
+  { id: 'ADOPT_CANDIDATE_REPORT', test: (t, projects) => hasAdoptionVerb(t, projects) && !negatesAdoptionVerb(t) },
+  { id: 'ADOPT_CANDIDATE_DECLINED', test: (t, projects) => hasAdoptionVerb(t, projects) && negatesAdoptionVerb(t) },
   {
     id: 'START_KEEP_GOING',
     test: (t) => (/\bkeep\s+going\b/i.test(t) || /\bovernight\b/i.test(t)) && !isVerbNegated(t, KEEP_GOING_VERB_SOURCES)
@@ -290,8 +298,8 @@ const INTENT_PATTERNS = [
 // entry, never just the first. A segment matching none of the specific
 // patterns still gets a real GENERAL entry (never silently dropped) so a
 // resolved project is never left with zero record of what was said about it.
-function intentsForSegmentText(text) {
-  const matched = INTENT_PATTERNS.filter((p) => p.test(text)).map((p) => p.id)
+function intentsForSegmentText(text, projects) {
+  const matched = INTENT_PATTERNS.filter((p) => p.test(text, projects)).map((p) => p.id)
   return matched.length > 0 ? matched : ['GENERAL']
 }
 
@@ -305,7 +313,7 @@ export function decomposeMultiAction(message, projects, aliases = loadProjectAli
   const segments = segmentByProject(message, projects, aliases)
   const entries = []
   for (const segment of segments) {
-    for (const intent of intentsForSegmentText(segment.text)) {
+    for (const intent of intentsForSegmentText(segment.text, projects)) {
       entries.push({ target: segment.projectId, intent, rawClause: segment.text })
     }
   }

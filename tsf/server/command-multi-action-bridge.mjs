@@ -95,7 +95,13 @@ function reportAdoptionCandidate(project, opState, clock, deps) {
 // command-adoption-command-bridge.mjs's own single-project path uses,
 // never a guess.
 async function executeAdoptionCandidate(project, rawClause, opState, clock, deps) {
-  const classification = classifyAdoptionCommandIntent(rawClause)
+  // `[project]`: this clause is already attributed to exactly this one
+  // project (decomposeMultiAction's own segmentByProject) -- passed
+  // through so classifyAdoptionCommandIntent's accept/approve allowlist
+  // (see domain/command-adoption-execution.mjs) can recognize this
+  // project's own name as a real, known adoption object, same fix class
+  // as command-adoption-command-bridge.mjs's own single-project path.
+  const classification = classifyAdoptionCommandIntent(rawClause, [project])
   if (classification === 'AMBIGUOUS') {
     return { text: `ambiguous adoption language -- won't guess; say "adopt it" explicitly.`, category: null, ok: false }
   }

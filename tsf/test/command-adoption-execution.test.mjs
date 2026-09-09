@@ -345,3 +345,63 @@ for (const message of ['accept that verified candidate', 'accept EasyLifeHQ', 'a
     assert.equal(classifyAdoptionCommandIntent(message), 'EXECUTE_ADOPTION')
   })
 }
+
+// Independent adversarial-review finding (BLOCKING, same mission, caught
+// before adoption): the curated-denylist-only version of the fix above
+// could never enumerate all of ordinary English -- "approve the budget
+// for WorldForge", "accept the invoice for WorldForge", etc. all still
+// classified EXECUTE_ADOPTION and were confirmed reachable to a real
+// merge. Redesigned as an allowlist requiring accept/approve's own DIRECT
+// OBJECT to be a real, known project name (or a candidate-referring noun)
+// -- verified here with real project context, matching the review's own
+// exact repro cases.
+const REVIEW_PROJECTS = [{ id: 'worldforge', displayName: 'WorldForge' }, { id: 'easylife', displayName: 'EasyLifeHQ' }]
+for (const message of [
+  'approve the budget for WorldForge',
+  'accept the invoice for WorldForge',
+  'accept the challenge, WorldForge',
+  'approve the timeline for WorldForge',
+  'I accept the deal, ship WorldForge',
+  'approve the design for WorldForge'
+]) {
+  test(`classifyAdoptionCommandIntent: with real project context, accept/approve's object must be the project itself, not a co-mentioned unrelated noun -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message, REVIEW_PROJECTS), 'NOT_ADOPTION')
+  })
+}
+
+// Positive control: bare "accept/approve <ProjectName>" (the project
+// itself as the direct object) still executes when real project context
+// confirms it's a known project -- the allowlist's own intended match.
+for (const message of ['accept WorldForge', 'approve WorldForge', 'accept EasyLifeHQ']) {
+  test(`classifyAdoptionCommandIntent: with real project context, accept/approve naming the project as its own direct object still executes -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message, REVIEW_PROJECTS), 'EXECUTE_ADOPTION')
+  })
+}
+
+// Positive control: every required example still works with NO project
+// context supplied at all (the legacy curated-denylist fallback for pure,
+// project-agnostic classification calls).
+for (const message of ['adopt the Nytheria run', 'accept that verified candidate', 'the WorldForge one looks good, adopt it', 'adopt both of those', 'accept EasyLifeHQ']) {
+  test(`classifyAdoptionCommandIntent: with NO project context supplied, the legacy fallback still recognizes required phrasings -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'EXECUTE_ADOPTION')
+  })
+}
+
+// CASE-31 (DEFERRED, disclosed, not fixed this mission): pins the CURRENT
+// fail-safe behavior for two known, real gaps found by the same
+// adversarial review -- self-correction/quoted-reversal negation scoring,
+// and common hedge idioms false-positiving to NOT_ADOPTION. Both under-
+// act (never wrongly execute); this test exists so the corpus's own
+// regressionTestFile reference for CASE-31 has real, matching coverage,
+// not just an unrelated passing test in the same file.
+for (const message of [
+  'The plan said "do not adopt this candidate" but I want you to adopt EasyLifeHQ now.',
+  "Actually, don't adopt EasyLifeHQ, adopt EasyLifeHQ -- go ahead.",
+  'no rush, adopt it',
+  'not gonna lie, adopt it',
+  "there's no reason not to adopt it"
+]) {
+  test(`CASE-31 (deferred, disclosed): pins the current fail-safe (never wrongly EXECUTE_ADOPTION) behavior -- "${message}"`, () => {
+    assert.notEqual(classifyAdoptionCommandIntent(message), 'EXECUTE_ADOPTION')
+  })
+}

@@ -176,13 +176,78 @@ const ADOPTION_VERB_PATTERN = /\b(adopt(ed|ing|s)?|accept(ed|ing|s)?|approve[sd]
 // negligible false-positive risk in practice, and every one of this file's
 // own required sufficient examples that use "accept" ("accept that
 // verified candidate", and the golden-path eval's own "accept EasyLifeHQ")
-// still work unchanged: this only excludes accept/approve when its own
-// object is one of a curated set of common nouns that signal an entirely
-// unrelated, non-TSF-candidate meaning, never based on what follows
-// generically.
+// still work unchanged.
+//
+// Independent adversarial-review finding (BLOCKING, same mission, caught
+// before adoption): the first version of this fix used ONLY a curated
+// denylist of known-bad objects (apology/request/offer/...) -- a denylist
+// can never enumerate all of ordinary English, so "approve the budget for
+// WorldForge", "accept the invoice for WorldForge", "approve the timeline
+// for WorldForge" (a real, exact-matched project named alongside an
+// UNLISTED unrelated noun) all still classified EXECUTE_ADOPTION and were
+// confirmed to still reach a real ffOnlyMerge. Redesigned as an ALLOWLIST
+// instead: accept/approve's own object must be either an explicit
+// candidate-referring noun (candidate/run/mission/adoption, within a
+// bounded word gap) OR a REAL, KNOWN project's own id/displayName as its
+// immediate direct object (at most one intervening article) -- whenever
+// the caller supplies real project context (both real production call
+// sites now do: shouldRouteToAdoptionCommandBridge and
+// respondAdoptionCommand). "approve the budget for WorldForge" is
+// correctly excluded even though "WorldForge" appears in the message,
+// because "WorldForge" is not the verb's own direct object ("the budget"
+// is) -- the same distinction a human reads instantly but a denylist can
+// never encode. When no project context is supplied at all (`projects`
+// left `undefined` -- pure, project-agnostic classification calls, e.g.
+// this file's own unit tests), falls back to the original curated-
+// denylist check as the best available signal without knowing which
+// tokens are real project names.
 const ACCEPT_APPROVE_VERB_PATTERN = /\b(accept(ed|ing|s)?|approve[sd]?)\b/i
 const NON_ADOPTION_ACCEPT_APPROVE_OBJECT =
   /\b(?:accept(?:ed|ing|s)?|approve[sd]?)\b(?:\s+(?:the|a|an|my|your|his|her|our|their|its))?(?:\s+\S+){0,2}?\s+(?:apolog(?:y|ies)|request|offer|invitation|proposal|terms|feedback|blame|responsibility|pr\b|pull request|resignation|application|excuse)/i
+const ADOPTION_CANDIDATE_NOUN_SOURCE = 'candidate|run|mission|adoption'
+const ARTICLE_SOURCE = 'the|a|an|my|your|his|her|our|their|its'
+
+function escapeRegExpToken(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Object-recognition check for the allowlist redesign above. Operates on
+// each real occurrence of accept/approve independently (a message can
+// have more than one), checking only the text immediately following that
+// occurrence -- never the whole message -- so "approve the budget for
+// WorldForge" is judged on "the budget for WorldForge" (no direct-object
+// match) even though "WorldForge" appears later in that same span.
+function acceptApproveObjectIsRecognized(text, projects) {
+  const verbMatches = [...text.matchAll(/\b(?:accept(?:ed|ing|s)?|approve[sd]?)\b/gi)]
+  for (const vm of verbMatches) {
+    const after = text.slice(vm.index + vm[0].length, vm.index + vm[0].length + 80)
+    // Bounded word gap (0-2 filler words) before a candidate-referring
+    // noun -- these are narrow, self-evident TSF vocabulary words, much
+    // less likely to appear incidentally than an arbitrary project name
+    // might, so a slightly looser gap here is safe.
+    if (new RegExp(`^(?:\\s+(?:${ARTICLE_SOURCE}))?(?:\\s+\\S+){0,2}?\\s+(?:${ADOPTION_CANDIDATE_NOUN_SOURCE})\\b`, 'i').test(after)) {
+      return true
+    }
+    if (!Array.isArray(projects)) {
+      continue
+    }
+    // Strict direct-object adjacency (at most one intervening article) --
+    // project names/ids are arbitrary proper nouns that could appear
+    // anywhere in a longer sentence, so this stays tight specifically to
+    // avoid the "for WorldForge" false-positive shape.
+    for (const project of projects) {
+      if (!project) {
+        continue
+      }
+      for (const name of [project.id, project.displayName]) {
+        if (typeof name === 'string' && name.trim() && new RegExp(`^(?:\\s+(?:${ARTICLE_SOURCE}))?\\s+${escapeRegExpToken(name.trim())}\\b`, 'i').test(after)) {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
 const HEDGE_PATTERN = /\b(maybe|perhaps|not sure|unsure|should i|should we|might|could we|possibly|i think|i guess|wonder(ing)?|what if)\b/i
 const TRAILING_QUESTION_PATTERN = /\?\s*$/
 
@@ -196,18 +261,27 @@ const TRAILING_QUESTION_PATTERN = /\?\s*$/
 // multi-action gate and reproduced the exact negation-leak bug Batch 2
 // fixed, just via "accept" instead of "adopt". Exported so that module
 // reuses this exact vocabulary instead of a second, narrower one.
-export function hasAdoptionVerb(text) {
+export function hasAdoptionVerb(text, projects) {
   const s = String(text ?? '')
   if (!ADOPTION_VERB_PATTERN.test(s)) {
     return false
   }
   // A bare "adopt" anywhere already qualifies regardless of accept/approve's
-  // own excluded-object check below (they are independent signals, not one
-  // combined gate) -- only accept/approve needs the narrower object check.
+  // own object check below (they are independent signals, not one combined
+  // gate) -- only accept/approve needs the narrower object check.
   if (/\badopt(ed|ing|s)?\b/i.test(s)) {
     return true
   }
-  return ACCEPT_APPROVE_VERB_PATTERN.test(s) && !NON_ADOPTION_ACCEPT_APPROVE_OBJECT.test(s)
+  if (!ACCEPT_APPROVE_VERB_PATTERN.test(s) || NON_ADOPTION_ACCEPT_APPROVE_OBJECT.test(s)) {
+    return false
+  }
+  if (projects === undefined) {
+    // No real project context supplied -- the curated-denylist check just
+    // above is the best available signal without knowing which tokens in
+    // the message are real project names.
+    return true
+  }
+  return acceptApproveObjectIsRecognized(s, projects)
 }
 // FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
 // Exhaustive Gauntlet V1): "Do not adopt this candidate." used to classify
@@ -293,9 +367,9 @@ export function negatesAdoptionVerb(text) {
   return ADOPTION_NEGATION_PATTERN.test(withoutIdioms)
 }
 
-export function classifyAdoptionCommandIntent(message) {
+export function classifyAdoptionCommandIntent(message, projects) {
   const text = String(message ?? '')
-  if (!hasAdoptionVerb(text)) {
+  if (!hasAdoptionVerb(text, projects)) {
     // No adoption verb at all -- "looks good"/"continue"/"what's ready?"/
     // "probably fine" all land here, honestly not this engine's concern.
     // Also lands here for accept/approve used in a confirmed-unrelated

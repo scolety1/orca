@@ -390,7 +390,7 @@ export async function respondCommand({
   // act" convention; a referring phrase ("adopt both of those") falls
   // through to the bridge's own resolveCommandReferent against the prior
   // turn's real resultItems.
-  if (shouldRouteToAdoptionCommandBridge(message)) {
+  if (shouldRouteToAdoptionCommandBridge(message, projects)) {
     const priorResultItems = (() => {
       const thread = opState.chatThreads?.__command__ ?? []
       for (let i = thread.length - 1; i >= 0; i -= 1) {

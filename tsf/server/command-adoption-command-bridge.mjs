@@ -13,8 +13,14 @@ import { executeCommandAdoption } from './command-adoption-execution.mjs'
 import { resolveCommandReferent } from '../domain/command-referent-resolution.mjs'
 import { trimAttentionItem } from '../domain/fleet-attention-status.mjs'
 
-export function shouldRouteToAdoptionCommandBridge(message) {
-  return classifyAdoptionCommandIntent(message) !== 'NOT_ADOPTION'
+// `projects` (optional, the real registered project list): threaded
+// through to classifyAdoptionCommandIntent's own accept/approve object-
+// recognition allowlist (see that function's own header comment) -- when
+// supplied, "approve the budget for WorldForge" is correctly recognized
+// as NOT adoption language even though a real project name appears in the
+// message, because it isn't the verb's own direct object.
+export function shouldRouteToAdoptionCommandBridge(message, projects) {
+  return classifyAdoptionCommandIntent(message, projects) !== 'NOT_ADOPTION'
 }
 
 function ambiguousResponse(message) {
@@ -90,7 +96,7 @@ function respondFromOutcomes(outcomes) {
 // when the message itself named no project at all (a referring phrase like
 // "adopt both of those").
 export async function respondAdoptionCommand({ message, exactMatchProjects = [], priorResultItems = [], projects, clock = () => new Date(), deps = {} }) {
-  const classification = classifyAdoptionCommandIntent(message)
+  const classification = classifyAdoptionCommandIntent(message, projects)
   if (classification === 'NOT_ADOPTION') {
     return null
   }
