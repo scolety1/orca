@@ -367,9 +367,21 @@ const INTENTS = [
     pattern:
       /^\s*(what|why|how|when|where|who|which|is|are|do|does|did|can|could|would|should|will)\b.*\?\s*$/i
   },
+  // Pre-existing (not this mission's regression -- reproduced identically
+  // at face3a5ab3, before any of this mission's own work; this file's own
+  // DISPATCH_REQUEST comment above already discloses "run into" as a
+  // common encounter-idiom needing exclusion, but that disclosure only
+  // ever reached the BARE_IMPERATIVE pattern's own anchor, never this
+  // pattern's bare "issue" keyword): "Run into an issue with WorldForge"
+  // -- a casual encounter-idiom, not a deliberate bug report -- durably
+  // recorded a spurious FEEDBACK_BUG entry against whatever project it
+  // named. The lookbehind below excludes "issue" only in that specific
+  // idiomatic shape (run/ran/running into a/an issue) -- a real, unhedged
+  // report ("there's an issue with the login button") still matches
+  // normally.
   {
     id: 'FEEDBACK_BUG',
-    pattern: /\b(bug|broken|doesn['’]?t work|not working|jumps? around|regression|issue)\b/i
+    pattern: /\b(bug|broken|doesn['’]?t work|not working|jumps? around|regression|(?<!(?:run|ran|running) into an? )issue)\b/i
   },
   // FIXED (real, live-reproduced -- Full Conversational Control Plane
   // Exhaustive Gauntlet V1): plain enthusiasm/acknowledgement ("awesome!

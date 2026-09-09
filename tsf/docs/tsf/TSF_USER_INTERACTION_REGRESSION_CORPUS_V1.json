@@ -462,6 +462,23 @@
       "rootCause": "Not a bug in the implementation -- a genuine, previously-unverified coverage gap in the TEST SUITE. Verified real idempotency under true concurrency (Promise.all, not sequential) at the full chat-call level for the first time. Self-caught, real mutation-testing finding: the FIRST version of the accompanying sequential idempotency test (CASE-18/Batch 6) reused identical message text under a frozen clock, so a mutant that deletes applyExternalWorkHold's idempotency guard entirely (always overwriting with a freshly created hold instead of preserving `current`) still passed that test undetected -- the frozen clock and identical note text made \"correctly preserved\" and \"incorrectly always overwritten with identical-looking data\" indistinguishable. Fixed by rewriting that sequential test to use genuinely different hold-request wording on the second turn, so an overwrite is actually observable; confirmed catching the reintroduced mutation before finalizing this batch.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/command-multi-action-bridge.test.mjs"
+    },
+    {
+      "caseId": "CASE-21",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 8 -- triage of the 7 full-regression-suite failures from Batch 7's checkpoint pass. Two real, distinct root causes found, both pre-existing (confirmed via isolated reproduction at face3a5ab3, before any of this mission's own work).",
+      "userTurn": [
+        "Run into an issue with WorldForge (an encounter-idiom, not a deliberate bug report)",
+        "is the test still running? / how do I run the migration? / Should I deploy WorldForge? (genuine questions)"
+      ],
+      "expectedParentIntent": "N/A -- single-message intent classification",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "a casual \"ran into an issue\" idiom durably recording a spurious FEEDBACK_BUG entry against a real project"
+      ],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "Two separate, real findings: (1) FEEDBACK_BUG's bare \"issue\" keyword matched the pre-existing, already-partially-disclosed \"run into\" encounter-idiom (this file's own DISPATCH_REQUEST comment already excluded it from that pattern, but the exclusion never reached FEEDBACK_BUG) -- \"Run into an issue with WorldForge\" durably recorded spurious project feedback. Fixed with a lookbehind scoped to the exact idiomatic shape (run/ran/running into a/an issue); a real, unhedged report (\"there's an issue with the login button\") still classifies FEEDBACK_BUG, verified with a positive-control test. (2) Three test failures in command-bare-imperative-dispatch.test.mjs and command-operator-integration-adversarial.test.mjs asserted a stale 'GENERAL' expectation for genuinely interrogative sentences -- confirmed via git history that both test files predate the later, deliberate QUESTION intent addition (7701998835, \"recover stranded Chat/Health-Repair/Projects UX work\"). QUESTION is a real, safe, MORE PRECISE classification (never DISPATCH_REQUEST/FIX_REQUEST, never TIM_REQUIRED, and its own real response text never implies an action was taken) -- the tests' own real invariants were never actually broken, so the 3 assertions were updated to the current, correct, safe classification rather than the classifier being changed.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-bare-imperative-dispatch.test.mjs, test/command-operator-integration-adversarial.test.mjs"
     }
   ]
 }

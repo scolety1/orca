@@ -25,6 +25,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { classifyIntent, classifyDecision } from '../server/chat-responder.mjs'
 import { resolveProjectsFromText } from '../server/project-name-resolver.mjs'
+import { DISPATCH_WORTHY_INTENTS } from '../server/command-responder.mjs'
 
 const REAL_PROJECTS = [
   { id: 'tsf-orca', displayName: 'TSF_ORCA' },
@@ -99,13 +100,26 @@ test('SCENARIO: "Run WorldForge. Do not touch TSF." -- WorldForge resolves via a
 // TIM_REQUIRED-consequential keyword ("deploy"). Authority-leakage proof:
 // the question form must not force TIM_REQUIRED (chat-responder.mjs's own
 // isGenuineDirective rejects any clause containing "?"), and must not
-// dispatch anything (GENERAL is not in DISPATCH_WORTHY_INTENTS) -- an
-// operator asking ABOUT a consequential action must never be treated as
-// having requested it.
+// dispatch anything -- an operator asking ABOUT a consequential action
+// must never be treated as having requested it.
+//
+// Full Control Plane Exhaustive Gauntlet V1, Batch 8: the intent this
+// test checks for is QUESTION, not the GENERAL this comment originally
+// described -- confirmed via git history that this test file (5968958d79)
+// predates the later, deliberate QUESTION intent addition (7701998835,
+// "recover stranded Chat/Health-Repair/Projects UX work"). QUESTION is a
+// real, safe, MORE PRECISE classification for a genuine interrogative
+// sentence than the generic GENERAL fallback: confirmed never
+// DISPATCH_REQUEST/FIX_REQUEST (never in DISPATCH_WORTHY_INTENTS), never
+// TIM_REQUIRED, and its own real response text never implies an action
+// was taken. This test's own real invariant -- a question about a
+// consequential action is never itself TIM_REQUIRED and never dispatches
+// -- is exactly as true today as when it was written.
 test('SCENARIO: "Should I deploy WorldForge?" -- a question never forces TIM_REQUIRED and never dispatches, even with a consequential keyword and a resolvable alias present', () => {
   const message = 'Should I deploy WorldForge?'
   const intent = classifyIntent(message)
-  assert.equal(intent, 'GENERAL')
+  assert.equal(intent, 'QUESTION')
+  assert.equal(DISPATCH_WORTHY_INTENTS.has(intent), false, 'never a dispatch-worthy intent')
   assert.equal(
     classifyDecision(message, intent),
     'AUTO_DECIDE',

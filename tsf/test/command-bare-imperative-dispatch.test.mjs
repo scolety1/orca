@@ -57,13 +57,34 @@ test('NEGATION: a later, genuine bare imperative still fires even after an earli
 
 test('QUERY/STATUS: sentences containing "run" that are not dispatch requests never classify as DISPATCH_REQUEST', () => {
   assert.equal(classifyIntent("what's running right now?"), 'STATUS')
-  assert.equal(classifyIntent('is the test still running?'), 'GENERAL')
-  assert.equal(classifyIntent('how do I run the migration?'), 'GENERAL')
+  // Full Control Plane Exhaustive Gauntlet V1, Batch 8: these two hard-
+  // coded 'GENERAL' expectations went stale, not regressed -- confirmed
+  // via git history that this test file (7e61db042c) predates the later,
+  // deliberate QUESTION intent addition (7701998835, "recover stranded
+  // Chat/Health-Repair/Projects UX work"). QUESTION is a real, safe,
+  // MORE PRECISE classification for a genuine interrogative sentence than
+  // the generic GENERAL fallback -- confirmed never DISPATCH_REQUEST,
+  // never TIM_REQUIRED, and its own real response text ("I understand
+  // this as a question about...") never implies an action was taken.
+  // This test's own real invariant (never DISPATCH_REQUEST) is exactly
+  // as true today as when it was written.
+  assert.equal(classifyIntent('is the test still running?'), 'QUESTION')
+  assert.equal(classifyIntent('how do I run the migration?'), 'QUESTION')
   assert.equal(classifyIntent('the CI run failed'), 'GENERAL')
   assert.equal(classifyIntent('Run Nytheria?'), 'GENERAL', 'a genuine question, not a directive')
 })
 
-test('IDIOM: "run into" (encounter, not a dispatch verb) never classifies as DISPATCH_REQUEST', () => {
+// Full Control Plane Exhaustive Gauntlet V1, Batch 8: real, live-confirmed
+// P2 -- this file's own DISPATCH_REQUEST comment already discloses "run
+// into" as a common encounter-idiom, but that disclosure only ever
+// reached the BARE_IMPERATIVE pattern's own anchor, never FEEDBACK_BUG's
+// bare "issue" keyword. "Run into an issue with WorldForge" durably
+// recorded a spurious feedback/bug-report entry against whatever project
+// it named, even though it's a casual figure of speech, not a deliberate
+// report. Fixed with a lookbehind scoped to the exact idiomatic shape
+// (run/ran/running into a/an issue) -- a real, unhedged report ("there's
+// an issue with the login button") still classifies FEEDBACK_BUG.
+test('IDIOM: "run into" (encounter, not a dispatch verb) never classifies as DISPATCH_REQUEST or FEEDBACK_BUG', () => {
   assert.equal(classifyIntent('Run into an issue with WorldForge'), 'GENERAL')
   assert.equal(classifyIntent('I ran into a problem with Nytheria'), 'GENERAL')
 })
@@ -307,4 +328,10 @@ test('AUTHORIZATION-ONCE with the new bare-imperative trigger: a TIM_REQUIRED re
       delete process.env.TSF_PROJECT_ALIASES_JSON
     }
   })
+})
+
+test('Batch-8 positive control: a genuine, unhedged bug report containing "issue" still classifies FEEDBACK_BUG', () => {
+  assert.equal(classifyIntent('there is an issue with the login button'), 'FEEDBACK_BUG')
+  assert.equal(classifyIntent('I found an issue: the sidebar jumps'), 'FEEDBACK_BUG')
+  assert.equal(classifyIntent('this is an issue in the checkout flow'), 'FEEDBACK_BUG')
 })
