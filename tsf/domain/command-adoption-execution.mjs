@@ -45,10 +45,35 @@ export function resolveCandidateWorktreeFromRun(run) {
   if (!Array.isArray(outcomes)) {
     return null
   }
-  const worktrees = new Set(
+  const completedIds = new Set(
+    outcomes.filter((o) => o.outcome === 'COMPLETED').map((o) => o.workItemId)
+  )
+  if (completedIds.size === 0) {
+    return null
+  }
+  const outcomeWorktrees = new Set(
     outcomes.filter((o) => o.outcome === 'COMPLETED' && o.worktree).map((o) => o.worktree)
   )
-  return worktrees.size === 1 ? [...worktrees][0] : null
+  if (outcomeWorktrees.size > 0) {
+    // A genuine disagreement among the newer, worktree-carrying outcomes
+    // themselves is real ambiguity -- refused outright, never falls
+    // through to the plan below to try to resolve it a different way.
+    return outcomeWorktrees.size === 1 ? [...outcomeWorktrees][0] : null
+  }
+  // Real, disclosed gap: a run whose dispatch record predates this
+  // program's own worktree-in-outcome tracking (e.g. a real Landing Page
+  // run completed 2026-08-27, before that fix existed) never carries
+  // `worktree` on its outcomes at all -- but the wave's own PLAN already
+  // recorded, before dispatch, which worktree each work item was placed
+  // in -- real, durable data written at plan time, not a guess made now.
+  // Only trusted for work items already confirmed COMPLETED above (never
+  // an item the plan merely intended but never actually finished), and
+  // still refused on any disagreement.
+  const planItems = (lastWave.wavePlan?.batches ?? []).flat()
+  const planWorktrees = new Set(
+    planItems.filter((item) => completedIds.has(item.id) && item.worktree).map((item) => item.worktree)
+  )
+  return planWorktrees.size === 1 ? [...planWorktrees][0] : null
 }
 
 // Revalidates a resolved adoption candidate against the project's CURRENT

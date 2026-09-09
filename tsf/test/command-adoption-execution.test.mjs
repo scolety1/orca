@@ -155,3 +155,54 @@ test('resolveCandidateWorktreeFromRun: a legacy run with no worktree recorded re
   const run = { waves: [{ waveResult: { outcomes: [{ outcome: 'COMPLETED' }] } }] }
   assert.equal(resolveCandidateWorktreeFromRun(run), null)
 })
+
+// Real, disclosed gap this fallback closes: a run whose outcomes predate
+// worktree-in-outcome tracking (e.g. the real Landing Page run, completed
+// 2026-08-27) but whose wave PLAN -- real, durable data written before
+// dispatch -- already recorded it.
+test('resolveCandidateWorktreeFromRun: falls back to the wave PLAN\'s own worktree when the outcome carries none, for a work item confirmed COMPLETED', () => {
+  const run = {
+    waves: [{
+      wavePlan: { batches: [[{ id: 'w1', worktree: '/plan/wt' }]] },
+      waveResult: { outcomes: [{ workItemId: 'w1', outcome: 'COMPLETED' }] }
+    }]
+  }
+  assert.equal(resolveCandidateWorktreeFromRun(run), '/plan/wt')
+})
+
+test('resolveCandidateWorktreeFromRun: the plan fallback never trusts a plan item that did not actually complete', () => {
+  const run = {
+    waves: [{
+      wavePlan: { batches: [[{ id: 'w1', worktree: '/plan/wt' }]] },
+      // w1 itself never completed -- only an unrelated item did, so the
+      // plan's own worktree for w1 must never be trusted here.
+      waveResult: { outcomes: [{ workItemId: 'w2', outcome: 'COMPLETED' }] }
+    }]
+  }
+  assert.equal(resolveCandidateWorktreeFromRun(run), null)
+})
+
+test('resolveCandidateWorktreeFromRun: the plan fallback is refused on disagreement too, same as the outcome-level check', () => {
+  const run = {
+    waves: [{
+      wavePlan: { batches: [[{ id: 'w1', worktree: '/plan/a' }], [{ id: 'w2', worktree: '/plan/b' }]] },
+      waveResult: {
+        outcomes: [
+          { workItemId: 'w1', outcome: 'COMPLETED' },
+          { workItemId: 'w2', outcome: 'COMPLETED' }
+        ]
+      }
+    }]
+  }
+  assert.equal(resolveCandidateWorktreeFromRun(run), null)
+})
+
+test('resolveCandidateWorktreeFromRun: a real, present outcome-level worktree always wins over the plan fallback -- never falls through when the newer field is already there', () => {
+  const run = {
+    waves: [{
+      wavePlan: { batches: [[{ id: 'w1', worktree: '/plan/stale-or-different' }]] },
+      waveResult: { outcomes: [{ workItemId: 'w1', outcome: 'COMPLETED', worktree: '/outcome/real' }] }
+    }]
+  }
+  assert.equal(resolveCandidateWorktreeFromRun(run), '/outcome/real')
+})
