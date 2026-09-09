@@ -120,3 +120,57 @@ test('respondAdoptionCommand: explicit intent, no exact match, no resolvable ref
   assert.equal(result.decisionClass, 'NEEDS_OWNER')
   assert.match(result.text, /can't tell which candidate/)
 })
+
+// Full Control Plane Exhaustive Gauntlet V1, one-hour continuation
+// (independent coverage-audit finding, real, live-confirmed P0): this
+// file's own header comment already documents respondAdoptionCommand as
+// "the SINGLE-project entry point," but the exactMatchProjects.length > 0
+// check used to accept ANY count -- command-responder.mjs's exactMatches
+// is resolved over the WHOLE message, not scoped to the adoption verb's
+// own clause, so "pause X, adopt Y" (an unrelated verb for X, a genuine
+// adoption request for Y) passed BOTH projects through, and
+// adoptForProjects called the real executeCommandAdoption against BOTH
+// unconditionally -- including X, which was never asked to be adopted.
+test('respondAdoptionCommand: 2+ exact-matched projects alongside adoption language refuses rather than adopting every co-named project', async () => {
+  const projectX = project('batch12-project-x', 'Batch12ProjectX')
+  const projectY = project('batch12-project-y', 'Batch12ProjectY')
+  const calledProjectIds = []
+  const result = await respondAdoptionCommand({
+    message: 'pause batch12-project-x, adopt batch12-project-y',
+    exactMatchProjects: [projectX, projectY],
+    projects: [projectX, projectY],
+    clock,
+    deps: {
+      executeCommandAdoption: async ({ project: p }) => {
+        calledProjectIds.push(p.id)
+        return { ok: true, alreadyIncluded: false, priorCanonicalSha: 'a'.repeat(40), resultingCanonicalSha: 'b'.repeat(40), receipt: { receiptHash: 'c'.repeat(40) } }
+      }
+    }
+  })
+  assert.deepEqual(calledProjectIds, [], 'no real adoption attempt must be made against any project when the target is genuinely ambiguous')
+  assert.equal(result.decisionClass, 'NEEDS_OWNER')
+  assert.match(result.text, /won't guess/)
+  assert.match(result.text, /Batch12ProjectX/)
+  assert.match(result.text, /Batch12ProjectY/)
+})
+
+// Positive control: a single exact match (the overwhelmingly common,
+// already-tested case above) is completely unaffected by this fix.
+test('respondAdoptionCommand: a single exact-matched project still adopts normally', async () => {
+  const projectY = project('batch12-project-y-solo', 'Batch12ProjectYSolo')
+  const calledProjectIds = []
+  const result = await respondAdoptionCommand({
+    message: 'adopt batch12-project-y-solo',
+    exactMatchProjects: [projectY],
+    projects: [projectY],
+    clock,
+    deps: {
+      executeCommandAdoption: async ({ project: p }) => {
+        calledProjectIds.push(p.id)
+        return { ok: true, alreadyIncluded: false, priorCanonicalSha: 'a'.repeat(40), resultingCanonicalSha: 'b'.repeat(40), receipt: { receiptHash: 'c'.repeat(40) } }
+      }
+    }
+  })
+  assert.deepEqual(calledProjectIds, ['batch12-project-y-solo'])
+  assert.equal(result.decisionClass, 'RECOMMEND_AND_PROCEED')
+})

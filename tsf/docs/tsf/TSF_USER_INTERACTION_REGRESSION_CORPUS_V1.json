@@ -603,6 +603,85 @@
       "status": "DEFERRED",
       "rootCause": "Not a bug -- a deliberate, disclosed design limit. EXCLUSION_PREFIX is a single-negation cue, not a general double-negative parser: \"don't skip X\" (a genuine double negative meaning \"please include X\") still matches the \"skip\"/\"don't touch\" exclusion vocabulary and reads as an exclusion of X -- the opposite of the operator's actual intent. Erring toward excluding when the operator's own words are in tension is the deliberate, safe-default choice for an authorization surface (matching this codebase's own established convention, see domain/self-repair-authority.mjs's identical \"leave an ambiguous case honestly unhandled rather than guess\" precedent) -- not an attempt to correctly resolve arbitrary double negatives. Confirmed still current and accurately disclosed in the code's own comments as of this mission.",
       "regressionTestFile": "test/command-authority-regression-matrix.test.mjs"
+    },
+    {
+      "caseId": "CASE-29",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation -- independently found TWICE in parallel: by a dedicated read-only coverage-gap audit AND by a dedicated read-only red-team review (RT-02), both real, live-confirmed P0",
+      "userTurn": [
+        "pause batch12-project-a, adopt batch12-project-b",
+        "Adopt the EasyLifeHQ candidate and get niners-war-room ready too. (fixture-only project id)"
+      ],
+      "expectedParentIntent": "ADOPTION_COMMAND (single, correctly-scoped target) or an honest refusal when genuinely ambiguous",
+      "expectedChildActions": [
+        {
+          "project": "the project only asked to be paused/prepared",
+          "intent": "NEVER adopted",
+          "expectedSideEffects": []
+        }
+      ],
+      "forbiddenSideEffects": [
+        "a real executeCommandAdoption (git ff-only merge) attempted against a project that was never asked to be adopted, just because it was exact-matched somewhere else in the same message"
+      ],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "command-adoption-command-bridge.mjs's own header comment already documented respondAdoptionCommand as \"the SINGLE-project entry point,\" but its exactMatchProjects.length > 0 check accepted ANY count. command-responder.mjs's exactMatches is resolved over the WHOLE message, not scoped to the adoption verb's own clause, so a message naming an unrelated verb (e.g. \"pause\") for one project and a genuine adoption request for a different one passed BOTH projects through as exactMatchProjects, and adoptForProjects called the real executeCommandAdoption against every one of them unconditionally. decomposeMultiAction was investigated as a possible mitigation and found NOT to be a safe substitute here either: a bare-comma-joined, different-verb, different-project clause (\"pause A, adopt B\", no \"and\"/\"but\"/period) is a SEPARATE, real, disclosed gap in that module's own clause-splitting (see CASE-32) -- both projects inherit the SAME shared clause text there too. Fixed at the one place that actually knows this bridge is single-project-only: exactMatchProjects.length === 1 still adopts normally (the single exact match case, unaffected); 2+ exact matches now returns an honest NEEDS_OWNER refusal naming every candidate, never silently acting on all of them.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-adoption-command-bridge.test.mjs"
+    },
+    {
+      "caseId": "CASE-30",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation -- independent read-only red-team review (RT-01), real, live-confirmed P0",
+      "userTurn": [
+        "I accept your apology.",
+        "approve the vacation request",
+        "Please approve the PR for EasyLifeHQ."
+      ],
+      "expectedParentIntent": "NOT_ADOPTION (ordinary conversation, no TSF adoption meant)",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "a real executeCommandAdoption (git ff-only merge) triggered by an everyday, unrelated use of \"accept\"/\"approve\" that happens to name a real registered project elsewhere in the same message"
+      ],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "ADOPTION_VERB_PATTERN in domain/command-adoption-execution.mjs matched bare \"accept\"/\"approve\" with no requirement that the object actually be a TSF candidate/run -- these are common general-purpose English verbs (\"accept an apology\", \"approve a request/PR/proposal/resignation\"), unlike \"adopt\" which is a far more specific, deliberate word. chat-responder.mjs's own, separately-maintained TIM_REQUIRED pattern already knew to scope \"approve\"/\"adopt\" to `.*(candidate|this)` -- that convention was never applied to this far more consequential classifier (the one that actually triggers a real merge, not just a refusal). A stricter \"must contain candidate/this\" fix was rejected: it would have broken this file's own required example \"accept that verified candidate\" only by coincidence of wording, and would have broken the golden-path eval's own required \"accept EasyLifeHQ\" (a bare project name, no \"candidate\"/\"this\" nearby) entirely. Fixed instead with a curated, narrow exclusion (NON_ADOPTION_ACCEPT_APPROVE_OBJECT) recognizing when accept/approve's own object is one of apology/request/offer/invitation/proposal/terms/feedback/blame/responsibility/PR/pull request/resignation/application/excuse -- bare \"adopt\" is completely untouched (unaffected, lower false-positive risk already), and every required positive example (including \"accept EasyLifeHQ\") is unaffected.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-adoption-execution.test.mjs"
+    },
+    {
+      "caseId": "CASE-31",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, one-hour continuation -- independent read-only red-team review (RT-03/RT-04), real, confirmed, fail-safe gaps not yet fixed",
+      "userTurn": [
+        "The plan said \"do not adopt this candidate\" but I want you to adopt EasyLifeHQ now.",
+        "Actually, don't adopt EasyLifeHQ, adopt EasyLifeHQ -- go ahead.",
+        "no rush, adopt it",
+        "not gonna lie, adopt it",
+        "there's no reason not to adopt it"
+      ],
+      "expectedParentIntent": "EXECUTE_ADOPTION (a clear, later, affirmative self-correction/idiom-hedged request should still execute)",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "a wrongful EXECUTE_ADOPTION for a quoted/abandoned earlier negation (the dangerous direction)"
+      ],
+      "status": "DEFERRED",
+      "rootCause": "Two related, but distinct, real gaps, both confirmed fail-safe (never execute wrongly -- they under-act, not over-act): (1) negation scoring in classifyAdoptionCommandIntent/decomposeMultiAction is bounded by CHARACTER GAP, not by clause/quote boundary -- a negation embedded in a quoted, abandoned earlier instruction (\"the plan said \\\"do not adopt\\\"...\") can still suppress a clear, later, unquoted, affirmative self-correction, silently dropping the real request rather than executing it (a self-correction like \"actually, don't adopt X, adopt X -- go ahead\" was also observed misrouting entirely into an unrelated DISPATCH_REQUEST path rather than being recognized as adoption at all). (2) ADOPTION_NEGATION_PATTERN's bare \"not\"/\"no\" trigger (deliberately broad, matching this codebase's own established \"broad-but-safe beats narrow-but-dangerous\" precedent for a consequential-action gate) has no idiom exclusion beyond \"never mind\" -- common hedges (\"no rush\", \"not gonna lie\", \"no reason not to\") false-positive to NOT_ADOPTION, silently blocking a legitimate request the operator has to restate. Not fixed this batch: quote/clause-boundary-aware negation scoping is a real, non-trivial redesign (this mission's already-disclosed \"cross-target negation bleed\" gap, CASE-19's TOCTOU disclosure, and this finding are all facets of the same underlying \"character-gap negation scoping has real edges\" limitation) warranting its own dedicated pass, not a rushed bolt-on; the idiom-list broadening is lower-risk but was judged lower priority than the two real P0s (CASE-29/30) fixed in the same batch given remaining time.",
+      "regressionTestFile": "test/command-adoption-execution.test.mjs"
+    },
+    {
+      "caseId": "CASE-32",
+      "source": "Found during this mission's own investigation of CASE-29 (not independently reported by either review agent)",
+      "userTurn": [
+        "pause batch12-project-a, adopt batch12-project-b (no \"and\"/\"but\"/period -- a bare comma joining two different projects with two different verbs)"
+      ],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION with per-project intent attribution",
+      "expectedChildActions": [
+        {
+          "project": "batch12-project-a",
+          "intent": "should NOT inherit ADOPT_CANDIDATE_REPORT from a neighboring clause it was never part of",
+          "expectedSideEffects": []
+        }
+      ],
+      "forbiddenSideEffects": [],
+      "status": "DEFERRED",
+      "rootCause": "domain/command-multi-action-decomposition.mjs's splitClauses deliberately does NOT treat a bare comma as a clause boundary (a real, intentional Batch-2 fix from earlier this mission, to correctly handle \"Do not, under any circumstances, adopt X\" without fragmenting the negation away from its verb). This is correct for THAT shape (comma inside one instruction), but for \"pause A, adopt B\" (a comma separating TWO INDEPENDENT instructions for TWO DIFFERENT projects, no \"and\"/\"but\"/period), both A and B are mentioned within what the splitter treats as ONE clause, so segmentByProject gives BOTH projects the full, shared clause text -- and since that shared text contains \"adopt\", BOTH projects incorrectly classify ADOPT_CANDIDATE_REPORT (verified live: decomposeMultiAction('pause batch12-project-a, adopt batch12-project-b', ...) returns ADOPT_CANDIDATE_REPORT for BOTH targets). Because both share the same intent, classifyMultiActionEntries' own >=2-distinguishing-intents gate never fires either, so this exact message falls through to the single-message adoption bridge -- which is why CASE-29's fix had to live there, not here. Not fixed this batch: correctly distinguishing \"a comma inside one instruction\" from \"a comma between two independent instructions for different targets\" is a genuine clause-boundary-heuristics redesign, not a small targeted patch, and CASE-29's fix already closes the real, dangerous consequence (a wrongful adoption) for this exact message shape from a different, safer angle.",
+      "regressionTestFile": "test/command-adoption-command-bridge.test.mjs"
     }
   ]
 }

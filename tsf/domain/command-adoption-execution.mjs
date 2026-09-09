@@ -165,6 +165,24 @@ export function revalidateCommandAdoptionCandidate({
 //                    "the WorldForge one looks good, adopt it", "adopt both of those"
 //   NOT sufficient:  "looks good", "continue", "what's ready?", "probably fine"
 const ADOPTION_VERB_PATTERN = /\b(adopt(ed|ing|s)?|accept(ed|ing|s)?|approve[sd]?)\b/i
+// Independent red-team finding (real, live-confirmed P0, this mission):
+// "accept"/"approve" are common general-purpose English verbs -- "I accept
+// your apology.", "approve the vacation request", "Please approve the PR
+// for EasyLifeHQ." (a real, exact-matched project named alongside a
+// completely unrelated "approve") all classified EXECUTE_ADOPTION, and the
+// last one is confirmed reachable end-to-end to a real ffOnlyMerge whenever
+// the named project happens to have a real, ready candidate. Bare "adopt"
+// is NOT narrowed here -- it is a far more specific, deliberate word with
+// negligible false-positive risk in practice, and every one of this file's
+// own required sufficient examples that use "accept" ("accept that
+// verified candidate", and the golden-path eval's own "accept EasyLifeHQ")
+// still work unchanged: this only excludes accept/approve when its own
+// object is one of a curated set of common nouns that signal an entirely
+// unrelated, non-TSF-candidate meaning, never based on what follows
+// generically.
+const ACCEPT_APPROVE_VERB_PATTERN = /\b(accept(ed|ing|s)?|approve[sd]?)\b/i
+const NON_ADOPTION_ACCEPT_APPROVE_OBJECT =
+  /\b(?:accept(?:ed|ing|s)?|approve[sd]?)\b(?:\s+(?:the|a|an|my|your|his|her|our|their|its))?(?:\s+\S+){0,2}?\s+(?:apolog(?:y|ies)|request|offer|invitation|proposal|terms|feedback|blame|responsibility|pr\b|pull request|resignation|application|excuse)/i
 const HEDGE_PATTERN = /\b(maybe|perhaps|not sure|unsure|should i|should we|might|could we|possibly|i think|i guess|wonder(ing)?|what if)\b/i
 const TRAILING_QUESTION_PATTERN = /\?\s*$/
 
@@ -179,7 +197,17 @@ const TRAILING_QUESTION_PATTERN = /\?\s*$/
 // fixed, just via "accept" instead of "adopt". Exported so that module
 // reuses this exact vocabulary instead of a second, narrower one.
 export function hasAdoptionVerb(text) {
-  return ADOPTION_VERB_PATTERN.test(String(text ?? ''))
+  const s = String(text ?? '')
+  if (!ADOPTION_VERB_PATTERN.test(s)) {
+    return false
+  }
+  // A bare "adopt" anywhere already qualifies regardless of accept/approve's
+  // own excluded-object check below (they are independent signals, not one
+  // combined gate) -- only accept/approve needs the narrower object check.
+  if (/\badopt(ed|ing|s)?\b/i.test(s)) {
+    return true
+  }
+  return ACCEPT_APPROVE_VERB_PATTERN.test(s) && !NON_ADOPTION_ACCEPT_APPROVE_OBJECT.test(s)
 }
 // FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
 // Exhaustive Gauntlet V1): "Do not adopt this candidate." used to classify
@@ -267,9 +295,12 @@ export function negatesAdoptionVerb(text) {
 
 export function classifyAdoptionCommandIntent(message) {
   const text = String(message ?? '')
-  if (!ADOPTION_VERB_PATTERN.test(text)) {
+  if (!hasAdoptionVerb(text)) {
     // No adoption verb at all -- "looks good"/"continue"/"what's ready?"/
     // "probably fine" all land here, honestly not this engine's concern.
+    // Also lands here for accept/approve used in a confirmed-unrelated
+    // sense (see hasAdoptionVerb's own NON_ADOPTION_ACCEPT_APPROVE_OBJECT
+    // check) -- "I accept your apology." is not adoption language.
     return 'NOT_ADOPTION'
   }
   if (negatesAdoptionVerb(text)) {

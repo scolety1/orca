@@ -99,8 +99,47 @@ export async function respondAdoptionCommand({ message, exactMatchProjects = [],
   }
 
   // EXECUTE_ADOPTION from here.
-  if (exactMatchProjects.length > 0) {
+  //
+  // Coverage-audit finding (Full Conversational Control Plane Exhaustive
+  // Gauntlet V1, one-hour continuation, independent read-only review,
+  // real/live-confirmed P0): this file's own header comment above already
+  // documents it as "the SINGLE-project entry point," but this check used
+  // to accept ANY count > 0 -- command-responder.mjs's `exactMatches` is
+  // resolved over the WHOLE message, not scoped to the adoption verb's own
+  // clause, so a message like "pause batch12-project-a, adopt
+  // batch12-project-b" (an unrelated verb for one project, a genuine
+  // adoption request for a different one) passed BOTH projects through as
+  // exactMatchProjects -- adoptForProjects then called the real
+  // executeCommandAdoption (a real git ff-only merge) against EVERY one of
+  // them unconditionally, including the project that was never asked to be
+  // adopted. If that co-named project genuinely had a real, ready
+  // (COMPLETE) candidate at that moment, this would have silently merged
+  // it. Confirmed live with synthetic fixtures: decomposeMultiAction
+  // itself was not a safe substitute here either (a bare-comma-joined,
+  // different-verb, different-project clause is a SEPARATE, disclosed,
+  // deferred gap in that module's own clause-splitting -- see this
+  // commit's corpus entry) -- so the safe fix is here, at the one place
+  // that actually knows this bridge is documented as single-project-only.
+  // A single exact match (the overwhelmingly common, already-tested case)
+  // is completely unaffected; 2+ exact matches now fails safe (asks,
+  // never guesses which one(s) were actually meant), matching this
+  // codebase's own established "ambiguous -- won't guess" convention
+  // rather than silently acting on every co-named project.
+  if (exactMatchProjects.length === 1) {
     return respondFromOutcomes(await adoptForProjects(exactMatchProjects, clock, deps))
+  }
+  if (exactMatchProjects.length > 1) {
+    return {
+      intent: 'ADOPTION_COMMAND',
+      decisionClass: 'NEEDS_OWNER',
+      text: `That names more than one project alongside adoption language (${exactMatchProjects.map((p) => `**${p.displayName}**`).join(', ')}) -- I won't guess which one(s) you actually meant to adopt. Say "adopt <project>" for exactly the one you mean.`,
+      plannerRole: 'PLANNER_DEEP',
+      providerLabel: 'PLANNER_DEEP · adoption target ambiguous across multiple named projects, no action taken',
+      live: false,
+      resolvedProjectIds: [],
+      scope: 'ADOPTION_COMMAND',
+      dispatchDetail: message
+    }
   }
 
   const referent = resolveCommandReferent({ message, resultItems: priorResultItems })

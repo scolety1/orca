@@ -314,3 +314,34 @@ test('resolveCandidateWorktreeFromRun: a real, present outcome-level worktree al
   }
   assert.equal(resolveCandidateWorktreeFromRun(run), '/outcome/real')
 })
+
+// Full Control Plane Exhaustive Gauntlet V1, one-hour continuation
+// (independent red-team finding, real, live-confirmed P0): "accept"/
+// "approve" are common general-purpose English verbs with no scoping to
+// this engine's own candidate/run/mission vocabulary -- "I accept your
+// apology.", "approve the vacation request", and (the confirmed-reachable
+// case, since a real, exact-matched project can genuinely be named
+// alongside completely unrelated content) "Please approve the PR for
+// EasyLifeHQ." all classified EXECUTE_ADOPTION.
+for (const message of [
+  'I accept your apology.',
+  'approve the vacation request',
+  'Please approve the PR for EasyLifeHQ.',
+  'I accept his offer.',
+  'approve my proposal',
+  'accept the resignation'
+]) {
+  test(`classifyAdoptionCommandIntent: accept/approve used in a confirmed-unrelated sense is NOT_ADOPTION -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'NOT_ADOPTION')
+  })
+}
+
+// Positive control: every one of this file's own required sufficient
+// examples using accept -- plus the golden-path-eval's own bare
+// "accept <ProjectName>" -- must survive this narrowing completely
+// unchanged.
+for (const message of ['accept that verified candidate', 'accept EasyLifeHQ', 'accept the candidate', 'accept the Nytheria candidate', 'approve the run', 'approve this adoption']) {
+  test(`classifyAdoptionCommandIntent: the accept/approve narrowing does not regress a genuine adoption request -- "${message}"`, () => {
+    assert.equal(classifyAdoptionCommandIntent(message), 'EXECUTE_ADOPTION')
+  })
+}
