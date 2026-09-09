@@ -297,22 +297,64 @@ test('Batch-6: releasing a hold (even though chat has no release path -- a discl
   assert.match(result.text, /Batch6ReleaseThenRedispatch\*\*[\s\S]*STUBBED_NO_LIVE_CALL/)
 })
 
-test('Batch-6: a duplicate/retried hold-request turn is idempotent -- no second SET record, original setAt preserved', async () => {
+// Mutation-testing finding (Batch 7, self-caught): the ORIGINAL version of
+// this test reused the EXACT same message text for both turns under a
+// FROZEN clock -- which meant a mutant that deletes the idempotency guard
+// entirely (applyExternalWorkHold always overwriting with a freshly
+// created hold instead of preserving `current`) still produced identical-
+// looking final state (same note text, same frozen setAt, a fresh 1-entry
+// history each time), so the assertions below passed even against that
+// real regression. Rewritten so the SECOND turn uses genuinely DIFFERENT
+// hold-request phrasing (a different real note) -- only a truly idempotent
+// implementation preserves the FIRST turn's note; an always-overwrite
+// mutant leaks the second turn's different text through.
+test('Batch-6: a duplicate/retried hold-request turn is idempotent -- the original note/setAt survive a differently-worded restatement', async () => {
   const heldProject = project('batch6-duplicate-hold-turn', 'Batch6DuplicateHoldTurn')
   const otherProject = project('batch6-duplicate-hold-turn-other', 'Batch6DuplicateHoldTurnOther')
   const projects = [heldProject, otherProject]
-  const message = 'batch6-duplicate-hold-turn is being handled by another AI, leave it alone. batch6-duplicate-hold-turn-other needs serious work.'
+  const firstMessage = 'batch6-duplicate-hold-turn is being handled by another AI, leave it alone. batch6-duplicate-hold-turn-other needs serious work.'
+  // Genuinely different wording (still a real EXTERNAL_WORK_HOLD trigger --
+  // "hold off on X") so the note text actually differs from firstMessage's.
+  const secondMessage = 'hold off on batch6-duplicate-hold-turn. batch6-duplicate-hold-turn-other needs serious work.'
 
-  await respondCommand({ message, projects, opState, clock })
+  await respondCommand({ message: firstMessage, projects, opState, clock })
   const first = readProjectExecutionHold(heldProject.id)
+  assert.match(first.note, /being handled by another AI/)
 
-  // A genuinely separate second call with the EXACT same message -- a
-  // real duplicate-delivery/retry scenario, not a single function call
+  // A genuinely separate second call, differently worded -- a real
+  // duplicate-delivery/restatement scenario, not a single function call
   // invoked twice in the same tick.
-  await respondCommand({ message, projects, opState, clock })
+  await respondCommand({ message: secondMessage, projects, opState, clock })
   const second = readProjectExecutionHold(heldProject.id)
 
+  assert.equal(second.note, first.note, 'a duplicate/restated turn must never overwrite the original note with the later wording')
   assert.equal(second.setAt, first.setAt, 'a duplicate turn must never overwrite the original setAt')
   assert.equal(second.history.length, first.history.length, 'a duplicate turn must never append a second SET history entry')
   assert.equal(second.history.length, 1)
+})
+
+// Full Control Plane Exhaustive Gauntlet V1, Batch 7: real RACE/TOCTOU
+// coverage -- GENUINELY concurrent (Promise.all, not sequential) duplicate
+// delivery of the SAME hold-request message for the SAME project. Batch 6's
+// duplicate-turn test above proves idempotency across two SEQUENTIAL calls;
+// this proves it holds under true concurrency too (e.g. a real client
+// retry firing before the first response returns), where the underlying
+// store-level idempotency test (project-execution-hold-store.test.mjs)
+// only exercises a NOTE-APPENDING mutateFn, never applyExternalWorkHold's
+// own real idempotent-or-create shape.
+test('Batch-7: N genuinely concurrent duplicate hold-request chat calls for the same project are idempotent -- exactly one SET record', async () => {
+  const heldProject = project('batch7-concurrent-duplicate', 'Batch7ConcurrentDuplicate')
+  const otherProject = project('batch7-concurrent-duplicate-other', 'Batch7ConcurrentDuplicateOther')
+  const projects = [heldProject, otherProject]
+  const message = 'batch7-concurrent-duplicate is being handled by another AI, leave it alone. batch7-concurrent-duplicate-other needs serious work.'
+
+  const N = 10
+  const results = await Promise.all(
+    Array.from({ length: N }, () => respondCommand({ message, projects, opState, clock }))
+  )
+
+  assert.ok(results.every((r) => /Held --/.test(r.text)), 'every one of the N concurrent calls must report the hold as held, never an error')
+  const hold = readProjectExecutionHold(heldProject.id)
+  assert.equal(hold.status, 'ACTIVE')
+  assert.equal(hold.history.length, 1, `exactly one SET history entry despite ${N} genuinely concurrent duplicate calls`)
 })

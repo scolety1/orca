@@ -422,6 +422,46 @@
       "rootCause": "Not a bug -- this batch verified, with real code across genuinely separate respondCommand calls (never a single function invoked twice, never a pre-seeded store write), that: (1) a hold created via one real chat turn correctly blocks a dispatch attempted in a later, independent turn (the real hold check lives inside planAndDispatchFromChat, confirmed reachable from the multi-action bridge's dispatchAction, not just the single-action path already tested elsewhere); (2) releasing a hold (via direct store call -- chat has no release path, a separately disclosed gap) correctly lets a later turn dispatch again, proving the hold is not permanently stuck; (3) a duplicate/retried hold-request turn is idempotent (no second SET history entry, original setAt preserved) under real, separate calls. All three were previously unverified end-to-end and are now locked in as permanent regression tests. Mutation-tested: disabling the real hold check in server/chat-dispatch-bridge.mjs turns both the new Batch-6 cross-turn test and the pre-existing same-message A5 test red.",
       "fixSha": "N/A -- no fix required, coverage-only",
       "regressionTestFile": "test/command-multi-action-bridge.test.mjs"
+    },
+    {
+      "caseId": "CASE-19",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 7 -- real/TOCTOU investigation of a theoretical race between a hold-write and a concurrent dispatch-attempt for the SAME project",
+      "userTurn": [
+        "Two genuinely concurrent messages for the same project: one setting a hold (\"X is being handled by another AI, leave it alone\"), one requesting dispatch (\"X needs serious work\"), fired via Promise.all (not sequential)"
+      ],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "a dispatch reaching past the hold gate for a project that is (or is about to be) held, due to the hold-check read in chat-dispatch-bridge.mjs being structurally unlocked relative to the hold-write lock in project-execution-hold-store.mjs"
+      ],
+      "status": "DEFERRED",
+      "rootCause": "Investigated with real code: chat-dispatch-bridge.mjs reads the hold via a plain, unlocked readProjectExecutionHold(project.id) call, while the hold ITSELF is written under a real file lock (project-execution-hold-store.mjs). This is a structurally real TOCTOU window -- the dispatch check does not share the hold-write lock. Empirically stress-tested with 30 real, genuinely concurrent (Promise.all) iterations of a real hold-write racing a real dispatch-attempt for the same project: 0/30 showed the dispatch reaching past the hold gate. This is explained (not disproven) by asymmetric call-chain length: the hold-write path is short (decompose -> classify -> handleEntry -> applyExternalWorkHold -> one lock-acquire-and-write), while the dispatch path is structurally longer (several async gates -- resource pressure collection, repository identity resolution, canonical base resolution -- all execute BEFORE the hold check is ever reached), giving the hold-write a consistent head start under real Node scheduling. Not fixed: (1) it did not reproduce in 30 real trials: (2) it would require literally-simultaneous, contradictory chat messages for the same project, an unlikely real-world trigger; (3) the worst case is a transient inconsistency (a dispatch started moments before its own hold landed), never data loss or corruption, and a later corrective hold still takes effect for all future dispatches; (4) closing it would require either a broader shared lock across the hold-check-read and hold-write paths (a real design change touching chat-dispatch-bridge.mjs's dispatch-admission chain, not a small targeted fix) or a live revalidation-before-commit step -- out of scope for a bounded batch without an owner decision on the tradeoff. Disclosed honestly rather than silently assumed safe or force-fixed without stronger evidence.",
+      "regressionTestFile": "test/command-multi-action-bridge.test.mjs"
+    },
+    {
+      "caseId": "CASE-20",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, Batch 7 -- real RACE/TOCTOU coverage: genuinely concurrent (not sequential) duplicate delivery of the same hold-request chat message",
+      "userTurn": [
+        "N (10) genuinely concurrent (Promise.all) chat calls, all the exact same hold-request message for the same project -- simulating a real client retry racing the original request"
+      ],
+      "expectedParentIntent": "MULTI_PROJECT_ORCHESTRATION",
+      "expectedChildActions": [
+        {
+          "project": "X",
+          "intent": "EXTERNAL_WORK_HOLD",
+          "expectedSideEffects": [
+            "exactly one durable createProjectExecutionHold SET record, never duplicated or lost across N genuinely concurrent duplicate calls"
+          ]
+        }
+      ],
+      "forbiddenSideEffects": [
+        "more than one SET history entry from N concurrent duplicate calls",
+        "a lost/torn write under real concurrency"
+      ],
+      "status": "FIXED_THIS_MISSION",
+      "rootCause": "Not a bug in the implementation -- a genuine, previously-unverified coverage gap in the TEST SUITE. Verified real idempotency under true concurrency (Promise.all, not sequential) at the full chat-call level for the first time. Self-caught, real mutation-testing finding: the FIRST version of the accompanying sequential idempotency test (CASE-18/Batch 6) reused identical message text under a frozen clock, so a mutant that deletes applyExternalWorkHold's idempotency guard entirely (always overwriting with a freshly created hold instead of preserving `current`) still passed that test undetected -- the frozen clock and identical note text made \"correctly preserved\" and \"incorrectly always overwritten with identical-looking data\" indistinguishable. Fixed by rewriting that sequential test to use genuinely different hold-request wording on the second turn, so an overwrite is actually observable; confirmed catching the reintroduced mutation before finalizing this batch.",
+      "fixSha": "pending adoption -- see this mission's final report",
+      "regressionTestFile": "test/command-multi-action-bridge.test.mjs"
     }
   ]
 }
