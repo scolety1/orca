@@ -10,6 +10,7 @@ import {
   detectStall,
   dispatchWave,
   markStalled,
+  OVERNIGHT_RUN_STATES,
   pauseRun,
   planWave,
   raiseNeedsYou,
@@ -20,6 +21,7 @@ import {
   replaceGoal,
   resolveNeedsYou,
   resumeRun,
+  RUN_ALLOWED,
   settleInFlightWave,
   summarizeRun,
   transitionRun
@@ -672,4 +674,52 @@ test('completeRun only reaches COMPLETE from ACTIVE, matching the gap-analysis s
   const completed = completeRun(run, clock)
   assert.equal(completed.state, 'COMPLETE')
   assert.throws(() => completeRun(completed, clock), /invalid overnight run transition/)
+})
+
+// TSF Overnight Control-Plane Burn-In V2, Lane H (property/metamorphic
+// expansion): 3 real, currently-true structural properties of RUN_ALLOWED
+// pinned down as regression tests, extending tonight's Lane A matrix work
+// (which proved the EXECUTION layer matches whatever RUN_ALLOWED
+// currently says) to the TABLE itself -- a class of regression the Lane A
+// matrix explicitly cannot catch (see its own comment). A future edit to
+// RUN_ALLOWED that accidentally creates a stuck run (no path out, or no
+// path to COMPLETE) would be caught here.
+test('PROPERTY: RUN_ALLOWED has no accidental dead end -- every non-terminal state has at least one real outgoing transition', () => {
+  for (const state of OVERNIGHT_RUN_STATES) {
+    if (state === 'COMPLETE') {
+      assert.deepEqual(RUN_ALLOWED[state], [], 'COMPLETE is the one intentionally terminal state')
+      continue
+    }
+    assert.ok(RUN_ALLOWED[state]?.length > 0, `state ${state} has no outgoing transition at all -- an accidental dead end`)
+  }
+})
+
+test('PROPERTY: every RUN_ALLOWED target is itself a real, known run state -- no stale/typo\'d state name', () => {
+  const known = new Set(OVERNIGHT_RUN_STATES)
+  for (const [state, targets] of Object.entries(RUN_ALLOWED)) {
+    assert.ok(known.has(state), `RUN_ALLOWED has an entry for unknown state "${state}"`)
+    for (const target of targets) {
+      assert.ok(known.has(target), `RUN_ALLOWED.${state} names unknown target state "${target}"`)
+    }
+  }
+})
+
+test('PROPERTY: every real run state can still reach COMPLETE through some real path -- no state is permanently stuck short of completion', () => {
+  for (const start of OVERNIGHT_RUN_STATES) {
+    if (start === 'COMPLETE') continue
+    // Breadth-first search over the real, live RUN_ALLOWED graph -- never
+    // a hand-copied/assumed adjacency.
+    const seen = new Set([start])
+    const queue = [start]
+    let reachesComplete = false
+    while (queue.length > 0) {
+      const current = queue.shift()
+      for (const next of RUN_ALLOWED[current] ?? []) {
+        if (next === 'COMPLETE') { reachesComplete = true; break }
+        if (!seen.has(next)) { seen.add(next); queue.push(next) }
+      }
+      if (reachesComplete) break
+    }
+    assert.ok(reachesComplete, `state ${start} has no real path to COMPLETE through RUN_ALLOWED -- a run could get permanently stuck`)
+  }
 })
