@@ -188,3 +188,36 @@ test('integration: authorization isolation -- a back-reference to project A neve
   assert.equal(readKeepGoingRun('proj-a-isolation').state, 'PAUSED')
   assert.equal(readKeepGoingRun('proj-b-isolation').state, 'ACTIVE', 'project B must be completely untouched')
 })
+
+// TSF Overnight Control-Plane Burn-In V2, Lane D (duplicate-delivery /
+// idempotency, explicitly named P0 territory, extended beyond the
+// adoption engine to the PAUSE/RESUME consequential actions named in the
+// same directive). No test anywhere in this suite previously delivered
+// "pause X" twice in a row against the real durable run -- domain/
+// keep-going.mjs's own RUN_ALLOWED state machine has no PAUSED->PAUSED
+// transition, so the second call throws TSF_INVALID_RUN_TRANSITION, and
+// command-responder.mjs's own catch block turns that into a real refusal
+// -- never a second false "Paused" claim. This is the correct, safe
+// behavior; this test proves it end to end rather than leaving it
+// unverified.
+test('integration: duplicate delivery -- "pause X" delivered twice in a row never claims a second success, and the run is not corrupted by the refused second attempt', async () => {
+  await seedActiveRun('integration-pause-duplicate')
+  const projectFixture = [project('integration-pause-duplicate', 'Integration Pause Duplicate')]
+
+  const first = await respondCommand({ message: 'pause integration-pause-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock })
+  assert.match(first.text, /^Paused/)
+  assert.equal(readKeepGoingRun('integration-pause-duplicate').state, 'PAUSED')
+
+  const second = await respondCommand({ message: 'pause integration-pause-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock })
+  assert.equal(second.live, false, 'a duplicate pause must never be reported as a real, live action')
+  assert.doesNotMatch(second.text, /^Paused/, 'the duplicate delivery must never claim a second successful pause')
+  assert.match(second.text, /couldn't pause/i)
+
+  // The run itself is untouched by the refused duplicate -- still PAUSED,
+  // and exactly ONE pause transition was ever recorded (the refused second
+  // call left no trace in the transition history).
+  const run = readKeepGoingRun('integration-pause-duplicate')
+  assert.equal(run.state, 'PAUSED')
+  const pauseTransitions = run.transitions.filter((t) => t.to === 'PAUSED')
+  assert.equal(pauseTransitions.length, 1, 'the refused duplicate must not append a second PAUSED transition')
+})
