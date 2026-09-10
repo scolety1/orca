@@ -105,6 +105,12 @@ docs/**
 !docs/reference/renderer-agent-status-performance.md
 !docs/reference/windows-setup-shell.md
 !docs/reference/worktree-scan-fingerprint.md
+# TSF's own historical/foundational doc corpus (docs/tsf/INDEX.md explains
+# why this legacy location exists alongside the active tsf/docs/tsf/) --
+# already had 28 tracked files before this allow-list existed; without this
+# entry any NEW file added here silently needs `git add -f` to be tracked.
+!docs/tsf/
+!docs/tsf/**
 
 # Stably CLI (only docs/ are tracked)
 .stably/*

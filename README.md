@@ -26,6 +26,13 @@
   <img src="docs/assets/readme-hero.jpg" alt="Orca desktop app running agents in parallel worktrees, with the Orca mobile companion app in the corner" width="960" />
 </p>
 
+> **This fork also hosts Thousand Sunny Fleet (TSF)**, a separate
+> project built as an overlay on top of this Orca foundation — it
+> manages real software projects (onboarding, autonomous dispatch,
+> adoption) rather than individual agent sessions. It lives entirely
+> under [`tsf/`](tsf/README.md); everything below this note describes
+> upstream Orca itself.
+
 ## Features
 
 <table>
