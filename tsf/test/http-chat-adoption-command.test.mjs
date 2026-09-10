@@ -213,6 +213,54 @@ test('Overnight V2 Lane L: duplicate delivery -- "adopt X" delivered twice over 
   })
 })
 
+// TSF Overnight Control-Plane Burn-In V2, Lane E (race/TOCTOU, explicitly
+// named P0 territory) -- real, live-confirmed finding (not guessed),
+// severe: N GENUINELY concurrent "adopt it" HTTP calls (Promise.all, not
+// sequential like the duplicate-delivery test above) for the same
+// project raced past executeCommandAdoption's own ancestry/
+// alreadyIncluded check -- every concurrent caller read the SAME
+// pre-merge canonical HEAD before any of them had merged, so all of them
+// classified the candidate as FAST_FORWARD_AVAILABLE and attempted
+// ffOnlyMerge. A real `git merge --ff-only` to a SHA the repo is ALREADY
+// at (because an earlier concurrent caller's merge already landed) is
+// NOT an error -- git honestly reports "already up to date" and the
+// merge call succeeds -- so the engine's own post-merge verification
+// could not distinguish "I just performed the real merge" from "someone
+// else already did," and FALSELY reported a fresh "adopted: canonical
+// advanced" with a brand-new, distinct receipt for EVERY concurrent
+// caller. Live-confirmed before the fix: 10 genuinely concurrent calls
+// produced 9 separate, real, durably-persisted FALSE ADOPTED receipts
+// for a single real merge. Fixed in server/command-adoption-execution.mjs
+// with a real per-project lock (an in-process promise-chain queue
+// layered over the real cross-process file lock -- see that file's own
+// header comment for why both layers are needed).
+test('Overnight V2 Lane E: N genuinely concurrent "adopt it" HTTP calls for the same project merge exactly once -- every other call is honestly ALREADY_INCLUDED, never a false duplicate ADOPTED claim/receipt', async () => {
+  await withServer(async (base) => {
+    const projectId = 'lane-e-concurrent-adopt'
+    const canonicalRepoPath = initFixtureRepo('lane-e-concurrent-adopt-canonical')
+    const worktree = createCandidateWorktree(canonicalRepoPath, 'lane-e-concurrent-adopt-candidate', 'command/lane-e-concurrent-adopt', 'a real fix, requested N times concurrently')
+    seedOnboardedProjectForHttp(projectId, 'Lane E Concurrent Adopt', canonicalRepoPath)
+    seedCompleteKeepGoingRun(projectId, worktree, clock)
+
+    const N = 10
+    const results = await Promise.all(
+      Array.from({ length: N }, () => chat(base, { projectId, message: 'adopt it' }))
+    )
+
+    const adopted = results.filter((r) => /adopted: canonical advanced/i.test(r.body.text ?? ''))
+    const alreadyAdopted = results.filter((r) => /already adopted/i.test(r.body.text ?? ''))
+    assert.equal(adopted.length, 1, `exactly one of ${N} genuinely concurrent adopt calls must actually perform the real merge`)
+    assert.equal(alreadyAdopted.length, N - 1, 'every other concurrent call must be honestly ALREADY_INCLUDED, never a second false "adopted" claim')
+
+    const log = git(canonicalRepoPath, ['log', '--oneline']).trim().split('\n')
+    assert.equal(log.length, 2, `exactly one real merge commit despite ${N} genuinely concurrent duplicate calls`)
+
+    const finalState = loadState()
+    assert.equal(finalState.onboardedProjects[projectId].receipts.length, N, `exactly one receipt per real HTTP call (1 ADOPTED + ${N - 1} ALREADY_INCLUDED) -- never a false extra ADOPTED receipt`)
+    assert.equal(finalState.onboardedProjects[projectId].receipts.filter((r) => r.result?.outcome === 'ADOPTED').length, 1, 'exactly one real ADOPTED receipt, never a duplicate')
+  })
+})
+
 test('Overnight V2 Lane L: a message combining "adopt X" with a genuinely consequential clause is refused in full (TIM_REQUIRED) -- never partially executes the adoption', async () => {
   await withServer(async (base) => {
     const projectId = 'lane-l-adopt-tim-required'

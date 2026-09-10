@@ -28,8 +28,103 @@ import { readKeepGoingRun } from './keep-going-run-store.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { resolveProjectCanonicalBase } from './project-canonical-base-resolver.mjs'
 import { recordProjectCanonicalBaseAdvanced } from './project-canonical-base-store.mjs'
-import { withFileLock } from './cross-process-file-lock.mjs'
+import { withFileLock, acquireFileLock, releaseFileLock } from './cross-process-file-lock.mjs'
 import { getStateFilePath, loadState, saveState } from './data-store.mjs'
+
+// TSF Overnight Control-Plane Burn-In V2, Lane E (race/TOCTOU, explicitly
+// named P0 territory) -- real, live-confirmed finding (not guessed):
+// genuinely concurrent adoption requests for the SAME project (e.g. a
+// real client retry storm, or the exact "N concurrent 'adopt it' chat
+// calls" scenario this mission's own Lane D/E work covered for PAUSE
+// tonight) raced past this engine's own ancestry/alreadyIncluded check --
+// every concurrent caller read the SAME pre-merge canonical HEAD before
+// any of them had merged, so every one of them classified the candidate
+// as FAST_FORWARD_AVAILABLE (never ALREADY_INCLUDED) and proceeded to
+// call ffOnlyMerge. A real `git merge --ff-only` to a SHA the repo is
+// ALREADY at (because an earlier concurrent caller's merge already
+// landed) is not an error -- git honestly reports "already up to date"
+// and the merge call succeeds -- so this engine's own post-merge
+// verification (postMerge.commit === candidateSha) could not distinguish
+// "I just performed the real merge" from "someone else already did, and
+// I'm merely observing it," and FALSELY reported "adopted: canonical
+// advanced" with a brand-new, distinct receipt for EVERY concurrent
+// caller (live-confirmed: 10 genuinely concurrent HTTP "adopt it" calls
+// produced 9 separate, real, durably-persisted ADOPTED receipts for a
+// SINGLE real merge). A genuine duplicate-delivery/truthfulness
+// violation in the one, shared, core adoption engine every real adoption
+// path in this codebase uses -- not introduced by tonight's HTTP wiring,
+// but never exercised under genuine concurrency before tonight, and now
+// reachable far more easily given how many more surfaces real adoption
+// execution is wired into as of tonight's other fixes.
+//
+// Fixed by acquiring a real, per-project lock around this engine's
+// ENTIRE critical section (ancestry check through the merge and receipt
+// write) -- NOT server/cross-process-file-lock.mjs's own withFileLock
+// convenience wrapper, whose own header comment explicitly documents a
+// synchronous-fn-only contract (an await inside would let other code run
+// while the "atomic" section is still open -- exactly the failure mode
+// here, confirmed empirically with a standalone repro before writing
+// this fix) that every one of withFileLock's other 18 real call sites
+// in this codebase already correctly respects (verified: all pass a
+// plain, non-async `() => {...}`). This engine's own critical section is
+// inherently async (real git subprocess calls), so it uses
+// acquireFileLock/releaseFileLock directly instead.
+//
+// Real, live-confirmed refinement caught before this fix ever landed
+// (not guessed): acquireFileLock's own `heldByThisProcess` guard is a
+// deliberate REENTRANCY check (its own comment: guards against an
+// accidental nested/recursive acquisition bug within one call), not a
+// same-process "wait your turn" queue -- two genuinely-independent
+// concurrent calls in the SAME Node process for the SAME project both
+// hit that guard and throw TSF_LOCK_REENTRANT immediately, which a
+// first version of this fix let escape as a raw, unhandled-looking
+// error instead of an honest queued wait. Confirmed live with 10
+// genuinely concurrent HTTP "adopt it" calls. Fixed with a small,
+// in-process, per-project promise-chain queue (adoptionQueueTails)
+// BELOW acquireFileLock, so concurrent same-process callers naturally
+// await their turn via ordinary promise chaining and never call
+// acquireFileLock for the same path at the same time at all -- the real
+// cross-process file lock still runs underneath, for the separate real
+// concern of a genuinely different OS process (a CLI, a second server
+// instance) touching the same project concurrently.
+function adoptionExecutionLockPath(projectId) {
+  return `${getStateFilePath()}.adoption-execution.${projectId}.lock`
+}
+
+const adoptionQueueTails = new Map()
+
+async function withAdoptionLock(projectId, fn) {
+  const previousTail = adoptionQueueTails.get(projectId) ?? Promise.resolve()
+  // Every queued turn, including this one, must run regardless of
+  // whether an earlier turn threw -- `.catch(() => {})` on the tail
+  // itself (not on this turn's own result) means one project's failed
+  // adoption attempt never wedges every later attempt for that same
+  // project.
+  const thisTurn = previousTail.catch(() => {}).then(async () => {
+    const lockPath = adoptionExecutionLockPath(projectId)
+    const token = await acquireFileLock(lockPath, undefined)
+    try {
+      return await fn()
+    } finally {
+      await releaseFileLock(lockPath, token)
+    }
+  })
+  adoptionQueueTails.set(projectId, thisTurn)
+  try {
+    return await thisTurn
+  } finally {
+    // Only clear the map entry if nothing newer queued behind us while
+    // we were running -- otherwise a later caller's own tail (already
+    // stored) would be wrongly forgotten.
+    if (adoptionQueueTails.get(projectId) === thisTurn) {
+      adoptionQueueTails.delete(projectId)
+    }
+  }
+}
+
+export async function executeCommandAdoption(args) {
+  return withAdoptionLock(args.project.id, () => executeCommandAdoptionLocked(args))
+}
 
 function lockPath() {
   return `${getStateFilePath()}.onboarded-project-receipts.lock`
@@ -80,11 +175,13 @@ async function classifyAncestry(ancestorCheck, root, canonicalSha, candidateSha)
   return backward.isAncestor ? 'ALREADY_INCLUDED' : 'DIVERGED'
 }
 
-// The real entry point. `project` needs { id, root }. Returns
+// The real logic. `project` needs { id, root }. Returns
 // { ok: true, alreadyIncluded, priorCanonicalSha, candidateSha, resultingCanonicalSha, receipt }
 // or { ok: false, reason, detail } for any failed check -- never partial/
-// silent success.
-export async function executeCommandAdoption({ project, clock = () => new Date(), deps = {} }) {
+// silent success. Private -- always called through the real, exported,
+// lock-wrapped executeCommandAdoption above; never call this directly,
+// or the race it exists to close reopens.
+async function executeCommandAdoptionLocked({ project, clock = () => new Date(), deps = {} }) {
   const readRun = deps.readKeepGoingRun ?? readKeepGoingRun
   const readHold = deps.readProjectExecutionHold ?? readProjectExecutionHold
   const resolveBase = deps.resolveProjectCanonicalBase ?? resolveProjectCanonicalBase
