@@ -15,6 +15,7 @@ import { projectsById } from './project-catalog.mjs'
 import { readAllResearchMissions } from './research-mission-store.mjs'
 import { readAllPlannerMissionRecords } from './planner-mission-store.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
+import { readAllProjectExecutionHolds } from './project-execution-hold-store.mjs'
 import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 
@@ -70,6 +71,21 @@ function transitionSignatureFor(item, findingsById) {
 // real host memory for them would be pure waste), and `gatherRealDeps`
 // (unchanged shape) for callers -- this reconciler, the new GET /api/attention
 // route -- that need the real, full live view.
+//
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed): this
+// function never read the real project-execution-hold store at all, so
+// `projectExecutionHolds` silently defaulted to {} at buildFleetAttentionItems
+// on EVERY real call site in the whole codebase (verified via a full grep) --
+// domain/fleet-attention-status.mjs's own holdItems function has always
+// existed to build a real BLOCKED_EXTERNAL item from exactly this data, and
+// this very module's own header comment already claimed BLOCKED_EXTERNAL
+// "is real and shown in the live Phase 2 view", which was false for a held
+// project. Live-reproduced (test/attention-http-routes.test.mjs) before
+// fixing: a real, active hold never appeared in a real GET /api/attention
+// response. A real observability gap, not a safety bypass -- the hold
+// itself already correctly blocks real actions (adoption, pause/resume),
+// proven elsewhere -- but an operator asking "what's blocked?" never
+// learned why.
 export function gatherRealFleetAttentionInputs() {
   const { map, opState } = projectsById()
   return {
@@ -77,7 +93,8 @@ export function gatherRealFleetAttentionInputs() {
     keepGoingRuns: opState.keepGoingRuns ?? {},
     researchMissions: readAllResearchMissions(),
     plannerMissionRecords: readAllPlannerMissionRecords(),
-    selfImprovementFindings: readAllFindings()
+    selfImprovementFindings: readAllFindings(),
+    projectExecutionHolds: readAllProjectExecutionHolds()
   }
 }
 
@@ -96,6 +113,7 @@ export async function reconcileFleetAttentionItems(clock, deps = {}) {
   const researchMissions = deps.researchMissions ?? real?.researchMissions ?? readAllResearchMissions()
   const plannerMissionRecords = deps.plannerMissionRecords ?? real?.plannerMissionRecords ?? readAllPlannerMissionRecords()
   const selfImprovementFindings = deps.selfImprovementFindings ?? real?.selfImprovementFindings ?? readAllFindings()
+  const projectExecutionHolds = deps.projectExecutionHolds ?? real?.projectExecutionHolds ?? readAllProjectExecutionHolds()
   const resourcePressureState =
     deps.resourcePressureState ??
     real?.resourcePressureState ??
@@ -107,6 +125,7 @@ export async function reconcileFleetAttentionItems(clock, deps = {}) {
     researchMissions,
     plannerMissionRecords,
     selfImprovementFindings,
+    projectExecutionHolds,
     resourcePressureState,
     clock
   })

@@ -15,6 +15,8 @@ const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-sta
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 
 const { handleAttentionRoute } = await import('../server/attention-http-routes.mjs')
+const { withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
+const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 
 test.after(() => {
   rmSync(STATE_FILE, { force: true })
@@ -69,4 +71,40 @@ test('REQUIRED PROOF: GET /api/attention returns { ok: true, items: [] } shape f
   assert.equal(res.statusCode, 200)
   assert.equal(res.body.ok, true)
   assert.ok(Array.isArray(res.body.items), 'items must always be a real array, never undefined/null')
+})
+
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed): a
+// real, active project execution hold -- written through the SAME durable
+// store server/project-execution-hold-store.mjs, the one real actions
+// (adoption, pause/resume) already correctly consult -- was never actually
+// surfaced by this real HTTP route. domain/fleet-attention-status.mjs's
+// own holdItems function has always existed to build a real
+// BLOCKED_EXTERNAL item from exactly this data, and server/attention-
+// status-reconciler.mjs's own header comment explicitly claims "real and
+// shown in the live Phase 2 view" -- but gatherRealFleetAttentionInputs
+// never actually read the real hold store at all, so `projectExecutionHolds`
+// silently defaulted to {} on every real call site in the whole codebase
+// (verified via a full grep: zero real callers of buildFleetAttentionItems
+// pass it anywhere). This is a real observability gap, not a safety
+// bypass -- the hold itself still correctly blocks real actions (already
+// proven elsewhere) -- but an operator asking "what's blocked?" or
+// checking this real route never learned about it.
+test('REAL FINDING: a real, active project execution hold is honestly surfaced as a BLOCKED_EXTERNAL item by the real GET /api/attention route', async () => {
+  const clock = () => new Date('2026-01-01T00:00:00.000Z')
+  await withProjectExecutionHold('hold-visibility-fixture', () =>
+    createProjectExecutionHold(
+      { projectId: 'hold-visibility-fixture', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'OPERATOR_CHAT', note: 'another agent is on this repo' },
+      clock
+    )
+  )
+
+  const res = fakeRes()
+  const handled = await handleAttentionRoute(['api', 'attention'], { method: 'GET' }, res, {}, helpers)
+  assert.equal(handled, true)
+  assert.equal(res.statusCode, 200)
+
+  const holdItem = res.body.items.find((i) => i.id === 'hold:hold-visibility-fixture')
+  assert.ok(holdItem, 'a real, active execution hold must appear in the real GET /api/attention response, never silently dropped')
+  assert.equal(holdItem.category, 'BLOCKED_EXTERNAL')
+  assert.match(holdItem.reason, /another agent is on this repo/)
 })
