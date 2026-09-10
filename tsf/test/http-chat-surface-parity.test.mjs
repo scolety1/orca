@@ -165,7 +165,19 @@ test('Overnight V2 Lane B: "looks good, adopt it" -- explicit adoption language 
     // bare acknowledgement), even though the actual outcome here is a
     // refusal/report (no real ready candidate exists for a synthetic run
     // in this harness) rather than a real merge.
-    assert.notEqual(global_.body.intent, 'ACKNOWLEDGEMENT')
+    //
+    // Lane M red-team finding (real, fixed): the original `notEqual(...,
+    // 'ACKNOWLEDGEMENT')` was nearly vacuous -- chat-responder.mjs's own
+    // INTENTS array already checks ADOPTION before ACKNOWLEDGEMENT, so any
+    // message containing "adopt" can never classify as ACKNOWLEDGEMENT
+    // regardless of whether the adoption BRIDGE itself is even reached; a
+    // regression that broke routing into command-adoption-command-bridge.mjs
+    // entirely (falling through to STATUS/FIX_REQUEST/GENERAL/etc.) would
+    // still pass this assertion. Asserts the real, confirmed value instead
+    // (command-adoption-command-bridge.mjs's own literal 'ADOPTION_COMMAND'
+    // intent, verified live via a direct /api/chat call against this exact
+    // message).
+    assert.equal(global_.body.intent, 'ADOPTION_COMMAND')
     // Planner Chat's own respondAdoption is architecturally report-only
     // (chat-responder.mjs) -- it must still recognize the ADOPTION intent
     // rather than misreading it as plain praise, even though it can never

@@ -162,7 +162,12 @@ test('integration: "continue it" on an ACTIVE run (nothing to resume) falls thro
     deps: { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
   })
   assert.doesNotMatch(result.text, /^Resumed/)
-  assert.ok(result.dispatchResults, 'a real dispatch attempt, not a resume, since there was nothing paused to resume')
+  // Lane M red-team finding (real, fixed): assert.ok on an array is
+  // vacuously true even for []  -- strengthened to prove the dispatch
+  // attempt actually targeted this one real project, not an empty/wrong
+  // target list.
+  assert.equal(result.dispatchResults?.length, 1, 'a real dispatch attempt, not a resume, since there was nothing paused to resume')
+  assert.equal(result.dispatchResults[0].projectId, 'integration-continue-active')
 })
 
 test('integration: "pause it" with no back-reference context at all is refused honestly, never guesses a project to pause', async () => {
@@ -240,7 +245,12 @@ test('integration: duplicate delivery -- "resume X" delivered twice in a row nev
 
   const second = await respondCommand({ message: 'resume integration-resume-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock, deps: dispatchDeps })
   assert.doesNotMatch(second.text, /^Resumed/, 'the duplicate delivery must never claim a second successful resume')
-  assert.ok(second.dispatchResults, 'reclassified as a real dispatch attempt, since there was nothing left to resume')
+  // Lane M red-team finding (real, fixed): assert.ok on an array is
+  // vacuously true even for [] -- strengthened to prove the dispatch
+  // attempt actually targeted this one real project (never a silently
+  // empty or wrong-project target list).
+  assert.equal(second.dispatchResults?.length, 1, 'reclassified as a real dispatch attempt, since there was nothing left to resume')
+  assert.equal(second.dispatchResults[0].projectId, 'integration-resume-duplicate')
 
   // The run's own transition history has exactly one RESUME-to-ACTIVE
   // transition -- the duplicate never appended a second one.
