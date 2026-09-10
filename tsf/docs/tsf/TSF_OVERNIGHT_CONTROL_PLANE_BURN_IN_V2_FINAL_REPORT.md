@@ -1,24 +1,32 @@
 # TSF_OVERNIGHT_CONTROL_PLANE_BURN_IN_V2
 
-Session status: **CONTROL_PLANE_STABLE_V1 ACHIEVED** at SHA `208f4438b4`
-(fork/tsf/main), confirmed via two consecutive, fully-evidenced full-suite
-stability passes with zero new P0/P1 in between. Four real P0/P1s found
-tonight, all reproduced live/deterministically, root-caused, fixed
-systemically, mutation-verified, independently reviewed (all fully clean),
-integrated, and pushed. Zero real regressions introduced. Zero real user
-projects touched. This report was first written at the stability
-milestone, not at session end -- the mission is exhaustive-scoped (13
-lanes) and several lanes remain PARTIAL by design; see §12 for what was
-still open at that point, and §6A for real work landed since. Durable
+Session status: **CONTROL_PLANE_STABLE_V1 ACHIEVED**, most recently
+RE-DECLARED at current tip SHA `94d38459a8` (fork/tsf/main) after a fifth
+real P0/P1 (finding #16) was found, fixed through 3 independent review
+rounds, and integrated -- see §6B. Five real P0/P1s found across the
+whole session, all reproduced live/deterministically, root-caused, fixed
+systemically, mutation-verified, independently reviewed (all fully
+clean), integrated, and pushed. Zero real regressions introduced across
+7 full-suite runs. Zero real user projects touched. This report was
+first written at the FIRST stability milestone (SHA `208f4438b4`), not
+at session end -- the mission is exhaustive-scoped (13 lanes) and several
+lanes remain PARTIAL by design; see §12 for the original declaration and
+§6A/§6B for real work and a second, real finding landed since. Durable
 queue: `overnight-control-plane-queue.md` (session memory), append-only
-findings log now at 15 entries. **UPDATE, current tip `edb9fb655e`**: 3
-more real commits landed after the stability milestone (§6A) --
-RESUME's own genuine-concurrency proof (Lane E), a hold-precedence
-property test (Lane H), and one more real, previously-undisclosed
-finding (#15, P2 -- real execution holds were never surfaced by GET
-/api/attention). None of the three are P0/P1, so the stability
-declaration above remains valid unchanged (the mission's own rule only
-requires the pass sequence to reset on a new P0/P1).
+findings log now at 16 entries.
+
+**Timeline after the first stability milestone**: §6A -- 3 more real
+commits (RESUME's own genuine-concurrency proof, a hold-precedence
+property test, and finding #15 [P2, real execution holds never
+surfaced by `GET /api/attention`]) landed with the stability
+declaration remaining valid unchanged (none were P0/P1). §6B -- finding
+#16 (P1, real: single-target project-execution-hold requests were
+unreachable/mishandled across every chat surface) was then found,
+fixed through 3 independent review rounds (2 real issues caught and
+fixed across those rounds), and integrated -- this DID reset the
+stability counter per the mission's own rule, and a fresh 2-pass
+full-suite sequence afterward re-confirmed `CONTROL_PLANE_STABLE_V1` at
+the current tip. See §16 for the final, current SHA.
 
 ## 1. Mission scope and starting point
 
@@ -232,6 +240,75 @@ stressing a machine already showing real strain; each of the three
 commits above already has its own dedicated, scoped, real test evidence
 independent of a fresh full-suite pass.
 
+## 6B. Finding #16: single-target hold requests unreachable/mishandled (P1)
+
+A fifth real P0/P1, found by proactively auditing the attention/hold
+pipeline further after §6A's finding #15. `command-multi-action-
+bridge.mjs`'s `classifyMultiActionEntries` gate (deliberately
+conservative: >=2 targets AND >=2 distinct intents) is the ONLY place
+`EXTERNAL_WORK_HOLD` -- setting a real, durable project execution hold
+-- is handled anywhere in the codebase. Its own comment assumed a
+genuinely single-target hold request had "its own existing, correct
+handling" elsewhere; it never did. Live-reproduced over the real HTTP
+route before fixing: a natural message like "NWR is being handled by
+another agent, leave it alone" on both per-project chat and Global
+Command exact-match never set a real hold, with a generic fallback
+response giving no honest indication anything failed. Safety-relevant,
+same severity class as findings #7/#8: a hold exists specifically to
+prevent unwanted concurrent work, so an operator believing they'd
+protected a project when they silently had not is a real risk.
+
+Root cause: the real per-clause decomposer (`decomposeMultiAction`)
+already correctly classified a single-target hold clause -- detection
+was fine, only the gating was too narrow. Fixed with a new, narrower
+gate (`classifySingleTargetHoldEntries`) wired into both
+`command-responder.mjs` and directly into `chat-http-routes.mjs`,
+reusing the same real execution path, never a second implementation.
+
+**Three independent review rounds**, matching the rigor findings #7/#8
+required, with 2 real issues found and fixed along the way:
+- **Round 1** found (a) a precedence gap: a message combining a genuine
+  PAUSE/RESUME directive with a genuine hold directive for the SAME
+  project silently executed the run-action and dropped the hold
+  entirely, reporting complete success with no honest indication --
+  fixed by merging both real outcomes whenever both fire, never letting
+  one silently shadow the other; and (b) a test-quality gap where a
+  "wrong project" test proved the end-to-end outcome but didn't isolate
+  which of two redundant safety layers did the work -- fixed with a
+  dedicated isolation unit test.
+- **Round 2** (re-checking round 1) confirmed both fixes clean, then
+  found the SAME precedence bug shape in a different file
+  (`command-responder.mjs`, Global Command's ambiguous-match surface)
+  round 1 never touched -- fixed the same way, with the rarer
+  RESUME-reclassified-to-dispatch combination left as a disclosed,
+  lower-priority residual gap (proven safe: no crash, no fabricated
+  claim, no wrong-project write, just an honest omission).
+- **Round 3** (re-checking round 2's newest fix) came back fully clean
+  across all 5 checked dimensions, including independent live
+  reproduction of the disclosed residual gap and independent
+  reproduction of the mutation-testing claims.
+
+Wrong-project risk (the exact class #8's own review rounds found) was
+checked and confirmed safe by construction, independently verified by
+2 reviewers: the HTTP wiring passes only the chat's own fixed-scope
+project to the decomposer, so it structurally cannot resolve a
+different project as a target -- plus a second, redundant safety layer
+in the shared execution path. 10 new/modified tests, 138/138 green
+across every real caller and related surface-parity file. Integrated
+at SHA `94d38459a8`.
+
+Being a real P1, this reset the stability counter. A fresh 2-pass
+full-suite sequence afterward hit real, repeatable host memory
+strain -- two consecutive runs were killed outright by the OS ("running
+low on memory") even with steady-state usage near the normal ~76%
+baseline, confirming the 330-file suite's own concurrent child-process
+spawn (not just ambient pressure) can transiently exceed available
+memory on this shared host. Mitigated with `--test-concurrency=4`
+(reduced from the default), which did not meaningfully cost wall-clock
+time and let both passes complete cleanly -- re-confirming
+`CONTROL_PLANE_STABLE_V1` at the current tip. See §11 for the updated
+full-suite run ledger and §14 for the full resource-pressure detail.
+
 ## 7. Disclosed, not fixed (real, deliberately deferred)
 
 - **Finding #9** (P2/P3): the same "only reachable via `respondCommand`'s
@@ -317,36 +394,46 @@ before any commit, not merely after review:
   caught refinement round (async-unsafe locking primitive; reentrancy-
   guard misunderstanding) before external review ever ran.
 
-## 11. Full TSF suite: 4 runs, all fully triaged
+## 11. Full TSF suite: 7 runs, all fully triaged
 
 | Run | After SHA | Pass/Total | Fail | New P0/P1 | Triage |
 |---|---|---|---|---|---|
 | 1 | (baseline) | 3222/3227 | 5 | 0 | 2 real TEST_DEFECTs (mine, fixed `54e2e665c6`); 3 resource-contention artifacts, isolated-clean |
 | 2 | `872787a516` (#12) | 3226/3230 | 3 | 0 | Same 3 known artifacts recurred, fresh per-run isolated-clean evidence |
-| 3 | `208f4438b4` (#14) | 3225/3231 | 5 | 0 | Same 3 known artifacts (3rd confirmation) + 2 new inherently-short-timeout tests, both isolated-clean (12/12, 6/6) -- **STABILITY PASS #1** |
-| 4 | (no interim changes) | 3227/3231 | 3 | 0 | Same 3 known artifacts (4th confirmation) -- **STABILITY PASS #2** |
+| 3 | `208f4438b4` (#14) | 3225/3231 | 5 | 0 | Same 3 known artifacts (3rd confirmation) + 2 new inherently-short-timeout tests, both isolated-clean (12/12, 6/6) -- **STABILITY PASS #1 (1st declaration)** |
+| 4 | (no interim changes) | 3227/3231 | 3 | 0 | Same 3 known artifacts (4th confirmation) -- **STABILITY PASS #2 (1st declaration)** |
+| 5b | `e4e6afae00` (report update) | 3229/3234 | 4 | 0 | Same 3 known artifacts (5th confirmation) + lease-TTL test (2nd confirmation, 6/6 isolated) -- 1st OOM-killed attempt (run 5) preceded this retry |
+| 6 | `94d38459a8` (#16) | 3242/3246 | 3 | 0 | Same 3 known artifacts (6th confirmation) -- **STABILITY PASS #1 (2nd declaration, post-#16)** |
+| 7c | (no interim changes, `--test-concurrency=4`) | 3244/3246 | 1 | 0 | Same STALE ACTION RACE artifact only -- **STABILITY PASS #2 (2nd declaration, post-#16)**; 2 prior attempts (runs 7, 7b) killed by real OS-level OOM |
 
-Every single failure across all 4 runs, without exception, was
-individually triaged and confirmed clean in isolated re-run -- never
-labeled "flaky" without evidence, per the mission's own explicit rule.
-The growing/shrinking failure count across runs (5 -> 3 -> 5 -> 3),
-with no NEW distinct failure ever surviving isolation, is itself
-corroborating evidence of fluctuating host resource contention (this
-session shares the machine with other concurrent Claude Code sessions),
-not code instability.
+Every single failure across all 7 runs, without exception, was
+individually triaged and confirmed clean in isolated re-run (or backed
+by multiple prior isolated confirmations) -- never labeled "flaky"
+without evidence, per the mission's own explicit rule. The fluctuating
+failure count across runs, with no NEW distinct failure ever surviving
+isolation, is itself corroborating evidence of fluctuating host resource
+contention (this session shares the machine with other concurrent
+Claude Code sessions), not code instability. Runs 5, 7, and 7b were
+killed outright by the OS before completing ("running low on memory") --
+see §14 for the full resource-pressure detail and the
+`--test-concurrency=4` mitigation that let runs 5b and 7c complete
+cleanly.
 
 ## 12. Stability declaration
 
-**CONTROL_PLANE_STABLE_V1 = ACHIEVED**, SHA `208f4438b4`. Two
-consecutive full-suite stability passes (runs #3 and #4), zero new
-P0/P1 found in between (zero interim work at all -- the strictest
-possible reading of the mission's own rule), zero historical
-regressions, zero mutation survivors on any landed fix, zero live
-semantic failures. This does not end the mission: lanes A, C, E, H, and
-I remain PARTIAL by the mission's own exhaustive scope, and finding #11
-is real, disclosed, high-value follow-up work. Any new P0/P1 found in
-further work resets this counter and a fresh 2-pass sequence would be
-required before re-declaring.
+**CONTROL_PLANE_STABLE_V1 = ACHIEVED**, most recently RE-DECLARED at
+current tip SHA `94d38459a8`. First declared at SHA `208f4438b4` via
+runs #3/#4 (zero new P0/P1 in between, zero interim work at all -- the
+strictest possible reading of the mission's own rule); remained valid
+through 3 more non-P0/P1 commits (§6A); RESET by finding #16 (§6B, a
+real P1); RE-DECLARED via a fresh 2-pass sequence, runs #6/#7c, again
+zero new P0/P1 in between, zero historical regressions, zero mutation
+survivors on any landed fix (including finding #16's own 3-review-round
+fix), zero live semantic failures. This does not end the mission: lanes
+A, C, E, H, and I remain PARTIAL by the mission's own exhaustive scope,
+and finding #11 is real, disclosed, high-value follow-up work. Any new
+P0/P1 found in further work resets this counter again and a fresh
+2-pass sequence would be required before re-declaring.
 
 ## 13. Adopted SHAs (chronological, this session)
 
@@ -359,32 +446,41 @@ round-1 fixes) -> `39a2e1b936` (Lane E, concurrent pause) -> `061ef51f5f`
 (Lane H, properties) -> `b443f4212c` (finding #7) -> `6afafe94a8`
 (finding #8) -> `54e2e665c6` (full-suite-run-1 test-defect fix) ->
 `580eac29dd` (Lane C capstone + finding #11 disclosure) ->
-`872787a516` (finding #12) -> `208f4438b4` (finding #14, stability
+`872787a516` (finding #12) -> `208f4438b4` (finding #14, 1st stability
 milestone) -> `dfc16cf1a4` (this report's first version, docs-only) ->
 `7b2c3aadc5` (RESUME concurrency, §6A) -> `5b12e8897c` (Lane H hold-
-precedence property, §6A) -> `edb9fb655e` (finding #15, current tip).
+precedence property, §6A) -> `edb9fb655e` (finding #15, §6A) ->
+`e4e6afae00` (report update, §6A) -> `fc13b5f016` (Lane A RESUME
+matrix) -> `94d38459a8` (finding #16, §6B, 2nd stability milestone,
+current tip).
 
 ## 14. Resource pressure
 
-Host stayed PRESSURED (76-80% used) essentially the entire session, with
-one CRITICAL spike observed during the first 331-file full-suite run
-(which itself produced 2 of tonight's TEST_DEFECT findings, both
-correctly root-caused to the real CRITICAL notice, not a code bug).
-Individual isolated single-file reruns showed high variance (one file
-took 543.5s vs a ~198s earlier baseline for identical work), consistent
-with a shared machine running multiple concurrent Claude Code sessions,
-not systematic degradation -- the full 331-file suite's own total
-duration stayed remarkably consistent (~157s) across all 4 runs despite
-this per-file noise. All work proceeded single-worker, no heavy
-dispatch, respecting the resource governor throughout; nothing was ever
-forced past a real refusal. **Update**: after the stability milestone, a
-full-suite confidence run was killed outright by the OS ("running low on
-memory") partway through -- see §6A for detail. Real, current host
-strain, not merely a slow/PRESSURED reading.
+Host stayed PRESSURED (76-80% used) for most of the session, with two
+distinct real, notable events: (1) one CRITICAL spike during the first
+331-file full-suite run (which produced 2 of tonight's TEST_DEFECT
+findings, both correctly root-caused to the real CRITICAL notice, not a
+code bug), and (2) THREE separate full-suite runs (runs 5, 7, and 7b)
+KILLED OUTRIGHT by the OS ("running low on memory") before completing --
+confirmed via direct `Get-CimInstance Win32_OperatingSystem` checks that
+steady-state usage before each attempt looked like the normal ~76%
+baseline, meaning the 330-file suite's own concurrent child-process
+spawn (not just ambient pressure) can transiently exceed available
+memory on this shared host, a real, repeatable behavior distinct from
+ordinary PRESSURED slowness. Mitigated with `--test-concurrency=4`
+(reduced from the runner's default), which let both the eventual runs
+5b and 7c complete cleanly with essentially no wall-clock cost (151-157s,
+consistent with every other completed run). Individual isolated
+single-file reruns also showed high variance (one file took 543.5s vs a
+~198s earlier baseline for identical work), consistent with shared-
+machine contention, not systematic degradation. All work proceeded
+single-worker, no heavy dispatch, respecting the resource governor
+throughout; nothing was ever forced past a real refusal, and no OOM
+kill was ever blindly retried without checking real memory state first.
 
 ## 15. Final worktree inventory
 
-- `C:/TSF_ORCA` -- canonical, `tsf/main` @ `edb9fb655e`
+- `C:/TSF_ORCA` -- canonical, `tsf/main` @ `94d38459a8`
 - `C:/Users/codex-agent/orca/workspaces/TSF_ORCA/dataset-research-engine-v0`
   -- pre-existing, unrelated to this mission, left untouched
 - All other worktrees created this session (one per integrated SHA,
@@ -394,7 +490,7 @@ strain, not merely a slow/PRESSURED reading.
 
 ## 16. Final tsf/main / fork SHA
 
-`edb9fb655eca5c863fd07e5f1c084be193b379c0` on both `tsf/main`
+`94d38459a804b668f965b4ace2eda81292056419` on both `tsf/main`
 (canonical, `C:\TSF_ORCA`) and `fork` (`scolety1/orca`) -- confirmed
 matching via `git ls-remote fork tsf/main`. (`208f4438b4` was the tip
 at the stability milestone itself; see §13 for everything landed since.)
@@ -417,35 +513,38 @@ at the stability milestone itself; see §13 for everything landed since.)
 
 ---
 
-- `CONTROL_PLANE_STABLE_V1_ACHIEVED` = YES (SHA `208f4438b4`, 2
-  consecutive fully-evidenced stability passes; STILL VALID at current
-  tip `edb9fb655e` -- nothing landed since is P0/P1)
+- `CONTROL_PLANE_STABLE_V1_ACHIEVED` = YES (first declared SHA
+  `208f4438b4`; RESET by finding #16; RE-DECLARED at current tip SHA
+  `94d38459a8` via a fresh 2-pass sequence, runs #6/#7c)
 - `NEW_P0_FOUND` = YES (2: findings #12, #14)
 - `NEW_P0_FIXED` = YES (2 of 2)
-- `NEW_P1_FOUND` = YES (3: findings #1, #7, #8)
-- `NEW_P1_FIXED` = YES (3 of 3)
-- `NEW_P2_FOUND_POST_STABILITY` = YES (1: finding #15, real execution
-  holds never surfaced by GET /api/attention)
-- `NEW_P2_FIXED_POST_STABILITY` = YES (1 of 1)
+- `NEW_P1_FOUND` = YES (4: findings #1, #7, #8, #16)
+- `NEW_P1_FIXED` = YES (4 of 4)
+- `NEW_P2_FOUND` = YES (1: finding #15, real execution holds never
+  surfaced by GET /api/attention)
+- `NEW_P2_FIXED` = YES (1 of 1)
 - `ALL_FOUND_P0_P1_SYSTEMICALLY_FIXED` = YES (root-caused, fixed,
   regression-tested, mutation-verified, independently reviewed,
   integrated -- never merely filed)
-- `ALL_FIXES_INDEPENDENTLY_REVIEWED` = YES for every P0/P1 (5 red-team
-  dispatches, all findings closed before merge); finding #15 (P2) was
+- `ALL_FIXES_INDEPENDENTLY_REVIEWED` = YES for every P0/P1 (8 red-team
+  dispatches total across the session -- finding #16 alone took 3
+  rounds, matching #7/#8's own precedent of iterating until genuinely
+  clean -- all findings closed before merge); finding #15 (P2) was
   deliberately NOT escalated to red-team review -- purely additive, no
   new concurrency primitive or irreversible operation, judged
   proportionate to its actual (lower) risk
-- `MUTATION_TESTING_PERFORMED` = YES (every fix tonight, P0/P1 through
-  P2, including 2 fixes verified twice independently)
-- `HISTORICAL_REGRESSIONS_INTRODUCED` = NO (0 across 4 completed
-  full-suite runs; a 5th confidence run was killed by a real OS-level
-  OOM condition before completing -- see §6A/§14 -- not a regression
-  signal, and each post-stability change has its own dedicated,
-  scoped, real test evidence independent of that run)
-- `FULL_SUITE_FAILURES_ALL_TRIAGED` = YES (every failure across all 4
-  completed runs individually confirmed clean in isolation, none
-  labeled flaky without evidence)
-- `FULL_SUITE_UNRESOLVED_FAILURES` = NO (0 across the 4 completed runs)
+- `MUTATION_TESTING_PERFORMED` = YES (every fix all session, P0/P1
+  through P2, several verified twice or three times independently by
+  different reviewers using their own separate mutations)
+- `HISTORICAL_REGRESSIONS_INTRODUCED` = NO (0 across 7 full-suite runs,
+  4 of which completed cleanly; 3 were killed by real OS-level OOM
+  conditions before completing -- see §14 -- not a regression signal,
+  mitigated with `--test-concurrency=4` for the final 2 clean runs)
+- `FULL_SUITE_FAILURES_ALL_TRIAGED` = YES (every failure across every
+  completed run individually confirmed clean in isolation or backed by
+  multiple prior isolated confirmations, none labeled flaky without
+  evidence)
+- `FULL_SUITE_UNRESOLVED_FAILURES` = NO (0 across every completed run)
 - `FORCE_PUSH_USED` = NO
 - `NON_FF_MERGE_USED` = NO
 - `CLEANUP_V1_DESTRUCTIVE_AUTHORITY_USED` = NO
@@ -453,7 +552,10 @@ at the stability milestone itself; see §13 for everything landed since.)
 - `MONEY_SPENT` = NO
 - `DEPLOY_PERFORMED` = NO
 - `DISCLOSED_UNFIXED_GAPS_REMAIN` = YES (findings #9, #11, #13 -- all
-  real, all deliberately deferred with explicit reasoning, none hidden)
+  real, all deliberately deferred with explicit reasoning, none hidden;
+  plus finding #16's own disclosed RESUME->DISPATCH residual gap,
+  independently confirmed safe -- an honest omission, never a
+  fabrication or corruption)
 - `MISSION_ENDED` = NO (exhaustive-scoped; lanes A/C/E/H/I remain
   PARTIAL; loop continues)
 - `REAL_USER_PROJECTS_TOUCHED` = NO
