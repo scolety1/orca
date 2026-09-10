@@ -29,6 +29,7 @@ import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
 import { attachDueAttentionNotices } from './attention-status-reconciler.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
+import { classifyRunActionVerb, classifyContinueAction, pauseProjectRun, resumeProjectRun } from './command-run-action-bridge.mjs'
 
 // Configures which real, known project id actually IS TSF's own -- self-
 // repair (domain/self-repair-authority.mjs) can never be authorized for any
@@ -368,7 +369,113 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
     // before dispatch/live-planner so a research-shaped message never
     // reaches either.
     const projectResearchResult = project ? await respondResearchCommandForProject({ project, message, opState, clock: () => new Date() }) : null
-    if (!project) { result = respond(project, message) } else if (projectResearchResult) { result = projectResearchResult } else if (decisionClass === 'TIM_REQUIRED') {
+
+    // TSF Overnight Control-Plane Burn-In V2, Lane L (live disposable
+    // E2E) -- real, live-confirmed finding (not guessed): PAUSE/RESUME
+    // via natural-language chat was completely UNREACHABLE from this
+    // route, on BOTH the per-project Planner Chat surface AND Global
+    // Command's own exact-match short-circuit (its own header comment
+    // above: an exact single-project match "reuses every branch below
+    // unchanged", which never included this check). Confirmed live: a
+    // real HTTP POST /api/chat with message "pause <exact project id>"
+    // left a real ACTIVE run untouched, silently falling through to the
+    // generic grounded-fallback response instead -- classifyRunActionVerb
+    // (command-run-action-bridge.mjs) is a real module, extensively
+    // hardened for duplicate-delivery/race-safety/state-matrix coverage
+    // this same mission, but was previously reachable ONLY from
+    // command-responder.mjs's respondCommand, itself reachable only from
+    // Global Command's AMBIGUOUS/fuzzy/back-referenced resolution path --
+    // never the common, expected exact-name case, and never per-project
+    // chat at all. Checked here, using the exact same real primitives,
+    // for every project-scoped turn.
+    //
+    // Independent-review finding (real, live-confirmed, fixed here): the
+    // FIRST version of this fix executed the real pause/resume BEFORE the
+    // branch-selection chain below decided which response actually wins,
+    // and ran it AHEAD of the TIM_REQUIRED gate -- so "pause X and
+    // research Y" silently paused the run while returning an unrelated
+    // research response, and "pause X and then deploy it to production"
+    // silently paused the run with decisionClass AUTO_DECIDE instead of
+    // being refused in full, contradicting respondCommand's own real
+    // precedence (command-responder.mjs: research bridge -> TIM_REQUIRED
+    // refusal -> adoption bridge -> runActionVerb, confirmed by reading
+    // its actual code, not assumed). Fixed by gating the SIDE EFFECT
+    // itself -- never just which result object wins -- on research having
+    // produced nothing AND the message not being TIM_REQUIRED, exactly
+    // matching respondCommand's real order.
+    let runActionResult = null
+    if (project && !projectResearchResult && decisionClass !== 'TIM_REQUIRED') {
+      const runActionVerb = classifyRunActionVerb(message)
+      if (runActionVerb === 'PAUSE') {
+        try {
+          await pauseProjectRun(project.id, 'OPERATOR_CHAT_PAUSE', () => new Date())
+          runActionResult = {
+            intent: 'PROJECT_ACTION',
+            decisionClass: 'AUTO_DECIDE',
+            text: `Paused **${project.displayName}**.`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel: 'PLANNER_DEEP · real pause via Keep Going',
+            live: true,
+            resolvedProjectIds: [project.id],
+            scope: 'PROJECT'
+          }
+        } catch (error) {
+          runActionResult = {
+            intent: 'PROJECT_ACTION',
+            decisionClass: 'AUTO_DECIDE',
+            text: `Couldn't pause **${project.displayName}**: ${error.message}.`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel: 'PLANNER_DEEP · action refused',
+            live: false,
+            resolvedProjectIds: [project.id],
+            scope: 'PROJECT'
+          }
+        }
+      } else if (runActionVerb === 'RESUME') {
+        // Independent-review finding (real, fixed here): classifyContinueAction
+        // does a real, synchronous state read (loadState()) that was
+        // previously OUTSIDE any try/catch -- a corrupted state file or
+        // transient I/O error on this one read would have 500'd the whole
+        // route instead of an honest refusal. Moved inside this try so any
+        // failure here is caught exactly like a failed resumeProjectRun
+        // already is.
+        try {
+          const continueAction = classifyContinueAction(project.id)
+          // "RESUME" classified but the run is NOT actually paused (nothing
+          // durable to resume) is deliberately left unhandled here -- it
+          // falls through unchanged to this route's existing dispatch-
+          // worthy logic below (a real, separate, narrower, disclosed gap:
+          // classifyIntent doesn't yet recognize "continue X" as dispatch-
+          // worthy on THIS route either; tracked, not fixed tonight).
+          if (continueAction === 'RESUME') {
+            await resumeProjectRun(project.id, () => new Date())
+            runActionResult = {
+              intent: 'PROJECT_ACTION',
+              decisionClass: 'AUTO_DECIDE',
+              text: `Resumed **${project.displayName}**.`,
+              plannerRole: 'PLANNER_DEEP',
+              providerLabel: 'PLANNER_DEEP · real resume via Keep Going',
+              live: true,
+              resolvedProjectIds: [project.id],
+              scope: 'PROJECT'
+            }
+          }
+        } catch (error) {
+          runActionResult = {
+            intent: 'PROJECT_ACTION',
+            decisionClass: 'AUTO_DECIDE',
+            text: `Couldn't resume **${project.displayName}**: ${error.message}.`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel: 'PLANNER_DEEP · action refused',
+            live: false,
+            resolvedProjectIds: [project.id],
+            scope: 'PROJECT'
+          }
+        }
+      }
+    }
+
+    if (!project) { result = respond(project, message) } else if (projectResearchResult) { result = projectResearchResult } else if (runActionResult) { result = runActionResult } else if (decisionClass === 'TIM_REQUIRED') {
       // Consequential phrasing is refused deterministically, before ever
       // spending a live call on it — not left to the model's judgment.
       // Label this distinctly from an actually-unavailable provider: one

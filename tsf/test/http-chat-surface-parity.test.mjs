@@ -29,6 +29,8 @@ process.env.TSF_PLANNER_CODEX_COMMAND = NONEXISTENT
 process.env.STUB_MODE = 'success'
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
+const { withKeepGoingRun, readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
+const { createOvernightRun } = await import('../domain/keep-going.mjs')
 
 async function withServer(fn) {
   const handler = createRequestHandler()
@@ -44,6 +46,13 @@ async function withServer(fn) {
 }
 
 const PROJECT_ID = 'tsf-ui-capability-check'
+const clock = () => new Date('2026-09-10T12:00:00.000Z')
+
+async function seedActiveRun(projectId) {
+  await withKeepGoingRun(projectId, () =>
+    createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Surface parity test goal.', acceptanceCriteria: ['X'] }, clock)
+  )
+}
 
 async function chat(base, body) {
   const res = await fetch(`${base}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
@@ -272,5 +281,93 @@ test('Overnight V2 Lane B: a long software mission containing the word "research
     const projectScoped = await chat(base, { projectId: PROJECT_ID, message })
     assert.notEqual(global_.body.scope, 'RESEARCH')
     assert.notEqual(projectScoped.body.scope, 'RESEARCH')
+  })
+})
+
+// TSF Overnight Control-Plane Burn-In V2, Lane L (live disposable E2E) --
+// real, live-confirmed P1 finding (not guessed): PAUSE/RESUME via
+// natural-language chat was completely UNREACHABLE from this real HTTP
+// route, on BOTH Global Command's own exact-match short-circuit AND
+// per-project Planner Chat directly. Confirmed live before the fix (a
+// real POST /api/chat with "pause <exact project id>" left a real ACTIVE
+// run untouched, silently falling through to a generic grounded-fallback
+// response) and after (SHA to be recorded at commit time). Root cause:
+// classifyRunActionVerb (command-run-action-bridge.mjs) was extensively
+// hardened this same mission for duplicate-delivery/race-safety/state-
+// matrix coverage, but was reachable ONLY from command-responder.mjs's
+// respondCommand -- itself reachable only from Global Command's
+// AMBIGUOUS/fuzzy/back-referenced resolution path, never the exact-name
+// case, and never per-project chat at all. Fixed in
+// server/chat-http-routes.mjs -- these tests prove it end to end against
+// a real HTTP server and a real durable Keep Going run, on both surfaces.
+// Real, already-established catalog fixture (used identically as ordinary
+// test data throughout the pre-existing suite, e.g. test/http-chat-live
+// .test.mjs) -- deliberately DIFFERENT from PROJECT_ID above so the
+// Global Command and per-project halves below exercise two independent
+// real runs, never the same one.
+const PER_PROJECT_FIXTURE_ID = 'weird-talent-marketplace'
+
+test('Overnight V2 Lane L: "pause X" over real HTTP genuinely pauses a real durable run, on BOTH Global Command (exact match) and per-project Planner Chat', async () => {
+  await withServer(async (base) => {
+    await seedActiveRun(PROJECT_ID)
+    assert.equal(readKeepGoingRun(PROJECT_ID).state, 'ACTIVE')
+
+    const globalResult = await chat(base, { projectId: null, message: `pause ${PROJECT_ID}` })
+    assert.match(globalResult.body.text, /^Paused/, 'Global Command exact-match must really pause, not fall through to a generic fallback')
+    assert.equal(readKeepGoingRun(PROJECT_ID).state, 'PAUSED')
+
+    await seedActiveRun(PER_PROJECT_FIXTURE_ID)
+    const perProjectResult = await chat(base, { projectId: PER_PROJECT_FIXTURE_ID, message: 'pause it' })
+    assert.match(perProjectResult.body.text, /^Paused/, 'per-project Planner Chat must really pause too')
+    assert.equal(readKeepGoingRun(PER_PROJECT_FIXTURE_ID).state, 'PAUSED')
+  })
+})
+
+test('Overnight V2 Lane L: "resume it" over real HTTP genuinely resumes a real durable PAUSED run, on BOTH surfaces', async () => {
+  await withServer(async (base) => {
+    await seedActiveRun(PROJECT_ID)
+    const paused = await chat(base, { projectId: null, message: `pause ${PROJECT_ID}` })
+    assert.match(paused.body.text, /^Paused/)
+
+    const resumed = await chat(base, { projectId: null, message: `resume ${PROJECT_ID}` })
+    assert.match(resumed.body.text, /^Resumed/, 'Global Command exact-match must really resume a genuinely paused run')
+    assert.equal(readKeepGoingRun(PROJECT_ID).state, 'ACTIVE')
+
+    await seedActiveRun(PER_PROJECT_FIXTURE_ID)
+    await chat(base, { projectId: PER_PROJECT_FIXTURE_ID, message: 'pause it' })
+    const perProjectResume = await chat(base, { projectId: PER_PROJECT_FIXTURE_ID, message: 'resume it' })
+    assert.match(perProjectResume.body.text, /^Resumed/, 'per-project Planner Chat must really resume too')
+    assert.equal(readKeepGoingRun(PER_PROJECT_FIXTURE_ID).state, 'ACTIVE')
+  })
+})
+
+// Independent-review finding (Lane M, real, live-confirmed): the FIRST
+// version of the Lane L fix above executed the real pause/resume BEFORE
+// the branch-selection chain decided which response wins, and ahead of
+// the TIM_REQUIRED gate -- so a message that was simultaneously
+// research-shaped (or genuinely consequential) AND opened with a pause/
+// resume clause would silently mutate the durable run while the user saw
+// a completely unrelated response (or none of the expected refusal).
+// These two tests pin down the fix: the SIDE EFFECT itself, not just
+// which result wins, must be gated on research/TIM_REQUIRED losing first
+// -- exactly matching command-responder.mjs's own real precedence
+// (research bridge -> TIM_REQUIRED refusal -> ... -> runActionVerb).
+test('Overnight V2 Lane L: a message that is BOTH research-shaped AND opens with "pause" never silently pauses the run while research wins the response', async () => {
+  await withServer(async (base) => {
+    await seedActiveRun(PROJECT_ID)
+    const result = await chat(base, { projectId: PROJECT_ID, message: `please pause and research the ${PROJECT_ID} migration risks` })
+    assert.equal(result.body.scope, 'RESEARCH', 'research must win the response, matching respondCommand\'s own precedence')
+    assert.doesNotMatch(result.body.text, /^Paused/, 'the response must never claim a pause that (per this test) must not have happened')
+    assert.equal(readKeepGoingRun(PROJECT_ID).state, 'ACTIVE', 'the real run must NOT be silently paused just because research won the visible response')
+  })
+})
+
+test('Overnight V2 Lane L: a message combining "pause X" with a genuinely consequential clause is refused in full (TIM_REQUIRED) -- never partially executes the pause', async () => {
+  await withServer(async (base) => {
+    await seedActiveRun(PROJECT_ID)
+    const result = await chat(base, { projectId: PROJECT_ID, message: `pause it and then deploy it to production` })
+    assert.equal(result.body.decisionClass, 'TIM_REQUIRED', 'the consequential clause must win a full refusal, matching respondCommand\'s own precedence')
+    assert.doesNotMatch(result.body.text, /^Paused/, 'must never claim a pause happened when the whole message should have been refused')
+    assert.equal(readKeepGoingRun(PROJECT_ID).state, 'ACTIVE', 'the real run must NOT be silently paused as a side effect of a message that should have been refused in full')
   })
 })
