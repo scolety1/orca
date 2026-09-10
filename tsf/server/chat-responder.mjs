@@ -654,8 +654,18 @@ function respondGeneral(project) {
 // unavailable or hasn't decided to act, matching respondCritiqueOrFix's own
 // "not wired yet" honesty rather than fabricating a dispatch that didn't
 // happen.
+//
+// TSF Overnight Control-Plane Burn-In V2, Lane G (real, live-confirmed,
+// previously undiscovered): "I've logged this as a request on X" claimed
+// a durable write that never happened -- respond() is a pure function (no
+// I/O anywhere in its own call chain), and no dispatch-request store
+// exists anywhere in this codebase (confirmed via grep, same method
+// respondFeedback's own Batch-9 fix used directly below). This is the
+// exact same false-claim class Batch 9 already fixed for respondFeedback
+// in this same file, just missed for this sibling responder. Fixed the
+// same way: removed the false claim, kept the real, working next step.
 function respondDispatchRequest(project) {
-  return `Got it — I can't dispatch a live Orca worker from this reply path yet (the chat-dispatch bridge is still being built). I've logged this as a request on **${project.displayName}**; once wired, this exact phrasing will be enough to create a bounded plan and a real dispatch without you opening a terminal.`
+  return `Got it — I can't dispatch a live Orca worker from this reply path yet (the chat-dispatch bridge is still being built), and there's no durable request log to file this in either. The concrete next step is to turn it into a bounded mission the planner can hand to a worker, for **${project.displayName}**. Want me to draft that mission?`
 }
 
 // Recovered from a stranded uncommitted worktree -- honest, in-project

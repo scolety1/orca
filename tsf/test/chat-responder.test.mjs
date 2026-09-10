@@ -606,3 +606,21 @@ test('CRITIQUE and FIX_REQUEST responses never claim a durable log/record that d
     assert.match(result.text, new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
 })
+
+// TSF Overnight Control-Plane Burn-In V2, Lane G (real, live-confirmed,
+// previously undiscovered): the SAME false-claim class the test above
+// already locks in for CRITIQUE/FIX_REQUEST ("I've logged this as
+// feedback...") existed, unnoticed, in respondDispatchRequest's own text
+// ("I've logged this as a request on X") this entire mission -- no
+// dispatch-request store exists anywhere in this codebase either, and
+// this exact property was simply never tested for DISPATCH_REQUEST
+// specifically. Fixed the same way (removed the false claim, kept the
+// real working next step); locked in here so this specific responder
+// never regresses again.
+test('DISPATCH_REQUEST fallback response never claims a durable log/record that does not exist', () => {
+  const project = loadRealPilotProjects()[0]
+  const result = respond(project, 'Please run the migration script.')
+  assert.doesNotMatch(result.text, /\blogged\b/i, 'no dispatch-request store module exists anywhere in this codebase -- must never claim one logged this')
+  assert.doesNotMatch(result.text, /\brecorded\b/i, 'must never claim a record exists')
+  assert.match(result.text, new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+})
