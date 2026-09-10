@@ -1,16 +1,24 @@
 # TSF_OVERNIGHT_CONTROL_PLANE_BURN_IN_V2
 
-Session status: **CONTROL_PLANE_STABLE_V1 ACHIEVED** at `fork/tsf/main`
-SHA `208f4438b4`, confirmed via two consecutive, fully-evidenced full-suite
+Session status: **CONTROL_PLANE_STABLE_V1 ACHIEVED** at SHA `208f4438b4`
+(fork/tsf/main), confirmed via two consecutive, fully-evidenced full-suite
 stability passes with zero new P0/P1 in between. Four real P0/P1s found
 tonight, all reproduced live/deterministically, root-caused, fixed
 systemically, mutation-verified, independently reviewed (all fully clean),
 integrated, and pushed. Zero real regressions introduced. Zero real user
-projects touched. This report is written at the stability milestone, not
-at session end -- the mission is exhaustive-scoped (13 lanes) and several
-lanes remain PARTIAL by design; see §12 for what's still open. Durable
+projects touched. This report was first written at the stability
+milestone, not at session end -- the mission is exhaustive-scoped (13
+lanes) and several lanes remain PARTIAL by design; see §12 for what was
+still open at that point, and §6A for real work landed since. Durable
 queue: `overnight-control-plane-queue.md` (session memory), append-only
-findings log now at 14 entries.
+findings log now at 15 entries. **UPDATE, current tip `edb9fb655e`**: 3
+more real commits landed after the stability milestone (§6A) --
+RESUME's own genuine-concurrency proof (Lane E), a hold-precedence
+property test (Lane H), and one more real, previously-undisclosed
+finding (#15, P2 -- real execution holds were never surfaced by GET
+/api/attention). None of the three are P0/P1, so the stability
+declaration above remains valid unchanged (the mission's own rule only
+requires the pass sequence to reset on a new P0/P1).
 
 ## 1. Mission scope and starting point
 
@@ -168,6 +176,62 @@ back fully clean across 6 dimensions, including independently tracing
 that the existing per-project lock (built for #12) genuinely covers the
 entire new rollback too.
 
+## 6A. Real work landed after the stability milestone
+
+Three more real commits, none P0/P1, all mutation-verified and
+integrated the same way as everything above:
+
+- **RESUME genuine-concurrency proof** (SHA `7b2c3aadc5`, Lane E): the
+  PAUSE concurrency proof's own explicitly-flagged missing counterpart.
+  RESUME has a different race shape than PAUSE -- `classifyContinueAction`
+  reads state outside any lock, so every concurrent caller can
+  independently decide RESUME -- but the real safety net is `resumeRun`'s
+  own state-machine guard running inside the synchronous, serialized
+  critical section. 10 genuinely concurrent (`Promise.all`) "resume X"
+  calls verified live: exactly 1 succeeds, exactly 1 real transition
+  recorded, every other call honestly refused or reclassified, never a
+  crash. Mutation-verified (disabling the guard reproduces 10/10 false
+  resumes).
+- **Hold-precedence property** (SHA `5b12e8897c`, Lane H): a static
+  counterpart to finding #14's dynamic TOCTOU fix. Exhaustively (16
+  combinations, not sampled) proves `revalidateCommandAdoptionCandidate`'s
+  own `PROJECT_EXECUTION_HOLD_ACTIVE` refusal can never be masked by any
+  worktree/ancestry combination. Mutation-verified (reordering the real
+  check to run after worktree/ancestry checks reproduces a real failure
+  every pre-existing single-condition example test misses).
+- **Finding #15** (SHA `edb9fb655e`, P2, real, previously undisclosed):
+  `gatherRealFleetAttentionInputs` never actually read the real
+  project-execution-hold store, so `projectExecutionHolds` silently
+  defaulted to `{}` passed into `buildFleetAttentionItems` on every real
+  call site in the whole codebase (confirmed via a full grep). The
+  domain layer (`holdItems` in `fleet-attention-status.mjs`) has always
+  been built to surface a real `BLOCKED_EXTERNAL` item from this data,
+  and the reconciler's own header comment already claimed this was "real
+  and shown in the live Phase 2 view" -- false in practice. Live-
+  reproduced before fixing: a real, active hold never appeared in a real
+  `GET /api/attention` response. Judged P2, not P0/P1: the underlying
+  safety property was never compromised (a hold already correctly blocks
+  real actions, proven elsewhere) -- only visibility of an
+  already-enforced state was missing. Fixed by wiring
+  `readAllProjectExecutionHolds()` into the two real consumers whose
+  output actually needs it; confirmed a no-op for the other 4 real
+  callers (each filters to a category that can never be
+  `BLOCKED_EXTERNAL`) across 125 passing tests. No dedicated red-team
+  review dispatched -- purely additive, no new concurrency primitive or
+  irreversible operation, judged proportionate to the actual risk.
+
+A full-suite confidence run attempted after these three landed
+(background task `b7szn7u6p`) was killed by the OS itself partway
+through -- a genuine, current low-memory condition on this shared
+machine (confirmed directly via `Get-CimInstance Win32_OperatingSystem`:
+~77-78% used, matching the PRESSURED baseline all night, not an
+at-rest CRITICAL reading -- the 330-file run's own concurrent
+child-process spawn transiently pushed it over the edge). Not
+immediately retried, to avoid repeating the same OOM kill or further
+stressing a machine already showing real strain; each of the three
+commits above already has its own dedicated, scoped, real test evidence
+independent of a fresh full-suite pass.
+
 ## 7. Disclosed, not fixed (real, deliberately deferred)
 
 - **Finding #9** (P2/P3): the same "only reachable via `respondCommand`'s
@@ -295,7 +359,10 @@ round-1 fixes) -> `39a2e1b936` (Lane E, concurrent pause) -> `061ef51f5f`
 (Lane H, properties) -> `b443f4212c` (finding #7) -> `6afafe94a8`
 (finding #8) -> `54e2e665c6` (full-suite-run-1 test-defect fix) ->
 `580eac29dd` (Lane C capstone + finding #11 disclosure) ->
-`872787a516` (finding #12) -> `208f4438b4` (finding #14, current tip).
+`872787a516` (finding #12) -> `208f4438b4` (finding #14, stability
+milestone) -> `dfc16cf1a4` (this report's first version, docs-only) ->
+`7b2c3aadc5` (RESUME concurrency, §6A) -> `5b12e8897c` (Lane H hold-
+precedence property, §6A) -> `edb9fb655e` (finding #15, current tip).
 
 ## 14. Resource pressure
 
@@ -310,11 +377,14 @@ not systematic degradation -- the full 331-file suite's own total
 duration stayed remarkably consistent (~157s) across all 4 runs despite
 this per-file noise. All work proceeded single-worker, no heavy
 dispatch, respecting the resource governor throughout; nothing was ever
-forced past a real refusal.
+forced past a real refusal. **Update**: after the stability milestone, a
+full-suite confidence run was killed outright by the OS ("running low on
+memory") partway through -- see §6A for detail. Real, current host
+strain, not merely a slow/PRESSURED reading.
 
 ## 15. Final worktree inventory
 
-- `C:/TSF_ORCA` -- canonical, `tsf/main` @ `208f4438b4`
+- `C:/TSF_ORCA` -- canonical, `tsf/main` @ `edb9fb655e`
 - `C:/Users/codex-agent/orca/workspaces/TSF_ORCA/dataset-research-engine-v0`
   -- pre-existing, unrelated to this mission, left untouched
 - All other worktrees created this session (one per integrated SHA,
@@ -324,9 +394,10 @@ forced past a real refusal.
 
 ## 16. Final tsf/main / fork SHA
 
-`208f4438b4e50184113bb9cdab70ee86d75ebb7f` on both `tsf/main`
+`edb9fb655eca5c863fd07e5f1c084be193b379c0` on both `tsf/main`
 (canonical, `C:\TSF_ORCA`) and `fork` (`scolety1/orca`) -- confirmed
-matching via `git ls-remote fork tsf/main`.
+matching via `git ls-remote fork tsf/main`. (`208f4438b4` was the tip
+at the stability milestone itself; see §13 for everything landed since.)
 
 ## 17. Next highest-value work (if this mission continues)
 
@@ -347,23 +418,34 @@ matching via `git ls-remote fork tsf/main`.
 ---
 
 - `CONTROL_PLANE_STABLE_V1_ACHIEVED` = YES (SHA `208f4438b4`, 2
-  consecutive fully-evidenced stability passes)
+  consecutive fully-evidenced stability passes; STILL VALID at current
+  tip `edb9fb655e` -- nothing landed since is P0/P1)
 - `NEW_P0_FOUND` = YES (2: findings #12, #14)
 - `NEW_P0_FIXED` = YES (2 of 2)
 - `NEW_P1_FOUND` = YES (3: findings #1, #7, #8)
 - `NEW_P1_FIXED` = YES (3 of 3)
+- `NEW_P2_FOUND_POST_STABILITY` = YES (1: finding #15, real execution
+  holds never surfaced by GET /api/attention)
+- `NEW_P2_FIXED_POST_STABILITY` = YES (1 of 1)
 - `ALL_FOUND_P0_P1_SYSTEMICALLY_FIXED` = YES (root-caused, fixed,
   regression-tested, mutation-verified, independently reviewed,
   integrated -- never merely filed)
-- `ALL_FIXES_INDEPENDENTLY_REVIEWED` = YES (5 red-team dispatches, all
-  findings closed before merge)
-- `MUTATION_TESTING_PERFORMED` = YES (every fix, 2 fixes verified twice
-  independently)
-- `HISTORICAL_REGRESSIONS_INTRODUCED` = NO (0 across 4 full-suite runs)
+- `ALL_FIXES_INDEPENDENTLY_REVIEWED` = YES for every P0/P1 (5 red-team
+  dispatches, all findings closed before merge); finding #15 (P2) was
+  deliberately NOT escalated to red-team review -- purely additive, no
+  new concurrency primitive or irreversible operation, judged
+  proportionate to its actual (lower) risk
+- `MUTATION_TESTING_PERFORMED` = YES (every fix tonight, P0/P1 through
+  P2, including 2 fixes verified twice independently)
+- `HISTORICAL_REGRESSIONS_INTRODUCED` = NO (0 across 4 completed
+  full-suite runs; a 5th confidence run was killed by a real OS-level
+  OOM condition before completing -- see §6A/§14 -- not a regression
+  signal, and each post-stability change has its own dedicated,
+  scoped, real test evidence independent of that run)
 - `FULL_SUITE_FAILURES_ALL_TRIAGED` = YES (every failure across all 4
-  runs individually confirmed clean in isolation, none labeled flaky
-  without evidence)
-- `FULL_SUITE_UNRESOLVED_FAILURES` = NO (0)
+  completed runs individually confirmed clean in isolation, none
+  labeled flaky without evidence)
+- `FULL_SUITE_UNRESOLVED_FAILURES` = NO (0 across the 4 completed runs)
 - `FORCE_PUSH_USED` = NO
 - `NON_FF_MERGE_USED` = NO
 - `CLEANUP_V1_DESTRUCTIVE_AUTHORITY_USED` = NO
