@@ -21,6 +21,7 @@ import { decomposeMultiAction } from '../domain/command-multi-action-decompositi
 import { resolveProjectsFromText } from '../server/project-name-resolver.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import { classifyRunActionVerb } from '../server/command-run-action-bridge.mjs'
+import { classifySingleTargetHoldEntries } from '../server/command-multi-action-bridge.mjs'
 
 function mulberry32(seed) {
   let a = seed
@@ -245,5 +246,68 @@ test('Lane I structured fuzz: pure adversarial-formatting noise (no pause/resume
   for (let i = 0; i < ITERATIONS; i++) {
     const message = buildPureNoiseMessage(rng)
     assert.equal(classifyRunActionVerb(message), null, `iteration ${i}: fabricated an action from pure noise ${JSON.stringify(message)}`)
+  }
+})
+
+// TSF Overnight Control-Plane Burn-In V2, Lane I: classifySingleTargetHoldEntries
+// (server/command-multi-action-bridge.mjs, added tonight for finding #16)
+// had no fuzz coverage at all. Extends the same noise-injection harness
+// with real EXTERNAL_HOLD_SOURCE-shaped trigger templates (domain/
+// command-act-model.mjs's own real trigger vocabulary: "being handled by
+// another agent", "leave it alone", "hold off on X").
+//
+// Scope, stated precisely (same discipline as the classifyRunActionVerb
+// fuzz tests above): this is crash/known-shape/no-fabrication-from-noise
+// robustness fuzzing, NOT a semantic re-proof of finding #16's own fix or
+// its 3 review rounds' worth of precedence/wrong-project findings -- that
+// real, dedicated coverage lives in test/command-multi-action-bridge.
+// test.mjs and test/http-chat-hold-command.test.mjs. Checked directly:
+// none of NOISE_SNIPPETS below contain "handled"/"alone"/"hold" as a
+// substring, so the pure-noise test's always-null assertion is a safe,
+// real invariant, not an accidental pass.
+const HOLD_TRIGGER_TEMPLATES = [
+  (p) => `${p} is being handled by another agent right now, leave it alone.`,
+  (p) => `${p} is being handled by a different process, do not touch it.`,
+  (p) => `leave ${p} alone.`,
+  (p) => `hold off on ${p}.`,
+  (p) => `hold off.`,
+  (p) => `don't touch ${p}, it's being handled by another agent.`,
+  (p) => `${p} is being handled by another ai, leave that alone.`
+]
+
+function buildNoisyHoldMessage(rand) {
+  const template = pick(rand, HOLD_TRIGGER_TEMPLATES)
+  const target = pick(rand, PROJECTS).id
+  const before = pick(rand, NOISE_SNIPPETS)
+  const middle = pick(rand, NOISE_SNIPPETS)
+  const after = pick(rand, NOISE_SNIPPETS)
+  const core = template(target)
+  const mid = Math.max(1, Math.floor(core.length / 2))
+  return `${before}${core.slice(0, mid)}${middle}${core.slice(mid)}${after}`
+}
+
+test('Lane I structured fuzz: classifySingleTargetHoldEntries never crashes and always returns null or a well-shaped, single-target entries array under adversarial formatting', () => {
+  const ITERATIONS = 500
+  const aliases = loadProjectAliases()
+  for (let i = 0; i < ITERATIONS; i++) {
+    const message = buildNoisyHoldMessage(rng)
+    const result = classifySingleTargetHoldEntries(message, PROJECTS, aliases)
+    if (result === null) { continue }
+    assert.ok(Array.isArray(result) && result.length > 0, `iteration ${i}: a non-null result must be a real, non-empty array for ${JSON.stringify(message)}`)
+    const targets = new Set(result.map((e) => e.target))
+    assert.equal(targets.size, 1, `iteration ${i}: every entry must target the SAME single project, got targets ${JSON.stringify([...targets])} for ${JSON.stringify(message)}`)
+    for (const entry of result) {
+      assert.equal(entry.intent, 'EXTERNAL_WORK_HOLD', `iteration ${i}: every entry must be a real EXTERNAL_WORK_HOLD intent for ${JSON.stringify(message)}`)
+      assert.ok(PROJECTS.some((p) => p.id === entry.target), `iteration ${i}: target must be a real project from the ones passed in, never fabricated, for ${JSON.stringify(message)}`)
+    }
+  }
+})
+
+test('Lane I structured fuzz: pure adversarial-formatting noise (no hold vocabulary) never fabricates a hold entry', () => {
+  const ITERATIONS = 300
+  const aliases = loadProjectAliases()
+  for (let i = 0; i < ITERATIONS; i++) {
+    const message = buildPureNoiseMessage(rng)
+    assert.equal(classifySingleTargetHoldEntries(message, PROJECTS, aliases), null, `iteration ${i}: fabricated a hold entry from pure noise ${JSON.stringify(message)}`)
   }
 })
