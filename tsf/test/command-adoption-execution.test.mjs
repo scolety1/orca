@@ -70,6 +70,53 @@ test('revalidateCommandAdoptionCandidate: an active hold refuses', () => {
   assert.equal(result.detail, 'EXTERNAL_WORK_ACTIVE: another agent')
 })
 
+// TSF Overnight Control-Plane Burn-In V2, Lane H (property/metamorphic
+// expansion) -- a STATIC counterpart to finding #14's own DYNAMIC (timing-
+// based) TOCTOU fix in server/command-adoption-execution.mjs. That fix
+// proves a hold set DURING a live merge stops it; this property instead
+// proves the revalidation checklist's own hold check can never be
+// silently MASKED by an unrelated worktree/ancestry fact, for every real
+// combination of those facts -- exhaustive, not sampled (2 x 2 x 4 = 16
+// combinations is small enough to check all of them). Deliberately
+// narrow and non-circular: this does NOT re-implement the function's own
+// branching order as a parallel "oracle" (the exact self-referential
+// trap Lane A's own matrix test caught and corrected earlier tonight) --
+// it only asserts that ONE specific, safety-critical invariant holds
+// across variation in fields that must never be able to override it.
+test('PROPERTY: revalidateCommandAdoptionCandidate -- an active hold is never masked by any combination of worktree/ancestry facts, when every earlier check would otherwise pass', () => {
+  const worktreeResolvedOptions = [true, false]
+  const worktreeCleanOptions = [true, false]
+  const ancestryOptions = ['FAST_FORWARD_AVAILABLE', 'ALREADY_INCLUDED', 'UNKNOWN', 'DIVERGED']
+
+  let checked = 0
+  for (const worktreeResolved of worktreeResolvedOptions) {
+    for (const worktreeClean of worktreeCleanOptions) {
+      for (const ancestry of ancestryOptions) {
+        const result = revalidateCommandAdoptionCandidate({
+          ...BASE_FACTS,
+          holdActive: true,
+          holdDetail: 'EXTERNAL_WORK_ACTIVE: another agent',
+          worktreeResolved,
+          worktreeClean,
+          ancestry
+        })
+        assert.equal(
+          result.eligible,
+          false,
+          `worktreeResolved=${worktreeResolved} worktreeClean=${worktreeClean} ancestry=${ancestry}: a held project must never be eligible`
+        )
+        assert.equal(
+          result.reason,
+          'PROJECT_EXECUTION_HOLD_ACTIVE',
+          `worktreeResolved=${worktreeResolved} worktreeClean=${worktreeClean} ancestry=${ancestry}: the hold's own reason must never be masked by a worktree/ancestry-shaped refusal`
+        )
+        checked += 1
+      }
+    }
+  }
+  assert.equal(checked, 16, 'sanity: exhaustive coverage of the full 2x2x4 combination space')
+})
+
 test('revalidateCommandAdoptionCandidate: unresolved worktree refuses', () => {
   const result = revalidateCommandAdoptionCandidate({ ...BASE_FACTS, worktreeResolved: false })
   assert.equal(result.eligible, false)
