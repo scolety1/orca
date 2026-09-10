@@ -20,6 +20,7 @@ import { classifyAdoptionCommandIntent } from '../domain/command-adoption-execut
 import { decomposeMultiAction } from '../domain/command-multi-action-decomposition.mjs'
 import { resolveProjectsFromText } from '../server/project-name-resolver.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
+import { classifyRunActionVerb } from '../server/command-run-action-bridge.mjs'
 
 function mulberry32(seed) {
   let a = seed
@@ -170,5 +171,79 @@ test('Batch 14 structured fuzz: pure adversarial-formatting noise (no trigger vo
     assert.ok(Array.isArray(decomposeMultiAction(message, PROJECTS, aliases)), `iteration ${i}: decomposeMultiAction failed on ${JSON.stringify(message)}`)
     const resolution = resolveProjectsFromText(message, PROJECTS, {})
     assert.ok(resolution && Array.isArray(resolution.matches), `iteration ${i}: resolveProjectsFromText failed on ${JSON.stringify(message)}`)
+  }
+})
+
+// TSF Overnight Control-Plane Burn-In V2, Lane I (structured fuzzing
+// expansion beyond the ~2300 pre-existing seeds above): classifyRunActionVerb
+// (server/command-run-action-bridge.mjs) had NO fuzz coverage at all.
+// Extends the SAME noise-injection harness with PAUSE/RESUME/question-
+// shaped trigger templates, reusing the identical NOISE_SNIPPETS
+// dimensions (unicode, emoji, nested quotes, CRLF, long tokens, etc.)
+// already proven against the other classifiers above.
+//
+// Scope, stated precisely (checked, not assumed): this is crash/known-
+// label/no-fabrication-from-pure-noise robustness fuzzing, same class of
+// property as the rest of this file -- it is NOT a fuzz re-proof of
+// tonight's Lane C QUESTION_OPENER fix specifically. Confirmed by
+// mutation: reverting that fix leaves both new tests below green, since
+// 'PAUSE' remains a structurally "known label" either way -- the
+// semantic regression that fix protects against is real, dedicated
+// unit-tested coverage in test/command-run-action-bridge.test.mjs, not
+// this file. Also checked directly: none of NOISE_SNIPPETS below contain
+// "pause"/"resume"/"continue" as a substring, so the second test's
+// always-null assertion for pure noise is a safe, real invariant, not an
+// accidental pass.
+const RUN_ACTION_TRIGGER_TEMPLATES = [
+  (p) => `pause ${p}`,
+  (p) => `resume ${p}`,
+  (p) => `continue ${p}`,
+  (p) => `pause it`,
+  (p) => `resume it`,
+  (p) => `go ahead and pause it`,
+  (p) => `don't pause ${p}`,
+  (p) => `never resume that`,
+  // The exact real bug class fixed tonight (Lane C, SHA 6affc48151),
+  // included for structural (crash/known-label) coverage -- see this
+  // file's own header comment above on why this is NOT a semantic
+  // re-proof of that fix under noise.
+  (p) => `why did you pause it?`,
+  (p) => `did you pause ${p}?`,
+  (p) => `is it going to pause it again?`
+]
+
+function buildNoisyRunActionMessage(rand) {
+  const template = pick(rand, RUN_ACTION_TRIGGER_TEMPLATES)
+  const target = pick(rand, PROJECTS).id
+  const before = pick(rand, NOISE_SNIPPETS)
+  const middle = pick(rand, NOISE_SNIPPETS)
+  const after = pick(rand, NOISE_SNIPPETS)
+  const core = template(target)
+  const mid = Math.max(1, Math.floor(core.length / 2))
+  return `${before}${core.slice(0, mid)}${middle}${core.slice(mid)}${after}`
+}
+
+const KNOWN_RUN_ACTIONS = new Set(['PAUSE', 'RESUME', null])
+
+test('Lane I structured fuzz: classifyRunActionVerb never crashes and always returns a known label (PAUSE/RESUME/null) under adversarial formatting', () => {
+  const ITERATIONS = 500
+  for (let i = 0; i < ITERATIONS; i++) {
+    const message = buildNoisyRunActionMessage(rng)
+    const result = classifyRunActionVerb(message)
+    assert.ok(KNOWN_RUN_ACTIONS.has(result), `iteration ${i}: unrecognized result ${JSON.stringify(result)} for ${JSON.stringify(message)}`)
+  }
+})
+
+// Stronger than "never crashes": classifyRunActionVerb's own return type
+// is exactly {PAUSE, RESUME, null} -- pure adversarial noise with no
+// pause/resume/continue vocabulary at all must ALWAYS return null, never
+// fabricate an action from noise alone (the property the other
+// classifiers above can't assert this precisely, since they have many
+// legitimate non-null outcomes).
+test('Lane I structured fuzz: pure adversarial-formatting noise (no pause/resume/continue vocabulary) never fabricates a PAUSE/RESUME action', () => {
+  const ITERATIONS = 300
+  for (let i = 0; i < ITERATIONS; i++) {
+    const message = buildPureNoiseMessage(rng)
+    assert.equal(classifyRunActionVerb(message), null, `iteration ${i}: fabricated an action from pure noise ${JSON.stringify(message)}`)
   }
 })
