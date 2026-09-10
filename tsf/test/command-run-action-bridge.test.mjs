@@ -70,6 +70,32 @@ test('classifyRunActionVerb: ordinary prose mentioning the words is never misrea
   assert.equal(classifyRunActionVerb('is it paused?'), null)
 })
 
+// TSF Overnight Control-Plane Burn-In V2, Lane C (real, live-confirmed
+// while writing a stateful dogfood sequence, not guessed): splitIntoClauses
+// strips the trailing "?", so a genuine question like "why did you pause
+// it?" survives as the clause "why did you pause it" -- which contains
+// "pause it" as a literal substring and was being misread as a real
+// directive (VERB_PLUS_PRONOUN), producing a real second pause attempt
+// (only harmless because it happened to hit the same invalid-transition
+// refusal duplicate-delivery already relies on) and a leaky "invalid
+// overnight run transition" error instead of ever reaching a real
+// explanation. Fixed via a new QUESTION_OPENER guard mirroring
+// NEGATION_OPENER's own narrow "clause opens with X" shape.
+test('classifyRunActionVerb: a genuine WH-question or auxiliary-inversion question containing the verb+pronoun is never misread as a directive', () => {
+  assert.equal(classifyRunActionVerb('why did you pause it?'), null)
+  assert.equal(classifyRunActionVerb('why did you resume it?'), null)
+  assert.equal(classifyRunActionVerb('what did you pause?'), null)
+  assert.equal(classifyRunActionVerb('did you pause it?'), null)
+  assert.equal(classifyRunActionVerb('is it going to pause it again?'), null)
+  // A question in a LATER, separate clause never suppresses a genuine
+  // directive in an EARLIER clause -- same precedence NEGATION_OPENER
+  // already gets right for "don't touch TSF, pause NWR".
+  assert.equal(classifyRunActionVerb('pause NWR, why?'), 'PAUSE')
+  // The OPENER check (clause literally starts with the verb) is
+  // unaffected by the question guard either way.
+  assert.equal(classifyRunActionVerb('pause it, please explain why'), 'PAUSE')
+})
+
 test('classifyContinueAction: RESUME for a real PAUSED run, DISPATCH otherwise (no run, or an ACTIVE run)', async () => {
   await seedPausedRun('proj-paused')
   await seedActiveRun('proj-active')

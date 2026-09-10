@@ -249,5 +249,62 @@ test('dogfood F: "run NWR and Nytheria overnight but don\'t touch TSF" -- correc
   const result = await turn('run dogfood-f-nwr and dogfood-f-nytheria overnight but do not touch dogfood-f-tsf', projects)
   assert.deepEqual(new Set(result.resolvedProjectIds), new Set(['dogfood-f-nwr', 'dogfood-f-nytheria']))
   assert.ok(!result.resolvedProjectIds.includes('dogfood-f-tsf'), 'the explicitly excluded project must never be dispatched to')
-  assert.ok(result.dispatchResults, 'real dispatch attempts were made for the two included projects')
+  // Lane M red-team finding class (fixed elsewhere in command-run-action-
+  // bridge.test.mjs tonight; applied here too while touching this file):
+  // assert.ok on an array is vacuously true for [] -- strengthened to
+  // prove both included projects were genuinely dispatched to, and the
+  // excluded one was not.
+  assert.equal(result.dispatchResults?.length, 2, 'real dispatch attempts were made for exactly the two included projects')
+  const dispatchedIds = new Set(result.dispatchResults.map((r) => r.projectId))
+  assert.deepEqual(dispatchedIds, new Set(['dogfood-f-nwr', 'dogfood-f-nytheria']))
+})
+
+// ---------------------------------------------------------------------
+// G. TSF Overnight Control-Plane Burn-In V2, Lane C (stateful
+// conversational sequences): pause NWR -> why? -> resume it. Ties
+// tonight's Lane D/E PAUSE/RESUME duplicate-delivery/race hardening into
+// a realistic, real-state-threaded conversational flow -- proves a bare
+// follow-up question about the just-paused project (dogfood B's own
+// established "why?" back-reference pattern) never re-triggers an
+// action, and "resume it" correctly back-references the SAME project via
+// the real prior-turn context, not a guess.
+//
+// A DIFFERENTLY-phrased follow-up, "why did you pause it?", surfaced a
+// real, separate, live-confirmed classification bug while writing this
+// sequence (not guessed): splitIntoClauses strips the trailing "?", so
+// the surviving clause "why did you pause it" still contains "pause it"
+// as a substring, which classifyRunActionVerb was misreading as a
+// genuine PAUSE directive -- a real second pause ATTEMPT (only harmless
+// because it happened to hit the SAME invalid-transition refusal
+// tonight's earlier duplicate-delivery work already proved safe),
+// surfacing a leaky "invalid overnight run transition: PAUSED -> PAUSED"
+// error instead of ever reaching a real explanation. Fixed directly in
+// command-run-action-bridge.mjs (a new QUESTION_OPENER guard, mirroring
+// NEGATION_OPENER's own narrow "clause opens with X" shape); see its own
+// dedicated unit coverage below.
+// ---------------------------------------------------------------------
+test('dogfood G: pause NWR -> why? -> resume it (real state threaded through every turn, never a fabricated re-pause/re-resume)', async () => {
+  await seedActiveRun('dogfood-g-nwr')
+  const projects = [project('dogfood-g-nwr', 'NWR')]
+
+  const pause = await turn('pause dogfood-g-nwr', projects)
+  assert.match(pause.text, /^Paused/)
+  assert.deepEqual(pause.resolvedProjectIds, ['dogfood-g-nwr'])
+  assert.equal(readKeepGoingRun('dogfood-g-nwr').state, 'PAUSED')
+
+  const why = await turn('why?', projects)
+  assert.deepEqual(why.resolvedProjectIds, ['dogfood-g-nwr'])
+  assert.doesNotMatch(why.text, /^Paused|^Resumed/, 'a follow-up question must never itself re-trigger pause/resume')
+  assert.equal(readKeepGoingRun('dogfood-g-nwr').state, 'PAUSED', 'the follow-up question must not change real state')
+
+  const resume = await turn('resume it', projects)
+  assert.match(resume.text, /^Resumed/)
+  assert.deepEqual(resume.resolvedProjectIds, ['dogfood-g-nwr'], 'must back-reference the SAME project from real prior-turn context, never guess')
+  assert.equal(readKeepGoingRun('dogfood-g-nwr').state, 'ACTIVE')
+
+  // The run's own transition history has exactly one PAUSED and one
+  // ACTIVE(resume) transition -- the "why" turn appended neither.
+  const run = readKeepGoingRun('dogfood-g-nwr')
+  assert.equal(run.transitions.filter((t) => t.to === 'PAUSED').length, 1)
+  assert.equal(run.transitions.filter((t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME').length, 1)
 })

@@ -67,6 +67,19 @@ function splitIntoClauses(message) {
 }
 
 const NEGATION_OPENER = /^(?:please\s+)?(?:don'?t|do not|never|shouldn'?t|won'?t)\b/i
+// TSF Overnight Control-Plane Burn-In V2, Lane C (real, live-confirmed
+// while writing a stateful dogfood sequence, not guessed): splitIntoClauses
+// strips the trailing "?" as a delimiter before this ever runs, so a
+// literal question like "why did you pause it?" survives as the clause
+// "why did you pause it" -- which DOES contain "pause it" as a substring
+// and was being misread as a genuine directive (VERB_PLUS_PRONOUN below),
+// producing a leaky "invalid overnight run transition: PAUSED -> PAUSED"
+// error instead of ever reaching a real explanation. Mirrors
+// NEGATION_OPENER's own narrow "clause OPENS with X" shape -- only a
+// clause that opens with an unambiguous WH-word or auxiliary-inversion
+// question form is excluded; "pause NWR, why?" (the question in a LATER,
+// separate clause) still correctly pauses NWR in its own first clause.
+const QUESTION_OPENER = /^(?:why|what|how|when|where|who|which)\b|^(?:did|do|does|is|are|was|were|would|could|should|can|will)\s+(?:you|it|that|this|he|she|they|i|we)\b/i
 const CLAUSE_OPENS_WITH = (verbs) => new RegExp(`^(?:please\\s+)?(?:${verbs})\\b`, 'i')
 const VERB_PLUS_PRONOUN = (verbs) => new RegExp(`\\b(?:${verbs})\\s+(it|that|this|everything)\\b`, 'i')
 
@@ -77,7 +90,11 @@ const RESUME_PRONOUN = VERB_PLUS_PRONOUN('resume|continue')
 
 function clauseMatchesAction(clause, opener, pronoun) {
   if (NEGATION_OPENER.test(clause)) return false
-  return opener.test(clause) || pronoun.test(clause)
+  if (opener.test(clause)) return true
+  // A bare object/pronoun match ("pause it") only counts as a directive
+  // when the clause isn't itself an obvious question -- "pause NWR" (the
+  // OPENER check above) is unaffected either way.
+  return pronoun.test(clause) && !QUESTION_OPENER.test(clause)
 }
 
 // Returns 'PAUSE' | 'RESUME' | null. RESUME covers both "resume" and
