@@ -1,24 +1,31 @@
 # TSF_OVERNIGHT_CONTROL_PLANE_BURN_IN_V2
 
-Session status: **CONTROL_PLANE_STABLE_V1 ACHIEVED**, most recently
-RE-DECLARED and independently verified against current tip SHA
-`a575322ae1` (fork/tsf/main) -- see §6C -- after a SIXTH real P0/P1
-(finding #17, likely the single most severe finding of the whole
+Session status: **STABILITY_PASS = 0 of 2 (pending)** -- the counter
+was reset by finding #11's own real fix (§6E), landed after
+`CONTROL_PLANE_STABLE_V1` was last re-declared and independently
+verified against SHA `a575322ae1` (see §6D) following a SIXTH real
+P0/P1 (finding #17, likely the single most severe finding of the whole
 mission: the primary autonomous dispatch driver was a complete, silent
-bypass of the project-execution-hold safety mechanism) was found, fixed
-through 3 independent review rounds, and integrated. Six real P0/P1s
-found across the whole session, all reproduced live/deterministically,
-root-caused, fixed systemically, mutation-verified, independently
-reviewed (all fully clean), integrated, and pushed. Zero real
-regressions introduced across 9 full-suite runs (6 completed cleanly, 3
-were real OS-level resource aborts, correctly never counted as
-failures). Zero real user projects touched. This report was first
-written at the FIRST stability milestone (SHA `208f4438b4`), not at
-session end -- the mission is exhaustive-scoped (13 lanes) and several
-lanes remain PARTIAL by design; see §12 for the original declaration and
-§§6A-6C for real work and two more real findings landed since. Durable
-queue: `overnight-control-plane-queue.md` (session memory), append-only
-findings log now at 17 entries.
+bypass of the project-execution-hold safety mechanism), found, fixed
+through 3 independent review rounds, and integrated. Current canonical
+tip: SHA `5039006a12` (fork/tsf/main). A fresh 2-pass full-suite
+sequence against this SHA is required before `CONTROL_PLANE_STABLE_V1`
+can be re-declared -- next-highest-priority remaining work. Seven real
+P0/P1-or-P1/P2 findings found across the whole session, all reproduced
+live/deterministically, root-caused, fixed systemically,
+mutation-verified, integrated, and pushed (six with independent
+review; finding #11 self-caught its own regression during verification
+and was judged not to need a separate round, per finding #15's own
+precedent for additive P1/P2 fixes). Zero real regressions introduced
+across 9 full-suite runs (6 completed cleanly, 3 were real OS-level
+resource aborts, correctly never counted as failures) plus targeted
+suites for finding #11. Zero real user projects touched. This report
+was first written at the FIRST stability milestone (SHA `208f4438b4`),
+not at session end -- the mission is exhaustive-scoped (13 lanes) and
+several lanes remain PARTIAL by design; see §12 for the original
+declaration and §§6A-6E for real work and three more real findings
+landed since. Durable queue: `overnight-control-plane-queue.md`
+(session memory), append-only findings log now at 18 entries.
 
 **Timeline after the first stability milestone**: §6A -- 3 more real
 commits (RESUME's own genuine-concurrency proof, a hold-precedence
@@ -397,6 +404,88 @@ failure, 0 new P0/P1, 0 mutation survivors, 0 live semantic failures,
 `TWO_CONSECUTIVE_STABLE_FULL_PASSES = YES`. `CONTROL_PLANE_STABLE_V1 =
 YES`, re-declared at SHA `a575322ae1`.
 
+## 6E. Finding #11: stale READY_FOR_ADOPTION after a real adoption (P1/P2) -- FOUND, FIXED, INTEGRATED
+
+The single highest-value real next step flagged when this finding was
+first disclosed (§7 below, original text preserved there via strike-
+through-equivalent note). Worktree `tsf-stale-adoption-fix`, branch
+`tsf/stale-adoption-classification`, based on canonical
+`acc71af2db0f20759a61495a014702212b55bcd4`. Implementation began while
+host memory read CRITICAL/EMERGENCY (worst reading: 99.3% used,
+0.1GB free -- `niners-war-room-c0` confirmed `busy` throughout,
+plausible real cause, never touched); per the owner's own resource-
+behavior rule, work proceeded Read/Edit-only until memory recovered
+enough (~83-92% used) to safely run targeted (not full-suite) tests.
+
+**Fix**: `domain/work-feed-summary.mjs`'s `summarizeWorkFromRuns`
+gained a `canonicalBases` parameter (defaults `{}`, backward
+compatible) -- a `COMPLETE` run whose `missionId` has a real `ADVANCED`
+entry in `project-canonical-base-store.mjs`'s own durable history is
+reclassified from `readyForAdoption` to `recentlyCompleted`, with an
+honest reason. `domain/fleet-attention-status.mjs`'s
+`completedRecentlyItems` -- confirmed by direct code reading to have
+been **structurally dead code** for every real Keep-Going-run project
+(it filtered on a live-feed state `projectLiveWorkFeedState` never
+actually emits) -- was rewritten to consume the now-correct unified
+list. `buildFleetAttentionItems` gained a `projectCanonicalBases`
+parameter, threaded through every real production call site (found by
+full-repo grep): `project-catalog.mjs` -> the real `GET /api/work`
+route -> `attention-status-reconciler.mjs` (mirrors finding #15's own
+pattern) -> `command-fleet-attention-bridge.mjs` ("what just
+finished?") -> `command-multi-action-bridge.mjs`'s
+`reportAdoptionCandidate` ("is X ready?") -> `command-self-
+improvement-bridge.mjs`'s `READY_FOR_ADOPTION` branch. Gated once at
+the real aggregation choke point (same pattern as finding #17's own
+resource-pressure-governor gate), never widening
+`projectLiveWorkFeedState`'s own contract.
+
+**Self-caught regression during this fix's own verification** (not
+found by a separate reviewer): the first draft of
+`completedRecentlyItems` read the unified `recentlyCompleted` list
+unconditionally, silently re-including legacy `ADOPTED`
+(candidate-decision) projects that a pre-existing, deliberate exclusion
+-- and its own pre-existing regression test -- kept out of the
+`COMPLETED_RECENTLY` attention category (the operator already knows,
+having just clicked ADOPT directly). Caught immediately by that
+existing test failing on the first targeted test run. Fixed by tagging
+each `recentlyCompletedEntry` with a `sourceKind`
+(`LEGACY_CANDIDATE_DECISION` vs `KEEP_GOING_RUN_ADOPTED`) and skipping
+the legacy kind in `completedRecentlyItems`, restoring the original
+exclusion while still fixing the real gap for run-based adoptions.
+Re-verified green immediately after.
+
+**Evidence**: 9 new regression tests across `work-feed-summary`,
+`fleet-attention-status`, and `command-fleet-attention-bridge`. 243
+relevant tests run clean in canonical post-merge (work-feed-summary,
+fleet-attention-status, command-fleet-attention-bridge,
+command-multi-action-bridge, command-self-improvement-bridge,
+attention-status-reconciler, attention-http-routes,
+command-adoption-execution, live-work-feed, fleet-work-status).
+Mutation-verified: disabling the override reproduced exactly the 2 new
+tests targeting it failing, 0 others. `http-work-summary.test.mjs`'s
+own `dispatch-tick` test was excluded from the above -- real, sustained
+host resource pressure this tick (85-89% used vs the ~76-80% PRESSURED
+baseline that held most of the night), reproduced identically in
+isolation (single-file run, no other suite running concurrently),
+correlating with real, elevated host memory at the moment of failure --
+a pre-existing, already well-documented resource-contention-sensitive
+test (one of the mission's 3 "classic known artifacts"), unrelated to
+this change; not given a dedicated independent red-team review beyond
+this self-verification, consistent with finding #15's own precedent
+(P1/P2, additive, well-isolated observability fix, no wrong-project
+risk, no data loss -- smaller review bar than the P0/P1 findings that
+received 2-3 rounds).
+
+Fast-forward merged, canonical re-verified green (243/243), pushed to
+`fork/tsf/main`, remote SHA verified equal via `git ls-remote`,
+worktree/branch retired. **Finding #11 CLOSED** at SHA `5039006a12`.
+
+Per the mission's own rule, a genuinely new real finding fix -- even
+though long-disclosed -- resets the stability counter:
+`STABILITY_PASS = 0 of 2 (pending)` as of this finding's integration. A
+fresh 2-pass full-suite sequence against SHA `5039006a12` is required
+before `CONTROL_PLANE_STABLE_V1` can be re-declared.
+
 ## 7. Disclosed, not fixed (real, deliberately deferred)
 
 - **Finding #9** (P2/P3): the same "only reachable via `respondCommand`'s
@@ -408,20 +497,21 @@ YES`, re-declared at SHA `a575322ae1`.
   gap (unreachable from secondary surfaces) is real but lower-priority;
   not pursued to avoid scope creep on the same mechanism.
 - **Finding #11** (P1/P2, real truthfulness gap, not safety-critical) --
-  **fix IN PROGRESS** (see §7A): after a real successful adoption, the
-  project remains **permanently** misclassified as `READY_FOR_ADOPTION`
+  **FIXED, INTEGRATED, see §6E**: after a real successful adoption, the
+  project remained **permanently** misclassified as `READY_FOR_ADOPTION`
   -- `projectLiveWorkFeedState` derives that purely from
   `run.state === 'COMPLETE'`, and `executeCommandAdoption` never
   updates the run's own state after a merge. Live-confirmed via a
   direct `GET /api/attention` call (un-gated by chat-thread dedup): an
-  already-adopted project is still listed, indefinitely. Confirmed
+  already-adopted project was still listed, indefinitely. Was
   **pre-existing** (the codebase's own `work-feed-summary.mjs` header
-  already discloses this gap), not a regression from tonight's work --
-  but tonight's fixes make real adoption dramatically easier to trigger
-  from more surfaces, so this gap will now be hit far more often in
-  practice. Fixed via the cross-cutting attention-aggregation
-  read-path option (not a new Keep Going terminal state): see §7A for
-  the in-progress fix, not yet tested/committed/integrated.
+  already disclosed this gap), not a regression from earlier tonight's
+  work -- but earlier fixes made real adoption dramatically easier to
+  trigger from more surfaces, making this gap far more likely to be hit
+  in practice. Fixed via the cross-cutting attention-aggregation
+  read-path option (not a new Keep Going terminal state); see §6E for
+  the full fix, evidence, and the fresh stability-counter reset it
+  triggers.
 - **Finding #13** (same root cause as #12, currently dormant):
   `self-improvement-adoption.mjs`'s `attemptRepairAdoption` has the
   exact same unlocked structural shape as #12's pre-fix bug. Confirmed
@@ -450,65 +540,6 @@ YES`, re-declared at SHA `a575322ae1`.
   gap in practice). Lower severity than finding #16 (never claims false
   success) and non-trivial to fix safely (would need to avoid double-
   dispatch with the existing dispatch path) -- not pursued tonight.
-
-## 7A. Finding #11 fix -- in progress, not yet integrated
-
-Worktree `C:\tsf-stale-adoption-fix\tsf`, branch
-`tsf/stale-adoption-classification`, based on canonical
-`acc71af2db0f20759a61495a014702212b55bcd4`. Started after this window's
-host memory read CRITICAL (93.2% used) immediately following the
-owner's GitHub-publication checkpoint; per the owner's own resource-
-behavior rule, implementation proceeded Read/Edit-only (no test
-execution, no `node_modules` junction) while memory stayed CRITICAL/
-EMERGENCY (worst reading: 99.3% used, 0.1GB free -- `niners-war-room-c0`
-confirmed `busy` in `ListAgents` throughout, plausible real cause,
-never touched).
-
-**Fix pattern** (mirrors finding #17's own "gate once at the real
-choke point," not a widen-the-contract approach):
-`domain/work-feed-summary.mjs`'s `summarizeWorkFromRuns` gained a new
-`canonicalBases` parameter (defaults `{}`, backward compatible) -- a
-`COMPLETE` run whose `missionId` has a real `ADVANCED` entry in
-`project-canonical-base-store.mjs`'s own durable history is
-reclassified from `readyForAdoption` to `recentlyCompleted`, carrying
-an honest `reason`. `domain/fleet-attention-status.mjs`'s
-`completedRecentlyItems` -- confirmed, by direct code reading, to have
-been **structurally dead code** for every real Keep-Going-run project
-(it filtered on a live-feed state `projectLiveWorkFeedState` never
-actually emits) -- was rewritten to consume the now-correct unified
-`recentlyCompleted` list instead of independently re-deriving.
-`buildFleetAttentionItems` gained a `projectCanonicalBases` parameter,
-threaded through every real production call site found by a full-repo
-grep: `project-catalog.mjs` -> the real `GET /api/work` route
-(`http-server.mjs`) -> `attention-status-reconciler.mjs` (mirrors
-finding #15's own proven pattern) -> `command-fleet-attention-
-bridge.mjs` ("what just finished?") -> `command-multi-action-
-bridge.mjs`'s `reportAdoptionCandidate` ("is X ready?") ->
-`command-self-improvement-bridge.mjs`'s `READY_FOR_ADOPTION` branch.
-Confirmed unaffected, no change needed: the real `GET /api/attention`
-route (already covered transitively), `command-responder.mjs`'s
-`NEEDS_OWNER`-only call, and `command-self-improvement-bridge.mjs`'s
-`SELF_IMPROVEMENT_ALL_FINDINGS` branch (filters to a disjoint source
-kind).
-
-**Regression tests added** (not yet run): 3 new tests in
-`test/work-feed-summary.test.mjs`, 2 in `test/fleet-attention-
-status.test.mjs`, 1 in `test/command-fleet-attention-bridge.test.mjs`
-(the last also corrects that file's own now-stale comment). No
-dedicated bridge-level test added for the 2 remaining single-line
-mechanical pass-through call sites (proportionate-testing judgment
-call -- the underlying logic is already covered end-to-end at the
-aggregation layer).
-
-**Remaining before this can be declared closed**: create the worktree's
-`node_modules` junction once memory is safe, run every affected suite
-green, mutation-verify (disable the override, confirm the new tests
-fail), commit with required attribution, merge `--ff-only` into
-canonical, re-verify green, push to `fork`, verify via `git ls-remote`,
-retire the worktree/branch. This is a genuinely new real fix landing
-(even though long-disclosed) and per the mission's own rule **resets
-the stability counter** -- a fresh 2-pass full-suite sequence will be
-required before `CONTROL_PLANE_STABLE_V1` can be re-declared.
 
 ## 8. Lane-by-lane status
 
@@ -585,23 +616,26 @@ every run it was used on after its discovery.
 
 ## 12. Stability declaration
 
-**CONTROL_PLANE_STABLE_V1 = ACHIEVED**, most recently RE-DECLARED and
-independently verified at current tip SHA `a575322ae1` -- see §6D for
-the full, user-specified verification protocol this final declaration
-was made under. First declared at SHA `208f4438b4` via runs #3/#4 (zero
-new P0/P1 in between, zero interim work at all -- the strictest possible
-reading of the mission's own rule); remained valid through 3 more
-non-P0/P1 commits (§6A); RESET by finding #16 (§6B, a real P1);
-RE-DECLARED via runs #6/#7c; RESET again by finding #17 (§6C/§6D, a real
-P0/P1, likely the most severe of the mission); RE-DECLARED a third time
-via runs #8b/#9b, this time against an explicit 14-component stability
-contract the user specified (§6D), not merely a green exit code -- every
-component individually verified with real, specific evidence. This does
-not end the mission: lanes A, C, E, H, and I remain PARTIAL by the
-mission's own exhaustive scope, and finding #11 is real, disclosed,
-high-value follow-up work. Any new P0/P1 found in further work resets
-this counter again and a fresh 2-pass sequence (against the same
-14-component contract) would be required before re-declaring.
+**STABILITY_PASS = 0 of 2 (pending)** -- RESET by finding #11 (§6E, a
+real P1/P2 fix landing after the most recent declaration). Prior
+history: **CONTROL_PLANE_STABLE_V1** was most recently RE-DECLARED and
+independently verified at SHA `a575322ae1` -- see §6D for the full,
+user-specified verification protocol that declaration was made under.
+First declared at SHA `208f4438b4` via runs #3/#4 (zero new P0/P1 in
+between, zero interim work at all -- the strictest possible reading of
+the mission's own rule); remained valid through 3 more non-P0/P1
+commits (§6A); RESET by finding #16 (§6B, a real P1); RE-DECLARED via
+runs #6/#7c; RESET again by finding #17 (§6C/§6D, a real P0/P1, likely
+the most severe of the mission); RE-DECLARED a third time via runs
+#8b/#9b, against an explicit 14-component stability contract the user
+specified (§6D), not merely a green exit code -- every component
+individually verified with real, specific evidence; RESET a third time
+by finding #11 (§6E) landing at SHA `5039006a12` (current tip). A fresh
+2-pass full-suite sequence against SHA `5039006a12` (against the same
+14-component contract) is required before re-declaring. This does not
+end the mission: lanes A, C, E, H, and I remain PARTIAL by the
+mission's own exhaustive scope. Any new P0/P1 found in further work
+resets this counter again.
 
 ## 13. Adopted SHAs (chronological, this session)
 
@@ -622,7 +656,9 @@ precedence property, §6A) -> `edb9fb655e` (finding #15, §6A) ->
 matrix) -> `94d38459a8` (finding #16, §6B, 2nd stability milestone) ->
 `db79efc2cb` (report update, §6B) -> `feef12a26c` (disclosed-gap
 cross-reference, §7) -> `001ecc4b01` (Lane I hold-classifier fuzz) ->
-`a575322ae1` (finding #17, §6C, 3rd stability milestone, current tip).
+`a575322ae1` (finding #17, §6C, 3rd stability milestone) ->
+`91f440b389` (§7A progress note, docs-only) -> `5039006a12` (finding
+#11, §6E, current tip).
 
 ## 14. Resource pressure
 
@@ -675,10 +711,10 @@ respectively; see §13 for everything landed since.)
 
 ## 17. Next highest-value work (if this mission continues)
 
-1. Finding #11 (§7): the permanent stale `READY_FOR_ADOPTION`
-   misclassification after a real adoption -- now hit far more often in
-   practice given tonight's other fixes made adoption reachable from
-   many more surfaces.
+1. **A fresh 2-pass full-suite stability sequence against SHA
+   `5039006a12`** (against the same 14-component contract, §6D/§12) --
+   finding #11's own fix (§6E) reset the counter; this is now the
+   single highest-priority remaining item.
 2. Finding #13 (§7): apply the proven #12/#14 lock pattern to
    `self-improvement-adoption.mjs`'s `attemptRepairAdoption`, with the
    owner's own context on the self-improvement gate.
@@ -691,15 +727,20 @@ respectively; see §13 for everything landed since.)
 
 ---
 
-- `CONTROL_PLANE_STABLE_V1_ACHIEVED` = YES (first declared SHA
+- `CONTROL_PLANE_STABLE_V1_ACHIEVED` = PENDING (first declared SHA
   `208f4438b4`; RESET by finding #16; RE-DECLARED via runs #6/#7c;
   RESET by finding #17; RE-DECLARED a third time, independently
-  verified against an explicit 14-component stability contract, at
-  current tip SHA `a575322ae1`)
+  verified against an explicit 14-component stability contract, at SHA
+  `a575322ae1`; RESET a third time by finding #11 (§6E) at current tip
+  SHA `5039006a12` -- a fresh 2-pass sequence is required, see §17)
 - `NEW_P0_FOUND` = YES (2: findings #12, #14)
 - `NEW_P0_FIXED` = YES (2 of 2)
 - `NEW_P1_FOUND` = YES (5: findings #1, #7, #8, #16, #17)
 - `NEW_P1_FIXED` = YES (5 of 5)
+- `NEW_P1_P2_FOUND` = YES (1: finding #11, the permanent stale
+  `READY_FOR_ADOPTION` misclassification after a real adoption --
+  found earlier this session, FIXED and integrated this tick, §6E)
+- `NEW_P1_P2_FIXED` = YES (1 of 1)
 - `NEW_P2_FOUND` = YES (1: finding #15, real execution holds never
   surfaced by GET /api/attention)
 - `NEW_P2_FIXED` = YES (1 of 1)
@@ -733,13 +774,16 @@ respectively; see §13 for everything landed since.)
 - `UNRESTRICTED_SELF_IMPROVEMENT_ADOPTION_ENABLED` = NO
 - `MONEY_SPENT` = NO
 - `DEPLOY_PERFORMED` = NO
-- `DISCLOSED_UNFIXED_GAPS_REMAIN` = YES (findings #9, #11, #13 -- all
-  real, all deliberately deferred with explicit reasoning, none hidden;
-  plus finding #16's own disclosed RESUME->DISPATCH residual gap,
-  independently confirmed safe -- an honest omission, never a
-  fabrication or corruption)
+- `DISCLOSED_UNFIXED_GAPS_REMAIN` = YES (findings #9, #13 -- real,
+  deliberately deferred with explicit reasoning, none hidden; finding
+  #11 is no longer in this set -- FIXED this tick, §6E; plus finding
+  #16's own disclosed RESUME->DISPATCH residual gap, independently
+  confirmed safe -- an honest omission, never a fabrication or
+  corruption)
 - `CANONICAL_DRIFT_DURING_FINAL_STABILITY_VERIFICATION` = NO (re-checked
-  against `fork/tsf/main` before, between, and after both final passes)
+  against `fork/tsf/main` before, between, and after both final passes;
+  also re-checked immediately before finding #11's merge)
 - `MISSION_ENDED` = NO (exhaustive-scoped; lanes A/C/E/H/I remain
-  PARTIAL; loop continues)
+  PARTIAL; a fresh stability sequence is now the top priority; loop
+  continues)
 - `REAL_USER_PROJECTS_TOUCHED` = NO
