@@ -27,10 +27,11 @@ cleanupStateFile()
 test.after(cleanupStateFile)
 
 const { respondCommand } = await import('../server/command-responder.mjs')
-const { classifyMultiActionEntries } = await import('../server/command-multi-action-bridge.mjs')
+const { classifyMultiActionEntries, classifySingleTargetHoldEntries } = await import('../server/command-multi-action-bridge.mjs')
 const { readProjectExecutionHold, withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
 const { createProjectExecutionHold, releaseProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 const { createOvernightRun, completeRun } = await import('../domain/keep-going.mjs')
+const { withKeepGoingRun, readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 
 const clock = () => new Date('2026-09-07T09:00:00.000Z')
 
@@ -222,15 +223,120 @@ test('Batch-4: a negated hold request never writes a real, durable project execu
   const before = readProjectExecutionHold(freshProject.id)
   assert.equal(before, null, 'sanity: no pre-existing hold for this fresh fixture project')
   // Needs a second, genuinely distinguishing action on a different target
-  // to even reach the multi-action bridge at all (classifyMultiActionEntries
-  // requires >=2 targets by design) -- a single-project hold request never
-  // routes through applyExternalWorkHold in the first place.
+  // to even reach classifyMultiActionEntries' own gate at all (requires
+  // >=2 targets by design). A genuinely single-project negated hold
+  // request instead goes through classifySingleTargetHoldEntries (see
+  // below) -- also proven negation-safe there, since decomposeMultiAction
+  // itself (shared by both gates) correctly classifies a negated hold
+  // clause as GENERAL, never EXTERNAL_WORK_HOLD.
   const message = "Don't leave batch4-fresh-hold-target alone, keep working on it directly. EasyLifeHQ needs serious work."
   const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
   assert.equal(result.intent, 'MULTI_ACTION')
   assert.match(result.text, /Batch4FreshHoldTarget[\s\S]*no action taken/i)
   const after = readProjectExecutionHold(freshProject.id)
   assert.equal(after, null, 'no durable hold must have been written')
+})
+
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed):
+// classifyMultiActionEntries' own >=2-target gate is deliberately
+// conservative "so an ordinary single-target message... is never
+// rerouted away from their own existing, correct handling" -- but a
+// genuinely single-target EXTERNAL_WORK_HOLD request never actually had
+// any other real handling anywhere in this codebase. Live-reproduced
+// over the real HTTP route before fixing (see http-chat-hold-command.
+// test.mjs for the full HTTP-level proof): a natural, single-project
+// hold request on both per-project chat and Global Command exact-match
+// never set a real hold. Fixed with classifySingleTargetHoldEntries, a
+// narrower ADDITIONAL gate reusing the same real per-clause decomposer.
+test('real finding, FIXED: a genuinely single-target hold request now really sets a durable execution hold via respondCommand', async () => {
+  const freshProject = { id: 'single-target-hold-fixture', displayName: 'SingleTargetHoldFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  const before = readProjectExecutionHold(freshProject.id)
+  assert.equal(before, null, 'sanity: no pre-existing hold for this fresh fixture project')
+
+  const message = 'single-target-hold-fixture is being handled by another agent right now, leave it alone -- do not touch it.'
+  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  assert.match(result.text, /SingleTargetHoldFixture[\s\S]*Held/)
+
+  const after = readProjectExecutionHold(freshProject.id)
+  assert.ok(after, 'a real, durable hold must actually have been written')
+  assert.equal(after.status, 'ACTIVE')
+  assert.equal(after.reason, 'EXTERNAL_WORK_ACTIVE')
+})
+
+// Round-2 independent-review finding (real, live-reproduced by the
+// reviewer at the respondCommand level, fixed here): the original
+// singleTargetHoldEntries check returned immediately on a match, before
+// classifyRunActionVerb ever ran -- so a message combining a genuine
+// PAUSE directive with a genuine hold directive for the SAME project,
+// reaching respondCommand via Global Command's own ambiguous-match path,
+// silently applied the hold and dropped the pause entirely (the run
+// stayed ACTIVE while the response read as complete success). Fixed by
+// computing the hold entries without an early return, then merging a
+// matching hold into whichever PAUSE/RESUME outcome actually fires.
+test('real finding (round 2), FIXED: a message combining a real PAUSE directive with a real hold directive for the SAME project executes BOTH via respondCommand, never silently drops either', async () => {
+  const freshProject = { id: 'pause-and-hold-fixture', displayName: 'PauseAndHoldFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  await withKeepGoingRun(freshProject.id, () =>
+    createOvernightRun({ id: `run-${freshProject.id}`, projectId: freshProject.id, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock)
+  )
+  const before = readProjectExecutionHold(freshProject.id)
+  assert.equal(before, null, 'sanity: no pre-existing hold for this fresh fixture project')
+
+  const message = 'Pause PauseAndHoldFixture. It is being handled by another agent right now, leave it alone -- do not touch it.'
+  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  assert.match(result.text, /Paused/, 'the real pause must still execute')
+  assert.match(result.text, /Held/, 'the real hold must ALSO execute -- never silently dropped')
+
+  assert.equal(readKeepGoingRun(freshProject.id).state, 'PAUSED', 'the run must really be paused')
+  const after = readProjectExecutionHold(freshProject.id)
+  assert.ok(after, 'a real, durable hold must ALSO have been written')
+  assert.equal(after.status, 'ACTIVE')
+})
+
+test('classifySingleTargetHoldEntries: a negated single-target hold request is never classified as a real hold entry', () => {
+  const freshProject = { id: 'negated-single-hold', displayName: 'NegatedSingleHold' }
+  const entries = classifySingleTargetHoldEntries("Don't hold negated-single-hold, keep working on it directly.", [freshProject], {})
+  assert.equal(entries, null, 'a negated hold clause must never classify as a real EXTERNAL_WORK_HOLD entry')
+})
+
+test('classifySingleTargetHoldEntries: a genuinely 2-target message is left to classifyMultiActionEntries\' own gate, never double-handled here', () => {
+  const projectA = { id: 'dual-target-a', displayName: 'DualTargetA' }
+  const projectB = { id: 'dual-target-b', displayName: 'DualTargetB' }
+  const entries = classifySingleTargetHoldEntries('dual-target-a is being handled by another agent, leave it alone. dual-target-b needs serious work.', [projectA, projectB], {})
+  assert.equal(entries, null, 'a genuinely 2-target message must be left to classifyMultiActionEntries, never matched by this narrower single-target gate')
+})
+
+// Independent-review finding (real, test-quality gap found and fixed
+// here, not a production bug): the existing HTTP-level "wrong project"
+// test (http-chat-hold-command.test.mjs) proves the end-to-end outcome
+// (neither A nor B ever held) but doesn't isolate WHICH of the two real
+// safety layers is doing the work -- chat-http-routes.mjs's own
+// `projects: [project]` scoping into classifySingleTargetHoldEntries, and
+// respondMultiActionCommand's own independent `projects.find(...)` lookup
+// before ever writing anything. The reviewer confirmed (their own
+// mutation) that breaking ONLY the first layer still leaves that HTTP
+// test green, fully masked by the second -- a real regression there alone
+// would ship silently. This test isolates the FIRST layer specifically,
+// calling classifySingleTargetHoldEntries directly (no HTTP, no
+// respondMultiActionCommand) with the exact same scoped-projects-array
+// shape chat-http-routes.mjs actually passes: `[project]` never includes
+// the other, differently-named real project a message might mention.
+test('classifySingleTargetHoldEntries: scoped to ONLY project A ([project], never the full catalog), a message naming a DIFFERENT real project B can never produce an entry targeting B', () => {
+  const projectA = { id: 'scoped-hold-a', displayName: 'ScopedHoldA' }
+  const projectB = { id: 'scoped-hold-b', displayName: 'ScopedHoldB' }
+  // decomposeMultiAction is given ONLY [projectA] -- exactly what chat-
+  // http-routes.mjs's own holdCommandResult block passes -- so it has no
+  // knowledge of projectB at all, regardless of what the message text says.
+  const entries = classifySingleTargetHoldEntries('scoped-hold-b is being handled by another agent, leave it alone.', [projectA], {})
+  if (entries) {
+    for (const entry of entries) {
+      assert.notEqual(entry.target, projectB.id, 'a message naming project B must never produce an entry whose target is B, when B was never in the passed-in projects array')
+    }
+  }
+  // The real, expected outcome given B is entirely unknown to this call:
+  // no entry can resolve to any real project at all, so this returns null
+  // -- asserted explicitly, not just the weaker "never targets B" check
+  // above, since a null result is the strongest possible proof here.
+  assert.equal(entries, null, 'with B entirely absent from the projects array, no real entry can be produced for it -- not even an empty non-null array')
 })
 
 // Full Control Plane Exhaustive Gauntlet V1, Batch 6: STATEFUL, MULTI-TURN

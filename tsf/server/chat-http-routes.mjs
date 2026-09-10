@@ -31,6 +31,7 @@ import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 import { classifyRunActionVerb, classifyContinueAction, pauseProjectRun, resumeProjectRun } from './command-run-action-bridge.mjs'
 import { shouldRouteToAdoptionCommandBridge, respondAdoptionCommand } from './command-adoption-command-bridge.mjs'
+import { classifySingleTargetHoldEntries, respondMultiActionCommand } from './command-multi-action-bridge.mjs'
 
 // Configures which real, known project id actually IS TSF's own -- self-
 // repair (domain/self-repair-authority.mjs) can never be authorized for any
@@ -576,7 +577,61 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
       }
     }
 
-    if (!project) { result = respond(project, message) } else if (projectResearchResult) { result = projectResearchResult } else if (adoptionCommandResult) { result = adoptionCommandResult } else if (runActionResult) { result = runActionResult } else if (decisionClass === 'TIM_REQUIRED') {
+    // TSF Overnight Control-Plane Burn-In V2, real finding (not guessed):
+    // the SAME "only reachable via Global Command's ambiguous path" blind
+    // spot findings #7/#8 fixed for PAUSE/RESUME/ADOPT also applied to a
+    // genuinely single-target execution-hold request -- a natural message
+    // like "NWR is being handled by another agent, leave it alone" never
+    // set a real, durable hold on either Global Command exact-match or
+    // per-project chat, live-reproduced before fixing. Same precedence
+    // gate as runActionResult (loses to research/TIM_REQUIRED/adoption),
+    // since a hold is a real, single-target action too -- reuses the same
+    // real, proven respondMultiActionCommand execution path via
+    // classifySingleTargetHoldEntries' own narrower gate (see command-
+    // multi-action-bridge.mjs), never a second implementation.
+    //
+    // Independent-review finding (real, fixed here): this check must NOT
+    // be gated on `!runActionResult` -- a message can genuinely mean BOTH
+    // at once for the SAME project ("pause NWR, it's being handled by
+    // another agent, leave it alone" is a completely sensible combined
+    // intent: pause the run AND stop future dispatch attempts). Live-
+    // reproduced before this fix: with the naive `!runActionResult` gate,
+    // that exact message silently paused the run and dropped the hold
+    // entirely, reporting only "Paused **X**." with no indication the
+    // hold was ever recognized or refused -- a real operator would
+    // reasonably believe the project was protected from further work
+    // when it was not. Fixed by computing the hold check independently
+    // of runActionResult, then MERGING both real outcomes into one
+    // response when both fire, rather than letting one silently shadow
+    // the other -- matches this route's own established rule (proven for
+    // TIM_REQUIRED and research already) that a message with multiple
+    // real, distinct intents for the same target must never partially
+    // execute one while silently dropping another.
+    let holdCommandResult = null
+    if (project && !projectResearchResult && decisionClass !== 'TIM_REQUIRED' && !adoptionCommandResult) {
+      const holdEntries = classifySingleTargetHoldEntries(message, [project], loadProjectAliases())
+      if (holdEntries) {
+        holdCommandResult = await respondMultiActionCommand({
+          message,
+          projects: [project],
+          opState: {},
+          clock: () => new Date(),
+          entries: holdEntries
+        })
+      }
+    }
+
+    const combinedRunActionAndHoldResult =
+      runActionResult && holdCommandResult
+        ? {
+            ...runActionResult,
+            text: `${runActionResult.text}\n\n${holdCommandResult.text}`,
+            resolvedProjectIds: [...new Set([...(runActionResult.resolvedProjectIds ?? []), ...(holdCommandResult.resolvedProjectIds ?? [])])],
+            resultItems: [...(runActionResult.resultItems ?? []), ...(holdCommandResult.resultItems ?? [])]
+          }
+        : null
+
+    if (!project) { result = respond(project, message) } else if (projectResearchResult) { result = projectResearchResult } else if (adoptionCommandResult) { result = adoptionCommandResult } else if (combinedRunActionAndHoldResult) { result = combinedRunActionAndHoldResult } else if (runActionResult) { result = runActionResult } else if (holdCommandResult) { result = holdCommandResult } else if (decisionClass === 'TIM_REQUIRED') {
       // Consequential phrasing is refused deterministically, before ever
       // spending a live call on it — not left to the model's judgment.
       // Label this distinctly from an actually-unavailable provider: one

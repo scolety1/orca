@@ -37,6 +37,40 @@ export function classifyMultiActionEntries(message, projects, aliases) {
   return targets.size >= 2 && distinguishingIntents.size >= 2 ? entries : null
 }
 
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed): the
+// >=2-target gate above is deliberately conservative "so an ordinary
+// single-target message... is never rerouted away from their own
+// existing, correct handling" -- but a genuinely single-target
+// EXTERNAL_WORK_HOLD request never actually HAD its own existing,
+// correct handling anywhere else in this codebase. decomposeMultiAction
+// already correctly classifies a message like "NWR is being handled by
+// another agent, leave it alone" as EXTERNAL_WORK_HOLD -- confirmed by
+// direct probe -- but classifyMultiActionEntries' own targets.size>=2
+// requirement silently discards it, and chat-responder.mjs's own
+// classifyIntent has no EXTERNAL_WORK_HOLD concept at all. Live-
+// reproduced over the real HTTP route before fixing: a natural, single-
+// project hold request on BOTH per-project chat and Global Command
+// exact-match never set a real hold, with a generic fallback response
+// giving no honest indication anything failed. A real safety gap, not
+// just a UX one -- a hold's entire purpose is to PREVENT unwanted
+// concurrent work, so an operator who believes they've protected a
+// project (and acts on that belief) when they silently have not is a
+// genuine risk.
+//
+// Fixed with a narrower, ADDITIONAL gate -- reusing the SAME real per-
+// clause decomposer already proven correct (never a second,
+// independently-drifting parser), never loosening the >=2-target gate's
+// own protection against misrouting an ordinary single-target message:
+// recognizes ONLY the one specific case that gate's own comment assumed
+// was handled elsewhere.
+export function classifySingleTargetHoldEntries(message, projects, aliases) {
+  const entries = decomposeMultiAction(message, projects, aliases)
+  const targets = new Set(entries.map((e) => e.target))
+  if (targets.size !== 1) return null
+  const holdEntries = entries.filter((e) => e.intent === 'EXTERNAL_WORK_HOLD')
+  return holdEntries.length > 0 ? holdEntries : null
+}
+
 // EXTERNAL_WORK_HOLD really, durably records the hold BEFORE the response
 // ever claims it did -- "never a promise with no backing durable record"
 // (A6). Idempotent: re-stating an already-held project doesn't overwrite

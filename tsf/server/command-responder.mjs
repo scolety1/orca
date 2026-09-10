@@ -36,7 +36,7 @@ import { shouldRouteToResearchBridge, respondResearchCommand } from './command-r
 import { shouldRouteToDogfoodBridge, respondDogfoodCommand } from './command-dogfood-bridge.mjs'
 import { shouldRouteToSelfImprovementBridge, respondSelfImprovementCommand } from './command-self-improvement-bridge.mjs'
 import { shouldRouteToFleetAttentionBridge, respondFleetAttentionCommand } from './command-fleet-attention-bridge.mjs'
-import { classifyMultiActionEntries, respondMultiActionCommand } from './command-multi-action-bridge.mjs'
+import { classifyMultiActionEntries, classifySingleTargetHoldEntries, respondMultiActionCommand } from './command-multi-action-bridge.mjs'
 import { shouldRouteToAdoptionCommandBridge, respondAdoptionCommand } from './command-adoption-command-bridge.mjs'
 import { shouldRouteToRuntimeIdentityBridge, respondRuntimeIdentityCommand } from './command-runtime-identity-bridge.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
@@ -306,6 +306,30 @@ export async function respondCommand({
   if (multiActionEntries) {
     return respondMultiActionCommand({ message, projects, opState, clock, deps, entries: multiActionEntries })
   }
+  // TSF Overnight Control-Plane Burn-In V2, real finding (not guessed):
+  // classifyMultiActionEntries' own >=2-target gate above never actually
+  // had a separate "existing, correct handling" for a single-target
+  // EXTERNAL_WORK_HOLD request, as its own comment assumed -- see
+  // classifySingleTargetHoldEntries' header comment in command-multi-
+  // action-bridge.mjs for the full root cause. Reuses the same real,
+  // proven respondMultiActionCommand execution/report path (never a
+  // second implementation), just with a narrower, additional gate.
+  //
+  // Round-2 independent-review finding (real, fixed here): this used to
+  // return immediately on a match, before classifyRunActionVerb below
+  // ever ran -- a message combining a genuine PAUSE/RESUME directive AND
+  // a genuine hold directive for the SAME project (e.g. "Pause X. It's
+  // being handled by another agent, leave it alone.") silently applied
+  // the hold and dropped the pause/resume entirely, with a response
+  // reading as complete success. Live-reproduced by the reviewer at the
+  // respondCommand level before this fix. Same bug shape (and same fix
+  // pattern: merge both real outcomes, never let one silently shadow the
+  // other) chat-http-routes.mjs's own holdCommandResult block was fixed
+  // for in this same round. Computed here (not returned early) so the
+  // classifyRunActionVerb block below can merge it in when both target
+  // the SAME project; the standalone hold-only fallback lives just after
+  // that block, for when no run-action verb also matched.
+  const singleTargetHoldEntries = classifySingleTargetHoldEntries(message, projects, aliasesForMultiAction)
 
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
@@ -451,10 +475,28 @@ export async function respondCommand({
     const targetProject = namedExact ?? backReferenceProject
     if (targetProject) {
       const resolvedVia = namedExact ? 'named' : 'resolved from the prior turn'
+      // Round-2 independent-review finding (real, fixed here): merges a
+      // real, matching hold entry (same target project) into whatever
+      // PAUSE/RESUME outcome fires below, so a combined message never
+      // silently drops one real action while claiming the other as
+      // complete success -- see the header comment above
+      // singleTargetHoldEntries for the full finding.
+      const matchingHoldEntries =
+        singleTargetHoldEntries?.every((e) => e.target === targetProject.id) ? singleTargetHoldEntries : null
+      async function mergeMatchingHold(baseResult) {
+        if (!matchingHoldEntries) return baseResult
+        const holdResult = await respondMultiActionCommand({ message, projects, opState, clock, deps, entries: matchingHoldEntries })
+        return {
+          ...baseResult,
+          text: `${baseResult.text}\n\n${holdResult.text}`,
+          resolvedProjectIds: [...new Set([...(baseResult.resolvedProjectIds ?? []), ...(holdResult.resolvedProjectIds ?? [])])],
+          resultItems: [...(baseResult.resultItems ?? []), ...(holdResult.resultItems ?? [])]
+        }
+      }
       if (runActionVerb === 'PAUSE') {
         try {
           await pauseProjectRun(targetProject.id, 'OPERATOR_CHAT_PAUSE', clock)
-          return {
+          return await mergeMatchingHold({
             intent: 'PROJECT_ACTION',
             decisionClass,
             text: `Paused **${targetProject.displayName}** (${resolvedVia}).`,
@@ -463,9 +505,9 @@ export async function respondCommand({
             live: true,
             resolvedProjectIds: [targetProject.id],
             scope: 'PROJECT'
-          }
+          })
         } catch (error) {
-          return {
+          return await mergeMatchingHold({
             intent: 'PROJECT_ACTION',
             decisionClass,
             text: `Couldn't pause **${targetProject.displayName}**: ${error.message}.`,
@@ -474,7 +516,7 @@ export async function respondCommand({
             live: false,
             resolvedProjectIds: [targetProject.id],
             scope: 'PROJECT'
-          }
+          })
         }
       }
       // RESUME/"continue" -- genuinely ambiguous in isolation
@@ -486,7 +528,7 @@ export async function respondCommand({
       if (action === 'RESUME') {
         try {
           await resumeProjectRun(targetProject.id, clock)
-          return {
+          return await mergeMatchingHold({
             intent: 'PROJECT_ACTION',
             decisionClass,
             text: `Resumed **${targetProject.displayName}** (${resolvedVia}).`,
@@ -495,9 +537,9 @@ export async function respondCommand({
             live: true,
             resolvedProjectIds: [targetProject.id],
             scope: 'PROJECT'
-          }
+          })
         } catch (error) {
-          return {
+          return await mergeMatchingHold({
             intent: 'PROJECT_ACTION',
             decisionClass,
             text: `Couldn't resume **${targetProject.displayName}**: ${error.message}.`,
@@ -506,15 +548,31 @@ export async function respondCommand({
             live: false,
             resolvedProjectIds: [targetProject.id],
             scope: 'PROJECT'
-          }
+          })
         }
       }
+      // RESUME reclassified to DISPATCH (nothing durable to resume) falls
+      // through to the real dispatch pipeline -- a genuinely different
+      // function/response shape than mergeMatchingHold expects. A hold
+      // combined with THIS specific reclassification is a real, disclosed,
+      // lower-priority residual gap (not fixed this round): rarer in
+      // practice than the PAUSE/RESUME-success case this round's finding
+      // was actually about, and dispatchAndRespond's own response shape
+      // would need its own merge path to do honestly.
       return dispatchAndRespond([targetProject])
     }
     // No target resolved (no name, no usable back-reference) -- falls
     // through to the normal read-only/dispatch-worthy branches below,
     // which report the same honest "couldn't tell" this file already
     // gives a directly-named, unresolvable project.
+  }
+  // Standalone hold-only fallback: no run-action verb matched at all (the
+  // common case for a plain hold request), or one matched but never
+  // resolved a real targetProject to merge into above -- either way, a
+  // real, single-target hold entry computed earlier still deserves its
+  // own real execution/report, exactly as before this round's fix.
+  if (singleTargetHoldEntries) {
+    return respondMultiActionCommand({ message, projects, opState, clock, deps, entries: singleTargetHoldEntries })
   }
 
   if (!DISPATCH_WORTHY_INTENTS.has(intent)) {
