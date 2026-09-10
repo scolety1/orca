@@ -43,6 +43,25 @@ async function chat(base, projectId, message) {
   return { status: res.status, body: await res.json() }
 }
 
+// TSF Overnight Control-Plane Burn-In V2, Lane J (historical corpus
+// mining -- pre-diagnosed, real, deterministic, previously left out of
+// scope): this test's own `^`-anchored regex used to assume the live
+// planner's answer is the ENTIRE response text. It is not, by design --
+// server/attention-status-reconciler.mjs's own attachDueAttentionNotices
+// (its own header comment: "Prepends any due notices to a chat payload,
+// surfacing them unprompted on Tim's next message regardless of what
+// it's about") legitimately prepends any globally-due notice ahead of
+// the live answer, and the `tsf-ui-capability-check` fixture project's
+// own baked-in READY_FOR_ADOPTION state is eligible on a fresh state
+// file's very first reconcile -- so it gets prepended here even though
+// this test asked about a DIFFERENT project. Root-caused and documented
+// (not fixed, correctly left out of scope) in docs/tsf/
+// MULTI_PROJECT_COMMAND_ORCHESTRATION_OVERNIGHT_V1_CHECKPOINT.md,
+// independently re-confirmed present on a much older baseline commit --
+// this is TEST_DEFECT, not a control-plane regression: the assertion
+// was too strict for a real, intentional, documented feature. Fixed by
+// checking the live answer is genuinely PRESENT (the actual property
+// this test cares about) instead of assuming it is the whole string.
 test('POST /api/chat returns a genuine live response for a real project, labeled with the resolved role/provider/model', async () => {
   await withServer(async (base) => {
     const { status, body } = await chat(base, 'weird-talent-marketplace', 'what is going on with this project?')
@@ -50,7 +69,7 @@ test('POST /api/chat returns a genuine live response for a real project, labeled
     assert.equal(body.live, true)
     assert.equal(body.plannerRole, 'PLANNER_DEEP')
     assert.match(body.providerLabel, /^PLANNER_DEEP · Claude Code/)
-    assert.match(body.text, /^stub-answer-for::/)
+    assert.match(body.text, /stub-answer-for::/)
   })
 })
 
