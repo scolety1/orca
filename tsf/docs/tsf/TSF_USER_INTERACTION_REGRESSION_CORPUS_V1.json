@@ -752,6 +752,23 @@
       "rootCause": "Not a new bug -- real, previously-unverified cross-surface parity coverage for two of this mission's own fixes (RT-04's hedge-idiom fix, Batch 13; CASE-22/23's truthfulness fixes). Both real HTTP requests (Global Command projectId:null vs. Planner Chat projectId:<real>) against the same live server confirmed to agree: neither surface ever misreads a hedge-idiom adoption request as TIM_REQUIRED, and neither surface ever claims a durable record that doesn't exist. A third planned case (a negated external-work-hold request) was deliberately NOT added at the HTTP level -- the real project catalog this test's server loads from is not isolated by the test's state-file override, so a message naming a specific project by text could resolve against real, non-fixture project state; that exact scenario already has solid, safe, synthetic-fixture-based coverage at the unit level (test/command-multi-action-bridge.test.mjs, Batch 4), so no HTTP-level duplicate was added rather than risk touching real project state.",
       "fixSha": "pending adoption -- see this mission's final report",
       "regressionTestFile": "test/http-chat-surface-parity.test.mjs"
+    },
+    {
+      "caseId": "CASE-37",
+      "source": "Full Conversational Control Plane Exhaustive Gauntlet V1, continuation after CASE-31/32 -- static surface-parity audit priority: does \"Full Command Mode\" (the UI feature that expands the Command dock into a full /command workspace) share the same backend semantics as Global Command, or is it a second, independently-drifting integration that would need its own separate parity work after the CommandAct model fix?",
+      "userTurn": [
+        "(static architecture audit -- no single user turn)"
+      ],
+      "expectedParentIntent": "N/A -- cross-surface architectural-parity confirmation, not a single incident",
+      "expectedChildActions": [],
+      "forbiddenSideEffects": [
+        "Full Command Mode calling a second, independently-drifting backend path that bypasses the CommandAct model fix",
+        "Full Command Mode and the Global Command dock disagreeing on adoption/decomposition semantics for the same message"
+      ],
+      "status": "NOT_A_BUG_CONFIRMED_SAFE",
+      "rootCause": "Not a bug -- confirmed, by reading the real frontend source, that Full Command Mode and the Global Command dock are NOT two separate integrations at all: ui/src/App.tsx's own header comment states outright that they are \"two separate CommandPanel mounts -- read and write the exact same state; collapsing one back into the other loses nothing\" (both mount the SAME ui/src/components/command/CommandPanel.tsx component, sharing the SAME CommandConversationProvider/useCommandConversation() state, both hitting the SAME POST /api/chat with projectId:null, which server/chat-http-routes.mjs routes to the SAME server/command-responder.mjs respondCommand -- the exact function this mission's CommandAct model fix (CASE-31/32, SHA d2067f5a96) already covers end to end). There is no separate \"Full Command\" backend code path to audit or fix -- the CASE-31/32 fix already applies to both presentations by construction. Separately confirmed (also architecture, not a bug): Project Planner Chat's own single-project respondAdoption (server/chat-responder.mjs) is deliberately, permanently report-only -- it never calls classifyAdoptionCommandIntent or executeCommandAdoption at all, matching this module's own documented \"chat has no tools and can't act on adoption\" boundary. Real adoption EXECUTION is only ever reachable through the Command surface (Global Command dock or Full Command Mode, both the same backend path) or a dedicated, separate, non-chat \"Adoption tab\" -- never through per-project Planner Chat. This is intentional, pre-existing architecture, not a parity gap this mission needs to close.",
+      "fixSha": null,
+      "regressionTestFile": "ui/src/lib/command-conversation-context.test.tsx, test/command-act-model.test.mjs, test/command-act-model-live-execution-proof.test.mjs"
     }
   ]
 }
