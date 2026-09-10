@@ -23,7 +23,10 @@ export const OVERNIGHT_RUN_STATES = Object.freeze([
   'BLOCKED'
 ])
 
-const RUN_ALLOWED = Object.freeze({
+// Exported (not just module-private) so a real state x action matrix
+// test can read the live table directly rather than hand-copying it --
+// the table can never silently drift out of sync with what's tested.
+export const RUN_ALLOWED = Object.freeze({
   ACTIVE: ['NEEDS_YOU', 'PAUSED', 'STALLED', 'COMPLETE', 'BLOCKED'],
   NEEDS_YOU: ['ACTIVE', 'PAUSED', 'BLOCKED'],
   PAUSED: ['ACTIVE', 'BLOCKED'],

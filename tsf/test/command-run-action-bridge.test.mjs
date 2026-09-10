@@ -46,6 +46,19 @@ async function seedPausedRun(projectId) {
   })
 }
 
+// Directly sets the run's own state field (same shortcut seedPausedRun
+// above already uses) -- a chat-level PAUSE attempt only ever consults
+// `run.state` (and an absent/inactive tickLock, which a freshly-created
+// run already has), so this is a faithful starting point for the real
+// RUN_ALLOWED gate below, without needing to drive every state through
+// its own full domain transition sequence.
+async function seedRunInState(projectId, state) {
+  await withKeepGoingRun(projectId, (current) => {
+    const run = current ?? createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock)
+    return { ...run, state }
+  })
+}
+
 test('classifyRunActionVerb: recognizes PAUSE/RESUME in both named ("pause NWR") and back-reference ("pause it") shapes', () => {
   assert.equal(classifyRunActionVerb('pause NWR'), 'PAUSE')
   assert.equal(classifyRunActionVerb('pause it'), 'PAUSE')
@@ -322,4 +335,53 @@ test('Lane E: N genuinely concurrent duplicate "pause X" chat calls for the same
   assert.equal(run.state, 'PAUSED')
   const pauseTransitions = run.transitions.filter((t) => t.to === 'PAUSED')
   assert.equal(pauseTransitions.length, 1, `exactly one PAUSED transition despite ${N} genuinely concurrent duplicate calls`)
+})
+
+// TSF Overnight Control-Plane Burn-In V2, Lane A (state x action x
+// surface matrix). Surface dimension collapses to ONE here by
+// architectural fact, not omission: PAUSE has no per-surface variation --
+// every real caller (Global Command dock, Full Command Mode, and any
+// future HTTP client) reaches this exact same respondCommand branch,
+// already independently established by CASE-37/App.tsx's own header
+// comment ("two separate CommandPanel mounts -- read and write the exact
+// same state"). So this is a genuine, exhaustive 6-state x 1-action
+// matrix against domain/keep-going.mjs's own real, live RUN_ALLOWED
+// table (read directly below, not hand-copied).
+//
+// Scope, stated precisely (verified by mutation, not assumed): because
+// the oracle below and the real execution path both consult the SAME
+// live RUN_ALLOWED table, this test cannot catch a change to the
+// TABLE'S OWN values (confirmed: narrowing BLOCKED's allowed targets
+// left it green, since the oracle silently narrowed with it). What it
+// DOES catch, mutation-confirmed, is the execution layer drifting from
+// whatever the table currently says -- e.g. transitionRun's own
+// RUN_ALLOWED check being bypassed/weakened turns this red immediately.
+// That is still real, valuable coverage: it is the exact property a
+// "the guard got silently disabled/short-circuited somewhere" regression
+// would break.
+test('Lane A: state x action(PAUSE) x surface matrix -- "pause X" succeeds iff RUN_ALLOWED[state] permits it, for every real Keep Going run state, never corrupting a refused state', async () => {
+  const { RUN_ALLOWED } = await import('../domain/keep-going.mjs')
+  const states = Object.keys(RUN_ALLOWED)
+  assert.ok(states.length >= 6, `expected a real, non-trivial state set, got ${states.length}`)
+
+  for (const state of states) {
+    const projectId = `lane-a-matrix-${state.toLowerCase()}`
+    await seedRunInState(projectId, state)
+    const expectSuccess = RUN_ALLOWED[state].includes('PAUSED')
+
+    const result = await respondCommand({
+      message: `pause ${projectId}`,
+      projects: [project(projectId, `Lane A Matrix ${state}`)],
+      opState: { keepGoingRuns: {} },
+      clock
+    })
+
+    if (expectSuccess) {
+      assert.match(result.text, /^Paused/, `state ${state}: RUN_ALLOWED permits PAUSED, so "pause X" must really succeed`)
+      assert.equal(readKeepGoingRun(projectId).state, 'PAUSED', `state ${state}: the run must really transition to PAUSED`)
+    } else {
+      assert.doesNotMatch(result.text, /^Paused/, `state ${state}: RUN_ALLOWED forbids PAUSED, so "pause X" must never falsely claim success`)
+      assert.equal(readKeepGoingRun(projectId).state, state, `state ${state}: a refused pause must never corrupt/change the run's real state`)
+    }
+  }
 })
