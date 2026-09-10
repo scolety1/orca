@@ -313,3 +313,55 @@ test('Overnight V2 Lane L: a FUZZY (not exact) mention of a different real proje
     assert.equal(git(repoB, ['rev-parse', 'HEAD']).trim(), priorHeadB, 'the FUZZY-named project (B) must not be merged either -- the user was never asked to confirm')
   })
 })
+
+// TSF Overnight Control-Plane Burn-In V2, Lane C (stateful conversational
+// sequences) -- a capstone integration test tying tonight's whole PAUSE/
+// RESUME + ADOPTION HTTP-wiring fix together into one realistic
+// per-project Planner Chat conversation: status -> adopt -> status,
+// against a real disposable git repo, now that BOTH capabilities finally
+// work end to end from this surface.
+//
+// CORRECTED scope note (verified by direct investigation, not assumed):
+// the assertion below proves attachDueAttentionNotices' own real
+// notification-dedup (a due READY_FOR_ADOPTION event is not re-notified
+// once already delivered in this same session/thread -- the SAME
+// property MULTI_PROJECT_COMMAND_ORCHESTRATION_OVERNIGHT_V1_CHECKPOINT.md
+// already dogfood-proved earlier this mission) -- it does NOT prove the
+// underlying candidate is actually recognized as adopted. Investigated
+// directly and confirmed a real, separate, DISCLOSED (not fixed
+// tonight) finding: domain/live-work-feed.mjs's projectLiveWorkFeedState
+// classifies READY_FOR_ADOPTION purely from `run.state === 'COMPLETE'`,
+// and executeCommandAdoption never updates the Keep Going run's own
+// state after a real, successful merge (only the receipt/canonical-base
+// stores are updated) -- so a FRESH attention check (confirmed live via
+// a direct GET /api/attention call, not gated by any chat-thread dedup)
+// still lists an ALREADY-adopted project as READY_FOR_ADOPTION with the
+// same stale "run reached COMPLETE..." reason, indefinitely. Recorded in
+// the overnight queue memory as real follow-up work -- not fixed here,
+// since the real, safe fix requires either a Keep Going run
+// state-machine extension (COMPLETE is otherwise the one intentionally
+// terminal state, per tonight's own Lane H property test) or a
+// cross-cutting fix to the attention-aggregation read path, both a
+// larger, more careful change than this session's remaining scope
+// warrants tonight.
+test('Overnight V2 Lane C: a real per-project conversation -- status, then adopt it, then status again -- the SAME-session notification correctly does not repeat (dedup, not staleness-awareness -- see comment above)', async () => {
+  await withServer(async (base) => {
+    const repo = initFixtureRepo('capstone-canonical')
+    const wt = createCandidateWorktree(repo, 'capstone-candidate', 'command/capstone', 'a real fix for the capstone flow')
+    seedOnboardedProjectForHttp('capstone-proj', 'Capstone Proj', repo)
+    seedCompleteKeepGoingRun('capstone-proj', wt, clock)
+    const priorHead = git(repo, ['rev-parse', 'HEAD']).trim()
+
+    const before = await chat(base, { projectId: 'capstone-proj', message: 'what is the status?' })
+    assert.match(before.body.text, /Capstone Proj\*\* is ready for adoption/, 'before the real merge, the status honestly says the candidate is ready for adoption')
+
+    const adopted = await chat(base, { projectId: 'capstone-proj', message: 'adopt it' })
+    assert.equal(adopted.body.intent, 'ADOPTION_COMMAND')
+    assert.match(adopted.body.text, /adopted: canonical advanced/i)
+    const newHead = git(repo, ['rev-parse', 'HEAD']).trim()
+    assert.notEqual(newHead, priorHead, 'the real repo must genuinely be merged mid-conversation')
+
+    const after = await chat(base, { projectId: 'capstone-proj', message: 'what is the status?' })
+    assert.doesNotMatch(after.body.text, /Capstone Proj\*\* is ready for adoption/, 'the SAME-session notification for the SAME unchanged event must not repeat (real dedup); this does NOT prove the underlying classification is adoption-aware -- see this test\'s own header comment')
+  })
+})
