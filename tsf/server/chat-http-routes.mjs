@@ -30,6 +30,7 @@ import { attachDueAttentionNotices } from './attention-status-reconciler.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 import { classifyRunActionVerb, classifyContinueAction, pauseProjectRun, resumeProjectRun } from './command-run-action-bridge.mjs'
+import { shouldRouteToAdoptionCommandBridge, respondAdoptionCommand } from './command-adoption-command-bridge.mjs'
 
 // Configures which real, known project id actually IS TSF's own -- self-
 // repair (domain/self-repair-authority.mjs) can never be authorized for any
@@ -403,8 +404,108 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
     // itself -- never just which result object wins -- on research having
     // produced nothing AND the message not being TIM_REQUIRED, exactly
     // matching respondCommand's real order.
+    //
+    // TSF Overnight Control-Plane Burn-In V2, Lane L continuation --
+    // real, live-confirmed finding (not guessed), same architectural
+    // blind spot as PAUSE/RESUME above: real adoption EXECUTION
+    // (command-adoption-command-bridge.mjs's respondAdoptionCommand,
+    // wired into command-responder.mjs's respondCommand) was likewise
+    // reachable ONLY from Global Command's AMBIGUOUS/fuzzy path -- an
+    // exact project-name adoption request ("adopt <exact project id>")
+    // on EITHER the Global Command exact-match short-circuit OR
+    // per-project Planner Chat fell through to chat-responder.mjs's
+    // report-only respondAdoption, which never calls
+    // executeCommandAdoption at all. Confirmed live: a real POST
+    // /api/chat with "adopt <exact project id>" against a real
+    // READY_FOR_ADOPTION candidate returned intent 'ADOPTION' (the
+    // report-only shape), never 'ADOPTION_COMMAND' (the real execution
+    // shape) -- paradoxically, ONLY a genuinely ambiguous "adopt it"
+    // reaches real execution authority via Global Command, while the
+    // clearest, most explicit phrasing does not. The UI's own
+    // respondAcknowledgement hint text ("Say 'adopt it' ... when you
+    // want me to move forward with it") is shown during exactly these
+    // project-scoped turns, creating a real, reproducible expectation
+    // mismatch. Fixed the same way as PAUSE/RESUME: `respondAdoptionCommand`
+    // is called with `exactMatchProjects: [project]` -- the SAME real,
+    // already safety-reviewed execution engine respondCommand uses
+    // (single-exact-match-only guard, cross-project-co-naming protection
+    // already fixed as a real P0 in a prior mission round), never a
+    // new/parallel adoption path. Gated identically to PAUSE/RESUME:
+    // after research, after TIM_REQUIRED -- exactly matching
+    // respondCommand's own real precedence (research bridge ->
+    // TIM_REQUIRED refusal -> adoption bridge), confirmed by reading its
+    // actual code.
+    //
+    // Independent-review finding (real, live-confirmed, severe, fixed
+    // here BEFORE this diff ever merged): the FIRST version of this fix
+    // trusted `project` as the adoption target unconditionally --
+    // correct for the Global Command exact-match path (there, `project`
+    // IS derived from this exact message's own text, earlier in this
+    // same function), but WRONG for per-project Planner Chat, where
+    // `project` comes from `body.projectId` -- the conversation's fixed
+    // scope, with NO relationship to what THIS message's own text
+    // names. Live-reproduced: chatting in Project A's own thread
+    // (`projectId: 'proj-a'`) and typing "adopt proj-b" (a real,
+    // different, ready-for-adoption project) genuinely merged Project
+    // A, never touching Project B -- exactly backwards from what the
+    // message said. Fixed by independently re-deriving the message's
+    // OWN project mentions (the same resolveProjectsFromText this file
+    // already uses for the Global Command short-circuit above) and
+    // refusing -- never guessing which one was meant -- whenever a
+    // mention names a DIFFERENT project than the one this request is
+    // actually scoped to. A message naming no project at all ("adopt
+    // it") or the SAME project the request is already scoped to is
+    // unaffected.
+    //
+    // Second independent-review finding (real, live-confirmed, fixed
+    // here BEFORE merge): the first version of this guard only counted
+    // a NON-fuzzy mention as conflicting, so a fuzzy-but-real mention of
+    // a different project (FUZZY_CONFIDENCE_FLOOR is 0.6 -- a message
+    // naming most, not all, of another real project's own display-name
+    // tokens, clearly legible to a human) silently bypassed it and
+    // reproduced the identical wrong-project merge. Live-reproduced:
+    // scoped to Project A, "adopt the trail overhaul" fuzzy-matched
+    // (0.667 confidence) a real, differently-named Project B ("Redwood
+    // Trail Overhaul") and silently merged A anyway. This guard exists
+    // specifically to refuse rather than guess on ANY real signal the
+    // message may mean a different project -- fuzzy or exact -- so it
+    // no longer excludes fuzzy matches. This is deliberately more
+    // conservative than the Global Command exact-match short-circuit's
+    // own "only exact is trusted enough to ACT on" convention: that
+    // convention governs what's trusted enough to positively identify a
+    // target, never what's trusted enough to justify a REFUSAL, and a
+    // false-positive refusal here (an unrelated project's name
+    // incidentally overlapping) is far cheaper than a real, irreversible
+    // wrong-project merge.
+    let adoptionCommandResult = null
+    if (project && !projectResearchResult && decisionClass !== 'TIM_REQUIRED' && shouldRouteToAdoptionCommandBridge(message, projects)) {
+      const messageNamedProjects = resolveProjectsFromText(message, projects, { aliases: loadProjectAliases() })
+      const conflictingMention = messageNamedProjects.matches.find(
+        (m) => m.project.id !== project.id
+      )
+      if (conflictingMention) {
+        adoptionCommandResult = {
+          intent: 'ADOPTION_COMMAND',
+          decisionClass: 'NEEDS_OWNER',
+          text: `This is scoped to **${project.displayName}**, but the message names **${conflictingMention.project.displayName}** -- I won't guess which one you mean. Say "adopt it" to adopt **${project.displayName}**, or switch to **${conflictingMention.project.displayName}**'s own chat to adopt that one.`,
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel: 'PLANNER_DEEP · adoption target conflicts with the current scope, no action taken',
+          live: false,
+          resolvedProjectIds: [],
+          scope: 'ADOPTION_COMMAND'
+        }
+      } else {
+        adoptionCommandResult = await respondAdoptionCommand({
+          message,
+          exactMatchProjects: [project],
+          projects,
+          clock: () => new Date()
+        })
+      }
+    }
+
     let runActionResult = null
-    if (project && !projectResearchResult && decisionClass !== 'TIM_REQUIRED') {
+    if (project && !projectResearchResult && decisionClass !== 'TIM_REQUIRED' && !adoptionCommandResult) {
       const runActionVerb = classifyRunActionVerb(message)
       if (runActionVerb === 'PAUSE') {
         try {
@@ -475,7 +576,7 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
       }
     }
 
-    if (!project) { result = respond(project, message) } else if (projectResearchResult) { result = projectResearchResult } else if (runActionResult) { result = runActionResult } else if (decisionClass === 'TIM_REQUIRED') {
+    if (!project) { result = respond(project, message) } else if (projectResearchResult) { result = projectResearchResult } else if (adoptionCommandResult) { result = adoptionCommandResult } else if (runActionResult) { result = runActionResult } else if (decisionClass === 'TIM_REQUIRED') {
       // Consequential phrasing is refused deterministically, before ever
       // spending a live call on it — not left to the model's judgment.
       // Label this distinctly from an actually-unavailable provider: one

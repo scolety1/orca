@@ -109,10 +109,16 @@ test('Batch 3 surface parity: a genuine dataset-research request is recognized a
   })
 })
 
-test('Batch 3 surface parity: negated adoption never executes on Global Command (the only surface with real adoption-execution authority)', async () => {
+// UPDATED: per-project Planner Chat now ALSO has real adoption-execution
+// authority (Lane L continuation fix, same architectural blind spot as
+// PAUSE/RESUME) -- strengthened from Global-Command-only to both surfaces.
+test('Batch 3 surface parity: negated adoption never executes on either surface', async () => {
   await withServer(async (base) => {
-    const result = await chat(base, { projectId: null, message: 'Do not adopt this candidate.' })
-    assert.doesNotMatch(result.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    const message = 'Do not adopt this candidate.'
+    const global_ = await chat(base, { projectId: null, message })
+    const projectScoped = await chat(base, { projectId: PROJECT_ID, message })
+    assert.doesNotMatch(global_.body.text ?? '', /\badopted: canonical advanced\b/i)
+    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted: canonical advanced\b/i)
   })
 })
 
@@ -160,7 +166,7 @@ test('Overnight V2 Lane B: "looks good" -- NO ACTION on either surface', async (
     assert.equal(global_.body.live, false)
     assert.notEqual(projectScoped.body.decisionClass, 'TIM_REQUIRED')
     assert.equal(projectScoped.body.live, false)
-    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted: canonical advanced\b/i)
   })
 })
 
@@ -187,12 +193,21 @@ test('Overnight V2 Lane B: "looks good, adopt it" -- explicit adoption language 
     // intent, verified live via a direct /api/chat call against this exact
     // message).
     assert.equal(global_.body.intent, 'ADOPTION_COMMAND')
-    // Planner Chat's own respondAdoption is architecturally report-only
-    // (chat-responder.mjs) -- it must still recognize the ADOPTION intent
-    // rather than misreading it as plain praise, even though it can never
-    // execute.
-    assert.equal(projectScoped.body.intent, 'ADOPTION')
-    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    // UPDATED (real, live-confirmed finding, fixed at Lane L continuation
+    // SHA <see queue memory>): per-project Planner Chat used to be
+    // architecturally report-only for adoption (chat-responder.mjs's
+    // respondAdoption never calls executeCommandAdoption) -- but that was
+    // itself a real, previously-undiscovered gap, the SAME architectural
+    // blind spot PAUSE/RESUME had (SHA b443f4212c): real adoption
+    // execution was only ever wired into Global Command's ambiguous/fuzzy
+    // path, never per-project chat OR Global Command's own exact-match
+    // case. Now fixed: per-project Planner Chat reaches the SAME real
+    // execution bridge Global Command uses (also 'ADOPTION_COMMAND').
+    // This fixture project has no real git-backed candidate, so the
+    // outcome here is still a real, honest refusal/report -- never a
+    // false "adopted" claim -- proven by the very next assertion.
+    assert.equal(projectScoped.body.intent, 'ADOPTION_COMMAND')
+    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted: canonical advanced\b/i)
   })
 })
 
@@ -212,9 +227,9 @@ test('Overnight V2 Lane B: "should I adopt it?" -- a question never itself execu
     const global_ = await chat(base, { projectId: null, message })
     const projectScoped = await chat(base, { projectId: PROJECT_ID, message })
     assert.notEqual(global_.body.decisionClass, 'TIM_REQUIRED')
-    assert.doesNotMatch(global_.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    assert.doesNotMatch(global_.body.text ?? '', /\badopted: canonical advanced\b/i)
     assert.notEqual(projectScoped.body.decisionClass, 'TIM_REQUIRED')
-    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted: canonical advanced\b/i)
   })
 })
 
@@ -223,9 +238,9 @@ test('Overnight V2 Lane B: "don\'t adopt it" -- no adoption executes on either s
     const message = "don't adopt it"
     const global_ = await chat(base, { projectId: null, message })
     const projectScoped = await chat(base, { projectId: PROJECT_ID, message })
-    assert.doesNotMatch(global_.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    assert.doesNotMatch(global_.body.text ?? '', /\badopted: canonical advanced\b/i)
     assert.equal(global_.body.live, false)
-    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    assert.doesNotMatch(projectScoped.body.text ?? '', /\badopted: canonical advanced\b/i)
   })
 })
 
@@ -250,7 +265,7 @@ test('Overnight V2 Lane B: "pause A, adopt B" with unresolvable synthetic names 
   await withServer(async (base) => {
     const message = `Pause ${FIXTURE_A}, adopt ${FIXTURE_B}.`
     const global_ = await chat(base, { projectId: null, message })
-    assert.doesNotMatch(global_.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    assert.doesNotMatch(global_.body.text ?? '', /\badopted: canonical advanced\b/i)
     assert.equal(global_.body.live, false)
   })
 })
@@ -259,7 +274,7 @@ test('Overnight V2 Lane B: "adopt A, not B" with unresolvable synthetic names --
   await withServer(async (base) => {
     const message = `Adopt ${FIXTURE_A}, not ${FIXTURE_B}.`
     const global_ = await chat(base, { projectId: null, message })
-    assert.doesNotMatch(global_.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    assert.doesNotMatch(global_.body.text ?? '', /\badopted: canonical advanced\b/i)
     assert.equal(global_.body.live, false)
   })
 })
@@ -269,7 +284,7 @@ test('Overnight V2 Lane B: "leave A alone, keep B going" with unresolvable synth
     const message = `Leave ${FIXTURE_A} alone, keep ${FIXTURE_B} going.`
     const global_ = await chat(base, { projectId: null, message })
     assert.equal(global_.body.live, false)
-    assert.doesNotMatch(global_.body.text ?? '', /\badopted -- canonical advanced\b/i)
+    assert.doesNotMatch(global_.body.text ?? '', /\badopted: canonical advanced\b/i)
   })
 })
 
