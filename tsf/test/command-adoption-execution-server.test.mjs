@@ -21,6 +21,7 @@ const { loadState, saveState } = await import('../server/data-store.mjs')
 const { readProjectCanonicalBase } = await import('../server/project-canonical-base-store.mjs')
 const { withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
 const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
+const { ffOnlyMerge: realFfOnlyMerge } = await import('../adapters/git-identity.mjs')
 const {
   createOvernightRun,
   planWave,
@@ -294,4 +295,59 @@ test('a genuinely diverged candidate is refused, never forced/rebased', async ()
   assert.equal(result.ok, false)
   assert.equal(result.reason, 'CANDIDATE_DIVERGED_FROM_CANONICAL_BASE')
   assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'never forced/rebased')
+})
+
+// TSF Overnight Control-Plane Burn-In V2, Lane E -- a real, deterministic
+// (deps-injected, never timing-dependent) TOCTOU repro: `holdActive` is
+// read once, near the top of executeCommandAdoptionLocked, well BEFORE the
+// real `ffOnlyMerge` call several awaited git subprocess round-trips later.
+// A hold set by an operator in that window (specifically to STOP an
+// in-flight adoption) is invisible to this call -- the merge proceeds
+// anyway on a now-stale "no hold" fact, exactly the class of bug
+// STALE ACTION RACE tests elsewhere in this codebase (e.g.
+// operator-state-adversarial.test.mjs's own abandon-stalled-wave test)
+// exist to catch: a request whose gating fact changed before it actually
+// took effect must be rejected honestly, never silently allowed through
+// on stale state.
+test('TOCTOU: an execution hold set AFTER the initial check but BEFORE the real merge still stops the merge, never silently proceeds on stale state', async () => {
+  const projectId = 'fixture-toctou-hold-race'
+  const canonicalRepoPath = initFixtureRepo('toctou-hold-canonical')
+  const worktree = createCandidateWorktree(canonicalRepoPath, 'toctou-hold-candidate', 'command/fixture-toctou-hold', 'toctou hold race candidate')
+  seedOnboardedProject(projectId, canonicalRepoPath)
+  seedCompleteKeepGoingRun(projectId, worktree, clock)
+
+  let reachedMerge
+  const reachedMergeSignal = new Promise((resolve) => { reachedMerge = resolve })
+  let releaseMerge
+  const mergeGate = new Promise((resolve) => { releaseMerge = resolve })
+
+  const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
+
+  const adoptionPromise = executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock,
+    deps: {
+      ffOnlyMerge: async (...args) => {
+        reachedMerge()
+        await mergeGate
+        return realFfOnlyMerge(...args)
+      }
+    }
+  })
+
+  // Wait until the call is genuinely past its own initial hold check and
+  // committed to calling the real merge -- then, and only then, set a real
+  // hold via the real store (a genuinely different lock than the adoption
+  // engine's own), simulating an operator racing to stop this exact merge.
+  await reachedMergeSignal
+  await withProjectExecutionHold(projectId, () =>
+    createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'OPERATOR_CHAT', note: 'stop this adoption' }, clock)
+  )
+  releaseMerge()
+
+  const result = await adoptionPromise
+
+  assert.equal(result.ok, false, 'a hold that became active before the merge actually landed must stop it, not just be ignored')
+  assert.equal(result.reason, 'PROJECT_EXECUTION_HOLD_ACTIVE')
+  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'no merge may land once a hold has raced ahead of it')
 })

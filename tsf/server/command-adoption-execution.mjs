@@ -22,7 +22,7 @@ import {
 } from '../domain/command-adoption-execution.mjs'
 import { createReceipt } from '../domain/receipts.mjs'
 import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
-import { getCurrentCommit, isAncestor, isCleanWorkingTree, ffOnlyMerge } from '../adapters/git-identity.mjs'
+import { getCurrentCommit, isAncestor, isCleanWorkingTree, ffOnlyMerge, resetHardTo } from '../adapters/git-identity.mjs'
 import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { readKeepGoingRun } from './keep-going-run-store.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
@@ -87,6 +87,30 @@ import { getStateFilePath, loadState, saveState } from './data-store.mjs'
 // cross-process file lock still runs underneath, for the separate real
 // concern of a genuinely different OS process (a CLI, a second server
 // instance) touching the same project concurrently.
+// TSF Overnight Control-Plane Burn-In V2, Lane E, a second real finding in
+// this same engine (real, deterministic-deps-injected repro, not guessed):
+// `holdActive` above is read exactly once, well before the several awaited
+// git subprocess round-trips (isClean/currentCommit/resolveBase/
+// resolveIdentity/isClean-again) and the real merge itself -- an execution
+// hold set by an operator specifically to STOP an in-flight adoption, in
+// that whole window, was invisible to this call: the merge proceeded
+// anyway on stale "no hold" state. The per-project queue/lock above only
+// serializes concurrent ADOPTION calls against each other; it does nothing
+// for a hold write, which goes through its own, separate lock
+// (project-execution-hold-store.mjs). Fixed by re-reading hold state fresh
+// immediately before EITHER of this function's two real actions (the
+// ALREADY_INCLUDED receipt write, and -- after the merge has already
+// landed and been verified -- the ADOPTED receipt write): a hold that
+// raced in during the ALREADY_INCLUDED path simply refuses (nothing
+// mutated, nothing to undo); a hold that raced in during the merge path
+// rolls the canonical worktree back to its prior HEAD via a real
+// `git reset --hard` (adapters/git-identity.mjs's own resetHardTo,
+// previously unused by any real caller) before refusing, so this engine
+// never leaves a real, durable partial success behind (matches this same
+// file's own header promise: "durable state is only ever written AFTER a
+// real merge... has already happened" -- extended here to mean a merge
+// that is honestly STILL WANTED, not one a concurrent hold has since
+// disowned).
 function adoptionExecutionLockPath(projectId) {
   return `${getStateFilePath()}.adoption-execution.${projectId}.lock`
 }
@@ -189,6 +213,7 @@ async function executeCommandAdoptionLocked({ project, clock = () => new Date(),
   const currentCommit = deps.getCurrentCommit ?? getCurrentCommit
   const ancestorCheck = deps.isAncestor ?? isAncestor
   const merge = deps.ffOnlyMerge ?? ffOnlyMerge
+  const resetCanonicalHard = deps.resetHardTo ?? resetHardTo
   const resolveIdentity = deps.resolveRepositoryIdentity ?? resolveRepositoryIdentity
   const recordCanonicalAdvance = deps.recordProjectCanonicalBaseAdvanced ?? recordProjectCanonicalBaseAdvanced
   const appendReceipt = deps.appendOnboardedProjectReceipt ?? appendOnboardedProjectReceipt
@@ -267,6 +292,19 @@ async function executeCommandAdoptionLocked({ project, clock = () => new Date(),
 
   const missionId = run.id
 
+  // Fresh re-check, right before this function's first real action -- see
+  // the header comment above adoptionExecutionLockPath for why the
+  // `holdActive` read near the top of this function is not sufficient on
+  // its own.
+  const freshHoldBeforeAction = readHold(project.id)
+  if (isProjectExecutionHoldActive(freshHoldBeforeAction)) {
+    return {
+      ok: false,
+      reason: 'PROJECT_EXECUTION_HOLD_ACTIVE',
+      detail: `${freshHoldBeforeAction.reason}${freshHoldBeforeAction.note ? `: ${freshHoldBeforeAction.note}` : ''} (set by ${freshHoldBeforeAction.setBy}) -- an execution hold was set while this adoption request was in flight; refusing on current state, never the stale state this request started with`
+    }
+  }
+
   if (revalidation.alreadyIncluded) {
     const receipt = await appendReceipt(project.id, {
       kind: 'ADOPTION_DECISION',
@@ -321,6 +359,27 @@ async function executeCommandAdoptionLocked({ project, clock = () => new Date(),
     }
   }
   const resultingCanonicalSha = postMerge.commit
+
+  // Fresh re-check, right after the real merge landed and was verified,
+  // before anything durable is recorded. This is the check that actually
+  // matters most: the merge itself is the longest single await in this
+  // whole function, and a hold can genuinely race in while it is running.
+  const freshHoldAfterMerge = readHold(project.id)
+  if (isProjectExecutionHoldActive(freshHoldAfterMerge)) {
+    const rollback = await resetCanonicalHard(project.root, priorCanonicalSha)
+    if (!rollback.ok) {
+      return {
+        ok: false,
+        reason: 'HOLD_RACED_MERGE_ROLLBACK_FAILED',
+        detail: `an execution hold was set while this adoption's merge was in flight (candidate ${candidateSha} landed on canonical at "${canonicalRef}"), and rolling the canonical worktree back to its prior HEAD (${priorCanonicalSha}) failed: ${rollback.detail ?? 'unknown git error'} -- MANUAL INTERVENTION REQUIRED, the canonical worktree may currently be at an unintended commit`
+      }
+    }
+    return {
+      ok: false,
+      reason: 'PROJECT_EXECUTION_HOLD_ACTIVE',
+      detail: `${freshHoldAfterMerge.reason}${freshHoldAfterMerge.note ? `: ${freshHoldAfterMerge.note}` : ''} (set by ${freshHoldAfterMerge.setBy}) -- an execution hold raced in while the merge was in flight; the merge was rolled back to the prior canonical HEAD, nothing durable was recorded`
+    }
+  }
 
   const receipt = await appendReceipt(project.id, {
     kind: 'ADOPTION_DECISION',
