@@ -337,6 +337,59 @@ test('Lane E: N genuinely concurrent duplicate "pause X" chat calls for the same
   assert.equal(pauseTransitions.length, 1, `exactly one PAUSED transition despite ${N} genuinely concurrent duplicate calls`)
 })
 
+// TSF Overnight Control-Plane Burn-In V2, Lane E, RESUME's own genuine-
+// concurrency proof (the PAUSE test above's counterpart -- explicitly
+// flagged as not yet done). RESUME has a different shape than PAUSE:
+// classifyContinueAction's own state read happens OUTSIDE any lock,
+// before resumeProjectRun is ever called, so it is possible for every
+// one of N concurrent callers to independently read PAUSED (stale or
+// not) and all decide RESUME. Safety here does not come from that read
+// -- it comes from resumeRun's own real state-machine guard (identical
+// mechanism to pauseRun's own PAUSED->PAUSED refusal above), which runs
+// INSIDE withKeepGoingRun's synchronous, single-process-serialized
+// critical section: only the first caller to actually reach that
+// section still finds the run PAUSED; every other caller's own
+// resumeRun call throws a real ACTIVE->ACTIVE-class transition error,
+// caught by command-responder.mjs's own try/catch around
+// resumeProjectRun and turned into an honest "Couldn't resume" refusal
+// -- never a crash, never a second false "Resumed" claim. Mutation-
+// proof: forcing resumeRun to skip its own transition-legality check
+// (treat ACTIVE as resumable) turns this red (multiple real ACTIVE
+// transitions recorded instead of one).
+test('Lane E: N genuinely concurrent "resume X" chat calls for the same paused project are race-safe -- exactly one real resume, exactly one ACTIVE transition, no crash', async () => {
+  await seedPausedRun('lane-e-concurrent-resume')
+  const projectFixture = [project('lane-e-concurrent-resume', 'Lane E Concurrent Resume')]
+  const dispatchDeps = { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+
+  const N = 10
+  const results = await Promise.all(
+    Array.from({ length: N }, () =>
+      respondCommand({ message: 'resume lane-e-concurrent-resume', projects: projectFixture, opState: { keepGoingRuns: {} }, clock, deps: dispatchDeps })
+    )
+  )
+
+  const resumed = results.filter((r) => /^Resumed/.test(r.text))
+  assert.equal(resumed.length, 1, `exactly one of ${N} genuinely concurrent duplicate resume calls must actually succeed`)
+  // Every other call must be honestly handled -- either a real refusal
+  // (the state-machine guard threw, caught, turned into "Couldn't
+  // resume") or correctly reclassified as a dispatch attempt because it
+  // read the run as already ACTIVE before ever calling resumeProjectRun
+  // -- either way, never a crash and never a second "Resumed" claim.
+  for (const r of results) {
+    if (!/^Resumed/.test(r.text)) {
+      assert.ok(
+        /couldn't resume/i.test(r.text) || Array.isArray(r.dispatchResults),
+        `every non-winning concurrent call must be an honest refusal or a real dispatch reclassification, never something else: got "${r.text}"`
+      )
+    }
+  }
+
+  const run = readKeepGoingRun('lane-e-concurrent-resume')
+  assert.equal(run.state, 'ACTIVE')
+  const resumeTransitions = run.transitions.filter((t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME')
+  assert.equal(resumeTransitions.length, 1, `exactly one OPERATOR_RESUME transition despite ${N} genuinely concurrent duplicate calls`)
+})
+
 // TSF Overnight Control-Plane Burn-In V2, Lane A (state x action x
 // surface matrix). Surface dimension collapses to ONE here by
 // architectural fact, not omission: PAUSE has no per-surface variation --
