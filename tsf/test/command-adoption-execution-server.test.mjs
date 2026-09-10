@@ -154,6 +154,59 @@ test('Proof 1b: idempotency -- a candidate already an ancestor of canonical HEAD
   assert.equal(result.receipt.decision.alreadyIncluded, true)
 })
 
+// TSF Overnight Control-Plane Burn-In V2, Lane D (duplicate-delivery /
+// idempotency, explicitly named P0 territory): Proof 1b above only
+// simulates the STATE a prior adoption would leave behind (a candidate
+// branch built with zero commits past canonical's own tip) via a SINGLE
+// call. It never proves the real engine is safe against a literal second
+// call against the SAME live run/candidate/worktree -- e.g. a retried
+// "adopt it" HTTP request, or the chat layer re-dispatching the same
+// command twice. This test drives the real engine through a genuine
+// first-then-duplicate-second invocation end to end.
+test('Proof 1c: duplicate delivery -- calling the real engine twice in a row against the SAME live run/candidate merges exactly once, second call is honestly ALREADY_INCLUDED, exactly one extra receipt, no second merge commit', async () => {
+  const projectId = 'fixture-proof-1c'
+  const canonicalRepoPath = initFixtureRepo('proof1c-canonical')
+  const worktree = createCandidateWorktree(canonicalRepoPath, 'proof1c-candidate', 'command/fixture-proof-1c', 'a real, verified fix, delivered twice')
+  seedOnboardedProject(projectId, canonicalRepoPath)
+  seedCompleteKeepGoingRun(projectId, worktree, clock)
+
+  const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
+
+  // First delivery: a real merge genuinely happens.
+  const first = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  assert.equal(first.ok, true, JSON.stringify(first))
+  assert.equal(first.alreadyIncluded, false)
+  const afterFirstHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
+  assert.notEqual(afterFirstHead, priorHead)
+
+  // Duplicate delivery: the exact same run/candidate, invoked again --
+  // nothing about the request or state was changed by the caller.
+  const second = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  assert.equal(second.ok, true, JSON.stringify(second))
+  assert.equal(second.alreadyIncluded, true, 'the duplicate call must be honestly reported as already-included, never re-merged or falsely re-adopted')
+  assert.equal(second.resultingCanonicalSha, afterFirstHead)
+
+  // No second merge: canonical HEAD did not move again, and the real git
+  // log has no second merge/commit beyond the original two.
+  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), afterFirstHead, 'no duplicate merge -- HEAD unchanged by the second call')
+  const log = git(canonicalRepoPath, ['log', '--oneline']).trim().split('\n')
+  assert.equal(log.length, 2, 'no duplicate merge commit was created by the duplicate delivery')
+
+  // Exactly one durable receipt per call -- the duplicate call produces its
+  // own honest ALREADY_INCLUDED receipt, never a second ADOPTED receipt and
+  // never silently skipped/unrecorded.
+  const receipts = loadState().onboardedProjects[projectId].receipts
+  assert.equal(receipts.length, 2, 'one receipt per call -- the first ADOPTED, the second ALREADY_INCLUDED')
+  assert.equal(receipts[0].result.outcome, 'ADOPTED')
+  assert.equal(receipts[1].result.outcome, 'ALREADY_INCLUDED')
+  assert.notEqual(receipts[1].receiptHash, receipts[0].receiptHash)
+
+  // The durable canonical-base pointer advanced exactly once, not twice.
+  const canonicalBase = readProjectCanonicalBase(projectId)
+  const advances = canonicalBase.history.filter((h) => h.action === 'ADVANCED')
+  assert.equal(advances.length, 1, 'the canonical-base pointer must advance exactly once, not once per duplicate delivery')
+})
+
 test('Proof 3: an unverified candidate (run not COMPLETE) is REFUSED with the real reason', async () => {
   const projectId = 'fixture-proof-3'
   const canonicalRepoPath = initFixtureRepo('proof3-canonical')
