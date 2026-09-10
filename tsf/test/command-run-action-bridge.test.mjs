@@ -221,3 +221,30 @@ test('integration: duplicate delivery -- "pause X" delivered twice in a row neve
   const pauseTransitions = run.transitions.filter((t) => t.to === 'PAUSED')
   assert.equal(pauseTransitions.length, 1, 'the refused duplicate must not append a second PAUSED transition')
 })
+
+// Lane D, RESUME/"continue" half: unlike PAUSE, a duplicate "resume X" is
+// not simply refused -- classifyContinueAction reads the run's REAL
+// current state fresh each time, so once the first call has already
+// flipped PAUSED->ACTIVE, a second "resume X" is correctly reclassified
+// as DISPATCH (there is nothing durable left to resume), never a second
+// false "Resumed" claim and never a crash from re-attempting an invalid
+// ACTIVE->ACTIVE transition.
+test('integration: duplicate delivery -- "resume X" delivered twice in a row never claims a second resume; the second call is honestly reclassified as a dispatch attempt instead', async () => {
+  await seedPausedRun('integration-resume-duplicate')
+  const projectFixture = [project('integration-resume-duplicate', 'Integration Resume Duplicate')]
+  const dispatchDeps = { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+
+  const first = await respondCommand({ message: 'resume integration-resume-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock })
+  assert.match(first.text, /^Resumed/)
+  assert.equal(readKeepGoingRun('integration-resume-duplicate').state, 'ACTIVE')
+
+  const second = await respondCommand({ message: 'resume integration-resume-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock, deps: dispatchDeps })
+  assert.doesNotMatch(second.text, /^Resumed/, 'the duplicate delivery must never claim a second successful resume')
+  assert.ok(second.dispatchResults, 'reclassified as a real dispatch attempt, since there was nothing left to resume')
+
+  // The run's own transition history has exactly one RESUME-to-ACTIVE
+  // transition -- the duplicate never appended a second one.
+  const run = readKeepGoingRun('integration-resume-duplicate')
+  const resumeTransitions = run.transitions.filter((t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME')
+  assert.equal(resumeTransitions.length, 1, 'the duplicate call must not append a second OPERATOR_RESUME transition')
+})
