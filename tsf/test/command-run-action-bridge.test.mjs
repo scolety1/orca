@@ -438,3 +438,49 @@ test('Lane A: state x action(PAUSE) x surface matrix -- "pause X" succeeds iff R
     }
   }
 })
+
+// Lane A's own RESUME counterpart -- explicitly flagged as needing "a
+// different oracle shape" than PAUSE's RUN_ALLOWED-driven matrix, since
+// classifyContinueAction is a single PAUSED-vs-not ternary with no
+// separate policy table to check it against (an exhaustive-states test
+// of THAT function alone would be nearly tautological). The real,
+// non-trivial property worth proving exhaustively instead: for every
+// one of the 6 real states, does "resume X" ever corrupt the run's own
+// state -- specifically, does the DISPATCH fallback (which every
+// non-PAUSED state reclassifies to) ever silently mutate a run sitting
+// in COMPLETE/STALLED/BLOCKED/NEEDS_YOU, states a naive dispatch
+// attempt might mistakenly "revive" or touch? Live-verified first (not
+// guessed) with a throwaway probe script before writing this: every
+// non-PAUSED state honestly falls through to a real dispatch attempt
+// that cleanly refuses (TSF_REPOSITORY_NOT_REGISTERED, unrelated to
+// the run's own state) and leaves the run's `state` field byte-for-byte
+// unchanged -- exercises the real dispatch code path, genuinely
+// independent of classifyContinueAction's own trivial branch.
+test('Lane A: state x action(RESUME) matrix -- "resume X" only ever really resumes a PAUSED run; every other real state honestly falls through to a dispatch attempt that never corrupts the run\'s own state', async () => {
+  const { RUN_ALLOWED } = await import('../domain/keep-going.mjs')
+  const states = Object.keys(RUN_ALLOWED)
+  const dispatchDeps = { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+
+  for (const state of states) {
+    const projectId = `lane-a-resume-matrix-${state.toLowerCase()}`
+    await seedRunInState(projectId, state)
+
+    const result = await respondCommand({
+      message: `resume ${projectId}`,
+      projects: [project(projectId, `Lane A Resume Matrix ${state}`)],
+      opState: { keepGoingRuns: {} },
+      clock,
+      deps: dispatchDeps
+    })
+
+    if (state === 'PAUSED') {
+      assert.match(result.text, /^Resumed/, 'a PAUSED run must really resume')
+      assert.equal(readKeepGoingRun(projectId).state, 'ACTIVE', 'a real PAUSED->ACTIVE transition must actually land')
+    } else {
+      assert.doesNotMatch(result.text, /^Resumed/, `state ${state}: "resume X" must never falsely claim a resume that cannot have happened`)
+      assert.equal(result.dispatchResults?.length, 1, `state ${state}: must honestly reclassify to a real, single-project dispatch attempt`)
+      assert.equal(result.dispatchResults[0].projectId, projectId, `state ${state}: the dispatch attempt must target the real project, never a wrong/empty one`)
+      assert.equal(readKeepGoingRun(projectId).state, state, `state ${state}: the dispatch fallback must never corrupt/change the run's real state`)
+    }
+  }
+})
