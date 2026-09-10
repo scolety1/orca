@@ -347,6 +347,22 @@ full-suite run ledger and §14 for the full resource-pressure detail.
   attention. A full repo-wide audit confirmed exactly these 2 files are
   the only real callers of `ffOnlyMerge` -- this bug class is now fully
   accounted for.
+- **`ASSESS_AND_UPGRADE` single-target reachability** (audit note, not a
+  new finding -- already disclosed by the codebase's own comments, from
+  an earlier CASE-32 directive predating this mission; cross-referenced
+  here after auditing whether finding #16's exact bug shape also affects
+  the decomposer's other real intents). A single-target "X needs serious
+  work" message correctly classifies as `ASSESS_AND_UPGRADE` at the
+  decomposer level, but never reaches real dispatch -- falls through to
+  an honest-but-unhelpful "Nothing is running right now" response, live-
+  confirmed. `domain/command-act-model.mjs`'s own header already
+  discloses this class for every verb without its own dedicated
+  alternate path, explicitly noting it "never [is] a silently invented
+  destructive intent." `START_KEEP_GOING`'s own natural phrasing already
+  reaches real dispatch via a separate classifier (confirmed live, not a
+  gap in practice). Lower severity than finding #16 (never claims false
+  success) and non-trivial to fix safely (would need to avoid double-
+  dispatch with the existing dispatch path) -- not pursued tonight.
 
 ## 8. Lane-by-lane status
 
