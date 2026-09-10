@@ -407,22 +407,21 @@ YES`, re-declared at SHA `a575322ae1`.
   "wrong PROJECT executes" risk class cannot apply. The real remaining
   gap (unreachable from secondary surfaces) is real but lower-priority;
   not pursued to avoid scope creep on the same mechanism.
-- **Finding #11** (P1/P2, real truthfulness gap, not safety-critical):
-  after a real successful adoption, the project remains **permanently**
-  misclassified as `READY_FOR_ADOPTION` -- `projectLiveWorkFeedState`
-  derives that purely from `run.state === 'COMPLETE'`, and
-  `executeCommandAdoption` never updates the run's own state after a
-  merge. Live-confirmed via a direct `GET /api/attention` call
-  (un-gated by chat-thread dedup): an already-adopted project is still
-  listed, indefinitely. Confirmed **pre-existing** (the codebase's own
-  `work-feed-summary.mjs` header already discloses this gap), not a
-  regression from tonight's work -- but tonight's fixes make real
-  adoption dramatically easier to trigger from more surfaces, so this
-  gap will now be hit far more often in practice. Fix requires either a
-  genuine new Keep Going terminal/adopted state or a cross-cutting fix
-  to the attention-aggregation read path -- judged too large to rush
-  late in an already-extensive window. **This is the single
-  highest-value real next step if this mission continues.**
+- **Finding #11** (P1/P2, real truthfulness gap, not safety-critical) --
+  **fix IN PROGRESS** (see §7A): after a real successful adoption, the
+  project remains **permanently** misclassified as `READY_FOR_ADOPTION`
+  -- `projectLiveWorkFeedState` derives that purely from
+  `run.state === 'COMPLETE'`, and `executeCommandAdoption` never
+  updates the run's own state after a merge. Live-confirmed via a
+  direct `GET /api/attention` call (un-gated by chat-thread dedup): an
+  already-adopted project is still listed, indefinitely. Confirmed
+  **pre-existing** (the codebase's own `work-feed-summary.mjs` header
+  already discloses this gap), not a regression from tonight's work --
+  but tonight's fixes make real adoption dramatically easier to trigger
+  from more surfaces, so this gap will now be hit far more often in
+  practice. Fixed via the cross-cutting attention-aggregation
+  read-path option (not a new Keep Going terminal state): see §7A for
+  the in-progress fix, not yet tested/committed/integrated.
 - **Finding #13** (same root cause as #12, currently dormant):
   `self-improvement-adoption.mjs`'s `attemptRepairAdoption` has the
   exact same unlocked structural shape as #12's pre-fix bug. Confirmed
@@ -451,6 +450,65 @@ YES`, re-declared at SHA `a575322ae1`.
   gap in practice). Lower severity than finding #16 (never claims false
   success) and non-trivial to fix safely (would need to avoid double-
   dispatch with the existing dispatch path) -- not pursued tonight.
+
+## 7A. Finding #11 fix -- in progress, not yet integrated
+
+Worktree `C:\tsf-stale-adoption-fix\tsf`, branch
+`tsf/stale-adoption-classification`, based on canonical
+`acc71af2db0f20759a61495a014702212b55bcd4`. Started after this window's
+host memory read CRITICAL (93.2% used) immediately following the
+owner's GitHub-publication checkpoint; per the owner's own resource-
+behavior rule, implementation proceeded Read/Edit-only (no test
+execution, no `node_modules` junction) while memory stayed CRITICAL/
+EMERGENCY (worst reading: 99.3% used, 0.1GB free -- `niners-war-room-c0`
+confirmed `busy` in `ListAgents` throughout, plausible real cause,
+never touched).
+
+**Fix pattern** (mirrors finding #17's own "gate once at the real
+choke point," not a widen-the-contract approach):
+`domain/work-feed-summary.mjs`'s `summarizeWorkFromRuns` gained a new
+`canonicalBases` parameter (defaults `{}`, backward compatible) -- a
+`COMPLETE` run whose `missionId` has a real `ADVANCED` entry in
+`project-canonical-base-store.mjs`'s own durable history is
+reclassified from `readyForAdoption` to `recentlyCompleted`, carrying
+an honest `reason`. `domain/fleet-attention-status.mjs`'s
+`completedRecentlyItems` -- confirmed, by direct code reading, to have
+been **structurally dead code** for every real Keep-Going-run project
+(it filtered on a live-feed state `projectLiveWorkFeedState` never
+actually emits) -- was rewritten to consume the now-correct unified
+`recentlyCompleted` list instead of independently re-deriving.
+`buildFleetAttentionItems` gained a `projectCanonicalBases` parameter,
+threaded through every real production call site found by a full-repo
+grep: `project-catalog.mjs` -> the real `GET /api/work` route
+(`http-server.mjs`) -> `attention-status-reconciler.mjs` (mirrors
+finding #15's own proven pattern) -> `command-fleet-attention-
+bridge.mjs` ("what just finished?") -> `command-multi-action-
+bridge.mjs`'s `reportAdoptionCandidate` ("is X ready?") ->
+`command-self-improvement-bridge.mjs`'s `READY_FOR_ADOPTION` branch.
+Confirmed unaffected, no change needed: the real `GET /api/attention`
+route (already covered transitively), `command-responder.mjs`'s
+`NEEDS_OWNER`-only call, and `command-self-improvement-bridge.mjs`'s
+`SELF_IMPROVEMENT_ALL_FINDINGS` branch (filters to a disjoint source
+kind).
+
+**Regression tests added** (not yet run): 3 new tests in
+`test/work-feed-summary.test.mjs`, 2 in `test/fleet-attention-
+status.test.mjs`, 1 in `test/command-fleet-attention-bridge.test.mjs`
+(the last also corrects that file's own now-stale comment). No
+dedicated bridge-level test added for the 2 remaining single-line
+mechanical pass-through call sites (proportionate-testing judgment
+call -- the underlying logic is already covered end-to-end at the
+aggregation layer).
+
+**Remaining before this can be declared closed**: create the worktree's
+`node_modules` junction once memory is safe, run every affected suite
+green, mutation-verify (disable the override, confirm the new tests
+fail), commit with required attribution, merge `--ff-only` into
+canonical, re-verify green, push to `fork`, verify via `git ls-remote`,
+retire the worktree/branch. This is a genuinely new real fix landing
+(even though long-disclosed) and per the mission's own rule **resets
+the stability counter** -- a fresh 2-pass full-suite sequence will be
+required before `CONTROL_PLANE_STABLE_V1` can be re-declared.
 
 ## 8. Lane-by-lane status
 
