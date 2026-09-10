@@ -117,6 +117,100 @@ test('tickKeepGoingRun dispatches the next wave, creating the orchestration run 
   assert.equal(run.inFlightWave.dispatchRecords[0].taskId, 'task-t1')
 })
 
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed),
+// likely the most severe of the whole mission: dispatchStep is the ONE
+// real choke point every heavyweight-worker dispatch caller funnels
+// through (chat-dispatch-bridge.mjs, keep-going-http-routes.mjs, the
+// autonomous fleet driver's own heartbeat, AND settled-run-reconciler.
+// mjs's own DISPATCH_VERIFICATION path) -- yet it never checked project-
+// execution-hold status at all, anywhere. Live-reproduced (independent
+// red-team review, this same finding's own investigation) via settled-
+// run-reconciler.mjs's DISPATCH_VERIFICATION branch, arguably the MOST
+// common way this gap was reachable (it fires on essentially every
+// settled run's first reconciliation pass) -- a real wave dispatched
+// into a project under an active hold. Fixed at this single choke
+// point instead of patching every caller, so missing a future caller
+// is structurally impossible (mirrors this exact function's own
+// resource-pressure gate immediately below, added for the identical
+// reason in an earlier session).
+test('tickKeepGoingRun refuses to dispatch a real wave for a project under an active execution hold -- the real choke point every caller (including settled-run-reconciler.mjs) funnels through', async () => {
+  const store = makeFakeStore(baseRun())
+  const readProjectExecutionHold = (projectId) =>
+    projectId === PROJECT_ID
+      ? { status: 'ACTIVE', reason: 'EXTERNAL_WORK_ACTIVE', note: 'another agent is on this repo', setBy: 'OPERATOR_CHAT' }
+      : null
+
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration(),
+    store,
+    readProjectExecutionHold
+  })
+  assert.equal(result.action, 'DISPATCH_BLOCKED_BY_HOLD')
+  assert.match(result.reason, /project execution hold active/)
+  assert.match(result.reason, /another agent is on this repo/)
+
+  const run = store.readRun(PROJECT_ID)
+  assert.equal(run.inFlightWave, null, 'no real wave may be dispatched into a held project')
+  assert.equal(run.orchestrationRunId, null, 'no real orchestration run created for a refused dispatch')
+})
+
+test('tickKeepGoingRun dispatches normally when there is no active hold (sanity: the new check is a real gate, not a permanent refusal)', async () => {
+  const store = makeFakeStore(baseRun())
+  const readProjectExecutionHold = () => null
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration(),
+    store,
+    readProjectExecutionHold
+  })
+  assert.equal(result.action, 'WAVE_DISPATCHED')
+})
+
+// Round-2 independent-review finding (real, live-reproduced by the
+// reviewer, fixed here): the hold check is deliberately placed AFTER
+// the resource-pressure admission check, not before. Checking hold
+// first would mean a project that is BOTH held AND resource-refused
+// never gets its real DISPATCH_WAITING_FOR_RESOURCES pendingDispatch
+// retry record durably written at all -- releasing the hold later would
+// then have nothing durable to auto-resume, silently losing the
+// resource-refusal's own retry opportunity. This proves the durable
+// bookkeeping still happens even while held, and that the real dispatch
+// itself is still correctly refused once resources recover but the
+// hold has not yet been released.
+test('tickKeepGoingRun: a project that is BOTH held AND resource-refused still gets its real resource-wait retry record durably written -- the hold never suppresses that bookkeeping', async () => {
+  const store = makeFakeStore(baseRun())
+  const readProjectExecutionHold = (projectId) =>
+    projectId === PROJECT_ID
+      ? { status: 'ACTIVE', reason: 'EXTERNAL_WORK_ACTIVE', note: 'another agent is on this repo', setBy: 'OPERATOR_CHAT' }
+      : null
+  const emergencyResourcePressure = { collectHostMemoryEvidence: () => ({ availableBytes: 1 * 1024 ** 3 }) }
+
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration(),
+    store,
+    readProjectExecutionHold,
+    resourcePressure: emergencyResourcePressure
+  })
+  assert.equal(result.action, 'DISPATCH_WAITING_FOR_RESOURCES', 'the resource refusal -- with its own durable retry record -- must still be the one reported, even while held')
+  const afterRefusal = store.readRun(PROJECT_ID)
+  assert.ok(afterRefusal.pendingDispatch, 'the real, durable resource-wait retry record must be written even while held -- never silently dropped')
+  assert.equal(afterRefusal.inFlightWave, null)
+
+  // Resources recover, but the hold is still active -- the real dispatch
+  // attempt (now reached via the SAME pendingDispatch retry, exactly how
+  // keep-going-fleet-driver.mjs's own auto-resume mechanism would call
+  // this) must still be honestly refused by the hold, never silently
+  // bypassed just because resource pressure already cleared.
+  const healthyResourcePressure = { collectHostMemoryEvidence: () => ({ availableBytes: 16 * 1024 ** 3 }) }
+  const retryResult = await tickKeepGoingRun(PROJECT_ID, afterRefusal.pendingDispatch.candidateWorkItems, clock, {
+    orchestration: okOrchestration(),
+    store,
+    readProjectExecutionHold,
+    resourcePressure: healthyResourcePressure
+  })
+  assert.equal(retryResult.action, 'DISPATCH_BLOCKED_BY_HOLD', 'once resources recover, the STILL-active hold must be what refuses the real dispatch, not a silent bypass')
+  assert.equal(store.readRun(PROJECT_ID).inFlightWave, null)
+})
+
 // BUG-07 (bug-ledger.json): displayName was never populated on the real
 // createOrchestrationTask call -- only the bare internal work-item id was
 // ever set as taskTitle, so any Orca-side surface drawing on task

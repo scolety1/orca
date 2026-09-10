@@ -60,6 +60,8 @@ import { fetchCapacitySnapshot } from '../adapters/orca-capacity-bridge.mjs'
 import { isoNow } from '../domain/canonical.mjs'
 import { decideCapacityAction } from '../domain/capacity-policy.mjs'
 import { DEFAULT_RESOURCE_PRESSURE, classifyDispatchAdmission, recordResourceRefusal } from './keep-going-resource-pressure-gate.mjs'
+import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
+import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 import {
   checkpointRun,
   claimTick,
@@ -322,7 +324,7 @@ function trimPlanToDispatched(wavePlan, dispatchedWorkItemIds) {
   return { ...wavePlan, batches }
 }
 
-async function dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity, resourcePressure) {
+async function dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity, resourcePressure, readHold) {
   if (!Array.isArray(candidateWorkItems) || candidateWorkItems.length === 0) {
     return { action: 'NOOP', reason: 'no candidate work items available to plan a wave' }
   }
@@ -338,6 +340,22 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
   // it. Only CRITICAL/EMERGENCY refuse; PRESSURED still admits a single
   // dispatch here (the heavy-task lease, not this gate, is what throttles
   // concurrent full-suite/pilot/research-worker categories).
+  //
+  // Deliberately checked BEFORE the project-execution-hold gate below
+  // (round-2 independent-review finding, real): checking hold FIRST would
+  // mean a project that is BOTH held AND resource-refused never gets its
+  // real DISPATCH_WAITING_FOR_RESOURCES pendingDispatch retry record
+  // written at all -- live-reproduced by the reviewer: releasing the hold
+  // later would then have nothing durable to auto-resume, silently
+  // losing the resource-refusal's own retry opportunity, forcing a
+  // manual re-trigger with zero trail a dispatch was ever attempted.
+  // Resource-pressure first preserves that durable bookkeeping
+  // unconditionally; the hold check right after still refuses the
+  // ACTUAL dispatch either way -- if resources later recover while still
+  // held, the SAME hold check (or keep-going-fleet-driver.mjs's own,
+  // still-independent gate on its pendingDispatch resume path) refuses
+  // the real dispatch attempt when it's retried, never silently
+  // bypassing the hold, just at a later point in the sequence.
   const admission = classifyDispatchAdmission(resourcePressure)
   if (!admission.admitted) {
     // Phase 12 (category 8) + Resource-Wait Auto-Resume V1: durably records
@@ -345,6 +363,40 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     // retry -- see keep-going-resource-pressure-gate.mjs's own header.
     await recordResourceRefusal(store, projectId, candidateWorkItems, admission, clock)
     return { action: 'DISPATCH_WAITING_FOR_RESOURCES', ...admission }
+  }
+
+  // TSF Overnight Control-Plane Burn-In V2, real finding (not guessed),
+  // likely the most severe of the whole mission: this is the ONE real
+  // choke point every heavyweight-worker dispatch caller funnels through
+  // (see the Resource Pressure Governor's own header comment on this same
+  // function, just above, which already names this exact principle and
+  // lists chat-dispatch-bridge.mjs, keep-going-http-routes.mjs, keep-
+  // going-fleet-driver.mjs, AND settled-run-reconciler.mjs as real
+  // callers) -- yet a project execution hold was never checked here at
+  // all. Live-reproduced (independent red-team review, this same
+  // finding's own investigation): settled-run-reconciler.mjs's own
+  // DISPATCH_VERIFICATION branch -- fired on essentially every settled
+  // run's FIRST reconciliation pass, arguably more common than the
+  // continuation-dispatch path this finding originally gated at the
+  // fleet-driver level -- called tickKeepGoingRun with zero hold
+  // awareness anywhere in that call chain, dispatching a real wave into
+  // a held project. keep-going-fleet-driver.mjs's own two gates (added
+  // first, kept here as real, tested, friendlier-messaged defense-in-
+  // depth for the two cases they cover) could not have closed this on
+  // their own -- the reconciler's own dispatch never reaches them.
+  // Gating HERE ONCE makes missing a future caller structurally
+  // impossible, instead of relying on every call site remembering to
+  // check. No durable pendingDispatch-style retry record is needed for
+  // THIS refusal (unlike the resource-pressure case above): nothing
+  // durable is consumed/mutated on this early return, so the driver's
+  // own ordinary next tick naturally re-evaluates and proceeds the
+  // moment the hold is released.
+  const hold = (readHold ?? readProjectExecutionHold)(projectId)
+  if (isProjectExecutionHoldActive(hold)) {
+    return {
+      action: 'DISPATCH_BLOCKED_BY_HOLD',
+      reason: `project execution hold active -- ${hold.reason}${hold.note ? `: ${hold.note}` : ''} (set by ${hold.setBy})`
+    }
   }
 
   // Sized to this wave's candidate count -- see PER_ITEM_LOCK_TIMEOUT_MS.
@@ -915,6 +967,7 @@ export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, dep
   const store = deps.store ?? DEFAULT_STORE
   const capacity = deps.capacity ?? DEFAULT_CAPACITY
   const resourcePressure = deps.resourcePressure ?? DEFAULT_RESOURCE_PRESSURE
+  const readHold = deps.readProjectExecutionHold ?? readProjectExecutionHold
 
   const before = store.readRun(projectId)
   if (!before) {
@@ -925,11 +978,16 @@ export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, dep
   }
   if (before.inFlightWave) {
     // Settling an already-in-flight wave is a cheap read/reconcile of a
-    // worker that already exists -- never gated. Only a genuinely NEW
-    // heavyweight worker spawn (dispatchStep, below) consults the governor.
+    // worker that already exists -- never gated (by the resource governor
+    // OR the project-execution-hold check below): a wave already
+    // dispatched represents work already under way, possibly started
+    // before the hold even existed; observing/reconciling its real
+    // completion status is never itself a new action a hold is meant to
+    // prevent. Only a genuinely NEW heavyweight worker spawn (dispatchStep,
+    // below) consults either gate.
     return settleStep(projectId, clock, orchestration, store)
   }
-  return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity, resourcePressure)
+  return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity, resourcePressure, readHold)
 }
 
 // Recovers a run whose in-flight wave stalled AND releases the real Orca

@@ -67,6 +67,29 @@ function makeFakeStore(runsById) {
   }
 }
 
+// A real, active hold record shape -- matches domain/project-execution-
+// hold.mjs's own createProjectExecutionHold output exactly, injected via
+// deps.readProjectExecutionHold (this file's own established DI
+// convention, matching deps.store) rather than the real durable hold
+// store -- this file has no TSF_UI_STATE_FILE isolation of its own (its
+// static imports are hoisted before any env var this file could set
+// would take effect), so touching the real store here would risk the
+// shared default state file.
+function activeHold(projectId, note) {
+  return {
+    schemaVersion: 'TSF_PROJECT_EXECUTION_HOLD_V1',
+    projectId,
+    status: 'ACTIVE',
+    reason: 'EXTERNAL_WORK_ACTIVE',
+    note,
+    setBy: 'OPERATOR_CHAT',
+    setAt: new Date().toISOString(),
+    releasedBy: null,
+    releasedAt: null,
+    releaseReason: null
+  }
+}
+
 // Stateful: tracks every task id this fake actually created via
 // createOrchestrationTask, and reports each of them back as 'completed'
 // from listOrchestrationTasks -- a fixed hardcoded task id would only ever
@@ -175,6 +198,38 @@ test('driveOneCycle automatically resumes a run whose first-wave dispatch was re
   assert.equal(after.pendingDispatch, null, 'resolved the moment a real wave dispatched')
 })
 
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed) --
+// the most severe finding of the whole mission: this driver, the PRIMARY
+// autonomous dispatch mechanism (ticks continuously for every ACTIVE
+// project, independent of any chat/HTTP interaction), never checked
+// project-execution-hold status at all. Live-reproduced before fixing
+// (this exact scenario): the driver genuinely dispatched a real wave for
+// a project under an active hold. Every other real dispatch-triggering
+// surface (planAndDispatchFromChat, the adoption engine) already
+// correctly refuses under a hold; this driver -- running far more
+// frequently and requiring no human action to fire -- was a real, silent
+// bypass of all of them.
+test('real finding, FIXED: driveOneCycle refuses to resume a pending dispatch for a project under an active execution hold, never silently dispatching into it', async () => {
+  let run = createOvernightRun(
+    { id: 'r', projectId: 'p', originalGoal: 'x', acceptanceCriteria: ['A'], usageMode: 'BALANCED' },
+    clock
+  )
+  const pendingItems = [{ id: 'w1', scope: ['**/*'], worktree: '/wt' }]
+  run = recordPendingDispatch(run, pendingItems, clock, 0)
+  const store = makeFakeStore({ p: run })
+  const tickDeps = { store, orchestration: okOrchestration() }
+  const readProjectExecutionHold = (projectId) => (projectId === 'p' ? activeHold('p', 'another agent is on this repo') : null)
+
+  const [result] = await driveOneCycle(['p'], clock, { store, tickDeps, readProjectExecutionHold })
+  assert.equal(result.action, 'SKIPPED')
+  assert.match(result.reason, /project execution hold active/)
+  assert.match(result.reason, /another agent is on this repo/)
+
+  const after = store.readRun('p')
+  assert.equal(after.inFlightWave, null, 'no real wave may be dispatched into a held project')
+  assert.ok(after.pendingDispatch, 'the pending dispatch record must survive -- this is a deferral, not a loss of the durable retry record')
+})
+
 test('driveOneCycle still honestly skips a PLANNING run with no waves and no recorded pending dispatch -- never invents work to resume', async () => {
   const run = createOvernightRun(
     { id: 'r', projectId: 'p', originalGoal: 'x', acceptanceCriteria: ['A'], usageMode: 'BALANCED' },
@@ -218,6 +273,26 @@ test('driveOneCycle settles a real in-flight wave', async () => {
   })
   assert.equal(result.action, 'TICKED')
   assert.equal(result.tickResult.action, 'WAVE_SETTLED')
+  assert.equal(store.all.p.inFlightWave, null)
+})
+
+// Deliberately the INVERSE of the two "real finding, FIXED" hold tests
+// above: settling a wave already dispatched (possibly before any hold
+// even existed) is never itself a new action a hold is meant to prevent
+// -- only starting NEW work is gated. Proves the fix doesn't overreach.
+test('an active execution hold does NOT block settling an already-in-flight wave -- only new dispatch decisions are gated', async () => {
+  const dir = initRepo()
+  const run = newRun('r', 'p', dir)
+  const store = makeFakeStore({ p: run })
+  const readProjectExecutionHold = (projectId) => (projectId === 'p' ? activeHold('p', 'another agent is on this repo') : null)
+
+  const [result] = await driveOneCycle(['p'], clock, {
+    store,
+    tickDeps: { store, orchestration: okOrchestration() },
+    readProjectExecutionHold
+  })
+  assert.equal(result.action, 'TICKED')
+  assert.equal(result.tickResult.action, 'WAVE_SETTLED', 'settling already-in-flight work must proceed even while held')
   assert.equal(store.all.p.inFlightWave, null)
 })
 
@@ -273,6 +348,33 @@ test('driveOneCycle dispatches a real CONTINUATION wave when reconciliation find
     true,
     'a real continuation implementation wave is now in flight'
   )
+})
+
+test('real finding, FIXED: driveOneCycle refuses a real CONTINUATION wave for a project under an active execution hold, even though reconciliation itself still runs honestly', async () => {
+  const dir = initRepo()
+  await new Promise((resolve) => setTimeout(resolve, 1100))
+  let run = newRun('r', 'p', dir)
+  const { tickKeepGoingRun } = await import('../server/keep-going-dispatch-loop.mjs')
+  const store = makeFakeStore({ p: run })
+  const tickDeps = { store, orchestration: okOrchestration() }
+  await tickKeepGoingRun('p', [], clock, tickDeps) // settle initial wave
+
+  mkdirSync(path.join(dir, 'docs', 'tsf', 'verification'), { recursive: true })
+  writeFileSync(
+    path.join(dir, verificationVerdictPath('r')),
+    JSON.stringify({ criteria: [{ criterion: 'A', verified: false, evidence: 'still broken' }] })
+  )
+  const readProjectExecutionHold = (projectId) => (projectId === 'p' ? activeHold('p', 'another agent is on this repo') : null)
+
+  const [result] = await driveOneCycle(['p'], clock, { store, tickDeps, readProjectExecutionHold })
+  // Reconciliation (real analysis of already-existing evidence, never a
+  // new dispatch) still ran and reported the real, honest finding --
+  // only the NEW dispatch that finding would otherwise trigger is
+  // refused.
+  assert.equal(result.action, 'RECONCILED')
+  assert.equal(result.reconciliation.action, 'NEEDS_DECISION')
+  assert.match(result.reason, /project execution hold active/)
+  assert.equal(store.all.p.inFlightWave, null, 'no real continuation wave may be dispatched into a held project')
 })
 
 // REQUIRED PROOF (Main TSF integration review, admission-coverage

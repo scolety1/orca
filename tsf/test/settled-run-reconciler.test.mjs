@@ -335,6 +335,38 @@ test('reconcileSettledRun: full lifecycle -- dispatches real verification, then 
   )
 })
 
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed),
+// likely the most severe of the whole mission, LIVE-REPRODUCED HERE
+// during independent red-team review of an earlier fix: this exact
+// DISPATCH_VERIFICATION path -- fired on essentially every settled
+// run's FIRST reconciliation pass (before any verdict file exists),
+// arguably the single most common way a real wave gets dispatched
+// anywhere in this codebase -- called tickKeepGoingRun with zero
+// project-execution-hold awareness anywhere in the call chain. A real
+// wave was genuinely dispatched into a project under an active hold.
+// Fixed at tickKeepGoingRun/dispatchStep's own real choke point (see
+// keep-going-dispatch-loop.mjs), so this call site needed no change of
+// its own -- proving that fix's whole point: closing this exact gap
+// without this file needing to know anything about holds at all.
+test('reconcileSettledRun: DISPATCH_VERIFICATION honestly refuses for a project under an active execution hold, never dispatching a real wave into it', async () => {
+  const dir = initRepo()
+  await new Promise((resolve) => setTimeout(resolve, 1100))
+  const run = withSettledWave(baseRun(), dir, new Date().toISOString())
+  const store = makeFakeStore(run)
+  delete process.env.ORCA_TERMINAL_HANDLE
+  const readProjectExecutionHold = (projectId) =>
+    projectId === PROJECT_ID
+      ? { status: 'ACTIVE', reason: 'EXTERNAL_WORK_ACTIVE', note: 'another agent is on this repo', setBy: 'OPERATOR_CHAT' }
+      : null
+  const tickDeps = { store, orchestration: okOrchestration(), readProjectExecutionHold }
+
+  const result = await reconcileSettledRun(PROJECT_ID, clock, { store, tickDeps })
+  assert.equal(result.action, 'DISPATCH_VERIFICATION', 'reconciliation itself still honestly reports what it found')
+  assert.equal(result.dispatch.action, 'DISPATCH_BLOCKED_BY_HOLD', 'but the real dispatch attempt is honestly refused')
+  assert.match(result.dispatch.reason, /project execution hold active/)
+  assert.equal(store.current.inFlightWave, null, 'no real wave may be dispatched into a held project')
+})
+
 test('reconcileSettledRun: a real verdict with a failing criterion raises NEEDS_YOU once the retry budget is exhausted, never silently completes', async () => {
   const dir = initRepo()
   await new Promise((resolve) => setTimeout(resolve, 1100))

@@ -33,6 +33,8 @@ import {
   verificationVerdictPath
 } from './settled-run-reconciler.mjs'
 import { readKeepGoingRun } from './keep-going-run-store.mjs'
+import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
+import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 
 export const DEFAULT_TICK_INTERVAL_MS = 30_000
 // Fleet-wide throttle -- distinct from a single run's own
@@ -90,6 +92,44 @@ function isDriverEligible(run) {
   return run && run.state === 'ACTIVE' && run.needsYou.every((entry) => entry.resolvedAt)
 }
 
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed) --
+// the most severe finding of the entire mission: this driver, the
+// PRIMARY autonomous dispatch mechanism (ticks continuously for every
+// ACTIVE project, independent of any chat/HTTP interaction), never
+// checked project-execution-hold status at all. Live-reproduced before
+// fixing (driveOneCycle against a real, in-memory run store, a real
+// pendingDispatch record, and a real ACTIVE hold set through the real
+// durable hold store): the driver genuinely dispatched a real wave --
+// action: 'WAVE_DISPATCHED', a real inFlightWave recorded -- for a
+// project under an active hold. Every OTHER real dispatch-triggering
+// surface in this codebase (planAndDispatchFromChat via chat-http-
+// routes.mjs's own isProjectExecutionHoldActive check, the adoption
+// engine's own hold gate) already correctly refuses under a hold; this
+// driver, running far more frequently and requiring no human action at
+// all to fire, was a real, silent bypass of every one of those
+// protections. A hold exists specifically to prevent unwanted
+// concurrent work -- an operator setting one and believing a project is
+// protected, when the autonomous driver would dispatch into it anyway
+// on its very next tick, is a genuine, severe risk.
+//
+// Fixed with a fresh hold check, read once per real dispatch decision
+// (never cached across the two real NEW-dispatch branches below) --
+// deliberately does NOT gate the settle-in-flight-wave branch just
+// above (isRunExecuting): a wave already dispatched represents work
+// already under way, possibly started before the hold even existed;
+// observing/reconciling its real completion status is never itself a
+// new action a hold is meant to prevent, matching this whole mission's
+// "never abort legitimate in-progress work" principle already applied
+// to findings #12/#14's own adoption-engine fixes.
+function readHoldFor(projectId, deps) {
+  const read = deps.readProjectExecutionHold ?? readProjectExecutionHold
+  return read(projectId)
+}
+
+function holdSkipReason(hold) {
+  return `project execution hold active -- ${hold.reason}${hold.note ? `: ${hold.note}` : ''} (set by ${hold.setBy})`
+}
+
 async function advanceOneProject(projectId, clock, deps) {
   const store = deps.store ?? { readRun: readKeepGoingRun }
   const run = store.readRun(projectId)
@@ -130,6 +170,10 @@ async function advanceOneProject(projectId, clock, deps) {
     // resources still refuse, this is just another honest
     // DISPATCH_WAITING_FOR_RESOURCES tick, never a duplicate/new run.
     if (run.pendingDispatch?.candidateWorkItems?.length) {
+      const hold = readHoldFor(projectId, deps)
+      if (isProjectExecutionHoldActive(hold)) {
+        return { projectId, action: 'SKIPPED', reason: holdSkipReason(hold) }
+      }
       const result = await tickKeepGoingRun(
         projectId,
         run.pendingDispatch.candidateWorkItems,
@@ -155,7 +199,14 @@ async function advanceOneProject(projectId, clock, deps) {
     // Stage F already checkpointed the finding and recorded the retry
     // attempt -- this driver's own, distinct job is dispatching the real
     // next wave toward those specific gaps, using the exact evidence Stage
-    // F's own verification task produced.
+    // F's own verification task produced. reconcileSettledRun itself
+    // (above) is real analysis of already-existing evidence, never a new
+    // dispatch -- left unguarded; only the real continuation dispatch
+    // below is gated on a fresh hold check.
+    const hold = readHoldFor(projectId, deps)
+    if (isProjectExecutionHoldActive(hold)) {
+      return { projectId, action: 'RECONCILED', reconciliation, reason: holdSkipReason(hold) }
+    }
     const worktreePath = deriveWorktreePath(store.readRun(projectId))
     if (!worktreePath) {
       return {
