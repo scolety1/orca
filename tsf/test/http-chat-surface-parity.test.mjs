@@ -322,18 +322,31 @@ test('Overnight V2 Lane B: a long software mission containing the word "research
 // real runs, never the same one.
 const PER_PROJECT_FIXTURE_ID = 'weird-talent-marketplace'
 
+// TSF Overnight Control-Plane Burn-In V2, Lane J (historical corpus
+// mining -- real, live-confirmed under a genuinely CRITICAL host during
+// a full-suite run, not guessed): the SAME class of test defect already
+// fixed once tonight for test/http-chat-live.test.mjs -- server/
+// attention-status-reconciler.mjs's attachDueAttentionNotices legitimately
+// prepends any due notice (including a real resource-pressure event,
+// "Host resource pressure reached **CRITICAL** -- ...") ahead of a chat
+// response's own real answer, by documented design, regardless of
+// topic. Every "must really pause/resume" assertion below checks the
+// pause/resume text is PRESENT, never that it opens the string --
+// exactly like the http-chat-live.test.mjs fix, and NOT a relaxation:
+// a false "Paused" claim anywhere in the text is still exactly as wrong
+// as one at the start.
 test('Overnight V2 Lane L: "pause X" over real HTTP genuinely pauses a real durable run, on BOTH Global Command (exact match) and per-project Planner Chat', async () => {
   await withServer(async (base) => {
     await seedActiveRun(PROJECT_ID)
     assert.equal(readKeepGoingRun(PROJECT_ID).state, 'ACTIVE')
 
     const globalResult = await chat(base, { projectId: null, message: `pause ${PROJECT_ID}` })
-    assert.match(globalResult.body.text, /^Paused/, 'Global Command exact-match must really pause, not fall through to a generic fallback')
+    assert.match(globalResult.body.text, /Paused \*\*/, 'Global Command exact-match must really pause, not fall through to a generic fallback')
     assert.equal(readKeepGoingRun(PROJECT_ID).state, 'PAUSED')
 
     await seedActiveRun(PER_PROJECT_FIXTURE_ID)
     const perProjectResult = await chat(base, { projectId: PER_PROJECT_FIXTURE_ID, message: 'pause it' })
-    assert.match(perProjectResult.body.text, /^Paused/, 'per-project Planner Chat must really pause too')
+    assert.match(perProjectResult.body.text, /Paused \*\*/, 'per-project Planner Chat must really pause too')
     assert.equal(readKeepGoingRun(PER_PROJECT_FIXTURE_ID).state, 'PAUSED')
   })
 })
@@ -342,16 +355,16 @@ test('Overnight V2 Lane L: "resume it" over real HTTP genuinely resumes a real d
   await withServer(async (base) => {
     await seedActiveRun(PROJECT_ID)
     const paused = await chat(base, { projectId: null, message: `pause ${PROJECT_ID}` })
-    assert.match(paused.body.text, /^Paused/)
+    assert.match(paused.body.text, /Paused \*\*/)
 
     const resumed = await chat(base, { projectId: null, message: `resume ${PROJECT_ID}` })
-    assert.match(resumed.body.text, /^Resumed/, 'Global Command exact-match must really resume a genuinely paused run')
+    assert.match(resumed.body.text, /Resumed \*\*/, 'Global Command exact-match must really resume a genuinely paused run')
     assert.equal(readKeepGoingRun(PROJECT_ID).state, 'ACTIVE')
 
     await seedActiveRun(PER_PROJECT_FIXTURE_ID)
     await chat(base, { projectId: PER_PROJECT_FIXTURE_ID, message: 'pause it' })
     const perProjectResume = await chat(base, { projectId: PER_PROJECT_FIXTURE_ID, message: 'resume it' })
-    assert.match(perProjectResume.body.text, /^Resumed/, 'per-project Planner Chat must really resume too')
+    assert.match(perProjectResume.body.text, /Resumed \*\*/, 'per-project Planner Chat must really resume too')
     assert.equal(readKeepGoingRun(PER_PROJECT_FIXTURE_ID).state, 'ACTIVE')
   })
 })
@@ -372,7 +385,7 @@ test('Overnight V2 Lane L: a message that is BOTH research-shaped AND opens with
     await seedActiveRun(PROJECT_ID)
     const result = await chat(base, { projectId: PROJECT_ID, message: `please pause and research the ${PROJECT_ID} migration risks` })
     assert.equal(result.body.scope, 'RESEARCH', 'research must win the response, matching respondCommand\'s own precedence')
-    assert.doesNotMatch(result.body.text, /^Paused/, 'the response must never claim a pause that (per this test) must not have happened')
+    assert.doesNotMatch(result.body.text, /Paused \*\*/, 'the response must never claim a pause that (per this test) must not have happened')
     assert.equal(readKeepGoingRun(PROJECT_ID).state, 'ACTIVE', 'the real run must NOT be silently paused just because research won the visible response')
   })
 })
@@ -382,7 +395,7 @@ test('Overnight V2 Lane L: a message combining "pause X" with a genuinely conseq
     await seedActiveRun(PROJECT_ID)
     const result = await chat(base, { projectId: PROJECT_ID, message: `pause it and then deploy it to production` })
     assert.equal(result.body.decisionClass, 'TIM_REQUIRED', 'the consequential clause must win a full refusal, matching respondCommand\'s own precedence')
-    assert.doesNotMatch(result.body.text, /^Paused/, 'must never claim a pause happened when the whole message should have been refused')
+    assert.doesNotMatch(result.body.text, /Paused \*\*/, 'must never claim a pause happened when the whole message should have been refused')
     assert.equal(readKeepGoingRun(PROJECT_ID).state, 'ACTIVE', 'the real run must NOT be silently paused as a side effect of a message that should have been refused in full')
   })
 })
