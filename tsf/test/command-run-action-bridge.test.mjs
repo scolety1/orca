@@ -258,3 +258,42 @@ test('integration: duplicate delivery -- "resume X" delivered twice in a row nev
   const resumeTransitions = run.transitions.filter((t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME')
   assert.equal(resumeTransitions.length, 1, 'the duplicate call must not append a second OPERATOR_RESUME transition')
 })
+
+// TSF Overnight Control-Plane Burn-In V2, Lane E (race/TOCTOU), extending
+// the sequential PAUSE duplicate-delivery proof above to GENUINE
+// concurrency -- Promise.all, not sequential awaits -- matching the same
+// real-concurrency shape command-multi-action-bridge.test.mjs's own
+// Batch-7 hold test already established for EXTERNAL_WORK_HOLD (a real
+// client-retry-storm: N racing "pause X" requests firing before the
+// first response returns). Verified directly (not assumed): in THIS
+// single-process server, the actual safety guarantee here is domain/
+// keep-going.mjs's own RUN_ALLOWED state machine plus the fact that
+// withKeepGoingRun's load-mutate-save critical section contains no
+// `await` -- Node's single-threaded event loop already runs that block
+// to completion once started, so N concurrent calls still serialize
+// correctly even with keep-going-run-store.mjs's own cross-process file
+// lock experimentally removed (confirmed clean across 5 runs; that lock
+// is real and still required for genuine cross-process safety, just not
+// what this particular in-process test exercises). What this test does
+// mutation-prove is the state machine itself: forcing a PAUSED->PAUSED
+// self-transition to be legal turns it red (all 10 concurrent calls
+// succeed instead of 1).
+test('Lane E: N genuinely concurrent duplicate "pause X" chat calls for the same project are race-safe -- exactly one real pause, N-1 honest refusals, exactly one PAUSED transition', async () => {
+  await seedActiveRun('lane-e-concurrent-pause')
+  const projectFixture = [project('lane-e-concurrent-pause', 'Lane E Concurrent Pause')]
+
+  const N = 10
+  const results = await Promise.all(
+    Array.from({ length: N }, () => respondCommand({ message: 'pause lane-e-concurrent-pause', projects: projectFixture, opState: { keepGoingRuns: {} }, clock }))
+  )
+
+  const paused = results.filter((r) => /^Paused/.test(r.text))
+  const refused = results.filter((r) => r.live === false)
+  assert.equal(paused.length, 1, `exactly one of ${N} genuinely concurrent duplicate pause calls must actually succeed`)
+  assert.equal(refused.length, N - 1, 'every other concurrent call must be honestly refused, never a second false "Paused" claim')
+
+  const run = readKeepGoingRun('lane-e-concurrent-pause')
+  assert.equal(run.state, 'PAUSED')
+  const pauseTransitions = run.transitions.filter((t) => t.to === 'PAUSED')
+  assert.equal(pauseTransitions.length, 1, `exactly one PAUSED transition despite ${N} genuinely concurrent duplicate calls`)
+})
