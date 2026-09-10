@@ -154,6 +154,10 @@ export async function respondSelfImprovementCommand({ message, deps = {} }) {
       researchMissions: deps.researchMissions ?? realInputs?.researchMissions ?? {},
       plannerMissionRecords: deps.plannerMissionRecords ?? realInputs?.plannerMissionRecords ?? {},
       selfImprovementFindings: rawStore,
+      // Real finding (#11) fix: without this, a project candidate already
+      // really adopted (a real git merge) would still be listed here as
+      // "ready for adoption" alongside genuine self-improvement candidates.
+      projectCanonicalBases: deps.projectCanonicalBases ?? realInputs?.projectCanonicalBases ?? {},
       resourcePressureState: null
     }).filter((i) => i.category === 'READY_FOR_ADOPTION')
     const lines = readyItems.map((i) => `- **${i.severity}** ${i.label}: ${i.reason}`)

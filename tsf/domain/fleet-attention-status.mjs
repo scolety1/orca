@@ -4,9 +4,8 @@
 // single honest item list -- never a second, independently-derived truth
 // store. See tsf/docs/tsf/OPERATOR_ATTENTION_NOTIFICATIONS_V1_CHECKPOINT.md
 // for the locked reconciliation this implements.
-import { fleetNeedsYouStatus, fleetWorkStatus } from './fleet-work-status.mjs'
+import { fleetNeedsYouStatus } from './fleet-work-status.mjs'
 import { summarizeWorkFromRuns } from './work-feed-summary.mjs'
-import { computeResearchMissionPhase } from './research-mission.mjs'
 
 export const ATTENTION_CATEGORIES = Object.freeze([
   'NEEDS_OWNER',
@@ -178,43 +177,55 @@ function blockedItems(blocked, researchMissions, displayNameById) {
   })
 }
 
-// COMPLETED_RECENTLY is deliberately NOT read from summarizeWorkFromRuns's
-// own `.recentlyCompleted` -- that array merges real run/research completions
-// with legacy static-adoption entries (project.mission.state === 'ADOPTED',
-// operator-driven, Tim already knows) into one shape-identical list with no
-// field to tell them apart. Re-derived directly here from fleetWorkStatus's
-// live feed state (COMPLETED -- reserved by live-work-feed.mjs for a run
-// whose project has since been adopted; not currently emitted, but honestly
-// checked for forward-compatibility) and computeResearchMissionPhase, so a
-// legacy adoption can never masquerade as a real, notify-worthy completion.
-function completedRecentlyItems(projects, keepGoingRuns, researchMissions, clock, displayNameById) {
+// Real finding (#11) fix: this used to independently re-derive its own
+// Keep-Going-run completion signal straight from fleetWorkStatus's live
+// feed state (COMPLETED -- reserved by live-work-feed.mjs for a run whose
+// project has since been adopted) -- but projectLiveWorkFeedState never
+// actually emits COMPLETED (a real, pre-existing, already-disclosed gap;
+// see work-feed-summary.mjs's own header), so this loop was structurally
+// dead code for every real Keep-Going-run project, no matter how many were
+// genuinely adopted. Fixed by reading from `recentlyCompleted` -- the
+// SAME, now-adoption-aware unified list work-feed-summary.mjs's own
+// summarizeWorkFromRuns already builds (legacy/run/research completions
+// merged there, computed once, never a second independently-drifting
+// classification here). A research-mission entry is distinguished by
+// `kind === 'RESEARCH_MISSION'` (researchMissionWorkItem's own real
+// shape). A project-run entry with `sourceKind === 'LEGACY_CANDIDATE_
+// DECISION'` is skipped here -- this fix's own first attempt included it
+// and broke the pre-existing, deliberate exclusion below (the operator
+// directly decided ADOPT/REJECT through that flow, already knows,
+// caught by this module's own real regression test) -- everything else
+// is a real KEEP_GOING_RUN_ADOPTED entry (this fix's actual target: a
+// real merge the operator may NOT already know about from this surface),
+// which now always carries an honest `reason`.
+function completedRecentlyItems(recentlyCompleted, displayNameById) {
   const items = []
-  for (const status of fleetWorkStatus(projects, keepGoingRuns, clock)) {
-    if (status.feed?.state !== 'COMPLETED') { continue }
+  for (const entry of recentlyCompleted) {
+    if (entry.kind === 'RESEARCH_MISSION') {
+      items.push({
+        id: `research:${entry.missionId}:completed`,
+        category: 'COMPLETED_RECENTLY',
+        severity: DEFAULT_SEVERITY_BY_CATEGORY.COMPLETED_RECENTLY,
+        project: projectRef(displayNameById, entry.projectId),
+        label: entry.researchQuestion ?? entry.missionId,
+        reason: 'research mission reached COMPLETE',
+        changedAt: entry.updatedAt,
+        deepLink: { kind: 'RESEARCH_MISSION', id: entry.missionId },
+        source: { kind: 'RESEARCH_MISSION', id: entry.missionId }
+      })
+      continue
+    }
+    if (entry.sourceKind === 'LEGACY_CANDIDATE_DECISION') { continue }
     items.push({
-      id: `run:${status.projectId}:completed`,
+      id: `run:${entry.id}:completed`,
       category: 'COMPLETED_RECENTLY',
       severity: DEFAULT_SEVERITY_BY_CATEGORY.COMPLETED_RECENTLY,
-      project: projectRef(displayNameById, status.projectId),
-      label: status.displayName,
-      reason: status.feed.reason,
-      changedAt: status.lastCheckpointAt ?? null,
-      deepLink: { kind: 'PROJECT', id: status.projectId },
-      source: { kind: 'KEEP_GOING_RUN', id: status.projectId }
-    })
-  }
-  for (const mission of Object.values(researchMissions)) {
-    if (computeResearchMissionPhase(mission) !== 'COMPLETE') { continue }
-    items.push({
-      id: `research:${mission.id}:completed`,
-      category: 'COMPLETED_RECENTLY',
-      severity: DEFAULT_SEVERITY_BY_CATEGORY.COMPLETED_RECENTLY,
-      project: projectRef(displayNameById, mission.projectId),
-      label: mission.specification?.researchQuestion ?? mission.id,
-      reason: 'research mission reached COMPLETE',
-      changedAt: mission.updatedAt,
-      deepLink: { kind: 'RESEARCH_MISSION', id: mission.id },
-      source: { kind: 'RESEARCH_MISSION', id: mission.id }
+      project: projectRef(displayNameById, entry.id),
+      label: entry.displayName ?? displayNameById.get(entry.id) ?? entry.id,
+      reason: entry.reason ?? 'completed',
+      changedAt: entry.adoptedAt ?? null,
+      deepLink: { kind: 'PROJECT', id: entry.id },
+      source: { kind: 'KEEP_GOING_RUN', id: entry.id }
     })
   }
   return items
@@ -338,20 +349,26 @@ export function buildFleetAttentionItems({
   plannerMissionRecords = {},
   selfImprovementFindings = {},
   projectExecutionHolds = {},
+  // Real finding (#11) fix: without this, summarizeWorkFromRuns below has
+  // no way to tell a genuinely READY_FOR_ADOPTION run from one that has
+  // ALREADY been really adopted (see that function's own header comment).
+  // Defaults to {} (existing callers that never pass it keep their exact
+  // current behavior -- no fabrication if this evidence isn't supplied).
+  projectCanonicalBases = {},
   resourcePressureState = null,
   clock = () => new Date()
 }) {
   const displayNameById = new Map(projects.map((p) => [p.id, p.displayName]))
   const origins = indexNeedsYouOrigins(keepGoingRuns, researchMissions, plannerMissionRecords)
   const needsYou = fleetNeedsYouStatus(projects, keepGoingRuns, researchMissions, plannerMissionRecords)
-  const workSummary = summarizeWorkFromRuns(projects, keepGoingRuns, clock, researchMissions)
+  const workSummary = summarizeWorkFromRuns(projects, keepGoingRuns, clock, researchMissions, projectCanonicalBases)
 
   const items = [
     ...needsYouItems(needsYou, origins, displayNameById),
     ...stalledItems(workSummary.stalled, displayNameById),
     ...readyForAdoptionItems(workSummary.readyForAdoption, displayNameById),
     ...blockedItems(workSummary.blocked, researchMissions, displayNameById),
-    ...completedRecentlyItems(projects, keepGoingRuns, researchMissions, clock, displayNameById),
+    ...completedRecentlyItems(workSummary.recentlyCompleted, displayNameById),
     ...selfImprovementItems(selfImprovementFindings, displayNameById),
     ...holdItems(projectExecutionHolds, displayNameById),
     ...resourceBlockedRunItems(keepGoingRuns, displayNameById)

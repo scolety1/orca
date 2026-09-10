@@ -65,11 +65,23 @@ const RUN_FEED_SECTION = Object.freeze({
   COMPLETED: 'recentlyCompleted'
 })
 
-function recentlyCompletedEntry(project, missionId, adoptedAt) {
-  return { id: project.id, displayName: project.displayName, missionId, adoptedAt }
+// `reason` (finding #11's own fix): a real, honest, human-readable
+// explanation of WHY this project counts as recently completed -- carried
+// through so fleet-attention-status.mjs's completedRecentlyItems can build
+// a real AttentionItem straight from this entry, instead of independently
+// re-deriving (and, before this fix, getting wrong for a real adoption)
+// its own separate classification. `sourceKind` (also finding #11's own
+// fix, added after this fix's own regression run caught it): distinguishes
+// a LEGACY_CANDIDATE_DECISION entry (the operator directly clicked
+// ADOPT/REJECT -- already knows, deliberately excluded from the
+// COMPLETED_RECENTLY attention category, unchanged pre-existing behavior)
+// from a KEEP_GOING_RUN_ADOPTED entry (a real merge the operator may NOT
+// already know about from THIS surface -- the whole point of this fix).
+function recentlyCompletedEntry(project, missionId, adoptedAt, reason = null, sourceKind = null) {
+  return { id: project.id, displayName: project.displayName, missionId, adoptedAt, reason, sourceKind }
 }
 
-export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () => new Date(), researchMissions = {}) {
+export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () => new Date(), researchMissions = {}, canonicalBases = {}) {
   const statusByProjectId = new Map(
     fleetWorkStatus(projects, keepGoingRuns, clock).map((status) => [status.projectId, status])
   )
@@ -105,7 +117,9 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
           recentlyCompletedEntry(
             project,
             project.mission.id,
-            project.receipts?.chain?.at(-1)?.timestamp ?? null
+            project.receipts?.chain?.at(-1)?.timestamp ?? null,
+            'adopted (legacy candidate flow)',
+            'LEGACY_CANDIDATE_DECISION'
           )
         )
       }
@@ -117,7 +131,32 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
       runId: status.runId,
       lastCheckpointAt: status.lastCheckpointAt
     }
-    const section = RUN_FEED_SECTION[status.feed.state]
+    // Real finding (#11), disclosed earlier this mission, fixed here:
+    // projectLiveWorkFeedState's own READY_FOR_ADOPTION classification is
+    // derived purely from run.state === 'COMPLETE', with no awareness of
+    // whether THIS exact candidate has already been really adopted (a real
+    // git merge, tracked durably via project-canonical-base-store.mjs's
+    // own ADVANCED history, keyed by the SAME missionId -- see findings
+    // #12/#14, which made that history the trustworthy, race-safe source
+    // of "did a real merge for this run actually land"). A pre-existing
+    // gap (this module's own prior header comment already named it --
+    // "adoption is tracked separately via mission.state === 'ADOPTED'...
+    // this branch is forward-compatible rather than currently reachable")
+    // that tonight's other fixes made far more likely to be hit in
+    // practice, since real adoption is now reachable from many more
+    // surfaces. Overridden HERE, at the one real aggregation choke point
+    // both Work and the attention feed read from (see fleet-attention-
+    // status.mjs's own buildFleetAttentionItems), rather than widening
+    // projectLiveWorkFeedState's own contract (~10 other real call sites
+    // also depend on its exact vocabulary) -- never invents a new status,
+    // just checks the same real, durable evidence already proven safe.
+    const advancedEntry = (canonicalBases[project.id]?.history ?? []).find(
+      (h) => h.action === 'ADVANCED' && h.missionId === status.runId
+    )
+    const section =
+      status.feed.state === 'READY_FOR_ADOPTION' && advancedEntry
+        ? 'recentlyCompleted'
+        : RUN_FEED_SECTION[status.feed.state]
     switch (section) {
       case 'active':
         runActive.push(item)
@@ -139,7 +178,11 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
           recentlyCompletedEntry(
             project,
             status.runId,
-            keepGoingRuns[project.id]?.updatedAt ?? null
+            advancedEntry?.at ?? keepGoingRuns[project.id]?.updatedAt ?? null,
+            advancedEntry
+              ? 'a real adoption merge landed for this run -- no longer ready for adoption'
+              : status.feed.reason,
+            'KEEP_GOING_RUN_ADOPTED'
           )
         )
         break

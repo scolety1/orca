@@ -25,7 +25,7 @@ const {
   shouldRouteToFleetAttentionBridge
 } = await import('../server/command-fleet-attention-bridge.mjs')
 const { createFinding, transitionFinding } = await import('../domain/self-improvement-finding.mjs')
-const { createOvernightRun, markStalled } = await import('../domain/keep-going.mjs')
+const { createOvernightRun, markStalled, completeRun } = await import('../domain/keep-going.mjs')
 const { addResearchNode, createResearchMission, transitionResearchMission } = await import('../domain/research-mission.mjs')
 const { buildResourcePressureState } = await import('../domain/resource-pressure-governor.mjs')
 
@@ -137,10 +137,8 @@ test('FLEET_ATTENTION_COMPLETED: honest empty state, then a real completed resea
   assert.match(empty.text, /Nothing has completed recently/)
   assert.deepEqual(empty.resolvedProjectIds, [])
 
-  // COMPLETED_RECENTLY is only real for a research mission reaching COMPLETE
-  // (or a legacy-reserved run state live-work-feed.mjs never actually emits
-  // -- see fleet-attention-status.mjs's own header comment) -- mirrors
-  // fleet-attention-status.test.mjs's own fixture for this category.
+  // A research mission reaching COMPLETE -- mirrors fleet-attention-status.
+  // test.mjs's own fixture for this category.
   let mission = baseMission('mission:complete')
   mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, CLOCK)
   mission = transitionResearchMission(mission, 'COMPLETE', { reason: 'done', expectedRevision: mission.revision }, CLOCK)
@@ -150,6 +148,29 @@ test('FLEET_ATTENTION_COMPLETED: honest empty state, then a real completed resea
     deps: emptyDeps({ projects: [project('p1', { displayName: 'Project One' })], researchMissions: { [mission.id]: mission } })
   })
   assert.match(result.text, /research mission reached COMPLETE/)
+  assert.deepEqual(result.resolvedProjectIds, ['p1'])
+})
+
+// Real finding #11 fix: this bridge's own realFleetInputs helper never
+// threaded projectCanonicalBases through, so "what just finished?" would
+// have kept silently omitting -- or, worse, could never disprove --
+// a project this very bridge already helped really adopt (still shown as
+// READY_FOR_ADOPTION elsewhere, never as COMPLETED_RECENTLY here).
+test('FLEET_ATTENTION_COMPLETED: a real Keep Going run adoption (projectCanonicalBases ADVANCED entry) now appears here too, not READY_FOR_ADOPTION', async () => {
+  const run = createOvernightRun({ id: 'r1', projectId: 'p1', originalGoal: 'Fix it.', acceptanceCriteria: ['X'] }, CLOCK)
+  const completed = completeRun(run, CLOCK)
+  const result = await respondFleetAttentionCommand({
+    message: 'what completed?',
+    clock: CLOCK,
+    deps: emptyDeps({
+      projects: [project('p1', { displayName: 'Project One' })],
+      keepGoingRuns: { p1: completed },
+      projectCanonicalBases: {
+        p1: { history: [{ action: 'ADVANCED', ref: 'refs/heads/main', resultingSha: 'deadbeef', missionId: run.id, at: '2026-09-07T10:00:00.000Z' }] }
+      }
+    })
+  })
+  assert.match(result.text, /real adoption merge landed/)
   assert.deepEqual(result.resolvedProjectIds, ['p1'])
 })
 

@@ -89,8 +89,8 @@ export function projectsById() {
 // mission.state-only classification was the root cause of a durable,
 // ACTIVE run staying invisible to Work). keepGoingRuns/clock are optional so
 // existing callers that only care about the legacy fields keep working.
-export function summarizeWork(projects, keepGoingRuns = {}, clock = () => new Date(), researchMissions = {}) {
-  return summarizeWorkFromRuns(projects, keepGoingRuns, clock, researchMissions)
+export function summarizeWork(projects, keepGoingRuns = {}, clock = () => new Date(), researchMissions = {}, canonicalBases = {}) {
+  return summarizeWorkFromRuns(projects, keepGoingRuns, clock, researchMissions, canonicalBases)
 }
 
 // Real V1 stabilization finding (Operator UX pass, self-explaining project

@@ -19,6 +19,7 @@ import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { classifyAdoptionCommandIntent } from '../domain/command-adoption-execution.mjs'
 import { executeCommandAdoption } from './command-adoption-execution.mjs'
+import { readAllProjectCanonicalBases } from './project-canonical-base-store.mjs'
 
 // A2's own required test: the gate this file's caller (command-responder.mjs)
 // uses to decide "is this genuinely a multi-project, multi-action message,
@@ -100,12 +101,17 @@ async function applyExternalWorkHold(project, rawClause, clock, deps) {
 // same convention as every other bridge here.
 function reportAdoptionCandidate(project, opState, clock, deps) {
   const read = deps.readAllFindings ?? readAllFindings
+  const readCanonicalBases = deps.readAllProjectCanonicalBases ?? readAllProjectCanonicalBases
   const items = buildFleetAttentionItems({
     projects: [project],
     keepGoingRuns: opState.keepGoingRuns ?? {},
     researchMissions: opState.researchMissions ?? {},
     plannerMissionRecords: opState.plannerMissions ?? {},
     selfImprovementFindings: read(),
+    // Real finding (#11) fix: without this, a project this very bridge
+    // already helped really adopt would still be reported "ready for
+    // adoption" on the next "is X ready?" ask.
+    projectCanonicalBases: deps.projectCanonicalBases ?? readCanonicalBases(),
     resourcePressureState: null,
     clock
   }).filter((i) => i.project?.id === project.id && i.category === 'READY_FOR_ADOPTION')

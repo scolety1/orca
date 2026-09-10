@@ -163,7 +163,7 @@ export function createRequestHandler(options = {}) {
         return json(
           res,
           200,
-          summarizeWork(projects, opState.keepGoingRuns, () => new Date(), opState.researchMissions)
+          summarizeWork(projects, opState.keepGoingRuns, () => new Date(), opState.researchMissions, opState.projectCanonicalBases)
         )
       }
 

@@ -16,6 +16,7 @@ import { readAllResearchMissions } from './research-mission-store.mjs'
 import { readAllPlannerMissionRecords } from './planner-mission-store.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { readAllProjectExecutionHolds } from './project-execution-hold-store.mjs'
+import { readAllProjectCanonicalBases } from './project-canonical-base-store.mjs'
 import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 
@@ -86,6 +87,14 @@ function transitionSignatureFor(item, findingsById) {
 // itself already correctly blocks real actions (adoption, pause/resume),
 // proven elsewhere -- but an operator asking "what's blocked?" never
 // learned why.
+// TSF Overnight Control-Plane Burn-In V2, real finding (not guessed),
+// finding #11: this function also never read the real project-canonical-
+// base store, so `summarizeWorkFromRuns` (via buildFleetAttentionItems)
+// had no way to tell a genuinely READY_FOR_ADOPTION run apart from one
+// that has ALREADY been really adopted (a real git merge, durably tracked
+// there since findings #12/#14's own fixes) -- a real, previously-
+// disclosed truthfulness gap, now closed at the one real place both this
+// reconciler and GET /api/attention read from.
 export function gatherRealFleetAttentionInputs() {
   const { map, opState } = projectsById()
   return {
@@ -94,7 +103,8 @@ export function gatherRealFleetAttentionInputs() {
     researchMissions: readAllResearchMissions(),
     plannerMissionRecords: readAllPlannerMissionRecords(),
     selfImprovementFindings: readAllFindings(),
-    projectExecutionHolds: readAllProjectExecutionHolds()
+    projectExecutionHolds: readAllProjectExecutionHolds(),
+    projectCanonicalBases: readAllProjectCanonicalBases()
   }
 }
 
@@ -114,6 +124,7 @@ export async function reconcileFleetAttentionItems(clock, deps = {}) {
   const plannerMissionRecords = deps.plannerMissionRecords ?? real?.plannerMissionRecords ?? readAllPlannerMissionRecords()
   const selfImprovementFindings = deps.selfImprovementFindings ?? real?.selfImprovementFindings ?? readAllFindings()
   const projectExecutionHolds = deps.projectExecutionHolds ?? real?.projectExecutionHolds ?? readAllProjectExecutionHolds()
+  const projectCanonicalBases = deps.projectCanonicalBases ?? real?.projectCanonicalBases ?? readAllProjectCanonicalBases()
   const resourcePressureState =
     deps.resourcePressureState ??
     real?.resourcePressureState ??
@@ -126,6 +137,7 @@ export async function reconcileFleetAttentionItems(clock, deps = {}) {
     plannerMissionRecords,
     selfImprovementFindings,
     projectExecutionHolds,
+    projectCanonicalBases,
     resourcePressureState,
     clock
   })

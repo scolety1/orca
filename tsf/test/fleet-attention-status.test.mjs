@@ -164,6 +164,52 @@ test('READY_FOR_ADOPTION: a COMPLETE run appears correctly categorized', () => {
   assert.equal(items[0].severity, 'P2')
 })
 
+// Real finding #11 (disclosed earlier this mission, fixed here, end-to-end
+// at the one real aggregation choke point both the Work page and this
+// attention feed read from): a COMPLETE run whose exact candidate has
+// ALREADY been really adopted (a real git merge, durably tracked by
+// project-canonical-base-store.mjs's own ADVANCED history) must stop
+// appearing as READY_FOR_ADOPTION and instead appear as COMPLETED_RECENTLY
+// with an honest reason -- an operator asking "is X ready for adoption?"
+// or "what just finished?" must never get a stale answer about a project
+// this very system already adopted.
+test('finding #11: a COMPLETE run with a matching real ADVANCED canonical-base entry is COMPLETED_RECENTLY, not stale READY_FOR_ADOPTION', () => {
+  const run = completeRun(newRun('r1', 'p1'), clock)
+  const projectCanonicalBases = {
+    p1: {
+      history: [
+        { action: 'ADVANCED', ref: 'refs/heads/main', resultingSha: 'deadbeef', missionId: run.id, at: '2026-09-07T10:00:00.000Z' }
+      ]
+    }
+  }
+  const items = buildFleetAttentionItems({
+    projects: [project('p1', { displayName: 'Project One' })],
+    keepGoingRuns: { p1: run },
+    projectCanonicalBases,
+    clock
+  })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'COMPLETED_RECENTLY')
+  assert.equal(items[0].severity, 'P3')
+  assert.equal(items[0].changedAt, '2026-09-07T10:00:00.000Z')
+  assert.match(items[0].reason, /real adoption merge landed/)
+  assert.deepEqual(items[0].source, { kind: 'KEEP_GOING_RUN', id: 'p1' })
+})
+
+// Backward compatible: the pre-fix test above (no projectCanonicalBases
+// passed) still classifies as READY_FOR_ADOPTION -- proves the default {}
+// preserves exact prior behavior for every not-yet-threaded caller.
+test('finding #11: omitting projectCanonicalBases entirely preserves the pre-fix READY_FOR_ADOPTION classification', () => {
+  const run = completeRun(newRun('r2', 'p2'), clock)
+  const items = buildFleetAttentionItems({
+    projects: [project('p2', { displayName: 'Project Two' })],
+    keepGoingRuns: { p2: run },
+    clock
+  })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'READY_FOR_ADOPTION')
+})
+
 test('BLOCKED_EXTERNAL: a legacy blocked project appears with an honest null changedAt (no real per-item timestamp exists)', () => {
   const p = project('p1', { mission: { state: 'BLOCKED_SOMETHING', id: null, blockedReason: 'waiting on legal review' } })
   const items = buildFleetAttentionItems({ projects: [p], clock })

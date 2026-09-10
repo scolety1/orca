@@ -151,6 +151,75 @@ test('a run in WORKING/NEEDS_YOU/STALLED/COMPLETE buckets into active/needsYou/s
   )
 })
 
+// Real finding #11 (disclosed earlier this mission, fixed here): a run
+// that READY_FOR_ADOPTION classifies purely from run.state === 'COMPLETE'
+// must be reclassified as recentlyCompleted once a real adoption merge for
+// THIS EXACT run has actually landed (project-canonical-base-store.mjs's
+// own durable ADVANCED history) -- otherwise the Work page and the
+// attention feed keep telling an operator "ready for adoption" about a
+// project already really adopted.
+test('finding #11: a COMPLETE run with a matching real ADVANCED canonical-base entry is reclassified to recentlyCompleted, not readyForAdoption', () => {
+  const completeRunView = completeRun(newRun('r-complete', 'p-complete'), clock)
+  const canonicalBases = {
+    'p-complete': {
+      history: [
+        { action: 'ADVANCED', ref: 'refs/heads/main', resultingSha: 'deadbeef', missionId: completeRunView.id, at: '2026-08-24T12:00:00.000Z' }
+      ]
+    }
+  }
+  const summary = summarizeWorkFromRuns(
+    [project('p-complete')],
+    { 'p-complete': completeRunView },
+    clock,
+    {},
+    canonicalBases
+  )
+  assert.deepEqual(summary.readyForAdoption, [])
+  assert.equal(summary.recentlyCompleted.length, 1)
+  assert.equal(summary.recentlyCompleted[0].id, 'p-complete')
+  assert.equal(summary.recentlyCompleted[0].missionId, completeRunView.id)
+  assert.equal(summary.recentlyCompleted[0].adoptedAt, '2026-08-24T12:00:00.000Z')
+  assert.equal(summary.recentlyCompleted[0].reason, 'a real adoption merge landed for this run -- no longer ready for adoption')
+})
+
+// The negative case: a canonical-base history entry for a DIFFERENT
+// missionId (an earlier, unrelated adoption of the same project) must
+// never falsely override a genuinely new, still-unadopted candidate.
+test('finding #11: a canonical-base entry for a different missionId does not override a genuinely ready run', () => {
+  const completeRunView = completeRun(newRun('r-complete-2', 'p-complete-2'), clock)
+  const canonicalBases = {
+    'p-complete-2': {
+      history: [
+        { action: 'ADVANCED', ref: 'refs/heads/main', resultingSha: 'cafebabe', missionId: 'some-earlier-unrelated-run', at: '2026-08-01T00:00:00.000Z' }
+      ]
+    }
+  }
+  const summary = summarizeWorkFromRuns(
+    [project('p-complete-2')],
+    { 'p-complete-2': completeRunView },
+    clock,
+    {},
+    canonicalBases
+  )
+  assert.deepEqual(
+    summary.readyForAdoption.map((p) => p.id),
+    ['p-complete-2']
+  )
+  assert.equal(summary.recentlyCompleted.length, 0)
+})
+
+// Backward compatible: omitting canonicalBases entirely (existing callers,
+// and every call site not yet threaded through) behaves exactly as before
+// -- a COMPLETE run stays readyForAdoption.
+test('finding #11: omitting canonicalBases entirely preserves the pre-fix readyForAdoption classification', () => {
+  const completeRunView = completeRun(newRun('r-complete-3', 'p-complete-3'), clock)
+  const summary = summarizeWorkFromRuns([project('p-complete-3')], { 'p-complete-3': completeRunView }, clock)
+  assert.deepEqual(
+    summary.readyForAdoption.map((p) => p.id),
+    ['p-complete-3']
+  )
+})
+
 test('a run with a recorded wave and no independent verification lands in verifying, not silently in active', () => {
   let run = newRun('r-verifying', 'p-verifying')
   run = recordWave(

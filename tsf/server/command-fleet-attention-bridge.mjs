@@ -46,7 +46,13 @@ function realFleetInputs(deps) {
     keepGoingRuns: deps.keepGoingRuns ?? real.keepGoingRuns,
     researchMissions: deps.researchMissions ?? real?.researchMissions ?? {},
     plannerMissionRecords: deps.plannerMissionRecords ?? real?.plannerMissionRecords ?? {},
-    selfImprovementFindings: deps.selfImprovementFindings ?? real?.selfImprovementFindings ?? {}
+    selfImprovementFindings: deps.selfImprovementFindings ?? real?.selfImprovementFindings ?? {},
+    // Real finding (#11) fix: FLEET_ATTENTION_COMPLETED ("what just
+    // finished?") filters to COMPLETED_RECENTLY, which a real adoption now
+    // correctly feeds into (see fleet-attention-status.mjs) -- without this,
+    // that answer would still miss any project this bridge itself just
+    // helped adopt.
+    projectCanonicalBases: deps.projectCanonicalBases ?? real?.projectCanonicalBases ?? {}
   }
 }
 
