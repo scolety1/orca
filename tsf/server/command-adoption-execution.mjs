@@ -111,13 +111,28 @@ import { getStateFilePath, loadState, saveState } from './data-store.mjs'
 // real merge... has already happened" -- extended here to mean a merge
 // that is honestly STILL WANTED, not one a concurrent hold has since
 // disowned).
+// Pre-UI Productization V1, Priority 3: self-improvement-adoption.mjs's
+// own attemptRepairAdoption reuses withAdoptionLock with a projectId
+// fallback (finding.projectId ?? missionId) for the rare project-less
+// finding -- a real missionId here can contain colons (e.g.
+// "mission:selfimprove:fixture"), which are invalid in a Windows file
+// path segment (live-reproduced: ENOENT trying to open the raw path
+// before this sanitization existed). Every real caller's own project id
+// (kebab-case, no reserved characters) passes through unchanged.
 function adoptionExecutionLockPath(projectId) {
-  return `${getStateFilePath()}.adoption-execution.${projectId}.lock`
+  const safeKey = String(projectId).replace(/[<>:"/\\|?*]/g, '_')
+  return `${getStateFilePath()}.adoption-execution.${safeKey}.lock`
 }
 
 const adoptionQueueTails = new Map()
 
-async function withAdoptionLock(projectId, fn) {
+// Exported (Pre-UI Productization V1, Priority 3): self-improvement-
+// adoption.mjs's own attemptRepairAdoption reuses this SAME primitive
+// directly -- same lock path convention (keyed by project id) means a
+// main-path adoption and a self-improvement repair adoption for the SAME
+// project correctly serialize against EACH OTHER too, not just against
+// themselves, without a second/duplicate lock mechanism.
+export async function withAdoptionLock(projectId, fn) {
   const previousTail = adoptionQueueTails.get(projectId) ?? Promise.resolve()
   // Every queued turn, including this one, must run regardless of
   // whether an earlier turn threw -- `.catch(() => {})` on the tail
