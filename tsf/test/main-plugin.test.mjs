@@ -90,14 +90,43 @@ test('does not log the missing-build warning when tsf/ui/dist genuinely exists',
   }
 })
 
-test('the tsf-open-ui command opens the URL for the actual port this activation is using', async () => {
+// Pre-UI Productization V1, Priority 4, real gap: this command used to
+// open the raw server URL directly -- if the build was stale/missing at
+// that exact moment (the common first-activation case), the operator got
+// a raw 404 with no guidance. Now opens the SAME real, already-tested
+// guide page Launch-TSF.ps1 (the OTHER real launch path) already uses,
+// which owns the real readiness check and only navigates to the real UI
+// once genuinely READY -- never a second, duplicated setup UI.
+test('the tsf-open-ui command opens the real first-run-setup.html guide page, as a real file:// URL', async () => {
   const { orca, registered } = fakeOrca()
   const port = ephemeralPort()
   const opened = []
   activate(orca, {
     port,
     spawnFn: () => ({ stdout: null, stderr: null, on: () => {}, kill: () => {} }),
-    openUrl: (url) => opened.push(url)
+    openUrl: (url) => opened.push(url),
+    firstRunSetupPath: path.join(import.meta.dirname, '..', 'launcher', 'first-run-setup.html')
+  })
+  try {
+    const result = await registered.get('tsf-open-ui')()
+    assert.equal(opened.length, 1)
+    assert.match(opened[0], /^file:\/\/.*first-run-setup\.html$/)
+    assert.equal(result.ok, true)
+    assert.equal(result.url, opened[0])
+  } finally {
+    deactivate()
+  }
+})
+
+test('the tsf-open-ui command falls back to the raw server URL if the guide page itself is somehow missing -- never worse than the prior behavior', async () => {
+  const { orca, registered } = fakeOrca()
+  const port = ephemeralPort()
+  const opened = []
+  activate(orca, {
+    port,
+    spawnFn: () => ({ stdout: null, stderr: null, on: () => {}, kill: () => {} }),
+    openUrl: (url) => opened.push(url),
+    firstRunSetupPath: path.join(import.meta.dirname, 'fixtures', 'does-not-exist', 'first-run-setup.html')
   })
   try {
     const result = await registered.get('tsf-open-ui')()

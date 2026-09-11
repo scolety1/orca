@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { ensureWindowsUserEnv } from './adapters/windows-user-env.mjs'
 import { startServerLifecycle } from './server/server-process-lifecycle.mjs'
 import { openUrl } from './server/open-url-command.mjs'
@@ -107,10 +108,31 @@ export default function activate(orca, testOverrides = {}) {
   // shell.openExternal-equivalent exists, per wave 2's finding) -- this
   // spawns the OS's own "open a URL" command directly, satisfying
   // "double-click launch" as one command-palette invocation.
+  //
+  // Pre-UI Productization V1, Priority 4 (real, confirmed gap): this used
+  // to open the raw server URL directly -- if the build is stale/missing
+  // at that exact moment (the common first-activation case: a fresh
+  // checkout has no tsf/ui/dist until `npm run build` runs once, per the
+  // existsSync check above), the operator got a raw 404 with no guidance,
+  // only a log line few would ever see. Launch-TSF.ps1 (the OTHER real
+  // launch path) already solves this correctly: it always opens
+  // first-run-setup.html first, and THAT page owns the real readiness
+  // check/build trigger and only navigates to the real UI once genuinely
+  // READY. Reusing the exact same real, already-tested guide page here --
+  // no new setup UI, no duplicated readiness logic.
+  const firstRunSetupPath =
+    testOverrides.firstRunSetupPath ?? join(import.meta.dirname, 'launcher', 'first-run-setup.html')
   orca.commands.register('tsf-open-ui', async () => {
     const openFn = testOverrides.openUrl ?? openUrl
-    openFn(`http://127.0.0.1:${serverPort}`)
-    return { ok: true, url: `http://127.0.0.1:${serverPort}` }
+    // Falls back to the raw server URL if the guide page itself is
+    // somehow missing (never worse than the prior behavior) -- real,
+    // defensive, matches this same function's own existsSync caution for
+    // uiIndexPath above.
+    const url = existsSync(firstRunSetupPath)
+      ? pathToFileURL(firstRunSetupPath).href
+      : `http://127.0.0.1:${serverPort}`
+    openFn(url)
+    return { ok: true, url }
   })
   orca.commands.register('tsf-status', async () => {
     const usage = await orca.host.call('storage.get', { key: 'usageMode' })
