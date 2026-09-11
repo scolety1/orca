@@ -538,6 +538,22 @@ passes. `TWO_CONSECUTIVE_STABLE_FULL_PASSES = YES`.
   "wrong PROJECT executes" risk class cannot apply. The real remaining
   gap (unreachable from secondary surfaces) is real but lower-priority;
   not pursued to avoid scope creep on the same mechanism.
+  **Re-investigated** (confirmed by reading `chat-http-routes.mjs`
+  directly, not assumed): `respondCommand` IS already reached from the
+  real per-project chat HTTP route, but only on its own Global-Command-
+  style ambiguous fallback (`body.projectId == null` AND the message
+  doesn't resolve to exactly one project AND no context-fallback
+  applies) -- a genuinely project-SCOPED chat thread (`body.projectId`
+  set) never reaches `respondCommand`, and so never reaches these 4
+  bridges either. Whether that's actually a gap worth closing is a real
+  **product** question, not a mechanical bug: unlike #7/#8 (a user
+  saying "pause it" in a project's own chat clearly expects THAT
+  project to pause -- an unambiguous defect), it's genuinely unclear
+  whether a user chatting inside one specific project's thread asking
+  "what needs me?" (fleet-wide) should get a real fleet-wide answer
+  from there, or whether that question only makes sense from the
+  fleet-wide Command surface. Left disclosed rather than deciding this
+  unilaterally.
 - **Finding #11** (P1/P2, real truthfulness gap, not safety-critical) --
   **FIXED, INTEGRATED, see §6E**: after a real successful adoption, the
   project remained **permanently** misclassified as `READY_FOR_ADOPTION`
@@ -768,10 +784,11 @@ everything landed since.)
    owner's own context on the self-improvement gate.
 2. Extend Lane A's matrix to RELEASE (the hold's own inverse action --
    PAUSE/RESUME/HOLD all now have a real 6-state matrix).
-3. Finding #9 (§7): wire the 4 remaining internal command bridges
-   (dogfood/self-improvement/fleet-attention/runtime-identity) into the
-   real HTTP route, same as #7/#8, for full surface parity (lower
-   priority -- no wrong-project risk class applies).
+3. Finding #9 (§7): needs an owner product decision first (should a
+   project-scoped chat thread answer fleet-wide questions like "what
+   needs me?" at all?), not just a mechanical wire-up -- re-investigated
+   this session and confirmed genuinely ambiguous, not deferred out of
+   laziness.
 4. Independent-repo migration (see the repository-identity
    reconciliation's own feasibility study): give `tsf/` a real,
    declared `package.json` dependency list before any future
