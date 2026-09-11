@@ -54,14 +54,21 @@ import { decomposeMultiActionFromActs } from './command-act-model.mjs'
 // logic ever runs.
 export const MULTI_ACTION_INTENTS = Object.freeze([
   'EXTERNAL_WORK_HOLD',
+  // Pre-UI Productization V1, Priority 2: RELEASE_HOLD's act previously
+  // mapped to GENERAL on both branches (domain/command-act-model.mjs) --
+  // "release hold" was recognized syntactically but wired to ZERO real
+  // execution anywhere in the codebase (confirmed by full-repo grep). Now
+  // a real, distinct intent, same shared-DECLINED-report treatment as
+  // START_KEEP_GOING/ASSESS_AND_UPGRADE/EXTERNAL_WORK_HOLD below.
+  'RELEASE_HOLD',
   'ADOPT_CANDIDATE_REPORT',
   'ADOPT_CANDIDATE_DECLINED',
   'START_KEEP_GOING',
   'ASSESS_AND_UPGRADE',
   // A single shared id for a negated START_KEEP_GOING/ASSESS_AND_UPGRADE/
-  // EXTERNAL_WORK_HOLD act -- deliberately NOT a per-action *_DECLINED
-  // variant like adoption's own: none of these has adoption's own
-  // independent, real-state-grounded re-derivation function to route a
+  // EXTERNAL_WORK_HOLD/RELEASE_HOLD act -- deliberately NOT a per-action
+  // *_DECLINED variant like adoption's own: none of these has adoption's
+  // own independent, real-state-grounded re-derivation function to route a
   // declined variant through, so this is routed to a single, generic,
   // safe "no action taken" report instead (server/command-multi-action-
   // bridge.mjs's handleEntry).

@@ -41,7 +41,8 @@ test.after(() => rmSync(ROOT, { recursive: true, force: true }))
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 const { loadState, saveState } = await import('../server/data-store.mjs')
-const { readProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
+const { readProjectExecutionHold, withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
+const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 const { createOvernightRun } = await import('../domain/keep-going.mjs')
 const { readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 
@@ -136,6 +137,50 @@ test('Overnight V2: a real single-target hold request over real HTTP genuinely s
     const after = readProjectExecutionHold(projectId)
     assert.ok(after, 'a real, durable hold must have been written')
     assert.equal(after.status, 'ACTIVE')
+  })
+})
+
+// Pre-UI Productization V1, Priority 2, real finding: "release hold" was
+// recognized as a phrase but wired to ZERO real execution -- confirmed
+// over the real HTTP route on both surfaces, mirroring HOLD's own
+// dual-surface coverage above exactly (same shared
+// classifySingleTargetHoldEntries gate, broadened, zero new wiring
+// needed in this file's own server/chat-http-routes.mjs call site).
+test('Priority 2: a real single-target release request over real HTTP genuinely lifts a durable hold, on per-project Planner Chat', async () => {
+  await withServer(async (base) => {
+    const projectId = 'http-release-per-project'
+    seedOnboardedProjectForHttp(projectId, 'HTTP Release Per Project', 'C:/nonexistent-http-release-repo-1')
+    await withProjectExecutionHold(projectId, () =>
+      createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' }, () => new Date())
+    )
+    assert.equal(readProjectExecutionHold(projectId).status, 'ACTIVE', 'sanity: a real, active hold exists before the release request')
+
+    const res = await chat(base, {
+      projectId,
+      message: `release the hold on ${projectId}.`
+    })
+    assert.equal(res.status, 200)
+    assert.match(res.body.text, /Released/)
+
+    const after = readProjectExecutionHold(projectId)
+    assert.equal(after.status, 'RELEASED', 'the hold must really, durably flip to RELEASED')
+  })
+})
+
+test('Priority 2: a real single-target release request over real HTTP genuinely lifts a durable hold, on Global Command exact-match', async () => {
+  await withServer(async (base) => {
+    const projectId = 'http-release-global-exact'
+    seedOnboardedProjectForHttp(projectId, 'HTTP Release Global Exact', 'C:/nonexistent-http-release-repo-2')
+    await withProjectExecutionHold(projectId, () =>
+      createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' }, () => new Date())
+    )
+
+    const res = await chat(base, { message: `release the hold on ${projectId}.` })
+    assert.equal(res.status, 200)
+    assert.match(res.body.text, /Released/)
+
+    const after = readProjectExecutionHold(projectId)
+    assert.equal(after.status, 'RELEASED')
   })
 })
 

@@ -12,7 +12,7 @@
 import { decomposeMultiAction } from '../domain/command-multi-action-decomposition.mjs'
 import { trimAttentionItem, buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
-import { createProjectExecutionHold } from '../domain/project-execution-hold.mjs'
+import { createProjectExecutionHold, releaseProjectExecutionHold } from '../domain/project-execution-hold.mjs'
 import { classifyDecision, classifyIntent } from './chat-responder.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
@@ -64,11 +64,24 @@ export function classifyMultiActionEntries(message, projects, aliases) {
 // own protection against misrouting an ordinary single-target message:
 // recognizes ONLY the one specific case that gate's own comment assumed
 // was handled elsewhere.
+//
+// Pre-UI Productization V1, Priority 2: broadened to ALSO recognize a
+// single-target RELEASE_HOLD entry, not just EXTERNAL_WORK_HOLD --
+// deliberately the SAME gate/name/function rather than a second, parallel
+// "classifySingleTargetReleaseEntries" -- a release request needs the
+// EXACT same precedence protection a hold request already earned across
+// finding #16's own 3 independent review rounds (e.g. "Pause X, release
+// the hold on it" combining a real PAUSE with a real release for the SAME
+// project must merge both outcomes, never let one silently shadow the
+// other -- reusing this one gate means that already-proven merge logic
+// downstream in command-responder.mjs/chat-http-routes.mjs covers release
+// for free, with zero duplicated precedence logic to independently get
+// right a second time).
 export function classifySingleTargetHoldEntries(message, projects, aliases) {
   const entries = decomposeMultiAction(message, projects, aliases)
   const targets = new Set(entries.map((e) => e.target))
-  if (targets.size !== 1) return null
-  const holdEntries = entries.filter((e) => e.intent === 'EXTERNAL_WORK_HOLD')
+  if (targets.size !== 1) { return null }
+  const holdEntries = entries.filter((e) => e.intent === 'EXTERNAL_WORK_HOLD' || e.intent === 'RELEASE_HOLD')
   return holdEntries.length > 0 ? holdEntries : null
 }
 
@@ -89,6 +102,39 @@ async function applyExternalWorkHold(project, rawClause, clock, deps) {
   return {
     text: `Held -- ${hold.note ?? 'external work active'} (recorded, releasable later).`,
     category: 'BLOCKED_EXTERNAL',
+    ok: true
+  }
+}
+
+// Pre-UI Productization V1, Priority 2 (real, confirmed gap): "release
+// hold" was recognized as a phrase (domain/command-act-model.mjs) but
+// wired to ZERO real execution anywhere -- releaseProjectExecutionHold
+// (the real, already-tested domain primitive) was never called from any
+// chat/command path. Mirrors applyExternalWorkHold's own real-durable-
+// write-before-claiming-success discipline (A6) and idempotent shape --
+// releasing an already-released (or never-held) project is an honest
+// no-op report, never a fabricated "released" claim.
+async function applyExternalWorkRelease(project, rawClause, clock, deps) {
+  const withHold = deps.withProjectExecutionHold ?? withProjectExecutionHold
+  const release = deps.releaseProjectExecutionHold ?? releaseProjectExecutionHold
+  let releasedSomething = false
+  await withHold(project.id, (current) => {
+    if (!current || current.status !== 'ACTIVE') {
+      return current // nothing active to release -- honest no-op, never fabricated
+    }
+    releasedSomething = true
+    return release(current, { releasedBy: 'OPERATOR_CHAT', reason: rawClause }, clock)
+  })
+  if (!releasedSomething) {
+    return {
+      text: `Nothing to release -- there is no active hold on ${project.displayName} right now.`,
+      category: null,
+      ok: true
+    }
+  }
+  return {
+    text: `Released -- the hold on ${project.displayName} has been lifted; work can resume normally.`,
+    category: null,
     ok: true
   }
 }
@@ -210,6 +256,9 @@ async function handleEntry(entry, project, opState, clock, deps) {
   }
   if (entry.intent === 'EXTERNAL_WORK_HOLD') {
     return applyExternalWorkHold(project, entry.rawClause, clock, deps)
+  }
+  if (entry.intent === 'RELEASE_HOLD') {
+    return applyExternalWorkRelease(project, entry.rawClause, clock, deps)
   }
   // ADOPT_CANDIDATE_DECLINED (a real, distinct decomposition-level intent --
   // see domain/command-multi-action-decomposition.mjs's own header) is

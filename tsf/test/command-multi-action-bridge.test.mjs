@@ -263,6 +263,53 @@ test('real finding, FIXED: a genuinely single-target hold request now really set
   assert.equal(after.reason, 'EXTERNAL_WORK_ACTIVE')
 })
 
+// Pre-UI Productization V1, Priority 2, real finding: "release hold" was
+// recognized syntactically (domain/command-act-model.mjs) but wired to
+// ZERO real execution anywhere -- releaseProjectExecutionHold (already
+// real, already tested) was never called from any chat/command path.
+test('real finding, FIXED: a genuinely single-target release request really lifts a durable execution hold via respondCommand', async () => {
+  const freshProject = { id: 'single-target-release-fixture', displayName: 'SingleTargetReleaseFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  await withProjectExecutionHold(freshProject.id, () =>
+    createProjectExecutionHold({ projectId: freshProject.id, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' }, clock)
+  )
+  const before = readProjectExecutionHold(freshProject.id)
+  assert.equal(before.status, 'ACTIVE', 'sanity: a real, active hold exists before the release request')
+
+  const message = 'release the hold on single-target-release-fixture.'
+  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  assert.match(result.text, /SingleTargetReleaseFixture[\s\S]*Released/)
+
+  const after = readProjectExecutionHold(freshProject.id)
+  assert.equal(after.status, 'RELEASED', 'the hold must really, durably flip to RELEASED')
+  assert.equal(after.releasedBy, 'OPERATOR_CHAT')
+})
+
+test('real finding, FIXED: releasing a project with no active hold is an honest no-op, never a fabricated "released" claim', async () => {
+  const freshProject = { id: 'release-nothing-fixture', displayName: 'ReleaseNothingFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  assert.equal(readProjectExecutionHold(freshProject.id), null, 'sanity: no hold at all for this fresh fixture')
+
+  const message = 'release the hold on release-nothing-fixture.'
+  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  assert.match(result.text, /Nothing to release/)
+  assert.doesNotMatch(result.text, /Released/)
+  assert.equal(readProjectExecutionHold(freshProject.id), null, 'must never fabricate a hold record that was never real')
+})
+
+test('real finding, FIXED: a negated release request classifies MULTI_ACTION_DECLINED, never really releases -- "Don\'t release the hold on niners-war-room."', async () => {
+  const projectId = 'negated-release-fixture'
+  const freshProject = { id: projectId, displayName: 'NegatedReleaseFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  await withProjectExecutionHold(projectId, () =>
+    createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' }, clock)
+  )
+
+  const message = `Don't release the hold on ${projectId}.`
+  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  assert.doesNotMatch(result.text, /Released/)
+
+  const after = readProjectExecutionHold(projectId)
+  assert.equal(after.status, 'ACTIVE', 'a negated release request must never actually lift the real hold')
+})
+
 // Round-2 independent-review finding (real, live-reproduced by the
 // reviewer at the respondCommand level, fixed here): the original
 // singleTargetHoldEntries check returned immediately on a match, before
@@ -382,7 +429,7 @@ test('Batch-6: a hold created via one real chat turn blocks a dispatch attempted
   assert.match(result.text, /Batch6OtherProject[\s\S]*STUBBED_NO_LIVE_CALL/)
 })
 
-test('Batch-6: releasing a hold (even though chat has no release path -- a disclosed gap) lets a LATER turn dispatch again', async () => {
+test('Batch-6: releasing a hold (directly through the real store, orthogonal to whether chat can also do it) lets a LATER turn dispatch again', async () => {
   const dispatchDeps = stubbedDispatchDeps()
   const heldProject = project('batch6-release-then-redispatch', 'Batch6ReleaseThenRedispatch', { root: 'C:/stub-repo-root' })
   const otherProject = project('batch6-release-then-redispatch-other', 'Batch6ReleaseThenRedispatchOther', { root: 'C:/stub-repo-root' })

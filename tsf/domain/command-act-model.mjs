@@ -156,7 +156,6 @@ export { buildExcludedSpans, provenanceAt, findQuoteSpans, findReportedSpeechSpa
 // same allowlist logic that file's own hasAdoptionVerb already used.
 // ============================================================================
 export const ADOPTION_VERB_PATTERN = /\b(adopt(ed|ing|s)?|accept(ed|ing|s)?|approve[sd]?)\b/i
-const ACCEPT_APPROVE_VERB_PATTERN = /\b(accept(ed|ing|s)?|approve[sd]?)\b/i
 export const NON_ADOPTION_ACCEPT_APPROVE_OBJECT =
   /\b(?:accept(?:ed|ing|s)?|approve[sd]?)\b(?:\s+(?:the|a|an|my|your|his|her|our|their|its))?(?:\s+\S+){0,2}?\s+(?:apolog(?:y|ies)|request|offer|invitation|proposal|terms|feedback|blame|responsibility|pr\b|pull request|resignation|application|excuse)/i
 export const ADOPTION_CANDIDATE_NOUN_SOURCE = 'candidate|run|mission|adoption'
@@ -167,7 +166,7 @@ function acceptApproveObjectMatchesAllowlist(after, projects) {
     return true
   }
   for (const project of projects) {
-    if (!project) continue
+    if (!project) {continue}
     for (const name of [project.id, project.displayName]) {
       if (typeof name === 'string' && name.trim() && new RegExp(`^(?:\\s+(?:${ARTICLE_SOURCE}))?\\s+${escapeRegExpToken(name.trim())}\\b`, 'i').test(after)) {
         return true
@@ -297,7 +296,7 @@ function resolvePreVerbPolarity(text, anchorStart, precedingAnchorEnd, excludedS
   // "do not" has no authority over the later, real "adopt").
   if (Array.isArray(excludedSpans)) {
     for (const { span } of excludedSpans) {
-      if (span[1] <= anchorStart && span[1] > windowStart) windowStart = span[1]
+      if (span[1] <= anchorStart && span[1] > windowStart) {windowStart = span[1]}
     }
   }
   const windowText = text.slice(windowStart, anchorStart)
@@ -311,7 +310,7 @@ const AFFIRMATION_MARKER_RE = new RegExp(`\\b${AFFIRMATION_MARKER_SOURCE}\\b`, '
 const CORRECTION_MARKER_RE = new RegExp(`\\b${CORRECTION_MARKER_SOURCE}\\b`, 'gi')
 
 function hasAnyVerbAnchorInText(text, projects) {
-  if (findAdoptVerbAnchors(text, projects).length > 0) return true
+  if (findAdoptVerbAnchors(text, projects).length > 0) {return true}
   return VERB_REGISTRY.some((v) => new RegExp(`\\b${v.source}\\b`, 'i').test(text))
 }
 
@@ -345,7 +344,7 @@ function applyCorrectionAmendments(acts, message, excludedSpans, projects, segme
   let m
   while ((m = CORRECTION_MARKER_RE.exec(message))) {
     const markerStart = m.index
-    if (provenanceAt(excludedSpans, markerStart)) continue
+    if (provenanceAt(excludedSpans, markerStart)) {continue}
     const afterStart = markerStart + m[0].length
     const rest = message.slice(afterStart)
     // Independent-review finding (SHOULD-FIX, round 4, real, live-
@@ -363,13 +362,13 @@ function applyCorrectionAmendments(acts, message, excludedSpans, projects, segme
     // the legitimately affirmed B via the multi-action gate.
     const boundaryMatch = new RegExp(`[.!?;\\n]|\\bbut\\b|\\bhowever\\b|\\bwhile\\b|\\b${CORRECTION_MARKER_SOURCE}\\b`, 'i').exec(rest)
     const amendText = boundaryMatch ? rest.slice(0, boundaryMatch.index) : rest
-    if (hasAnyVerbAnchorInText(amendText, projects)) continue
+    if (hasAnyVerbAnchorInText(amendText, projects)) {continue}
     const negCount = countNegationTriggers(amendText)
     const hasAffirmation = AFFIRMATION_MARKER_RE.test(amendText)
-    if (negCount >= 1 && hasAffirmation) continue // genuinely ambiguous -- fail safe
+    if (negCount >= 1 && hasAffirmation) {continue} // genuinely ambiguous -- fail safe
     const lowerBound = segments ? (segments.find((s) => markerStart >= s.start && markerStart <= s.end)?.start ?? 0) : 0
-    const target = [...acts].reverse().find((a) => a.span[1] <= markerStart && a.span[1] >= lowerBound)
-    if (!target) continue
+    const target = acts.toReversed().find((a) => a.span[1] <= markerStart && a.span[1] >= lowerBound)
+    if (!target) {continue}
     if (negCount === 1) {
       target.polarity = 'NEGATIVE'
     } else if (negCount === 0 && hasAffirmation) {
@@ -408,9 +407,9 @@ export function resolveAdoptionActs(message, projects) {
 export function classifyAdoptionCommandIntent(message, projects) {
   const text = String(message ?? '')
   const acts = resolveAdoptionActs(text, projects)
-  if (acts.length === 0) return 'NOT_ADOPTION'
-  if (acts.some((a) => a.polarity === 'AMBIGUOUS')) return 'AMBIGUOUS'
-  if (HEDGE_PATTERN.test(text) || TRAILING_QUESTION_PATTERN.test(text)) return 'AMBIGUOUS'
+  if (acts.length === 0) {return 'NOT_ADOPTION'}
+  if (acts.some((a) => a.polarity === 'AMBIGUOUS')) {return 'AMBIGUOUS'}
+  if (HEDGE_PATTERN.test(text) || TRAILING_QUESTION_PATTERN.test(text)) {return 'AMBIGUOUS'}
   return acts.at(-1).polarity === 'POSITIVE' ? 'EXECUTE_ADOPTION' : 'NOT_ADOPTION'
 }
 
@@ -445,7 +444,15 @@ const VERB_REGISTRY = [
   { id: 'RESEARCH', source: 'research\\w*', existingMultiActionIntent: 'GENERAL', negatedMultiActionIntent: 'GENERAL' },
   { id: 'FIX', source: 'fix\\w*', existingMultiActionIntent: 'GENERAL', negatedMultiActionIntent: 'GENERAL' },
   { id: 'CANCEL', source: '(?:cancel\\w*|reject(?:ed|ing|s)?)', existingMultiActionIntent: 'GENERAL', negatedMultiActionIntent: 'GENERAL' },
-  { id: 'RELEASE_HOLD', source: 'release\\s+hold\\w*', existingMultiActionIntent: 'GENERAL', negatedMultiActionIntent: 'GENERAL' }
+  // Pre-UI Productization V1, Priority 2: "release hold" was recognized
+  // syntactically but wired to ZERO real execution anywhere in the
+  // codebase (existingMultiActionIntent was GENERAL, a real, confirmed
+  // gap -- see the disclosed-gap comment above). Broadened the source
+  // pattern to also match "release the hold"/"release that hold" (a
+  // bare, article-free "release hold" reads unnaturally to a real
+  // operator) and wired to a real, distinct intent, mirroring
+  // EXTERNAL_WORK_HOLD's own pattern exactly.
+  { id: 'RELEASE_HOLD', source: 'release\\s+(?:the\\s+|that\\s+)?hold\\w*', existingMultiActionIntent: 'RELEASE_HOLD', negatedMultiActionIntent: 'MULTI_ACTION_DECLINED' }
 ]
 
 function findGenericVerbAnchors(text) {
@@ -531,13 +538,13 @@ function projectMentionsWithPositions(text, projects, aliases) {
   const variants = []
   for (const project of projects) {
     for (const raw of [project.id, project.displayName]) {
-      if (typeof raw === 'string' && raw.trim()) variants.push({ raw: raw.trim(), projectId: project.id })
+      if (typeof raw === 'string' && raw.trim()) {variants.push({ raw: raw.trim(), projectId: project.id })}
     }
   }
   for (const [alias, canonicalId] of Object.entries(aliases)) {
-    if (projects.some((p) => p.id === canonicalId)) variants.push({ raw: alias, projectId: canonicalId })
+    if (projects.some((p) => p.id === canonicalId)) {variants.push({ raw: alias, projectId: canonicalId })}
   }
-  if (variants.length === 0) return []
+  if (variants.length === 0) {return []}
   variants.sort((a, b) => b.raw.length - a.raw.length)
   const pattern = variants.map((v) => `(${escapeRegExpToken(v.raw)})`).join('|')
   const re = new RegExp(`\\b(?:${pattern})\\b`, 'gi')
@@ -639,7 +646,7 @@ function groupMentionsIntoZones(segmentText, mentions, anchors) {
         claimableAnchors = [anchorsInGap.at(-1)]
         for (let i = anchorsInGap.length - 2; i >= 0; i--) {
           const between2 = segmentText.slice(anchorsInGap[i].end, anchorsInGap[i + 1].start)
-          if (/,/.test(between2)) break
+          if (/,/.test(between2)) {break}
           claimableAnchors.unshift(anchorsInGap[i])
         }
       }
@@ -648,11 +655,11 @@ function groupMentionsIntoZones(segmentText, mentions, anchors) {
         excluded = true
         excludeFrom = lastAnchor
         inExclusionMode = true
-        for (const a of claimableAnchors) claimedAnchors.add(a)
+        for (const a of claimableAnchors) {claimedAnchors.add(a)}
       } else {
         activeAnchors = claimableAnchors
         inExclusionMode = false // a genuinely new anchor always resets exclusion mode
-        for (const a of claimableAnchors) claimedAnchors.add(a)
+        for (const a of claimableAnchors) {claimedAnchors.add(a)}
       }
     } else if (exclusionMatch && activeAnchors.length > 0) {
       excluded = true
@@ -670,9 +677,9 @@ function groupMentionsIntoZones(segmentText, mentions, anchors) {
     }
 
     if (excluded) {
-      if (excludeFrom) recordFor(excludeFrom).excludedTargetIds.push(mention.projectId)
+      if (excludeFrom) {recordFor(excludeFrom).excludedTargetIds.push(mention.projectId)}
     } else if (activeAnchors.length > 0) {
-      for (const a of activeAnchors) recordFor(a).targetIds.push(mention.projectId)
+      for (const a of activeAnchors) {recordFor(a).targetIds.push(mention.projectId)}
     } else {
       // Independent-review finding (BLOCKING, round 2, real, live-
       // confirmed): consecutive independent (unclaimed) mentions used to
@@ -710,7 +717,7 @@ function groupMentionsIntoZones(segmentText, mentions, anchors) {
     // Exclusion always wins for the SAME act.
     const excludedSet = new Set(rec.excludedTargetIds)
     const positiveTargetIds = [...new Set(rec.targetIds)].filter((id) => !excludedSet.has(id))
-    if (positiveTargetIds.length === 0 && rec.excludedTargetIds.length === 0) continue
+    if (positiveTargetIds.length === 0 && rec.excludedTargetIds.length === 0) {continue}
     const end = zoneEndAfter(rec.anchor.start)
     groups.push({
       anchor: rec.anchor,
@@ -777,8 +784,8 @@ export function buildCommandActs(message, projects, aliases) {
   const mentionedSegmentText = new Map()
   function recordMentionedText(projectId, t) {
     const prev = mentionedSegmentText.get(projectId)
-    if (!prev) mentionedSegmentText.set(projectId, t)
-    else if (!prev.split('. ').includes(t)) mentionedSegmentText.set(projectId, `${prev}. ${t}`)
+    if (!prev) {mentionedSegmentText.set(projectId, t)}
+    else if (!prev.split('. ').includes(t)) {mentionedSegmentText.set(projectId, `${prev}. ${t}`)}
   }
 
   for (const segment of segments) {
@@ -792,7 +799,7 @@ export function buildCommandActs(message, projects, aliases) {
       // No project named in this segment -- inherits whichever project(s)
       // the most recent naming segment established (ordinary prose
       // doesn't repeat a project's name every sentence).
-      if (currentTargets.length === 0) continue
+      if (currentTargets.length === 0) {continue}
       const localAnchors = findAllVerbAnchors(segment.text, projects).filter((a) => !provenanceAt(excludedSpans, segment.start + a.start))
       for (let i = 0; i < localAnchors.length; i++) {
         const a = localAnchors[i]
@@ -818,7 +825,7 @@ export function buildCommandActs(message, projects, aliases) {
     for (const group of groups) {
       if (group.anchor) {
         const a = group.anchor
-        const anchorIndexInSegment = localAnchors.findIndex((x) => x === a)
+        const anchorIndexInSegment = localAnchors.indexOf(a)
         const prevAnchor = localAnchors[anchorIndexInSegment - 1]
         // Cap the pre-verb negation lookback at the PREVIOUS anchor's end
         // only when a real target mention was crossed in between (the
@@ -938,7 +945,7 @@ export function decomposeMultiActionFromActs(message, projects, aliases) {
   const byTarget = new Map() // targetId -> Map<verbId, act> (last act wins per verb, insertion order = first-seen-for-this-target order)
   for (const act of acts) {
     for (const targetId of act.targetIds) {
-      if (!byTarget.has(targetId)) byTarget.set(targetId, new Map())
+      if (!byTarget.has(targetId)) {byTarget.set(targetId, new Map())}
       byTarget.get(targetId).set(act.verbId, act) // Map.set on an existing key keeps its original insertion position but updates the value -- last act (by message order) wins per (target, verb)
     }
   }
