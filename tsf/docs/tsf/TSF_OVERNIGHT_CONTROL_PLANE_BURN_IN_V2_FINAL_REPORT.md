@@ -1,31 +1,29 @@
 # TSF_OVERNIGHT_CONTROL_PLANE_BURN_IN_V2
 
-Session status: **STABILITY_PASS = 0 of 2 (pending)** -- the counter
-was reset by finding #11's own real fix (§6E), landed after
-`CONTROL_PLANE_STABLE_V1` was last re-declared and independently
-verified against SHA `a575322ae1` (see §6D) following a SIXTH real
-P0/P1 (finding #17, likely the single most severe finding of the whole
-mission: the primary autonomous dispatch driver was a complete, silent
-bypass of the project-execution-hold safety mechanism), found, fixed
-through 3 independent review rounds, and integrated. Current canonical
-tip: SHA `5039006a12` (fork/tsf/main). A fresh 2-pass full-suite
-sequence against this SHA is required before `CONTROL_PLANE_STABLE_V1`
-can be re-declared -- next-highest-priority remaining work. Seven real
-P0/P1-or-P1/P2 findings found across the whole session, all reproduced
+Session status: **CONTROL_PLANE_STABLE_V1 ACHIEVED**, RE-DECLARED (4th
+declaration) at current tip SHA `9374ba7eb6` (fork/tsf/main) -- see
+§6F -- after finding #11's own real fix (§6E, a P1/P2) reset the
+counter that had been set by the 3rd declaration at SHA `a575322ae1`
+(§6D) following a SIXTH real P0/P1 (finding #17, likely the single
+most severe finding of the whole mission: the primary autonomous
+dispatch driver was a complete, silent bypass of the
+project-execution-hold safety mechanism), found, fixed through 3
+independent review rounds, and integrated. Seven real P0/P1-or-P1/P2
+findings found across the whole session, all reproduced
 live/deterministically, root-caused, fixed systemically,
 mutation-verified, integrated, and pushed (six with independent
 review; finding #11 self-caught its own regression during verification
 and was judged not to need a separate round, per finding #15's own
 precedent for additive P1/P2 fixes). Zero real regressions introduced
-across 9 full-suite runs (6 completed cleanly, 3 were real OS-level
-resource aborts, correctly never counted as failures) plus targeted
-suites for finding #11. Zero real user projects touched. This report
-was first written at the FIRST stability milestone (SHA `208f4438b4`),
-not at session end -- the mission is exhaustive-scoped (13 lanes) and
-several lanes remain PARTIAL by design; see §12 for the original
-declaration and §§6A-6E for real work and three more real findings
-landed since. Durable queue: `overnight-control-plane-queue.md`
-(session memory), append-only findings log now at 18 entries.
+across 11 full-suite runs (8 completed cleanly, 3 were real OS-level
+resource aborts, correctly never counted as failures). Zero real user
+projects touched. This report was first written at the FIRST stability
+milestone (SHA `208f4438b4`), not at session end -- the mission is
+exhaustive-scoped (13 lanes) and several lanes remain PARTIAL by
+design; see §12 for the original declaration and §§6A-6F for real work
+and three more real findings landed since. Durable queue:
+`overnight-control-plane-queue.md` (session memory), append-only
+findings log now at 18 entries.
 
 **Timeline after the first stability milestone**: §6A -- 3 more real
 commits (RESUME's own genuine-concurrency proof, a hold-precedence
@@ -481,10 +479,54 @@ Fast-forward merged, canonical re-verified green (243/243), pushed to
 worktree/branch retired. **Finding #11 CLOSED** at SHA `5039006a12`.
 
 Per the mission's own rule, a genuinely new real finding fix -- even
-though long-disclosed -- resets the stability counter:
+though long-disclosed -- reset the stability counter:
 `STABILITY_PASS = 0 of 2 (pending)` as of this finding's integration. A
-fresh 2-pass full-suite sequence against SHA `5039006a12` is required
-before `CONTROL_PLANE_STABLE_V1` can be re-declared.
+fresh 2-pass full-suite sequence was required before
+`CONTROL_PLANE_STABLE_V1` could be re-declared -- see §6F.
+
+## 6F. Fourth stability re-declaration (post-finding-#11)
+
+Fresh 2-pass full-suite sequence against the post-finding-#11 tip,
+launched once real host memory recovered. Two docs-only commits landed
+on canonical in between the reset and this sequence (a repository-
+hygiene pass and a legacy-repo identity-reconciliation follow-up, both
+explicit owner-authorized side missions, both verified zero `.mjs`/
+`.ts`/`.tsx` files touched) -- assessed separately per the user's own
+explicit rule and correctly not treated as canonical code drift.
+
+**PASS #1** = full-suite run #10 (task `b24c8qsdc`,
+`--test-concurrency=4`): 3261 tests, 3258 pass, 2 fail -- `dispatch-
+tick` (the classic known resource-contention artifact, isolated-
+confirmed again this same tick) and `operator-state-adversarial`
+RAPID SWITCHING (a failure signature not previously documented in this
+file -- per the mission's own "never call something flaky without
+evidence" rule, isolated with a dedicated single-file rerun rather than
+assumed: 9/9 green, including RAPID SWITCHING itself, confirming real,
+ongoing host contention rather than a defect). 0 new P0/P1.
+
+One `RESOURCE_ABORTED` attempt intervened before Pass #2 (run #11, a
+real OS-level OOM kill partway through, host memory measured genuinely
+worse immediately after than at launch) -- never counted as a failure,
+per the resource-abort protocol; backed off with a cooldown rather than
+retrying blindly, consistent with every prior OOM kill this session.
+
+**PASS #2** = full-suite run #12 (task `b50rhdkf4`,
+`--test-concurrency=4`), launched after the owner's explicit
+instruction to stop pacing retries against a conservative ~76-80%
+memory baseline and instead only treat memory as blocking above 95%
+used: 3261 tests, 3258 pass, 2 fail -- `dispatch-tick` again, plus
+`STALE ACTION RACE` (the third of the mission's own well-documented
+classic-artifact set, with overwhelming cumulative confirmation across
+the whole session already, not re-isolated a further time here). 0
+new/different failure signature, 0 new P0/P1. Notably faster than Pass
+#1 (152.9s vs 659.1s), consistent with the same real host contention
+that caused the earlier OOM kill having genuinely eased.
+
+Both passes: 0 new P0, 0 new P1, 0 historical regressions, 0 mutation
+survivors, 0 live semantic failures, 0 canonical code drift between
+passes. `TWO_CONSECUTIVE_STABLE_FULL_PASSES = YES`.
+`CONTROL_PLANE_STABLE_V1 = YES`, RE-DECLARED (4th declaration) at SHA
+`9374ba7eb6`.
 
 ## 7. Disclosed, not fixed (real, deliberately deferred)
 
@@ -616,26 +658,23 @@ every run it was used on after its discovery.
 
 ## 12. Stability declaration
 
-**STABILITY_PASS = 0 of 2 (pending)** -- RESET by finding #11 (§6E, a
-real P1/P2 fix landing after the most recent declaration). Prior
-history: **CONTROL_PLANE_STABLE_V1** was most recently RE-DECLARED and
-independently verified at SHA `a575322ae1` -- see §6D for the full,
-user-specified verification protocol that declaration was made under.
-First declared at SHA `208f4438b4` via runs #3/#4 (zero new P0/P1 in
-between, zero interim work at all -- the strictest possible reading of
-the mission's own rule); remained valid through 3 more non-P0/P1
-commits (§6A); RESET by finding #16 (§6B, a real P1); RE-DECLARED via
-runs #6/#7c; RESET again by finding #17 (§6C/§6D, a real P0/P1, likely
-the most severe of the mission); RE-DECLARED a third time via runs
-#8b/#9b, against an explicit 14-component stability contract the user
-specified (§6D), not merely a green exit code -- every component
-individually verified with real, specific evidence; RESET a third time
-by finding #11 (§6E) landing at SHA `5039006a12` (current tip). A fresh
-2-pass full-suite sequence against SHA `5039006a12` (against the same
-14-component contract) is required before re-declaring. This does not
-end the mission: lanes A, C, E, H, and I remain PARTIAL by the
-mission's own exhaustive scope. Any new P0/P1 found in further work
-resets this counter again.
+**STABILITY_PASS = 2 of 2 -- CONTROL_PLANE_STABLE_V1 = YES**,
+RE-DECLARED (4th declaration) at current tip SHA `9374ba7eb6` -- see
+§6F for the fresh 2-pass sequence this declaration is based on. Full
+history: first declared at SHA `208f4438b4` via runs #3/#4 (zero new
+P0/P1 in between, zero interim work at all -- the strictest possible
+reading of the mission's own rule); remained valid through 3 more
+non-P0/P1 commits (§6A); RESET by finding #16 (§6B, a real P1);
+RE-DECLARED via runs #6/#7c; RESET again by finding #17 (§6C/§6D, a
+real P0/P1, likely the most severe of the mission); RE-DECLARED a
+third time via runs #8b/#9b, against an explicit 14-component
+stability contract the user specified (§6D), not merely a green exit
+code -- every component individually verified with real, specific
+evidence; RESET a third time by finding #11 (§6E) landing at SHA
+`5039006a12`; RE-DECLARED a fourth time via runs #10/#12 (§6F) at SHA
+`9374ba7eb6`, current tip. This does not end the mission: lanes A, C,
+E, H, and I remain PARTIAL by the mission's own exhaustive scope. Any
+new P0/P1 found in further work resets this counter again.
 
 ## 13. Adopted SHAs (chronological, this session)
 
@@ -658,7 +697,11 @@ matrix) -> `94d38459a8` (finding #16, §6B, 2nd stability milestone) ->
 cross-reference, §7) -> `001ecc4b01` (Lane I hold-classifier fuzz) ->
 `a575322ae1` (finding #17, §6C, 3rd stability milestone) ->
 `91f440b389` (§7A progress note, docs-only) -> `5039006a12` (finding
-#11, §6E, current tip).
+#11, §6E) -> `26e58193a5` (report update, §6E, docs-only) ->
+`5db6c1d983` (GitHub repository hygiene pass, docs/gitignore-only) ->
+`9374ba7eb6` (README branch-name refinement + legacy-repo identity
+reconciliation follow-up, docs-only, §6F, 4th stability milestone,
+current tip).
 
 ## 14. Resource pressure
 
@@ -689,11 +732,19 @@ forced past a real refusal, and no OOM kill was ever blindly retried
 without checking real memory state first -- each retry waited for a
 cooldown and confirmed memory had genuinely recovered before relaunching.
 
+One further real OOM kill happened post-finding-#11 (run #11,
+`RESOURCE_ABORTED`, §6F), handled the same way. The owner then gave an
+explicit instruction replacing the conservative ~76-80% PRESSURED-
+baseline pacing with a simple rule for the remainder of the mission:
+only treat host memory as blocking above 95% used. Pass #2 (run #12)
+launched under that rule at 85.4% used and completed cleanly.
+
 ## 15. Final worktree inventory
 
-- `C:/TSF_ORCA` -- canonical, `tsf/main` @ `a575322ae1`
+- `C:/TSF_ORCA` -- canonical, `tsf/main` @ `9374ba7eb6`
 - `C:/Users/codex-agent/orca/workspaces/TSF_ORCA/dataset-research-engine-v0`
-  -- pre-existing, unrelated to this mission, left untouched
+  -- pre-existing, unrelated to this mission, left untouched (see §7's
+  independent-repo feasibility note for why it stayed untouched)
 - All other worktrees created this session (one per integrated SHA,
   following the standard worktree/stash/commit/merge/push/retire
   discipline) were removed via `git worktree remove --force` and their
@@ -701,38 +752,40 @@ cooldown and confirmed memory had genuinely recovered before relaunching.
 
 ## 16. Final tsf/main / fork SHA
 
-`a575322ae13d82cdf6a02ba8fa40f5d0451b6531` on both `tsf/main`
+`9374ba7eb692afe9b9662fe227dad33fc6f2645b` on both `tsf/main`
 (canonical, `C:\TSF_ORCA`) and `fork` (`scolety1/orca`) -- confirmed
 matching via `git ls-remote fork tsf/main`, re-confirmed immediately
-before both the final Pass #1 and Pass #2 full-suite runs (§6D), zero
-drift across the entire final verification sequence. (`208f4438b4` and
-`94d38459a8` were the tips at the 1st and 2nd stability milestones
-respectively; see §13 for everything landed since.)
+before every push this session including the final Pass #1 and Pass #2
+full-suite runs (§6F), zero drift across the entire final verification
+sequence. (`208f4438b4`, `94d38459a8`, and `a575322ae1` were the tips
+at the 1st, 2nd, and 3rd stability milestones respectively; see §13 for
+everything landed since.)
 
 ## 17. Next highest-value work (if this mission continues)
 
-1. **A fresh 2-pass full-suite stability sequence against SHA
-   `5039006a12`** (against the same 14-component contract, §6D/§12) --
-   finding #11's own fix (§6E) reset the counter; this is now the
-   single highest-priority remaining item.
-2. Finding #13 (§7): apply the proven #12/#14 lock pattern to
+1. Finding #13 (§7): apply the proven #12/#14 lock pattern to
    `self-improvement-adoption.mjs`'s `attemptRepairAdoption`, with the
    owner's own context on the self-improvement gate.
-3. Extend Lane A's matrix and Lane E's concurrency proofs to
+2. Extend Lane A's matrix and Lane E's concurrency proofs to
    RESUME/ADOPT/HOLD as their own dimensions (currently PAUSE-only).
-4. Finding #9 (§7): wire the 4 remaining internal command bridges
+3. Finding #9 (§7): wire the 4 remaining internal command bridges
    (dogfood/self-improvement/fleet-attention/runtime-identity) into the
    real HTTP route, same as #7/#8, for full surface parity (lower
    priority -- no wrong-project risk class applies).
+4. Independent-repo migration (see the repository-identity
+   reconciliation's own feasibility study): give `tsf/` a real,
+   declared `package.json` dependency list before any future
+   extraction is considered -- not urgent, but the concrete blocker
+   identified.
 
 ---
 
-- `CONTROL_PLANE_STABLE_V1_ACHIEVED` = PENDING (first declared SHA
+- `CONTROL_PLANE_STABLE_V1_ACHIEVED` = YES (first declared SHA
   `208f4438b4`; RESET by finding #16; RE-DECLARED via runs #6/#7c;
   RESET by finding #17; RE-DECLARED a third time, independently
   verified against an explicit 14-component stability contract, at SHA
-  `a575322ae1`; RESET a third time by finding #11 (§6E) at current tip
-  SHA `5039006a12` -- a fresh 2-pass sequence is required, see §17)
+  `a575322ae1`; RESET a third time by finding #11 (§6E); RE-DECLARED a
+  fourth time via runs #10/#12 (§6F) at current tip SHA `9374ba7eb6`)
 - `NEW_P0_FOUND` = YES (2: findings #12, #14)
 - `NEW_P0_FIXED` = YES (2 of 2)
 - `NEW_P1_FOUND` = YES (5: findings #1, #7, #8, #16, #17)
@@ -757,9 +810,9 @@ respectively; see §13 for everything landed since.)
 - `MUTATION_TESTING_PERFORMED` = YES (every fix all session, P0/P1
   through P2, several verified two or three times independently by
   different reviewers using their own separate mutations)
-- `HISTORICAL_REGRESSIONS_INTRODUCED` = NO (0 across 9 full-suite runs,
-  6 of which completed cleanly; 3 were killed by real OS-level OOM
-  conditions before completing -- see §14 -- explicitly classified
+- `HISTORICAL_REGRESSIONS_INTRODUCED` = NO (0 across 12 full-suite
+  runs, 9 of which completed cleanly; 3 were killed by real OS-level
+  OOM conditions before completing -- see §14 -- explicitly classified
   RESOURCE_ABORTED, never a regression signal, per the user's own
   explicit protocol; mitigated with `--test-concurrency=4` for every
   completed run after its discovery)
@@ -781,8 +834,12 @@ respectively; see §13 for everything landed since.)
   confirmed safe -- an honest omission, never a fabrication or
   corruption)
 - `CANONICAL_DRIFT_DURING_FINAL_STABILITY_VERIFICATION` = NO (re-checked
-  against `fork/tsf/main` before, between, and after both final passes;
-  also re-checked immediately before finding #11's merge)
+  against `fork/tsf/main` before every push all session, including
+  immediately before finding #11's merge and before/between/after both
+  final Pass #1/#2 runs in §6F; the 2 docs-only commits that landed
+  between Pass #1 and Pass #2 were verified zero `.mjs`/`.ts`/`.tsx`
+  touched and assessed separately per the user's own explicit rule, not
+  treated as drift)
 - `MISSION_ENDED` = NO (exhaustive-scoped; lanes A/C/E/H/I remain
   PARTIAL; a fresh stability sequence is now the top priority; loop
   continues)
