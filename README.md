@@ -29,9 +29,9 @@
 > **This fork also hosts Thousand Sunny Fleet (TSF)**, a separate
 > project built as an overlay on top of this Orca foundation — it
 > manages real software projects (onboarding, autonomous dispatch,
-> adoption) rather than individual agent sessions. It lives entirely
-> under [`tsf/`](tsf/README.md); everything below this note describes
-> upstream Orca itself.
+> adoption) rather than individual agent sessions. TSF lives on this
+> branch, `tsf/main`, entirely under [`tsf/`](tsf/README.md);
+> everything below this note describes upstream Orca itself.
 
 ## Features
 
