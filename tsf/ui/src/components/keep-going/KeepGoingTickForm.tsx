@@ -135,12 +135,12 @@ export function KeepGoingTickForm({
             htmlFor={`${projectId}-tick-spec`}
             className="mb-1 block text-[11px] font-medium text-muted-foreground"
           >
-            Spec (optional -- what should the worker do)
+            Spec (optional -- what should the agent do)
           </label>
           <Textarea
             id={`${projectId}-tick-spec`}
             rows={4}
-            placeholder="What should the worker do?"
+            placeholder="What should the agent do?"
             value={spec}
             onChange={(e) => setSpec(e.target.value)}
           />
@@ -156,7 +156,7 @@ export function KeepGoingTickForm({
                 htmlFor={`${projectId}-tick-worktree`}
                 className="mb-1 block text-[11px] font-medium text-muted-foreground"
               >
-                Worktree (required)
+                Code location (required)
               </label>
               <input
                 id={`${projectId}-tick-worktree`}

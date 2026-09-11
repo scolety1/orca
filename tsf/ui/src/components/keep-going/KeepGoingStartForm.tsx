@@ -95,7 +95,7 @@ export function KeepGoingStartForm({
         </div>
         <p className="text-xs text-muted-foreground">
           Establishes a bounded, checkpointed run against an immutable goal. TSF
-          replans/continues/stops against this goal every wave — never against a worker&apos;s own
+          replans/continues/stops against this goal every round — never against an agent&apos;s own
           claim.
         </p>
         <div>
@@ -139,9 +139,9 @@ export function KeepGoingStartForm({
         <div>
           <div className="mb-1 text-[11px] font-medium text-muted-foreground">Budget</div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {budgetField('maxWaves', 'Max waves')}
+            {budgetField('maxWaves', 'Max rounds')}
             {budgetField('maxRetriesPerTask', 'Max retries/task')}
-            {budgetField('maxConcurrentWorkers', 'Max concurrent workers')}
+            {budgetField('maxConcurrentWorkers', 'Max concurrent agents')}
             {budgetField('stallThresholdMs', 'Stall threshold (min)', 60 * 1000)}
           </div>
         </div>

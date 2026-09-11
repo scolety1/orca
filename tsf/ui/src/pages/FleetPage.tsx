@@ -184,7 +184,7 @@ export function FleetPage() {
               of relabeling every row. */}
           <p className="text-[11px] text-muted-foreground">
             Selecting here chooses which Work Set projects to schedule/dispatch below -- it never
-            changes Active Fleet or Work Set membership (that's on the Projects page).
+            changes Active Fleet or Work Set membership (that&apos;s on the Projects page).
           </p>
           <Card>
             <CardContent className="flex flex-col gap-3 p-4">
@@ -219,7 +219,7 @@ export function FleetPage() {
               })}
               <div className="flex items-center gap-3">
                 <label className="text-[11px] text-muted-foreground">
-                  Max concurrent workers (Windows safety)
+                  Max concurrent agents (Windows safety)
                 </label>
                 <input
                   type="number"

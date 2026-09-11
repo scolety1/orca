@@ -81,7 +81,7 @@ function LiveRun({
       }
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not abandon the stalled wave.')
+      setError(err instanceof Error ? err.message : 'Could not abandon the stalled round.')
     } finally {
       setBusy(false)
     }
@@ -123,7 +123,7 @@ function LiveRun({
             <div>{run.usageMode}</div>
           </div>
           <div>
-            <div className="text-muted-foreground">Waves completed</div>
+            <div className="text-muted-foreground">Rounds completed</div>
             <div>{run.wavesCompleted}</div>
           </div>
           <div>
@@ -143,7 +143,7 @@ function LiveRun({
           <div>
             <div className="text-muted-foreground">Budget</div>
             <div>
-              {run.budget.maxWaves ?? '—'} waves · {run.budget.maxConcurrentWorkers ?? '—'} workers
+              {run.budget.maxWaves ?? '—'} rounds · {run.budget.maxConcurrentWorkers ?? '—'} agents
             </div>
           </div>
         </div>
@@ -182,7 +182,7 @@ function LiveRun({
 
         <div className="grid grid-cols-1 gap-3 text-[12px] sm:grid-cols-2">
           <div>
-            <div className="text-muted-foreground">Workers</div>
+            <div className="text-muted-foreground">Agents</div>
             <div>
               {run.workers.length === 0 ? 'none dispatched yet' : `${run.workers.length} active`}
             </div>
@@ -246,7 +246,7 @@ function LiveRun({
             identity: this codebase genuinely never persists one. */}
         {run.state === 'STALLED' && run.inFlightWaveDetail && (
           <div className="rounded-md border border-status-degraded/40 bg-status-degraded/10 p-3 text-[12px]">
-            <div className="mb-1 font-medium text-status-degraded">Stalled wave</div>
+            <div className="mb-1 font-medium text-status-degraded">Stalled round</div>
             <div className="text-muted-foreground">
               Dispatched {new Date(run.inFlightWaveDetail.dispatchedAt).toLocaleString()} — no
               terminal outcome yet.
@@ -260,7 +260,7 @@ function LiveRun({
               ))}
             </ul>
             <div className="mt-1 text-[11px] text-muted-foreground">
-              Worker/provider identity: not tracked by TSF for a UI-started run today.
+              Agent/provider identity: not tracked by TSF for a UI-started run today.
             </div>
           </div>
         )}
@@ -289,7 +289,7 @@ function LiveRun({
           )}
           {run.state === 'STALLED' && (
             <Button size="sm" variant="outline" onClick={abandonStalledWave} disabled={busy}>
-              Abandon stalled wave
+              Abandon stalled round
             </Button>
           )}
           {(run.state === 'COMPLETE' || run.state === 'BLOCKED') && (

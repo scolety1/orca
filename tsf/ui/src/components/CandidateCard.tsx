@@ -36,7 +36,11 @@ export function CandidateCard({ candidate, onChanged }: { candidate: CandidateVi
     try {
       const requestId = `ui-${crypto.randomUUID()}`
       const res = await api.decideCandidate(candidate.projectId, { decision, requestId, reason: reason || undefined })
-      setResult(`${decision.replace('_', ' ')} recorded — candidate is now ${res.candidateState}. Receipt ${res.receipt.receiptHash.slice(0, 12)}…`)
+      // Owner language contract: the raw receipt hash stays out of this
+      // primary confirmation -- it's real audit evidence, not something an
+      // owner needs to act on in the moment (see ProjectDetailPage's own
+      // Receipts tab for that).
+      setResult(`${decision.replace('_', ' ')} recorded — candidate is now ${res.candidateState}.`)
       onChanged()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Decision failed.')
@@ -55,12 +59,15 @@ export function CandidateCard({ candidate, onChanged }: { candidate: CandidateVi
             Candidate
             <Badge variant={STATE_VARIANT[candidate.state] ?? 'neutral'}>{candidate.state.replace(/_/g, ' ')}</Badge>
           </CardTitle>
-          <div className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-            {candidate.head?.slice(0, 12)}
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             {candidate.head && (
-              <button onClick={() => copy(candidate.head!)} aria-label="Copy candidate HEAD">
-                <Copy className="size-3" />
-              </button>
+              <>
+                <span>Version</span>
+                <span className="font-mono">{candidate.head.slice(0, 12)}</span>
+                <button onClick={() => copy(candidate.head!)} aria-label="Copy candidate version">
+                  <Copy className="size-3" />
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -112,7 +119,7 @@ export function CandidateCard({ candidate, onChanged }: { candidate: CandidateVi
 
         {!candidate.decidable ? (
           <div className="text-[11px] text-muted-foreground">
-            This candidate is historical evidence from a completed pilot — it already has a recorded decision and isn't live-decidable in this UI.
+            This candidate is historical evidence from a completed pilot — it already has a recorded decision and isn&apos;t live-decidable in this UI.
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">

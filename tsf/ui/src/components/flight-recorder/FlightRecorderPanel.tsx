@@ -76,7 +76,7 @@ export function FlightRecorderPanel({ projectId }: { projectId: string }) {
               <div>{formatMs(timeline.totalElapsedMs)}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Waves</div>
+              <div className="text-muted-foreground">Rounds</div>
               <div>{timeline.wavesCompleted}</div>
             </div>
             <div>

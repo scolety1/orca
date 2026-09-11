@@ -167,8 +167,8 @@ export function ProjectHealthRepairCard({
           <DialogHeader>
             <DialogTitle>Repair mission spec -- {missionSpec?.projectDisplayName}</DialogTitle>
             <DialogDescription>
-              A real mission spec, ready to dispatch. This does not create a worktree or start a
-              worker on its own.
+              A real mission spec, ready to dispatch. This does not create a code checkout or
+              start an agent on its own.
             </DialogDescription>
           </DialogHeader>
           {missionSpec && (

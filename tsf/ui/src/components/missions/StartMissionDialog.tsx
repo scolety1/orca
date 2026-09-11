@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, ApiError } from '@/lib/api'
 import { USAGE_MODES } from '@/lib/usage-modes'
 import { useSensitiveProjectIds } from '@/lib/use-sensitive-project-ids'
+import { humanizePhase } from '@/lib/orchestration-terminology'
 
 type GoalMode = 'COMMON' | 'PER_PROJECT'
 
@@ -82,7 +83,12 @@ export function StartMissionDialog({
             ok: true,
             runId: outcome.value.runId,
             state: outcome.value.state,
-            detail: `Mission created -- run ${outcome.value.runId}, status ${outcome.value.state} (${outcome.value.phase}).`
+            // Owner language contract: the internal run id and raw phase
+            // constant stay out of this primary confirmation -- "View
+            // Work" right below is the real next step, and humanizePhase
+            // (already used elsewhere for the same constants) keeps the
+            // status plain-language rather than SCREAMING_SNAKE_CASE.
+            detail: `Mission created -- status ${outcome.value.state} (${humanizePhase(outcome.value.phase)}).`
           }
         }
         return {
@@ -218,8 +224,11 @@ export function StartMissionDialog({
                   <div className={r.ok ? 'text-status-healthy' : 'text-destructive'}>
                     {r.ok ? (
                       <>
-                        <span className="font-medium">{r.projectId}</span>: Mission created -- run{' '}
-                        <span className="font-mono">{r.runId}</span>, status {r.state}.
+                        {/* Owner language contract: the internal run id
+                            stays out of this primary confirmation -- "View
+                            Work" right beside it is the real next step. */}
+                        <span className="font-medium">{r.projectId}</span>: Mission created, status{' '}
+                        {r.state}.
                       </>
                     ) : (
                       <>

@@ -47,7 +47,7 @@ export function LiveWorkFeed({ run }: { run: KeepGoingActiveRunView }) {
             Phase: <span className="text-foreground" title={run.phase}>{humanizePhase(run.phase)}</span>
           </div>
           <div>
-            Waves completed: <span className="text-foreground">{run.wavesCompleted}</span>
+            Rounds completed: <span className="text-foreground">{run.wavesCompleted}</span>
           </div>
           <div>
             Orca orchestration Run:{' '}
