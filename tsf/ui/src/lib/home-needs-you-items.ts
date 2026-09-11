@@ -1,4 +1,4 @@
-import { isResearchMissionWorkItem, type AttentionItem, type ProjectDetail, type WorkItem, type WorkSummary } from './types.ts'
+import { isResearchMissionWorkItem, type AttentionCategory, type AttentionItem, type ProjectDetail, type WorkItem, type WorkSummary } from './types.ts'
 
 export type HomeNeedsYouItem = WorkItem & { keyPrefix: string }
 
@@ -57,24 +57,49 @@ export type OtherNeedsYouItem = {
   reason: string
   projectId: string | null
   kind: 'SELF_IMPROVEMENT_FINDING' | 'PLANNER_MISSION_NEEDS_YOU'
+  // Manual Self-Improvement Finding Disposition V1: which real action(s)
+  // the card should offer -- READY_FOR_ADOPTION means a real verified
+  // candidate exists (Apply verified fix); NEEDS_OWNER/
+  // FAILED_REQUIRES_ATTENTION mean no candidate exists yet (Start Fix).
+  // Always 'NEEDS_OWNER' for a planner item (the only category it can
+  // ever carry).
+  category: AttentionCategory
   // Pre-UI Productization V1, Priority 5: the real missionId (deepLink.id)
   // and raw needsYouId (source.id) a real resolve action needs -- only
   // ever non-null for kind === 'PLANNER_MISSION_NEEDS_YOU' (the real
   // deepLink.kind for that source), never fabricated for any other kind.
   plannerMissionId: string | null
   plannerNeedsYouId: string | null
+  // Manual Self-Improvement Finding Disposition V1: the real, raw
+  // findingId a disposition action needs -- only ever non-null for
+  // kind === 'SELF_IMPROVEMENT_FINDING' (source.id already carries the
+  // raw, unprefixed findingId, unlike this item's own doubly-prefixed id).
+  findingId: string | null
 }
 
+// Self-improvement findings surface under THREE real categories (see
+// domain/fleet-attention-status.mjs's selfImprovementItems) -- all three
+// are now real, actionable Needs-You cards (Manual Self-Improvement
+// Finding Disposition V1), not just the NEEDS_OWNER one. A planner
+// Needs-You item is always NEEDS_OWNER by construction, so its own filter
+// is unaffected.
 export function buildOtherNeedsYouItems(attentionItems: AttentionItem[]): OtherNeedsYouItem[] {
   return attentionItems
-    .filter((i) => i.category === 'NEEDS_OWNER' && (i.source.kind === 'SELF_IMPROVEMENT_FINDING' || i.source.kind === 'PLANNER_MISSION_NEEDS_YOU'))
+    .filter(
+      (i) =>
+        i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ||
+        (i.source.kind === 'SELF_IMPROVEMENT_FINDING' &&
+          (i.category === 'NEEDS_OWNER' || i.category === 'READY_FOR_ADOPTION' || i.category === 'FAILED_REQUIRES_ATTENTION'))
+    )
     .map((i) => ({
       id: i.id,
       label: i.label,
       reason: i.reason,
       projectId: i.project?.id ?? null,
       kind: i.source.kind as OtherNeedsYouItem['kind'],
+      category: i.category,
       plannerMissionId: i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ? (i.deepLink.id ?? null) : null,
-      plannerNeedsYouId: i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ? i.source.id : null
+      plannerNeedsYouId: i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ? i.source.id : null,
+      findingId: i.source.kind === 'SELF_IMPROVEMENT_FINDING' ? i.source.id : null
     }))
 }

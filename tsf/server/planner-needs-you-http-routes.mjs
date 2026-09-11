@@ -20,7 +20,16 @@ export async function handlePlannerNeedsYouRoute(parts, req, res, _ctx, { json, 
   if (parts[1] !== 'planner-missions') {
     return false
   }
-  const missionId = parts[2]
+  // Real bug found and fixed here (Manual Self-Improvement Finding
+  // Disposition V1's own acceptance test caught the identical shape on a
+  // sibling route): a real missionId can genuinely contain a literal
+  // colon (e.g. a self-improvement repair mission's own
+  // `mission:selfimprove:<findingId>` shape, computeRepairMissionId) --
+  // http-server.mjs's own `parts` array is built from
+  // url.pathname.split('/') with NO decoding, so a colon survives as its
+  // raw `%3A` percent-encoding, never matching the real, decoded
+  // missionId this route's own store lookup needs.
+  const missionId = parts[2] ? decodeURIComponent(parts[2]) : parts[2]
   if (
     parts.length !== 6 ||
     parts[3] !== 'needs-you' ||

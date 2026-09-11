@@ -31,9 +31,23 @@ export function computeRepairMissionId(findingId) {
 // reconstructs the byte-identical envelope on demand. Persisting a second
 // copy would risk it silently drifting from the finding it describes; this
 // avoids that second source of truth entirely.
-export async function originateRepairMission(finding, { canonicalRepoPath, clock = () => new Date(), deps = {} } = {}) {
-  if (finding.status !== 'ELIGIBLE_FOR_AUTOFIX') {
-    const error = new Error(`repair mission origination requires an ELIGIBLE_FOR_AUTOFIX finding, got ${finding.status}`)
+// `ownerAuthorized` (Manual Self-Improvement Finding Disposition V1):
+// defaults false, preserving this function's exact prior behavior for its
+// one existing real caller (the autonomous fleet driver, which never
+// passes it). Only when explicitly true does a NEEDS_OWNER finding become
+// a legal origination source too -- the classifier's own "not eligible
+// for AUTONOMOUS autofix" verdict does not mean "can never be fixed," it
+// means a human decision is required first; an owner's own explicit
+// "Start Fix" click on that exact finding IS that decision. Still refuses
+// every OTHER status outright, and the domain's own STATUS_ALLOWED table
+// (self-improvement-finding.mjs) is the real, independent second gate --
+// this flag alone can never move an illegal-transition finding forward.
+export async function originateRepairMission(finding, { canonicalRepoPath, clock = () => new Date(), deps = {}, ownerAuthorized = false } = {}) {
+  const eligible = finding.status === 'ELIGIBLE_FOR_AUTOFIX' || (ownerAuthorized && finding.status === 'NEEDS_OWNER')
+  if (!eligible) {
+    const error = new Error(
+      `repair mission origination requires an ELIGIBLE_FOR_AUTOFIX finding (or an owner-authorized NEEDS_OWNER finding), got ${finding.status}`
+    )
     error.code = 'TSF_SELF_IMPROVEMENT_ORIGINATION_REQUIRES_ELIGIBLE'
     throw error
   }
@@ -55,12 +69,13 @@ export async function originateRepairMission(finding, { canonicalRepoPath, clock
     throw error
   }
 
+  const isOwnerOverride = ownerAuthorized && finding.status === 'NEEDS_OWNER'
   const Lifecycle = deps.PlannerSessionLifecycle ?? PlannerSessionLifecycle
   const plannerSessionId = deps.plannerSessionId ?? `self-improvement-loop:${missionId}`
   const lifecycle = new Lifecycle({ missionId, plannerSessionId, deps: { clock, ...deps.lifecycleDeps } })
   try {
     await lifecycle.startMission({
-      missionGoal: `Repair mission (auto-originated): ${finding.affectedSurface} -- ${finding.sourceDetector} finding ${finding.findingId}`,
+      missionGoal: `Repair mission (${isOwnerOverride ? 'owner-authorized' : 'auto-originated'}): ${finding.affectedSurface} -- ${finding.sourceDetector} finding ${finding.findingId}`,
       phase: 'REPAIR_DISPATCH',
       repoState
     })
@@ -80,14 +95,21 @@ export async function originateRepairMission(finding, { canonicalRepoPath, clock
     throw error
   }
   await lifecycle.recordDecision({
-    summary: `repair mission auto-originated from ELIGIBLE_FOR_AUTOFIX finding ${finding.findingId} (${finding.affectedSurface})`,
+    summary: isOwnerOverride
+      ? `repair mission started by explicit owner authorization on a NEEDS_OWNER finding ${finding.findingId} (${finding.affectedSurface})`
+      : `repair mission auto-originated from ELIGIBLE_FOR_AUTOFIX finding ${finding.findingId} (${finding.affectedSurface})`,
     kind: 'ACCEPTED',
-    by: 'SELF_IMPROVEMENT_LOOP'
+    by: isOwnerOverride ? 'OWNER' : 'SELF_IMPROVEMENT_LOOP'
   })
 
   const writeFinding = deps.withFinding ?? withFinding
   const nextFinding = await writeFinding(finding.findingId, (current) =>
-    transitionFinding(current ?? finding, 'FIX_MISSION_CREATED', { reason: 'REPAIR_MISSION_ORIGINATED', evidence: [{ missionId }] }, clock)
+    transitionFinding(
+      current ?? finding,
+      'FIX_MISSION_CREATED',
+      { reason: isOwnerOverride ? 'OWNER_AUTHORIZED_START_FIX' : 'REPAIR_MISSION_ORIGINATED', evidence: [{ missionId }] },
+      clock
+    )
   )
 
   // Real gap found by Wave D's own golden proof: this receipt kind existed

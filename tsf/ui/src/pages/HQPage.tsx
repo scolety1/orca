@@ -32,6 +32,7 @@ import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
 import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
 import { ResearchMissionCard } from '@/components/research/ResearchMissionCard'
 import { PlannerNeedsYouCard } from '@/components/PlannerNeedsYouCard'
+import { SelfImprovementFindingCard } from '@/components/SelfImprovementFindingCard'
 import { useCommandDock, useReloadOnDockActivity } from '@/lib/command-dock-context'
 import { useForegroundPolling } from '@/lib/use-foreground-polling'
 
@@ -250,11 +251,13 @@ export function HQPage() {
               if (item.kind === 'PLANNER_MISSION_NEEDS_YOU' && item.plannerMissionId && item.plannerNeedsYouId) {
                 return <PlannerNeedsYouCard key={item.id} item={item} onResolved={reloadAttention} />
               }
-              // No standalone finding page exists yet (self-improvement
-              // adoption stays autonomous-only per this whole mission's own
-              // standing constraint) -- link to the real owning project
-              // when one is known, otherwise render a plain, non-clickable
-              // card rather than a link to nowhere.
+              // Manual Self-Improvement Finding Disposition V1: a
+              // self-improvement finding is now inline-resolvable too
+              // (Apply verified fix / Start fix / Dismiss) -- no standalone
+              // page needed, no more permanent dead end.
+              if (item.kind === 'SELF_IMPROVEMENT_FINDING' && item.findingId) {
+                return <SelfImprovementFindingCard key={item.id} item={item} onChanged={reloadAttention} />
+              }
               const cardBody = (
                 <Card className="border-status-degraded/40 bg-status-degraded/5 transition-colors hover:border-status-degraded/70">
                   <CardContent className="flex items-center justify-between gap-2 p-3">

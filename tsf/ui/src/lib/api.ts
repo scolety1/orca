@@ -1,6 +1,7 @@
 import { createKeepGoingApi } from './keep-going-api'
 import { createPlannerNeedsYouApi } from './planner-needs-you-api'
 import { createEvalApi } from './eval-api'
+import { createSelfImprovementFindingApi } from './self-improvement-finding-api'
 import type { ChatPlacement } from './chat-dispatch-types'
 import type { FleetWorkStatusItem } from './fleet-status-types'
 import type { RuntimeIdentity, UpdateSafety } from './system-status-types'
@@ -221,6 +222,7 @@ export const api = {
   ...createKeepGoingApi(request),
   ...createPlannerNeedsYouApi(request),
   ...createEvalApi(request, requestTolerant),
+  ...createSelfImprovementFindingApi(request),
   estimate: (projectId: string) =>
     request<ProjectEstimateView>(`/projects/${encodeURIComponent(projectId)}/estimate`),
   generateEstimate: (projectId: string, body: GenerateEstimateRequest) =>

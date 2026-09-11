@@ -44,7 +44,14 @@ export const FINDING_STATUSES = Object.freeze([
   'READY_FOR_ADOPTION',
   'RESOLVED',
   'REOPENED',
-  'REJECTED_FALSE_POSITIVE'
+  'REJECTED_FALSE_POSITIVE',
+  // Manual Self-Improvement Finding Disposition V1: a real, real defect
+  // the owner explicitly chose not to adopt/fix right now -- deliberately
+  // distinct from REJECTED_FALSE_POSITIVE (which means "this was never a
+  // real defect"). Reusing REJECTED_FALSE_POSITIVE for this would
+  // mischaracterize a real finding's own history; this is the honest
+  // status instead.
+  'DISMISSED_BY_OWNER'
 ])
 
 // Mirrors research-mission.mjs's NODE_ALLOWED shape exactly (a frozen map of
@@ -63,17 +70,27 @@ export const FINDING_STATUSES = Object.freeze([
 //   terminal by design (a human decision, never silently reversed by a
 //   detector re-observing the same symptom -- see recordFindingDetection's
 //   own comment below for what happens instead).
+// - NEEDS_OWNER/READY_FOR_ADOPTION -> DISMISSED_BY_OWNER (Manual Self-
+//   Improvement Finding Disposition V1): the exact two states the owner's
+//   own "Dismiss" action can ever be offered from (a real, acknowledged
+//   finding that's either awaiting a fix decision or already has one
+//   ready) -- mirrors REJECTED_FALSE_POSITIVE's own placement/terminality
+//   exactly, just a different, honest reason for closing. Terminal by the
+//   same design: a detector re-observing the identical symptom (same
+//   content-addressed findingId) must never silently reopen an owner's
+//   own dismissal -- see recordFindingRecurrence below.
 const STATUS_ALLOWED = Object.freeze({
   DETECTED: ['VERIFIED', 'REJECTED_FALSE_POSITIVE'],
   VERIFIED: ['ELIGIBLE_FOR_AUTOFIX', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
   ELIGIBLE_FOR_AUTOFIX: ['FIX_MISSION_CREATED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
-  NEEDS_OWNER: ['FIX_MISSION_CREATED', 'RESOLVED', 'REJECTED_FALSE_POSITIVE'],
+  NEEDS_OWNER: ['FIX_MISSION_CREATED', 'RESOLVED', 'REJECTED_FALSE_POSITIVE', 'DISMISSED_BY_OWNER'],
   FIX_MISSION_CREATED: ['FIX_IN_PROGRESS', 'NEEDS_OWNER'],
   FIX_IN_PROGRESS: ['READY_FOR_ADOPTION', 'NEEDS_OWNER'],
-  READY_FOR_ADOPTION: ['RESOLVED', 'NEEDS_OWNER'],
+  READY_FOR_ADOPTION: ['RESOLVED', 'NEEDS_OWNER', 'DISMISSED_BY_OWNER'],
   RESOLVED: ['REOPENED'],
   REOPENED: ['VERIFIED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
-  REJECTED_FALSE_POSITIVE: []
+  REJECTED_FALSE_POSITIVE: [],
+  DISMISSED_BY_OWNER: []
 })
 
 export function assertFindingTransition(fromStatus, toStatus) {

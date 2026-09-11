@@ -77,13 +77,17 @@ const EXPECTED_ALLOWED = {
   DETECTED: ['VERIFIED', 'REJECTED_FALSE_POSITIVE'],
   VERIFIED: ['ELIGIBLE_FOR_AUTOFIX', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
   ELIGIBLE_FOR_AUTOFIX: ['FIX_MISSION_CREATED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
-  NEEDS_OWNER: ['FIX_MISSION_CREATED', 'RESOLVED', 'REJECTED_FALSE_POSITIVE'],
+  // Manual Self-Improvement Finding Disposition V1: DISMISSED_BY_OWNER
+  // added as a real, legal edge from the same two states the owner's own
+  // "Dismiss" action is ever offered from.
+  NEEDS_OWNER: ['FIX_MISSION_CREATED', 'RESOLVED', 'REJECTED_FALSE_POSITIVE', 'DISMISSED_BY_OWNER'],
   FIX_MISSION_CREATED: ['FIX_IN_PROGRESS', 'NEEDS_OWNER'],
   FIX_IN_PROGRESS: ['READY_FOR_ADOPTION', 'NEEDS_OWNER'],
-  READY_FOR_ADOPTION: ['RESOLVED', 'NEEDS_OWNER'],
+  READY_FOR_ADOPTION: ['RESOLVED', 'NEEDS_OWNER', 'DISMISSED_BY_OWNER'],
   RESOLVED: ['REOPENED'],
   REOPENED: ['VERIFIED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
-  REJECTED_FALSE_POSITIVE: []
+  REJECTED_FALSE_POSITIVE: [],
+  DISMISSED_BY_OWNER: []
 }
 
 test('transitionFinding: every legal transition in the full status matrix succeeds', async (t) => {
@@ -163,4 +167,27 @@ test('applyDetection never auto-reopens a human-rejected false positive', () => 
   const recurred = applyDetection(finding, baseRaw(), later)
   assert.equal(recurred.status, 'REJECTED_FALSE_POSITIVE', 'a rejected false positive must stay rejected')
   assert.equal(recurred.occurrences, 2, 'the recurrence must still be visible via occurrences')
+})
+
+// Manual Self-Improvement Finding Disposition V1, test #10 (owner's own
+// list): unchanged evidence must never immediately recreate/resurrect a
+// dismissed finding -- the SAME real mechanism that already protects
+// REJECTED_FALSE_POSITIVE (recordFindingRecurrence only special-cases
+// RESOLVED) covers this for free, verified explicitly here rather than
+// just assumed.
+test('applyDetection never auto-resurrects an owner-dismissed finding on unchanged evidence', () => {
+  let finding = createFinding(baseRaw(), clock)
+  finding = transitionFinding(finding, 'VERIFIED', { reason: 'MECHANICAL_REPRODUCTION_CONFIRMED_FAILING' }, clock)
+  finding = transitionFinding(finding, 'NEEDS_OWNER', { reason: 'AUTOFIX_ELIGIBILITY_CLASSIFIED' }, clock)
+  finding = transitionFinding(finding, 'DISMISSED_BY_OWNER', { reason: 'OWNER_DISMISSED' }, clock)
+  const recurred = applyDetection(finding, baseRaw(), later)
+  assert.equal(recurred.status, 'DISMISSED_BY_OWNER', 'a dismissed finding must stay dismissed on unchanged evidence')
+  assert.equal(recurred.occurrences, 2, 'the recurrence must still be visible via occurrences')
+  // Genuinely different evidence (a different reproduction) fingerprints
+  // to a DIFFERENT findingId entirely (findingIdFor's own content-
+  // addressed identity) -- it can never touch this dismissed record at
+  // all, so "materially different evidence creates a new finding" is
+  // already the real, existing policy, not something this feature adds.
+  const differentFindingId = findingIdFor(baseRaw({ reproduction: { steps: ['a genuinely different repro'] } }))
+  assert.notEqual(differentFindingId, finding.findingId)
 })

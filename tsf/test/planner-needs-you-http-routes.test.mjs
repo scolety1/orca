@@ -155,3 +155,31 @@ test('REAL PROOF: a real owner answer durably resolves the real planner Needs-Yo
   assert.equal(durableEntry.resolution, 'Yes, confirmed by the owner.')
   assert.ok(durableEntry.resolvedAt)
 })
+
+// Real bug found and fixed (Manual Self-Improvement Finding Disposition
+// V1's own acceptance test caught this same shape on a sibling route): a
+// real missionId can genuinely contain a literal colon (e.g. a self-
+// improvement repair mission's own `mission:selfimprove:<findingId>`
+// shape, computeRepairMissionId). http-server.mjs's own real `parts`
+// array comes from `url.pathname.split('/')` with NO decoding, so a
+// colon survives as its raw `%3A` percent-encoding in the REAL dispatch
+// path -- a hand-built parts array (every other test in this file) never
+// exercises that encoding and so never caught it.
+test('a real percent-encoded missionId (the real shape a colon-bearing id takes in an actual URL) is decoded correctly, not looked up literally', async () => {
+  const missionId = 'mission:selfimprove:percent-encoded-fixture'
+  const needsYouId = await seedMissionWithNeedsYou(missionId, 'Does this real, colon-bearing missionId round-trip correctly?')
+  const realUrlPart = encodeURIComponent(missionId)
+  assert.notEqual(realUrlPart, missionId, 'sanity: encodeURIComponent must actually change a colon-bearing id')
+
+  const res = fakeRes()
+  const handled = await handlePlannerNeedsYouRoute(
+    ['api', 'planner-missions', realUrlPart, 'needs-you', needsYouId, 'resolve'],
+    { method: 'POST' },
+    res,
+    {},
+    helpersWithBody({ resolution: 'Yes.' })
+  )
+  assert.equal(handled, true)
+  assert.equal(res.statusCode, 200, 'the real, decoded missionId must be found, never a false 404')
+  assert.equal(res.body.ok, true)
+})

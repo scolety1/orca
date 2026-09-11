@@ -60,6 +60,7 @@ import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
 import { handleResourcePressureGovernorRoute } from './resource-pressure-governor-http-routes.mjs'
 import { handleAttentionRoute } from './attention-http-routes.mjs'
 import { handlePlannerNeedsYouRoute } from './planner-needs-you-http-routes.mjs'
+import { handleSelfImprovementFindingRoute } from './self-improvement-finding-http-routes.mjs'
 import { handleChatRoute } from './chat-http-routes.mjs'
 
 const FOUNDATION = Object.freeze({
@@ -425,6 +426,10 @@ export function createRequestHandler(options = {}) {
       }
 
       if (await handlePlannerNeedsYouRoute(parts, req, res, {}, { json, notFound, readBody })) { // POST /api/planner-missions/:id/needs-you/:id/resolve
+        return
+      }
+
+      if (await handleSelfImprovementFindingRoute(parts, req, res, {}, { json, notFound, readBody })) { // GET/POST /api/self-improvement/findings/:id[/start-fix|/apply-fix|/dismiss]
         return
       }
 

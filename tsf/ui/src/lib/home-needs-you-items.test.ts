@@ -108,17 +108,60 @@ test('buildOtherNeedsYouItems: a real NEEDS_OWNER self-improvement finding appea
   assert.equal(items[0].kind, 'SELF_IMPROVEMENT_FINDING')
 })
 
-test('buildOtherNeedsYouItems: excludes non-self-improvement NEEDS_OWNER items and non-NEEDS_OWNER self-improvement items', () => {
+test('buildOtherNeedsYouItems: excludes non-self-improvement, non-planner NEEDS_OWNER items (e.g. a real project Keep Going needsYou entry)', () => {
   const projectNeedsOwner = attentionItem({
     id: 'needsyou:PROJECT:1',
     source: { kind: 'KEEP_GOING_RUN', id: 'p1' }
   })
+  assert.deepEqual(buildOtherNeedsYouItems([projectNeedsOwner]), [])
+})
+
+// Manual Self-Improvement Finding Disposition V1: READY_FOR_ADOPTION and
+// FAILED_REQUIRES_ATTENTION self-improvement findings are now REAL,
+// actionable Needs-You cards too (Apply verified fix / Start Fix) --
+// deliberately no longer excluded, unlike the prior mission's own
+// NEEDS_OWNER-only filter.
+test('buildOtherNeedsYouItems: a READY_FOR_ADOPTION self-improvement finding now appears too (a real "Apply verified fix" candidate)', () => {
   const readyForAdoption = attentionItem({
     id: 'finding:y',
     category: 'READY_FOR_ADOPTION',
     source: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:y' }
   })
-  assert.deepEqual(buildOtherNeedsYouItems([projectNeedsOwner, readyForAdoption]), [])
+  const items = buildOtherNeedsYouItems([readyForAdoption])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'READY_FOR_ADOPTION')
+  assert.equal(items[0].findingId, 'finding:y')
+})
+
+test('buildOtherNeedsYouItems: a FAILED_REQUIRES_ATTENTION self-improvement finding (retry budget exceeded) appears too', () => {
+  const failed = attentionItem({
+    id: 'finding:z',
+    category: 'FAILED_REQUIRES_ATTENTION',
+    source: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:z' }
+  })
+  const items = buildOtherNeedsYouItems([failed])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].category, 'FAILED_REQUIRES_ATTENTION')
+})
+
+// A self-improvement finding surfaced under a category outside the real
+// three (selfImprovementItems' own exhaustive set) must never appear --
+// e.g. COMPLETED_RECENTLY, which selfImprovementItems never actually
+// produces, is still a real, honest exclusion boundary to prove.
+test('buildOtherNeedsYouItems: a self-improvement item under an unrecognized category is honestly excluded, never guessed in', () => {
+  const other = attentionItem({
+    id: 'finding:w',
+    category: 'COMPLETED_RECENTLY',
+    source: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:w' }
+  })
+  assert.deepEqual(buildOtherNeedsYouItems([other]), [])
+})
+
+test('buildOtherNeedsYouItems: findingId carries the real, raw source.id for a self-improvement item, never the doubly-prefixed attention id', () => {
+  const items = buildOtherNeedsYouItems([attentionItem()])
+  assert.equal(items[0].findingId, 'finding:x')
+  assert.equal(items[0].plannerMissionId, null)
+  assert.equal(items[0].plannerNeedsYouId, null)
 })
 
 test('buildOtherNeedsYouItems: a finding with a real project carries its real projectId', () => {
