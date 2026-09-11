@@ -587,11 +587,11 @@ passes. `TWO_CONSECUTIVE_STABLE_FULL_PASSES = YES`.
 
 | Lane | Status | Headline |
 |---|---|---|
-| A: state x action x surface matrix | PARTIAL | Real 6-state x PAUSE matrix added, reading the live `RUN_ALLOWED` table; not yet extended to RESUME/ADOPT/HOLD as separate dimensions |
+| A: state x action x surface matrix | PARTIAL | Real 6-state matrices for PAUSE, RESUME, and HOLD, all reading the live `RUN_ALLOWED` table (HOLD proven state-independent by design, mutation-verified); ADOPT not yet its own dimension (READY_FOR_ADOPTION is COMPLETE-only, a degenerate 1-state case) |
 | B: Full Command parity | DONE | 8/11 phrases live-tested; remaining 3 confirmed covered by shared architecture (one domain function, both surfaces) |
 | C: stateful conversational sequences | PARTIAL | Dogfood G (pause->why?->resume) added, surfaced and fixed a real P2 (question misclassified as directive) |
 | D: duplicate-delivery/idempotency | SUBSTANTIALLY DONE | ADOPT/PAUSE/RESUME all covered; HOLD/RELEASE already had pre-existing coverage |
-| E: race/TOCTOU | PARTIAL, 2 real findings fixed | Findings #12 and #14 (see §§5-6); RESUME concurrency not yet covered |
+| E: race/TOCTOU | PARTIAL, 2 real findings fixed | Findings #12 and #14 (see §§5-6); PAUSE and RESUME concurrency both covered (N-concurrent-duplicate-call race tests) |
 | F: restart/rollover | SUBSTANTIALLY COVERED | Pre-existing storage-layer and session-layer crash-safety coverage audited, confirmed structurally sufficient |
 | G: response truthfulness | SUBSTANTIALLY DONE | 1 real P1 fixed (false durable-record claim); remaining control-plane response-text files audited clean |
 | H: property/metamorphic expansion | PARTIAL | 3 real structural properties on `RUN_ALLOWED` (no dead end, all targets known, all states reach COMPLETE) |
@@ -766,8 +766,8 @@ everything landed since.)
 1. Finding #13 (§7): apply the proven #12/#14 lock pattern to
    `self-improvement-adoption.mjs`'s `attemptRepairAdoption`, with the
    owner's own context on the self-improvement gate.
-2. Extend Lane A's matrix and Lane E's concurrency proofs to
-   RESUME/ADOPT/HOLD as their own dimensions (currently PAUSE-only).
+2. Extend Lane A's matrix to RELEASE (the hold's own inverse action --
+   PAUSE/RESUME/HOLD all now have a real 6-state matrix).
 3. Finding #9 (§7): wire the 4 remaining internal command bridges
    (dogfood/self-improvement/fleet-attention/runtime-identity) into the
    real HTTP route, same as #7/#8, for full surface parity (lower

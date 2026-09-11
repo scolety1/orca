@@ -11,7 +11,13 @@ import { rmSync } from 'node:fs'
 import path from 'node:path'
 
 const HERE = import.meta.dirname
-const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-state.test-command-run-action-bridge-${process.pid}.json`)
+const STATE_FILE = path.join(
+  HERE,
+  '..',
+  'server',
+  '.local-state',
+  `operator-state.test-command-run-action-bridge-${process.pid}.json`
+)
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 // This machine has a real, working planner CLI available -- a GENERAL-
 // intent, zero-match message (e.g. "pause it" with no resolvable
@@ -21,13 +27,17 @@ process.env.TSF_UI_STATE_FILE = STATE_FILE
 process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 process.env.TSF_PLANNER_CODEX_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 
-const { classifyRunActionVerb, classifyContinueAction, pauseProjectRun, resumeProjectRun } = await import('../server/command-run-action-bridge.mjs')
+const { classifyRunActionVerb, classifyContinueAction, pauseProjectRun, resumeProjectRun } =
+  await import('../server/command-run-action-bridge.mjs')
 const { respondCommand } = await import('../server/command-responder.mjs')
 const { withKeepGoingRun, readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 const { createOvernightRun } = await import('../domain/keep-going.mjs')
+const { readProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
 
 function cleanupStateFile() {
-  for (const suffix of ['', '.tmp', '.keep-going.lock']) rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  for (const suffix of ['', '.tmp', '.keep-going.lock', '.project-execution-hold.lock']) {
+    rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  }
 }
 cleanupStateFile()
 
@@ -35,13 +45,26 @@ const clock = () => new Date('2026-09-04T12:00:00.000Z')
 
 async function seedActiveRun(projectId) {
   await withKeepGoingRun(projectId, () =>
-    createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock)
+    createOvernightRun(
+      { id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] },
+      clock
+    )
   )
 }
 
 async function seedPausedRun(projectId) {
   await withKeepGoingRun(projectId, (current) => {
-    const run = current ?? createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock)
+    const run =
+      current ??
+      createOvernightRun(
+        {
+          id: `run-${projectId}`,
+          projectId,
+          originalGoal: 'Test goal.',
+          acceptanceCriteria: ['X']
+        },
+        clock
+      )
     return { ...run, state: 'PAUSED' }
   })
 }
@@ -54,7 +77,17 @@ async function seedPausedRun(projectId) {
 // its own full domain transition sequence.
 async function seedRunInState(projectId, state) {
   await withKeepGoingRun(projectId, (current) => {
-    const run = current ?? createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock)
+    const run =
+      current ??
+      createOvernightRun(
+        {
+          id: `run-${projectId}`,
+          projectId,
+          originalGoal: 'Test goal.',
+          acceptanceCriteria: ['X']
+        },
+        clock
+      )
     return { ...run, state }
   })
 }
@@ -121,7 +154,11 @@ test('pauseProjectRun: a real, durable pause through the exact same primitive th
   await seedActiveRun('proj-to-pause')
   const run = await pauseProjectRun('proj-to-pause', 'test reason', clock)
   assert.equal(run.state, 'PAUSED')
-  assert.equal(readKeepGoingRun('proj-to-pause').state, 'PAUSED', 'the pause is really durable, not just returned')
+  assert.equal(
+    readKeepGoingRun('proj-to-pause').state,
+    'PAUSED',
+    'the pause is really durable, not just returned'
+  )
 })
 
 test('resumeProjectRun: a real, durable resume', async () => {
@@ -132,14 +169,23 @@ test('resumeProjectRun: a real, durable resume', async () => {
 })
 
 test('pauseProjectRun: an honest failure (never a fabricated success) when no run exists at all', async () => {
-  await assert.rejects(() => pauseProjectRun('proj-with-no-run-at-all', 'x', clock), /TSF_RUN_NOT_FOUND|no Keep Going run/)
+  await assert.rejects(
+    () => pauseProjectRun('proj-with-no-run-at-all', 'x', clock),
+    /TSF_RUN_NOT_FOUND|no Keep Going run/
+  )
 })
 
 // ---------------------------------------------------------------------
 // Integration through the real respondCommand entry point.
 // ---------------------------------------------------------------------
 function project(id, displayName) {
-  return { id, displayName, mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  return {
+    id,
+    displayName,
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }
 }
 
 function opStateWithLastTurn(resolvedProjectIds) {
@@ -148,7 +194,15 @@ function opStateWithLastTurn(resolvedProjectIds) {
     chatThreads: {
       __command__: [
         { role: 'user', content: 'x', at: clock().toISOString() },
-        { role: 'assistant', content: 'ok', at: clock().toISOString(), decisionClass: 'AUTO_DECIDE', intent: 'STATUS', resolvedProjectIds, scope: resolvedProjectIds.length === 1 ? 'PROJECT' : 'FLEET' }
+        {
+          role: 'assistant',
+          content: 'ok',
+          at: clock().toISOString(),
+          decisionClass: 'AUTO_DECIDE',
+          intent: 'STATUS',
+          resolvedProjectIds,
+          scope: resolvedProjectIds.length === 1 ? 'PROJECT' : 'FLEET'
+        }
       ]
     }
   }
@@ -198,14 +252,20 @@ test('integration: "continue it" on an ACTIVE run (nothing to resume) falls thro
     projects: [project('integration-continue-active', 'Integration Continue Active')],
     opState: opStateWithLastTurn(['integration-continue-active']),
     clock,
-    deps: { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+    deps: {
+      resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' })
+    }
   })
   assert.doesNotMatch(result.text, /^Resumed/)
   // Lane M red-team finding (real, fixed): assert.ok on an array is
   // vacuously true even for []  -- strengthened to prove the dispatch
   // attempt actually targeted this one real project, not an empty/wrong
   // target list.
-  assert.equal(result.dispatchResults?.length, 1, 'a real dispatch attempt, not a resume, since there was nothing paused to resume')
+  assert.equal(
+    result.dispatchResults?.length,
+    1,
+    'a real dispatch attempt, not a resume, since there was nothing paused to resume'
+  )
   assert.equal(result.dispatchResults[0].projectId, 'integration-continue-active')
 })
 
@@ -230,7 +290,11 @@ test('integration: authorization isolation -- a back-reference to project A neve
   })
   assert.deepEqual(result.resolvedProjectIds, ['proj-a-isolation'])
   assert.equal(readKeepGoingRun('proj-a-isolation').state, 'PAUSED')
-  assert.equal(readKeepGoingRun('proj-b-isolation').state, 'ACTIVE', 'project B must be completely untouched')
+  assert.equal(
+    readKeepGoingRun('proj-b-isolation').state,
+    'ACTIVE',
+    'project B must be completely untouched'
+  )
 })
 
 // TSF Overnight Control-Plane Burn-In V2, Lane D (duplicate-delivery /
@@ -248,13 +312,31 @@ test('integration: duplicate delivery -- "pause X" delivered twice in a row neve
   await seedActiveRun('integration-pause-duplicate')
   const projectFixture = [project('integration-pause-duplicate', 'Integration Pause Duplicate')]
 
-  const first = await respondCommand({ message: 'pause integration-pause-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock })
+  const first = await respondCommand({
+    message: 'pause integration-pause-duplicate',
+    projects: projectFixture,
+    opState: { keepGoingRuns: {} },
+    clock
+  })
   assert.match(first.text, /^Paused/)
   assert.equal(readKeepGoingRun('integration-pause-duplicate').state, 'PAUSED')
 
-  const second = await respondCommand({ message: 'pause integration-pause-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock })
-  assert.equal(second.live, false, 'a duplicate pause must never be reported as a real, live action')
-  assert.doesNotMatch(second.text, /^Paused/, 'the duplicate delivery must never claim a second successful pause')
+  const second = await respondCommand({
+    message: 'pause integration-pause-duplicate',
+    projects: projectFixture,
+    opState: { keepGoingRuns: {} },
+    clock
+  })
+  assert.equal(
+    second.live,
+    false,
+    'a duplicate pause must never be reported as a real, live action'
+  )
+  assert.doesNotMatch(
+    second.text,
+    /^Paused/,
+    'the duplicate delivery must never claim a second successful pause'
+  )
   assert.match(second.text, /couldn't pause/i)
 
   // The run itself is untouched by the refused duplicate -- still PAUSED,
@@ -263,7 +345,11 @@ test('integration: duplicate delivery -- "pause X" delivered twice in a row neve
   const run = readKeepGoingRun('integration-pause-duplicate')
   assert.equal(run.state, 'PAUSED')
   const pauseTransitions = run.transitions.filter((t) => t.to === 'PAUSED')
-  assert.equal(pauseTransitions.length, 1, 'the refused duplicate must not append a second PAUSED transition')
+  assert.equal(
+    pauseTransitions.length,
+    1,
+    'the refused duplicate must not append a second PAUSED transition'
+  )
 })
 
 // Lane D, RESUME/"continue" half: unlike PAUSE, a duplicate "resume X" is
@@ -276,26 +362,53 @@ test('integration: duplicate delivery -- "pause X" delivered twice in a row neve
 test('integration: duplicate delivery -- "resume X" delivered twice in a row never claims a second resume; the second call is honestly reclassified as a dispatch attempt instead', async () => {
   await seedPausedRun('integration-resume-duplicate')
   const projectFixture = [project('integration-resume-duplicate', 'Integration Resume Duplicate')]
-  const dispatchDeps = { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+  const dispatchDeps = {
+    resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' })
+  }
 
-  const first = await respondCommand({ message: 'resume integration-resume-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock })
+  const first = await respondCommand({
+    message: 'resume integration-resume-duplicate',
+    projects: projectFixture,
+    opState: { keepGoingRuns: {} },
+    clock
+  })
   assert.match(first.text, /^Resumed/)
   assert.equal(readKeepGoingRun('integration-resume-duplicate').state, 'ACTIVE')
 
-  const second = await respondCommand({ message: 'resume integration-resume-duplicate', projects: projectFixture, opState: { keepGoingRuns: {} }, clock, deps: dispatchDeps })
-  assert.doesNotMatch(second.text, /^Resumed/, 'the duplicate delivery must never claim a second successful resume')
+  const second = await respondCommand({
+    message: 'resume integration-resume-duplicate',
+    projects: projectFixture,
+    opState: { keepGoingRuns: {} },
+    clock,
+    deps: dispatchDeps
+  })
+  assert.doesNotMatch(
+    second.text,
+    /^Resumed/,
+    'the duplicate delivery must never claim a second successful resume'
+  )
   // Lane M red-team finding (real, fixed): assert.ok on an array is
   // vacuously true even for [] -- strengthened to prove the dispatch
   // attempt actually targeted this one real project (never a silently
   // empty or wrong-project target list).
-  assert.equal(second.dispatchResults?.length, 1, 'reclassified as a real dispatch attempt, since there was nothing left to resume')
+  assert.equal(
+    second.dispatchResults?.length,
+    1,
+    'reclassified as a real dispatch attempt, since there was nothing left to resume'
+  )
   assert.equal(second.dispatchResults[0].projectId, 'integration-resume-duplicate')
 
   // The run's own transition history has exactly one RESUME-to-ACTIVE
   // transition -- the duplicate never appended a second one.
   const run = readKeepGoingRun('integration-resume-duplicate')
-  const resumeTransitions = run.transitions.filter((t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME')
-  assert.equal(resumeTransitions.length, 1, 'the duplicate call must not append a second OPERATOR_RESUME transition')
+  const resumeTransitions = run.transitions.filter(
+    (t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME'
+  )
+  assert.equal(
+    resumeTransitions.length,
+    1,
+    'the duplicate call must not append a second OPERATOR_RESUME transition'
+  )
 })
 
 // TSF Overnight Control-Plane Burn-In V2, Lane E (race/TOCTOU), extending
@@ -323,18 +436,37 @@ test('Lane E: N genuinely concurrent duplicate "pause X" chat calls for the same
 
   const N = 10
   const results = await Promise.all(
-    Array.from({ length: N }, () => respondCommand({ message: 'pause lane-e-concurrent-pause', projects: projectFixture, opState: { keepGoingRuns: {} }, clock }))
+    Array.from({ length: N }, () =>
+      respondCommand({
+        message: 'pause lane-e-concurrent-pause',
+        projects: projectFixture,
+        opState: { keepGoingRuns: {} },
+        clock
+      })
+    )
   )
 
-  const paused = results.filter((r) => /^Paused/.test(r.text))
+  const paused = results.filter((r) => r.text.startsWith('Paused'))
   const refused = results.filter((r) => r.live === false)
-  assert.equal(paused.length, 1, `exactly one of ${N} genuinely concurrent duplicate pause calls must actually succeed`)
-  assert.equal(refused.length, N - 1, 'every other concurrent call must be honestly refused, never a second false "Paused" claim')
+  assert.equal(
+    paused.length,
+    1,
+    `exactly one of ${N} genuinely concurrent duplicate pause calls must actually succeed`
+  )
+  assert.equal(
+    refused.length,
+    N - 1,
+    'every other concurrent call must be honestly refused, never a second false "Paused" claim'
+  )
 
   const run = readKeepGoingRun('lane-e-concurrent-pause')
   assert.equal(run.state, 'PAUSED')
   const pauseTransitions = run.transitions.filter((t) => t.to === 'PAUSED')
-  assert.equal(pauseTransitions.length, 1, `exactly one PAUSED transition despite ${N} genuinely concurrent duplicate calls`)
+  assert.equal(
+    pauseTransitions.length,
+    1,
+    `exactly one PAUSED transition despite ${N} genuinely concurrent duplicate calls`
+  )
 })
 
 // TSF Overnight Control-Plane Burn-In V2, Lane E, RESUME's own genuine-
@@ -359,24 +491,36 @@ test('Lane E: N genuinely concurrent duplicate "pause X" chat calls for the same
 test('Lane E: N genuinely concurrent "resume X" chat calls for the same paused project are race-safe -- exactly one real resume, exactly one ACTIVE transition, no crash', async () => {
   await seedPausedRun('lane-e-concurrent-resume')
   const projectFixture = [project('lane-e-concurrent-resume', 'Lane E Concurrent Resume')]
-  const dispatchDeps = { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+  const dispatchDeps = {
+    resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' })
+  }
 
   const N = 10
   const results = await Promise.all(
     Array.from({ length: N }, () =>
-      respondCommand({ message: 'resume lane-e-concurrent-resume', projects: projectFixture, opState: { keepGoingRuns: {} }, clock, deps: dispatchDeps })
+      respondCommand({
+        message: 'resume lane-e-concurrent-resume',
+        projects: projectFixture,
+        opState: { keepGoingRuns: {} },
+        clock,
+        deps: dispatchDeps
+      })
     )
   )
 
-  const resumed = results.filter((r) => /^Resumed/.test(r.text))
-  assert.equal(resumed.length, 1, `exactly one of ${N} genuinely concurrent duplicate resume calls must actually succeed`)
+  const resumed = results.filter((r) => r.text.startsWith('Resumed'))
+  assert.equal(
+    resumed.length,
+    1,
+    `exactly one of ${N} genuinely concurrent duplicate resume calls must actually succeed`
+  )
   // Every other call must be honestly handled -- either a real refusal
   // (the state-machine guard threw, caught, turned into "Couldn't
   // resume") or correctly reclassified as a dispatch attempt because it
   // read the run as already ACTIVE before ever calling resumeProjectRun
   // -- either way, never a crash and never a second "Resumed" claim.
   for (const r of results) {
-    if (!/^Resumed/.test(r.text)) {
+    if (!r.text.startsWith('Resumed')) {
       assert.ok(
         /couldn't resume/i.test(r.text) || Array.isArray(r.dispatchResults),
         `every non-winning concurrent call must be an honest refusal or a real dispatch reclassification, never something else: got "${r.text}"`
@@ -386,8 +530,14 @@ test('Lane E: N genuinely concurrent "resume X" chat calls for the same paused p
 
   const run = readKeepGoingRun('lane-e-concurrent-resume')
   assert.equal(run.state, 'ACTIVE')
-  const resumeTransitions = run.transitions.filter((t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME')
-  assert.equal(resumeTransitions.length, 1, `exactly one OPERATOR_RESUME transition despite ${N} genuinely concurrent duplicate calls`)
+  const resumeTransitions = run.transitions.filter(
+    (t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME'
+  )
+  assert.equal(
+    resumeTransitions.length,
+    1,
+    `exactly one OPERATOR_RESUME transition despite ${N} genuinely concurrent duplicate calls`
+  )
 })
 
 // TSF Overnight Control-Plane Burn-In V2, Lane A (state x action x
@@ -430,11 +580,27 @@ test('Lane A: state x action(PAUSE) x surface matrix -- "pause X" succeeds iff R
     })
 
     if (expectSuccess) {
-      assert.match(result.text, /^Paused/, `state ${state}: RUN_ALLOWED permits PAUSED, so "pause X" must really succeed`)
-      assert.equal(readKeepGoingRun(projectId).state, 'PAUSED', `state ${state}: the run must really transition to PAUSED`)
+      assert.match(
+        result.text,
+        /^Paused/,
+        `state ${state}: RUN_ALLOWED permits PAUSED, so "pause X" must really succeed`
+      )
+      assert.equal(
+        readKeepGoingRun(projectId).state,
+        'PAUSED',
+        `state ${state}: the run must really transition to PAUSED`
+      )
     } else {
-      assert.doesNotMatch(result.text, /^Paused/, `state ${state}: RUN_ALLOWED forbids PAUSED, so "pause X" must never falsely claim success`)
-      assert.equal(readKeepGoingRun(projectId).state, state, `state ${state}: a refused pause must never corrupt/change the run's real state`)
+      assert.doesNotMatch(
+        result.text,
+        /^Paused/,
+        `state ${state}: RUN_ALLOWED forbids PAUSED, so "pause X" must never falsely claim success`
+      )
+      assert.equal(
+        readKeepGoingRun(projectId).state,
+        state,
+        `state ${state}: a refused pause must never corrupt/change the run's real state`
+      )
     }
   }
 })
@@ -459,7 +625,9 @@ test('Lane A: state x action(PAUSE) x surface matrix -- "pause X" succeeds iff R
 test('Lane A: state x action(RESUME) matrix -- "resume X" only ever really resumes a PAUSED run; every other real state honestly falls through to a dispatch attempt that never corrupts the run\'s own state', async () => {
   const { RUN_ALLOWED } = await import('../domain/keep-going.mjs')
   const states = Object.keys(RUN_ALLOWED)
-  const dispatchDeps = { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+  const dispatchDeps = {
+    resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' })
+  }
 
   for (const state of states) {
     const projectId = `lane-a-resume-matrix-${state.toLowerCase()}`
@@ -475,12 +643,86 @@ test('Lane A: state x action(RESUME) matrix -- "resume X" only ever really resum
 
     if (state === 'PAUSED') {
       assert.match(result.text, /^Resumed/, 'a PAUSED run must really resume')
-      assert.equal(readKeepGoingRun(projectId).state, 'ACTIVE', 'a real PAUSED->ACTIVE transition must actually land')
+      assert.equal(
+        readKeepGoingRun(projectId).state,
+        'ACTIVE',
+        'a real PAUSED->ACTIVE transition must actually land'
+      )
     } else {
-      assert.doesNotMatch(result.text, /^Resumed/, `state ${state}: "resume X" must never falsely claim a resume that cannot have happened`)
-      assert.equal(result.dispatchResults?.length, 1, `state ${state}: must honestly reclassify to a real, single-project dispatch attempt`)
-      assert.equal(result.dispatchResults[0].projectId, projectId, `state ${state}: the dispatch attempt must target the real project, never a wrong/empty one`)
-      assert.equal(readKeepGoingRun(projectId).state, state, `state ${state}: the dispatch fallback must never corrupt/change the run's real state`)
+      assert.doesNotMatch(
+        result.text,
+        /^Resumed/,
+        `state ${state}: "resume X" must never falsely claim a resume that cannot have happened`
+      )
+      assert.equal(
+        result.dispatchResults?.length,
+        1,
+        `state ${state}: must honestly reclassify to a real, single-project dispatch attempt`
+      )
+      assert.equal(
+        result.dispatchResults[0].projectId,
+        projectId,
+        `state ${state}: the dispatch attempt must target the real project, never a wrong/empty one`
+      )
+      assert.equal(
+        readKeepGoingRun(projectId).state,
+        state,
+        `state ${state}: the dispatch fallback must never corrupt/change the run's real state`
+      )
     }
+  }
+})
+
+// Lane A's own HOLD dimension -- a genuinely different oracle shape than
+// either PAUSE or RESUME: a project execution hold (server/project-
+// execution-hold-store.mjs, real caller: command-multi-action-bridge.mjs's
+// classifySingleTargetHoldEntries, wired into this same respondCommand
+// via command-responder.mjs) is architecturally ORTHOGONAL to the Keep
+// Going run's own RUN_ALLOWED state machine -- a hold is a durable,
+// independent safety record ("another agent is on this"), never gated by
+// what state the run happens to be in (unlike PAUSE/RESUME's real
+// RUN_ALLOWED-driven or dispatch-fallback behavior above). So the
+// non-trivial property to prove exhaustively here is the mirror image of
+// PAUSE's: "hold X" must succeed UNCONDITIONALLY across all 6 real
+// states, and -- just as importantly -- must never itself mutate the
+// run's own `state` field (findings #16/#17 this same mission both found
+// real bugs in hold REACHABILITY/PRECEDENCE vs other actions; this
+// exhaustively proves the narrower, still real property that setting a
+// hold itself is honest and state-independent, the foundation those
+// fixes build on).
+test('Lane A: state x action(HOLD) matrix -- "X is being handled by another agent, leave it alone" sets a real, durable hold regardless of run state, and never itself mutates the run\'s own state', async () => {
+  const { RUN_ALLOWED } = await import('../domain/keep-going.mjs')
+  const states = Object.keys(RUN_ALLOWED)
+
+  for (const state of states) {
+    const projectId = `lane-a-hold-matrix-${state.toLowerCase()}`
+    await seedRunInState(projectId, state)
+    const before = readProjectExecutionHold(projectId)
+    assert.equal(
+      before,
+      null,
+      `state ${state}: sanity -- no pre-existing hold for this fresh fixture`
+    )
+
+    const result = await respondCommand({
+      message: `${projectId} is being handled by another agent right now, leave it alone -- do not touch it.`,
+      projects: [project(projectId, `Lane A Hold Matrix ${state}`)],
+      opState: { keepGoingRuns: {} },
+      clock
+    })
+
+    assert.match(
+      result.text,
+      /Held/,
+      `state ${state}: a hold request must really succeed regardless of run state`
+    )
+    const hold = readProjectExecutionHold(projectId)
+    assert.ok(hold, `state ${state}: a real, durable hold must actually have been written`)
+    assert.equal(hold.status, 'ACTIVE', `state ${state}: the hold must really be ACTIVE`)
+    assert.equal(
+      readKeepGoingRun(projectId).state,
+      state,
+      `state ${state}: setting a hold must never itself corrupt/change the run's real state`
+    )
   }
 })
