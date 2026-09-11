@@ -85,26 +85,34 @@ const VERB_PLUS_PRONOUN = (verbs) => new RegExp(`\\b(?:${verbs})\\s+(it|that|thi
 
 const PAUSE_OPENER = CLAUSE_OPENS_WITH('pause')
 const PAUSE_PRONOUN = VERB_PLUS_PRONOUN('pause')
-const RESUME_OPENER = CLAUSE_OPENS_WITH('resume|continue')
-const RESUME_PRONOUN = VERB_PLUS_PRONOUN('resume|continue')
+// Pre-UI Productization V1, Priority 2, real gap: "rerun"/"retry" were not
+// recognized as RESUME synonyms at all -- the owner's own literal example
+// ("Rerun the failed one") fell through to a live-planner call or an
+// honest non-match, never the real DISPATCH attempt a STALLED run's own
+// "resume it"/"run it" phrasing already safely triggers (RUN_ALLOWED
+// permits STALLED -> ACTIVE; classifyContinueAction's DISPATCH fallback is
+// already proven safe by Lane A's own RESUME matrix). Same real
+// capability, just 2 more natural synonyms recognized for it.
+const RESUME_OPENER = CLAUSE_OPENS_WITH('resume|continue|rerun|retry')
+const RESUME_PRONOUN = VERB_PLUS_PRONOUN('resume|continue|rerun|retry')
 
 function clauseMatchesAction(clause, opener, pronoun) {
-  if (NEGATION_OPENER.test(clause)) return false
-  if (opener.test(clause)) return true
+  if (NEGATION_OPENER.test(clause)) {return false}
+  if (opener.test(clause)) {return true}
   // A bare object/pronoun match ("pause it") only counts as a directive
   // when the clause isn't itself an obvious question -- "pause NWR" (the
   // OPENER check above) is unaffected either way.
   return pronoun.test(clause) && !QUESTION_OPENER.test(clause)
 }
 
-// Returns 'PAUSE' | 'RESUME' | null. RESUME covers both "resume" and
-// "continue" -- classifyContinueAction (called by the caller once a real
+// Returns 'PAUSE' | 'RESUME' | null. RESUME covers "resume"/"continue"/
+// "rerun"/"retry" -- classifyContinueAction (called by the caller once a real
 // project is identified) is what decides whether "continue"/"resume"
 // actually means resuming a paused run or dispatching fresh work.
 export function classifyRunActionVerb(message) {
   for (const clause of splitIntoClauses(message)) {
-    if (clauseMatchesAction(clause, PAUSE_OPENER, PAUSE_PRONOUN)) return 'PAUSE'
-    if (clauseMatchesAction(clause, RESUME_OPENER, RESUME_PRONOUN)) return 'RESUME'
+    if (clauseMatchesAction(clause, PAUSE_OPENER, PAUSE_PRONOUN)) {return 'PAUSE'}
+    if (clauseMatchesAction(clause, RESUME_OPENER, RESUME_PRONOUN)) {return 'RESUME'}
   }
   return null
 }

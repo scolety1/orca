@@ -101,6 +101,24 @@ test('classifyRunActionVerb: recognizes PAUSE/RESUME in both named ("pause NWR")
   assert.equal(classifyRunActionVerb('continue NWR'), 'RESUME')
 })
 
+// Pre-UI Productization V1, Priority 2, real gap: the owner's own literal
+// example phrasing ("Rerun the failed one") was not recognized as RESUME
+// at all -- "rerun"/"retry" fell through to a live-planner call or an
+// honest non-match, never the real DISPATCH attempt a STALLED run's own
+// "resume it"/"run it" phrasing already safely triggers.
+test('classifyRunActionVerb: recognizes "rerun"/"retry" as real RESUME synonyms, both named and back-reference shapes', () => {
+  assert.equal(classifyRunActionVerb('rerun NWR'), 'RESUME')
+  assert.equal(classifyRunActionVerb('rerun it'), 'RESUME')
+  assert.equal(classifyRunActionVerb('please retry'), 'RESUME')
+  assert.equal(classifyRunActionVerb('retry it'), 'RESUME')
+  assert.equal(classifyRunActionVerb('go ahead and retry that'), 'RESUME')
+})
+
+test('classifyRunActionVerb: a negated rerun/retry request is never classified as actionable', () => {
+  assert.equal(classifyRunActionVerb("don't rerun it"), null)
+  assert.equal(classifyRunActionVerb('please do not retry NWR'), null)
+})
+
 test('classifyRunActionVerb: a negated action is never classified as actionable', () => {
   assert.equal(classifyRunActionVerb("don't pause it"), null)
   assert.equal(classifyRunActionVerb('please do not pause NWR'), null)
@@ -267,6 +285,28 @@ test('integration: "continue it" on an ACTIVE run (nothing to resume) falls thro
     'a real dispatch attempt, not a resume, since there was nothing paused to resume'
   )
   assert.equal(result.dispatchResults[0].projectId, 'integration-continue-active')
+})
+
+// Pre-UI Productization V1, Priority 2 -- the owner's own literal example
+// scenario: a STALLED (failed) run, "rerun it" -- must reach the SAME real
+// dispatch path "resume it"/"continue it" already safely reach for a
+// STALLED run (RUN_ALLOWED permits STALLED -> ACTIVE; already proven safe
+// by Lane A's own RESUME matrix), now via the natural "rerun" phrasing too.
+test('integration: "rerun it" on a STALLED run reaches the SAME real dispatch attempt "resume it" does, never a fabricated "resumed"', async () => {
+  await seedRunInState('integration-rerun-stalled', 'STALLED')
+  const result = await respondCommand({
+    message: 'rerun it',
+    projects: [project('integration-rerun-stalled', 'Integration Rerun Stalled')],
+    opState: opStateWithLastTurn(['integration-rerun-stalled']),
+    clock,
+    deps: {
+      resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' })
+    }
+  })
+  assert.doesNotMatch(result.text, /^Resumed/)
+  assert.equal(result.dispatchResults?.length, 1, 'a real dispatch attempt for the STALLED run')
+  assert.equal(result.dispatchResults[0].projectId, 'integration-rerun-stalled')
+  assert.equal(readKeepGoingRun('integration-rerun-stalled').state, 'STALLED', 'the dispatch fallback must never itself corrupt/change the run\'s real state')
 })
 
 test('integration: "pause it" with no back-reference context at all is refused honestly, never guesses a project to pause', async () => {
