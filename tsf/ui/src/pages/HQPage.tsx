@@ -31,6 +31,7 @@ import { CapacityIndicator } from '@/components/CapacityIndicator'
 import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
 import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
 import { ResearchMissionCard } from '@/components/research/ResearchMissionCard'
+import { PlannerNeedsYouCard } from '@/components/PlannerNeedsYouCard'
 import { useCommandDock, useReloadOnDockActivity } from '@/lib/command-dock-context'
 import { useForegroundPolling } from '@/lib/use-foreground-polling'
 
@@ -243,10 +244,17 @@ export function HQPage() {
               <ResearchMissionCard key={item.missionId} item={item} />
             ))}
             {otherNeedsYou.map((item) => {
-              // No standalone finding/planner-mission page exists yet --
-              // link to the real owning project when one is known,
-              // otherwise render a plain, non-clickable card rather than a
-              // link to nowhere (a planner item never has one -- honest).
+              // Pre-UI Productization V1, Priority 5: a planner Needs-You
+              // item is now inline-resolvable (a real answer action, no
+              // standalone page needed) rather than a permanent dead end.
+              if (item.kind === 'PLANNER_MISSION_NEEDS_YOU' && item.plannerMissionId && item.plannerNeedsYouId) {
+                return <PlannerNeedsYouCard key={item.id} item={item} onResolved={reloadAttention} />
+              }
+              // No standalone finding page exists yet (self-improvement
+              // adoption stays autonomous-only per this whole mission's own
+              // standing constraint) -- link to the real owning project
+              // when one is known, otherwise render a plain, non-clickable
+              // card rather than a link to nowhere.
               const cardBody = (
                 <Card className="border-status-degraded/40 bg-status-degraded/5 transition-colors hover:border-status-degraded/70">
                   <CardContent className="flex items-center justify-between gap-2 p-3">

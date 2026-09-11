@@ -57,6 +57,12 @@ export type OtherNeedsYouItem = {
   reason: string
   projectId: string | null
   kind: 'SELF_IMPROVEMENT_FINDING' | 'PLANNER_MISSION_NEEDS_YOU'
+  // Pre-UI Productization V1, Priority 5: the real missionId (deepLink.id)
+  // and raw needsYouId (source.id) a real resolve action needs -- only
+  // ever non-null for kind === 'PLANNER_MISSION_NEEDS_YOU' (the real
+  // deepLink.kind for that source), never fabricated for any other kind.
+  plannerMissionId: string | null
+  plannerNeedsYouId: string | null
 }
 
 export function buildOtherNeedsYouItems(attentionItems: AttentionItem[]): OtherNeedsYouItem[] {
@@ -67,6 +73,8 @@ export function buildOtherNeedsYouItems(attentionItems: AttentionItem[]): OtherN
       label: i.label,
       reason: i.reason,
       projectId: i.project?.id ?? null,
-      kind: i.source.kind as OtherNeedsYouItem['kind']
+      kind: i.source.kind as OtherNeedsYouItem['kind'],
+      plannerMissionId: i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ? (i.deepLink.id ?? null) : null,
+      plannerNeedsYouId: i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ? i.source.id : null
     }))
 }

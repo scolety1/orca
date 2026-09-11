@@ -181,3 +181,19 @@ test('buildOtherNeedsYouItems: a planner item and a self-improvement item with t
     ['PLANNER_MISSION_NEEDS_YOU', 'SELF_IMPROVEMENT_FINDING'].sort()
   )
 })
+
+// Pre-UI Productization V1, Priority 5: a real resolve action needs both
+// the real missionId (deepLink.id) and the raw needsYouId (source.id) --
+// carried through so a frontend answer action never has to guess/re-derive
+// them from the (differently-shaped) attention item id.
+test('buildOtherNeedsYouItems: a planner item carries its real plannerMissionId + plannerNeedsYouId, read from deepLink/source', () => {
+  const items = buildOtherNeedsYouItems([plannerAttentionItem()])
+  assert.equal(items[0].plannerMissionId, 'mission-1')
+  assert.equal(items[0].plannerNeedsYouId, 'entry-1')
+})
+
+test('buildOtherNeedsYouItems: a self-improvement finding never fabricates plannerMissionId/plannerNeedsYouId', () => {
+  const items = buildOtherNeedsYouItems([attentionItem()])
+  assert.equal(items[0].plannerMissionId, null)
+  assert.equal(items[0].plannerNeedsYouId, null)
+})

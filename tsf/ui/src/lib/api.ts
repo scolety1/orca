@@ -1,4 +1,6 @@
 import { createKeepGoingApi } from './keep-going-api'
+import { createPlannerNeedsYouApi } from './planner-needs-you-api'
+import { createEvalApi } from './eval-api'
 import type { ChatPlacement } from './chat-dispatch-types'
 import type { FleetWorkStatusItem } from './fleet-status-types'
 import type { RuntimeIdentity, UpdateSafety } from './system-status-types'
@@ -7,7 +9,6 @@ import type {
   GenerateEstimateRequest,
   ProjectEstimateView
 } from './estimate-types'
-import type { EvalComparison, EvalPackSummary, EvalRunResult } from './eval-types'
 import type { FlightRecorderView } from './flight-recorder-types'
 import type { FleetScheduleError, FleetScheduleResponse } from './fleet-types'
 import type {
@@ -218,6 +219,8 @@ export const api = {
       body: JSON.stringify({ repoPath, handoffText })
     }),
   ...createKeepGoingApi(request),
+  ...createPlannerNeedsYouApi(request),
+  ...createEvalApi(request, requestTolerant),
   estimate: (projectId: string) =>
     request<ProjectEstimateView>(`/projects/${encodeURIComponent(projectId)}/estimate`),
   generateEstimate: (projectId: string, body: GenerateEstimateRequest) =>
@@ -225,21 +228,6 @@ export const api = {
       `/projects/${encodeURIComponent(projectId)}/estimate`,
       { method: 'POST', body: JSON.stringify(body) }
     ),
-  evalPacks: () => request<{ ok: true; packs: EvalPackSummary[] }>('/eval'),
-  evalHistory: (packId: string) =>
-    request<{ ok: true; packId: string; runs: EvalRunResult[] }>(
-      `/eval/${encodeURIComponent(packId)}/history`
-    ),
-  runEvalPack: (packId: string) =>
-    request<{ ok: true; packId: string; run: EvalRunResult }>(
-      `/eval/${encodeURIComponent(packId)}/run`,
-      { method: 'POST' }
-    ),
-  evalRegressionCheck: (packId: string) =>
-    requestTolerant<
-      { ok: true; packId: string; comparison: EvalComparison },
-      { ok: false; error: string }
-    >(`/eval/${encodeURIComponent(packId)}/regression-check`, { method: 'POST' }),
   flightRecorder: (projectId: string) =>
     request<FlightRecorderView>(`/projects/${encodeURIComponent(projectId)}/flight-recorder`),
   fleetSchedule: (body: {
