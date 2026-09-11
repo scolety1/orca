@@ -1,27 +1,31 @@
 # TSF_OVERNIGHT_CONTROL_PLANE_BURN_IN_V2
 
-Session status: **CONTROL_PLANE_STABLE_V1 ACHIEVED**, RE-DECLARED (4th
-declaration) at current tip SHA `9374ba7eb6` (fork/tsf/main) -- see
-§6F -- after finding #11's own real fix (§6E, a P1/P2) reset the
-counter that had been set by the 3rd declaration at SHA `a575322ae1`
-(§6D) following a SIXTH real P0/P1 (finding #17, likely the single
-most severe finding of the whole mission: the primary autonomous
-dispatch driver was a complete, silent bypass of the
+Session status: **STABILITY_PASS = 0 of 2 (pending)** -- the counter
+was reset by finding #18 (§6G, a P2 truthfulness gap), landed after
+`CONTROL_PLANE_STABLE_V1` was last re-declared (4th declaration, §6F)
+at SHA `9374ba7eb6`, itself following finding #11's own real fix (§6E,
+a P1/P2) resetting the counter set by the 3rd declaration at SHA
+`a575322ae1` (§6D) after a SIXTH real P0/P1 (finding #17, likely the
+single most severe finding of the whole mission: the primary
+autonomous dispatch driver was a complete, silent bypass of the
 project-execution-hold safety mechanism), found, fixed through 3
-independent review rounds, and integrated. Seven real P0/P1-or-P1/P2
-findings found across the whole session, all reproduced
-live/deterministically, root-caused, fixed systemically,
+independent review rounds, and integrated. Current canonical tip: SHA
+`b490de3799` (fork/tsf/main). A fresh 2-pass full-suite sequence
+against this SHA is required before `CONTROL_PLANE_STABLE_V1` can be
+re-declared -- next-highest-priority remaining work. Eight real
+P0/P1-or-P1/P2-or-P2 findings found across the whole session, all
+reproduced live/deterministically, root-caused, fixed systemically,
 mutation-verified, integrated, and pushed (six with independent
-review; finding #11 self-caught its own regression during verification
-and was judged not to need a separate round, per finding #15's own
-precedent for additive P1/P2 fixes). Zero real regressions introduced
-across 11 full-suite runs (8 completed cleanly, 3 were real OS-level
-resource aborts, correctly never counted as failures). Zero real user
-projects touched. This report was first written at the FIRST stability
-milestone (SHA `208f4438b4`), not at session end -- the mission is
-exhaustive-scoped (13 lanes) and several lanes remain PARTIAL by
-design; see §12 for the original declaration and §§6A-6F for real work
-and three more real findings landed since. Durable queue:
+review; findings #11 and #18 each self-verified without a separate
+round, per finding #15's own precedent for additive P1/P2-or-lower
+fixes). Zero real regressions introduced across 11 full-suite runs (8
+completed cleanly, 3 were real OS-level resource aborts, correctly
+never counted as failures) plus targeted suites for finding #18. Zero
+real user projects touched. This report was first written at the FIRST
+stability milestone (SHA `208f4438b4`), not at session end -- the
+mission is exhaustive-scoped (13 lanes) and several lanes remain
+PARTIAL by design; see §12 for the original declaration and §§6A-6G
+for real work and four more real findings landed since. Durable queue:
 `overnight-control-plane-queue.md` (session memory), append-only
 findings log now at 18 entries.
 
@@ -528,6 +532,70 @@ passes. `TWO_CONSECUTIVE_STABLE_FULL_PASSES = YES`.
 `CONTROL_PLANE_STABLE_V1 = YES`, RE-DECLARED (4th declaration) at SHA
 `9374ba7eb6`.
 
+## 6G. Finding #18: "why is it stuck?" after a real hold contradicted the operator's own instruction (P2, real truthfulness gap) -- FOUND, FIXED, INTEGRATED
+
+Found via a fresh sweep for real, un-flagged gaps (no user report, no
+prior disclosure) -- Lane A's own new HOLD matrix (§ above) put a real
+hold-setting sequence back in mind, which prompted checking the OTHER
+real read path a hold should be honest through: the explanatory
+follow-up ("why is it stuck?") a real operator would naturally ask
+right after setting one.
+
+**Live-reproduced before fixing** (throwaway probe script, not
+guessed): a real 2-turn sequence -- "X is being handled by another
+agent right now, leave it alone" (which really, durably records the
+hold, confirmed by its own "Held -- ... (recorded, releasable later)"
+response text) followed by "why is it stuck?" -- answered **"nothing
+is stuck, there's just nothing in flight"**, directly contradicting
+what the operator themselves just told the system and the system
+itself just durably recorded.
+
+**Root cause**: `command-followup-context.mjs`'s `explainProjectState`
+derived its whole explanation from the Keep Going run's own live feed
+state alone, with zero awareness of a real, active project execution
+hold. Same bug class as findings #15/#17 (a hold not surfaced in a
+relevant read path), a new location -- confirming holds are a
+recurring class of "real safety fact, easy to forget in a new read
+path" this codebase keeps needing to re-learn.
+
+**Fix**: `explainProjectState` gained a `hold` parameter, checked via
+the same `isProjectExecutionHoldActive` every other real hold-aware
+read path already uses. Two honest branches: when no run exists yet,
+the hold IS the explanation ("is on hold -- ... -- that's why nothing
+is in flight"); when a run exists and has its own real state (e.g.
+genuinely STALLED for an unrelated reason), the hold is reported
+ADDITIVELY, never replacing the run's own real reason -- both facts
+can be true at once and neither is allowed to silently drop the other.
+The real production call site (`explainPriorAnswer`, called from
+`command-responder.mjs`, reached from both Global Command and the real
+per-project chat HTTP route) already receives the full `opState`
+(`opState.projectExecutionHolds` is populated by `loadState()` in
+every real caller), so the fix is a plain, honest read with no new
+plumbing needed.
+
+**Evidence**: 2 new dogfood-style regression tests
+(`test/command-dogfood-sequences.test.mjs`, dogfood H/H2) covering
+both branches (no-run-yet, and STALLED-and-held together). Mutation-
+verified: forcing `held` to always `false` reproduced exactly these 2
+new tests failing, 0 others; restored and re-confirmed green. 84
+relevant tests run clean across `command-dogfood-sequences`,
+`command-followup-context`, `command-multi-action-bridge`,
+`command-responder`, and `project-execution-hold`. Pre-commit lint
+also caught and fixed 5 pre-existing, unrelated `curly` violations in
+the 2 touched files (mechanical, zero behavior change).
+
+Fast-forward merged, canonical re-verified green, pushed to
+`fork/tsf/main` at SHA `b490de3799`, remote SHA verified equal via
+`git ls-remote`, no worktree needed (edits made directly in the
+already-clean canonical checkout, fully tested in place before
+commit). **Finding #18 CLOSED**.
+
+Per the mission's own rule, this genuinely new real finding resets the
+stability counter: `STABILITY_PASS = 0 of 2 (pending)` as of this
+finding's integration. Not given a separate independent red-team
+review round -- same proportionate-review bar as findings #11/#15 (P2,
+additive, no wrong-project risk, no data loss, self-mutation-verified).
+
 ## 7. Disclosed, not fixed (real, deliberately deferred)
 
 - **Finding #9** (P2/P3): the same "only reachable via `respondCommand`'s
@@ -674,23 +742,24 @@ every run it was used on after its discovery.
 
 ## 12. Stability declaration
 
-**STABILITY_PASS = 2 of 2 -- CONTROL_PLANE_STABLE_V1 = YES**,
-RE-DECLARED (4th declaration) at current tip SHA `9374ba7eb6` -- see
-§6F for the fresh 2-pass sequence this declaration is based on. Full
-history: first declared at SHA `208f4438b4` via runs #3/#4 (zero new
-P0/P1 in between, zero interim work at all -- the strictest possible
-reading of the mission's own rule); remained valid through 3 more
-non-P0/P1 commits (§6A); RESET by finding #16 (§6B, a real P1);
-RE-DECLARED via runs #6/#7c; RESET again by finding #17 (§6C/§6D, a
-real P0/P1, likely the most severe of the mission); RE-DECLARED a
-third time via runs #8b/#9b, against an explicit 14-component
-stability contract the user specified (§6D), not merely a green exit
-code -- every component individually verified with real, specific
-evidence; RESET a third time by finding #11 (§6E) landing at SHA
-`5039006a12`; RE-DECLARED a fourth time via runs #10/#12 (§6F) at SHA
-`9374ba7eb6`, current tip. This does not end the mission: lanes A, C,
-E, H, and I remain PARTIAL by the mission's own exhaustive scope. Any
-new P0/P1 found in further work resets this counter again.
+**STABILITY_PASS = 0 of 2 (pending)** -- RESET by finding #18 (§6G, a
+real P2 fix landing after the most recent declaration). Full history:
+first declared at SHA `208f4438b4` via runs #3/#4 (zero new P0/P1 in
+between, zero interim work at all -- the strictest possible reading of
+the mission's own rule); remained valid through 3 more non-P0/P1
+commits (§6A); RESET by finding #16 (§6B, a real P1); RE-DECLARED via
+runs #6/#7c; RESET again by finding #17 (§6C/§6D, a real P0/P1, likely
+the most severe of the mission); RE-DECLARED a third time via runs
+#8b/#9b, against an explicit 14-component stability contract the user
+specified (§6D), not merely a green exit code -- every component
+individually verified with real, specific evidence; RESET a third time
+by finding #11 (§6E) landing at SHA `5039006a12`; RE-DECLARED a fourth
+time via runs #10/#12 (§6F) at SHA `9374ba7eb6`; RESET a fourth time by
+finding #18 (§6G) landing at SHA `b490de3799`, current tip. A fresh
+2-pass full-suite sequence against SHA `b490de3799` is required before
+re-declaring. This does not end the mission: lanes A, C, E, H, and I
+remain PARTIAL by the mission's own exhaustive scope. Any new P0/P1
+found in further work resets this counter again.
 
 ## 13. Adopted SHAs (chronological, this session)
 
@@ -716,8 +785,10 @@ cross-reference, §7) -> `001ecc4b01` (Lane I hold-classifier fuzz) ->
 #11, §6E) -> `26e58193a5` (report update, §6E, docs-only) ->
 `5db6c1d983` (GitHub repository hygiene pass, docs/gitignore-only) ->
 `9374ba7eb6` (README branch-name refinement + legacy-repo identity
-reconciliation follow-up, docs-only, §6F, 4th stability milestone,
-current tip).
+reconciliation follow-up, docs-only, §6F, 4th stability milestone) ->
+`94ab740101` (report update, §6F, docs-only) -> `8e05c495bb` (Lane A
+HOLD matrix) -> `ce772081` (finding #9 re-investigation, docs-only) ->
+`b490de3799` (finding #18, §6G, current tip).
 
 ## 14. Resource pressure
 
@@ -779,11 +850,12 @@ everything landed since.)
 
 ## 17. Next highest-value work (if this mission continues)
 
-1. Finding #13 (§7): apply the proven #12/#14 lock pattern to
+1. **A fresh 2-pass full-suite stability sequence against SHA
+   `b490de3799`** -- finding #18's own fix (§6G) reset the counter;
+   this is now the single highest-priority remaining item.
+2. Finding #13 (§7): apply the proven #12/#14 lock pattern to
    `self-improvement-adoption.mjs`'s `attemptRepairAdoption`, with the
    owner's own context on the self-improvement gate.
-2. Extend Lane A's matrix to RELEASE (the hold's own inverse action --
-   PAUSE/RESUME/HOLD all now have a real 6-state matrix).
 3. Finding #9 (§7): needs an owner product decision first (should a
    project-scoped chat thread answer fleet-wide questions like "what
    needs me?" at all?), not just a mechanical wire-up -- re-investigated
@@ -794,15 +866,21 @@ everything landed since.)
    declared `package.json` dependency list before any future
    extraction is considered -- not urgent, but the concrete blocker
    identified.
+5. Extend Lane A's matrix to RELEASE (the hold's own inverse action --
+   PAUSE/RESUME/HOLD all now have a real 6-state matrix), once a real
+   chat "release X" command exists (currently a disclosed gap, only
+   exercised directly against the store in tests).
 
 ---
 
-- `CONTROL_PLANE_STABLE_V1_ACHIEVED` = YES (first declared SHA
+- `CONTROL_PLANE_STABLE_V1_ACHIEVED` = PENDING (first declared SHA
   `208f4438b4`; RESET by finding #16; RE-DECLARED via runs #6/#7c;
   RESET by finding #17; RE-DECLARED a third time, independently
   verified against an explicit 14-component stability contract, at SHA
   `a575322ae1`; RESET a third time by finding #11 (§6E); RE-DECLARED a
-  fourth time via runs #10/#12 (§6F) at current tip SHA `9374ba7eb6`)
+  fourth time via runs #10/#12 (§6F) at SHA `9374ba7eb6`; RESET a
+  fourth time by finding #18 (§6G) at current tip SHA `b490de3799` --
+  a fresh 2-pass sequence is required, see §17)
 - `NEW_P0_FOUND` = YES (2: findings #12, #14)
 - `NEW_P0_FIXED` = YES (2 of 2)
 - `NEW_P1_FOUND` = YES (5: findings #1, #7, #8, #16, #17)
@@ -811,9 +889,10 @@ everything landed since.)
   `READY_FOR_ADOPTION` misclassification after a real adoption --
   found earlier this session, FIXED and integrated this tick, §6E)
 - `NEW_P1_P2_FIXED` = YES (1 of 1)
-- `NEW_P2_FOUND` = YES (1: finding #15, real execution holds never
-  surfaced by GET /api/attention)
-- `NEW_P2_FIXED` = YES (1 of 1)
+- `NEW_P2_FOUND` = YES (2: finding #15, real execution holds never
+  surfaced by GET /api/attention; finding #18, "why is it stuck?"
+  contradicting the operator's own just-recorded hold, §6G)
+- `NEW_P2_FIXED` = YES (2 of 2)
 - `ALL_FOUND_P0_P1_SYSTEMICALLY_FIXED` = YES (root-caused, fixed,
   regression-tested, mutation-verified, independently reviewed,
   integrated -- never merely filed)
@@ -832,7 +911,8 @@ everything landed since.)
   OOM conditions before completing -- see §14 -- explicitly classified
   RESOURCE_ABORTED, never a regression signal, per the user's own
   explicit protocol; mitigated with `--test-concurrency=4` for every
-  completed run after its discovery)
+  completed run after its discovery; finding #18's own targeted suites
+  (84 tests) all clean)
 - `FULL_SUITE_FAILURES_ALL_TRIAGED` = YES (every failure across every
   completed run individually confirmed clean in isolation or backed by
   multiple prior isolated confirmations, none labeled flaky without
@@ -845,18 +925,18 @@ everything landed since.)
 - `MONEY_SPENT` = NO
 - `DEPLOY_PERFORMED` = NO
 - `DISCLOSED_UNFIXED_GAPS_REMAIN` = YES (findings #9, #13 -- real,
-  deliberately deferred with explicit reasoning, none hidden; finding
-  #11 is no longer in this set -- FIXED this tick, §6E; plus finding
-  #16's own disclosed RESUME->DISPATCH residual gap, independently
-  confirmed safe -- an honest omission, never a fabrication or
-  corruption)
+  deliberately deferred with explicit reasoning, none hidden; findings
+  #11 and #18 are no longer in this set -- both FIXED, §§6E/6G; plus
+  finding #16's own disclosed RESUME->DISPATCH residual gap,
+  independently confirmed safe -- an honest omission, never a
+  fabrication or corruption)
 - `CANONICAL_DRIFT_DURING_FINAL_STABILITY_VERIFICATION` = NO (re-checked
   against `fork/tsf/main` before every push all session, including
-  immediately before finding #11's merge and before/between/after both
-  final Pass #1/#2 runs in §6F; the 2 docs-only commits that landed
-  between Pass #1 and Pass #2 were verified zero `.mjs`/`.ts`/`.tsx`
-  touched and assessed separately per the user's own explicit rule, not
-  treated as drift)
+  immediately before findings #11's and #18's merges and
+  before/between/after both final Pass #1/#2 runs in §6F; docs-only
+  commits landing between stability passes were verified zero
+  `.mjs`/`.ts`/`.tsx` touched and assessed separately per the user's
+  own explicit rule, not treated as drift)
 - `MISSION_ENDED` = NO (exhaustive-scoped; lanes A/C/E/H/I remain
   PARTIAL; a fresh stability sequence is now the top priority; loop
   continues)
