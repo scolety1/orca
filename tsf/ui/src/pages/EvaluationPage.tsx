@@ -210,7 +210,7 @@ export function EvaluationPage() {
       <header className="mb-6">
         <h1 className="text-xl font-semibold tracking-tight">Evaluation & Regression</h1>
         <p className="text-sm text-muted-foreground">
-          Real eval packs measuring TSF&apos;s own already-adopted planner/worker/verifier/routing/
+          Real eval packs measuring TSF&apos;s own already-adopted planner/agent/verifier/routing/
           memory/autonomy/estimator capabilities -- reproducible, versioned, and never rewriting
           history.
         </p>

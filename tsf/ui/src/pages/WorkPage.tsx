@@ -99,7 +99,7 @@ export function WorkPage() {
         <div className="min-w-0 max-w-md">
           <h1 className="text-xl font-semibold tracking-tight">Work</h1>
           <p className="text-sm text-muted-foreground">
-            What&apos;s happening to your projects -- planner, worker, and verifier activity, not
+            What&apos;s happening to your projects -- planner, agent, and verifier activity, not
             terminal spam.
           </p>
         </div>
@@ -161,7 +161,7 @@ export function WorkPage() {
           return shown.length === 0 ? (
             <EmptyState
               title="No active work"
-              description="Nothing in the Work Set currently has a planner, worker, or research node in progress."
+              description="Nothing in the Work Set currently has a planner, agent, or research node in progress."
               action={
                 hasEligibleProjects && showCoding ? (
                   <Button size="sm" onClick={() => setMissionOpen(true)}>

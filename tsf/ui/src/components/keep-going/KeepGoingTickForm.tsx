@@ -48,7 +48,7 @@ export function KeepGoingTickForm({
     const scopePaths = linesOf(scope)
     if (!workItemId.trim() || scopePaths.length === 0 || !worktree.trim()) {
       setError(
-        'A work item id, at least one scope path (one per line), and an explicit worktree are required -- there is no safe default for where a real dispatch lands.'
+        'A work item id, at least one scope path (one per line), and an explicit code location are required -- there is no safe default for where a real dispatch lands.'
       )
       return
     }
