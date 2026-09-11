@@ -111,7 +111,17 @@ function resolveByDescriptivePhrase(items, phrase, aliases) {
   if (/stall/.test(normalized)) {
     return items.filter(matchesStalled)
   }
-  if (/ready( for adoption)?/.test(normalized)) {
+  // Pre-UI Productization V1, Priority 2, real gap: the owner's own
+  // example phrasing ("Adopt the verified one") previously fell through
+  // to the generic keyword matcher below, which only matches a literal
+  // "verified" token in a project's own label/displayName/id --
+  // virtually never true, so this always resolved to an honest "not
+  // found" rather than the READY_FOR_ADOPTION item the owner clearly
+  // meant. A READY_FOR_ADOPTION item genuinely IS "verified" --
+  // real verifierVerdict is core to reaching that state (see
+  // fleet-attention-status.mjs) -- so this is the same real category,
+  // just a natural synonym for it, not a new mechanism.
+  if (/ready( for adoption)?|verified/.test(normalized)) {
     return items.filter(matchesReadyForAdoption)
   }
   if (/needs? (you|owner|me)/.test(normalized)) {

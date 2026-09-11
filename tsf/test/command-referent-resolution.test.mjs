@@ -52,6 +52,34 @@ test('"the UI one" resolves to the TSF UI Capability Check item only, not TSF_OR
   assert.equal(result.items[0].id, 'run:tsf-ui-capability-check:readyForAdoption')
 })
 
+// Pre-UI Productization V1, Priority 2, real gap: "verified" previously
+// fell through to the generic keyword matcher (never matched a real
+// project's own label/displayName), always resolving to an honest but
+// unhelpful "not found" instead of the READY_FOR_ADOPTION item a real
+// verifierVerdict genuinely makes it. Now a real synonym for "ready",
+// sharing the exact same matcher -- must behave identically.
+test('"the verified one" resolves to the single READY_FOR_ADOPTION item, exactly like "the ready one" does', () => {
+  const singleReadyItem = [FIXTURE_ITEMS[0], FIXTURE_ITEMS[1], FIXTURE_ITEMS[2]] // TSF_ORCA stalled, TSF UI ready, NWR needs-you -- one real ready item
+  const verified = resolveCommandReferent({ message: 'adopt the verified one', resultItems: singleReadyItem })
+  const ready = resolveCommandReferent({ message: 'adopt the ready one', resultItems: singleReadyItem })
+  assert.equal(verified.resolved, true)
+  assert.equal(verified.items.length, 1)
+  assert.equal(verified.items[0].id, 'run:tsf-ui-capability-check:readyForAdoption')
+  assert.deepEqual(verified.items, ready.items, '"verified" and "ready" must resolve identically -- same real category, just a natural synonym')
+})
+
+test('"the verified one" is honestly ambiguous when two real READY_FOR_ADOPTION items exist, exactly like "the ready one" is -- never guessed', () => {
+  const verified = resolveCommandReferent({ message: 'adopt the verified one', resultItems: FIXTURE_ITEMS })
+  const ready = resolveCommandReferent({ message: 'adopt the ready one', resultItems: FIXTURE_ITEMS })
+  assert.equal(verified.resolved, false)
+  assert.equal(verified.ambiguous, true)
+  // Same real candidates either way -- the message text legitimately
+  // differs (it honestly echoes back the actual word the operator used),
+  // which is correct behavior, not a discrepancy to hide.
+  assert.deepEqual(verified.candidates, ready.candidates)
+  assert.match(verified.text, /verified/)
+})
+
 test('"those two" resolves to the full item list only when exactly two were present', () => {
   const twoItems = [FIXTURE_ITEMS[0], FIXTURE_ITEMS[1]]
   const result = resolveCommandReferent({ message: 'do those two', resultItems: twoItems })
