@@ -112,6 +112,7 @@ async function readBody(req) {
 // from the wrong location whenever a non-default dist dir is in use.
 export function createRequestHandler(options = {}) {
   const distDir = options.uiDistDir ?? path.join(import.meta.dirname, '..', 'ui', 'dist')
+  const uiDir = options.uiDir ?? path.join(import.meta.dirname, '..', 'ui')
   return async function handler(req, res, next) {
     const url = new URL(req.url, 'http://localhost')
     const parts = url.pathname.split('/').filter(Boolean)
@@ -180,8 +181,8 @@ export function createRequestHandler(options = {}) {
         )
       }
 
-      // GET /api/runtime-identity, GET /api/update-safety -- see safe-update-http-routes.mjs
-      if (await handleSafeUpdateRoute(parts, req, res, { projects, opState, distDir }, { json })) {
+      // GET /api/runtime-identity, POST /api/ui-setup, GET /api/update-safety -- see safe-update-http-routes.mjs
+      if (await handleSafeUpdateRoute(parts, req, res, { projects, opState, distDir, uiDir }, { json })) {
         return
       }
 
@@ -439,7 +440,7 @@ export function startStandaloneServer(port = 4610, options = {}) {
   // real (env-var-gated) rebuild attempt at an isolated scratch dir
   // instead of the real tsf/ui, without needing to mock the spawn itself.
   const uiDir = options.uiDir ?? path.join(import.meta.dirname, '..', 'ui')
-  const handler = createRequestHandler({ uiDistDir: distDir })
+  const handler = createRequestHandler({ uiDistDir: distDir, uiDir })
   const serveStaticUi = createStaticUiHandler(distDir)
   const server = createServer((req, res) =>
     handler(req, res, () => {

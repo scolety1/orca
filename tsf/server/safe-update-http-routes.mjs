@@ -9,7 +9,7 @@
 // composes the real identity read with ui-build-orchestrator.mjs's own
 // in-memory build-action state) -- the same real read first-run-setup.html
 // and the Command runtime-identity bridge both use.
-import { getRuntimeIdentityWithBuildState } from './ui-build-orchestrator.mjs'
+import { getRuntimeIdentityWithBuildState, runUiSetup } from './ui-build-orchestrator.mjs'
 import { classifyUpdateSafety } from '../domain/update-safety.mjs'
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 
@@ -17,7 +17,7 @@ export async function handleSafeUpdateRoute(
   parts,
   req,
   res,
-  { projects, opState, distDir },
+  { projects, opState, distDir, uiDir },
   { json }
 ) {
   // GET /api/runtime-identity: whether the currently-running backend and
@@ -25,6 +25,17 @@ export async function handleSafeUpdateRoute(
   // git/build identity, never inferred from "files changed" alone.
   if (parts[1] === 'runtime-identity' && req.method === 'GET') {
     json(res, 200, await getRuntimeIdentityWithBuildState(distDir))
+    return true
+  }
+
+  // POST /api/ui-setup -- Pre-UI Productization V1, Priority 4 gap 2: the
+  // real "Set up TSF" action first-run-setup.html's own button hits. Only
+  // ever runs when explicitly invoked here (never automatically) -- see
+  // runUiSetup's own header for why this is the controlled counterpart to
+  // the automatic rebuild trigger's "never run an uncontrolled npm
+  // install" boundary.
+  if (parts[1] === 'ui-setup' && req.method === 'POST') {
+    json(res, 200, await runUiSetup({ uiDir, distDir }))
     return true
   }
 

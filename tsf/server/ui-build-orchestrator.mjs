@@ -12,6 +12,8 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { getRuntimeIdentity } from './runtime-identity-tracker.mjs'
 import { withBuildActionState } from '../domain/ui-build-state.mjs'
+import { repairProject } from './health-repair.mjs'
+import { HEALTH_CAUSES } from '../domain/health-repair.mjs'
 
 // Real live-acceptance finding: npm on Windows is a `.cmd` shim, not a
 // directly-spawnable .exe -- naming `npm.cmd` and spawning it with
@@ -59,6 +61,7 @@ function defaultSpawn(args, cwd) {
 // attempted this process's lifetime.
 let buildAction = { status: 'IDLE', reason: null }
 let buildInFlight = null
+let setupInFlight = null
 
 export function getUiBuildActionState() {
   return buildAction
@@ -69,6 +72,7 @@ export function getUiBuildActionState() {
 export function resetUiBuildActionStateForTest() {
   buildAction = { status: 'IDLE', reason: null }
   buildInFlight = null
+  setupInFlight = null
 }
 
 function runBuild({ uiDir, spawnFn, log }) {
@@ -130,14 +134,16 @@ export async function triggerUiRebuildIfStale({
   if (identity.state !== 'UI_BUNDLE_STALE') {
     return { ok: true, skipped: true, reason: `no rebuild needed (state: ${identity.state})` }
   }
-  // Explicit mission constraint: never run an uncontrolled `npm install`.
-  // Honest, actionable FAILED state (not an indefinite UI_BUNDLE_STALE the
-  // launcher would poll forever against) rather than silently doing nothing.
+  // Explicit mission constraint: never run an uncontrolled `npm install`
+  // from this fire-and-forget, automatic-on-startup trigger. Honest,
+  // actionable DEPENDENCIES_MISSING state (not an indefinite UI_BUNDLE_STALE
+  // the launcher would poll forever against) rather than silently doing
+  // nothing -- runUiSetup below is the real, CONTROLLED counterpart: it
+  // only ever runs when the owner explicitly clicks "Set up TSF".
   if (!existsFn(path.join(uiDir, 'node_modules'))) {
     buildAction = {
-      status: 'FAILED',
-      reason:
-        'tsf/ui/node_modules is missing -- run `npm install` inside tsf/ui manually, then restart the TSF server'
+      status: 'DEPENDENCIES_MISSING',
+      reason: 'tsf/ui/node_modules is missing -- click "Set up TSF" to install it automatically'
     }
     return { ok: false, skipped: true, reason: buildAction.reason }
   }
@@ -156,6 +162,66 @@ export async function triggerUiRebuildIfStale({
   } finally {
     buildInFlight = null
   }
+}
+
+// Pre-UI Productization V1, Priority 4 gap 2: the explicit, owner-
+// triggered counterpart to triggerUiRebuildIfStale's own "never run an
+// uncontrolled npm install" boundary above -- this only ever runs when
+// POST /api/ui-setup is hit (first-run-setup.html's own "Set up TSF"
+// button), never automatically on startup. Reuses health-repair.mjs's
+// already-tested, bounded DEPENDENCY_HEALTH install action (no new
+// install/spawn logic written here) and, on a real successful install,
+// chains straight into the existing rebuild trigger so one click gets the
+// UI genuinely installed AND built.
+export async function runUiSetup({
+  uiDir,
+  distDir,
+  spawnFn = defaultSpawn,
+  existsFn = existsSync,
+  getRuntimeIdentityFn = getRuntimeIdentity,
+  repairProjectFn = repairProject,
+  log = () => {}
+} = {}) {
+  if (setupInFlight) {
+    return { ok: true, skipped: true, reason: 'TSF setup is already in progress' }
+  }
+  if (existsFn(path.join(uiDir, 'node_modules'))) {
+    // Dependencies already present -- nothing for setup itself to do;
+    // defer straight to the existing, already-tested rebuild trigger.
+    return triggerUiRebuildIfStale({ uiDir, distDir, spawnFn, existsFn, getRuntimeIdentityFn, log })
+  }
+  buildAction = { status: 'INSTALLING', reason: null }
+  log('TSF setup: installing tsf/ui dependencies')
+  setupInFlight = repairProjectFn({
+    repoPath: uiDir,
+    cause: HEALTH_CAUSES.DEPENDENCY_HEALTH,
+    packageManager: 'npm'
+  })
+  let installResult
+  try {
+    installResult = await setupInFlight
+  } finally {
+    setupInFlight = null
+  }
+  if (!installResult.ok) {
+    const outcome = installResult.outcome
+    const detail =
+      outcome?.status === 'UNKNOWN'
+        ? (outcome.detail ?? outcome.reason ?? 'unknown error')
+        : (outcome?.stderr?.trim().slice(-500) || `exited with code ${outcome?.exitCode}`)
+    buildAction = {
+      status: 'DEPENDENCIES_MISSING',
+      reason: `tsf/ui dependency install failed: ${detail} -- click "Set up TSF" to retry`
+    }
+    log(`TSF setup failed: ${buildAction.reason}`)
+    return { ok: false, reason: buildAction.reason }
+  }
+  buildAction = { status: 'IDLE', reason: null }
+  log('TSF setup: dependency install succeeded, proceeding to build')
+  // Real install succeeded -- node_modules genuinely exists now, so this
+  // proceeds straight into the real build via the exact same, already-
+  // tested trigger the automatic startup path uses.
+  return triggerUiRebuildIfStale({ uiDir, distDir, spawnFn, existsFn, getRuntimeIdentityFn, log })
 }
 
 // The single read both first-run-setup.html and the Command bridge use --

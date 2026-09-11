@@ -6,6 +6,7 @@ import test from 'node:test'
 import { EventEmitter } from 'node:events'
 import {
   triggerUiRebuildIfStale,
+  runUiSetup,
   getUiBuildActionState,
   getRuntimeIdentityWithBuildState,
   resetUiBuildActionStateForTest
@@ -81,10 +82,13 @@ test('stale + missing node_modules does NOT auto-install and reports honestly, n
   assert.equal(calls.length, 0, 'never spawned npm install or npm run build')
   assert.equal(result.ok, false)
   assert.match(result.reason, /node_modules is missing/)
-  assert.match(result.reason, /npm install/)
+  // Pre-UI Productization V1, Priority 4 gap 2: the real, actionable state
+  // is DEPENDENCIES_MISSING (a real "Set up TSF" button), not a generic
+  // FAILED with canned manual-install instructions.
   const state = getUiBuildActionState()
-  assert.equal(state.status, 'FAILED')
+  assert.equal(state.status, 'DEPENDENCIES_MISSING')
   assert.match(state.reason, /node_modules is missing/)
+  assert.match(state.reason, /Set up TSF/)
 })
 
 test('already UP_TO_DATE does not trigger a build', async () => {
@@ -160,6 +164,141 @@ test('a real build failure produces BUILD_FAILED with the real captured exit cod
   const state = getUiBuildActionState()
   assert.equal(state.status, 'FAILED')
   assert.match(state.reason, /exited with code 1/)
+})
+
+// Pre-UI Productization V1, Priority 4 gap 2: runUiSetup, the explicit,
+// owner-triggered install action.
+function makeFakeRepair(result) {
+  const calls = []
+  const repairProjectFn = async (args) => {
+    calls.push(args)
+    return result
+  }
+  return { repairProjectFn, calls }
+}
+
+function makeDeferredRepair() {
+  const calls = []
+  let resolveFn
+  const promise = new Promise((resolve) => {
+    resolveFn = resolve
+  })
+  const repairProjectFn = async (args) => {
+    calls.push(args)
+    return promise
+  }
+  return { repairProjectFn, calls, resolve: resolveFn }
+}
+
+test('runUiSetup skips install and defers straight to the real build trigger when node_modules already exists', async () => {
+  const { spawnFn, calls: spawnCalls, children } = makeFakeSpawner()
+  const { repairProjectFn, calls: repairCalls } = makeFakeRepair({ ok: true })
+  const setup = runUiSetup({
+    uiDir: '/fake/tsf/ui',
+    distDir: '/fake/tsf/ui/dist',
+    spawnFn,
+    existsFn: () => true,
+    getRuntimeIdentityFn: identityFn('UI_BUNDLE_STALE'),
+    repairProjectFn
+  })
+  await flush()
+  assert.equal(repairCalls.length, 0, 'never attempts an install when dependencies already exist')
+  assert.equal(spawnCalls.length, 1, 'proceeds straight to a real build')
+  children[0].emit('exit', 0)
+  const result = await setup
+  assert.equal(result.ok, true)
+})
+
+test('runUiSetup runs the real, existing DEPENDENCY_HEALTH install primitive (no new install logic) then chains into a real build on success', async () => {
+  const { spawnFn, calls: spawnCalls, children } = makeFakeSpawner()
+  const { repairProjectFn, calls: repairCalls } = makeFakeRepair({
+    ok: true,
+    action: 'INSTALL_DEPENDENCIES',
+    outcome: { status: 'PASS', exitCode: 0, stdout: '', stderr: '' }
+  })
+  // Mirrors real fs.existsSync behavior: false before the install genuinely
+  // ran, true once it (really) has -- a static existsFn would hide the
+  // real chained re-check triggerUiRebuildIfStale does after install.
+  let nodeModulesExists = false
+  const setup = runUiSetup({
+    uiDir: '/fake/tsf/ui',
+    distDir: '/fake/tsf/ui/dist',
+    spawnFn,
+    existsFn: () => nodeModulesExists,
+    getRuntimeIdentityFn: identityFn('UI_BUNDLE_STALE'),
+    repairProjectFn: async (args) => {
+      const result = await repairProjectFn(args)
+      nodeModulesExists = true
+      return result
+    }
+  })
+  await flush()
+  assert.equal(repairCalls.length, 1, 'used the real, already-tested install primitive')
+  assert.deepEqual(repairCalls[0], {
+    repoPath: '/fake/tsf/ui',
+    cause: 'DEPENDENCY_HEALTH',
+    packageManager: 'npm'
+  })
+  await flush()
+  assert.equal(spawnCalls.length, 1, 'a real build follows the successful install, in the same bounded action')
+  children[0].emit('exit', 0)
+  const result = await setup
+  assert.equal(result.ok, true)
+  assert.equal(getUiBuildActionState().status, 'IDLE')
+})
+
+test('runUiSetup reports a real, honest DEPENDENCIES_MISSING (never a silent success) when the real install genuinely fails, and never attempts a build', async () => {
+  const { spawnFn, calls: spawnCalls } = makeFakeSpawner()
+  const { repairProjectFn } = makeFakeRepair({
+    ok: false,
+    action: 'INSTALL_DEPENDENCIES',
+    outcome: { status: 'FAIL', exitCode: 1, stdout: '', stderr: 'npm ERR! real network failure' }
+  })
+  const result = await runUiSetup({
+    uiDir: '/fake/tsf/ui',
+    distDir: '/fake/tsf/ui/dist',
+    spawnFn,
+    existsFn: () => false,
+    getRuntimeIdentityFn: identityFn('UI_BUNDLE_STALE'),
+    repairProjectFn
+  })
+  assert.equal(spawnCalls.length, 0, 'a failed install never proceeds to a build attempt')
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /real network failure/)
+  assert.match(result.reason, /Set up TSF/, 'stays retry-safe -- same actionable state, not a dead end')
+  const state = getUiBuildActionState()
+  assert.equal(state.status, 'DEPENDENCIES_MISSING')
+})
+
+test('runUiSetup never runs two real installs concurrently -- a second call while one is in flight is a real, honest no-op', async () => {
+  const { spawnFn } = makeFakeSpawner()
+  const { repairProjectFn, calls: repairCalls, resolve } = makeDeferredRepair()
+  const first = runUiSetup({
+    uiDir: '/fake/tsf/ui',
+    distDir: '/fake/tsf/ui/dist',
+    spawnFn,
+    existsFn: () => false,
+    getRuntimeIdentityFn: identityFn('UI_BUNDLE_STALE'),
+    repairProjectFn
+  })
+  await flush()
+  assert.equal(repairCalls.length, 1, 'first call started the real install')
+  assert.equal(getUiBuildActionState().status, 'INSTALLING')
+
+  const second = await runUiSetup({
+    uiDir: '/fake/tsf/ui',
+    distDir: '/fake/tsf/ui/dist',
+    spawnFn,
+    existsFn: () => false,
+    getRuntimeIdentityFn: identityFn('UI_BUNDLE_STALE'),
+    repairProjectFn
+  })
+  assert.equal(repairCalls.length, 1, 'second call did NOT start a concurrent real install')
+  assert.equal(second.skipped, true)
+  assert.match(second.reason, /already in progress/)
+
+  resolve({ ok: true, action: 'INSTALL_DEPENDENCIES', outcome: { status: 'PASS', exitCode: 0 } })
+  await first
 })
 
 test('getRuntimeIdentityWithBuildState composes the real identity read with the current in-memory build action', async () => {

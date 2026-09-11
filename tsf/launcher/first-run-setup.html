@@ -198,6 +198,22 @@
     border-radius: 4px;
     padding: 1px 5px;
   }
+  /* Pre-UI Productization V1, Priority 4 gap 2: same visual language as
+     #build-failed-hint, but a primary-colored border -- this is an
+     expected, one-time setup step to take action on, not a failure. */
+  #dependencies-missing-hint {
+    display: none;
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--primary);
+    font-size: 13px;
+    color: var(--foreground);
+    line-height: 1.55;
+  }
+  #dependencies-missing-hint button { margin-top: 12px; }
+  #dependencies-missing-hint button:disabled { opacity: 0.6; cursor: default; }
 </style>
 </head>
 <body>
@@ -236,6 +252,17 @@
         date until this is fixed. This needs a manual fix on the machine running the
         TSF backend -- check the reason above, then restart the TSF server once fixed.
       </div>
+    </div>
+    <!-- Pre-UI Productization V1, Priority 4 gap 2: shown only when the
+         backend itself reports UI_DEPENDENCIES_MISSING (a real, honest,
+         one-time first-activation state -- tsf/ui/node_modules doesn't
+         exist yet). "Set up TSF" runs a real, bounded install (via the
+         already-tested Health Repair Center install primitive), never an
+         uncontrolled/automatic one -- see runUiSetup's own header. -->
+    <div id="dependencies-missing-hint">
+      <strong>TSF needs one setup step</strong> before it's ready to use.
+      <div class="hint" id="dependencies-missing-reason"></div>
+      <button class="primary" id="setup-btn" type="button">Set up TSF</button>
     </div>
   </div>
 
@@ -432,9 +459,12 @@
   // unreachable/malformed answer from this diagnostic endpoint fails open
   // rather than blocking navigation forever on a check that didn't even
   // exist before this feature), 'BUILDING' (UI_BUNDLE_STALE or UI_BUILDING
-  // -- keep polling, never navigate yet), or 'BUILD_FAILED' (terminal --
+  // -- keep polling, never navigate yet), 'BUILD_FAILED' (terminal --
   // shows the real captured reason, never silently proceeds to the stale
-  // bundle while claiming freshness).
+  // bundle while claiming freshness), 'DEPENDENCIES_MISSING' (Pre-UI
+  // Productization V1, Priority 4 gap 2 -- a real, actionable "Set up TSF"
+  // button, not a canned manual-install instruction), or 'INSTALLING'
+  // (the real install this page's own button just triggered is running).
   async function checkRuntimeIdentity() {
     try {
       const res = await fetch(TSF_URL + '/api/runtime-identity', { cache: 'no-store' });
@@ -447,6 +477,15 @@
           body.reason || 'unknown reason';
         document.getElementById('build-failed-hint').style.display = 'block';
         return 'BUILD_FAILED';
+      }
+      if (body.state === 'UI_DEPENDENCIES_MISSING') {
+        document.getElementById('dependencies-missing-reason').textContent =
+          body.reason || 'tsf/ui dependencies are missing';
+        document.getElementById('dependencies-missing-hint').style.display = 'block';
+        return 'DEPENDENCIES_MISSING';
+      }
+      if (body.state === 'UI_INSTALLING') {
+        return 'INSTALLING';
       }
       if (body.state === 'UI_BUNDLE_STALE' || body.state === 'UI_BUILDING') {
         return 'BUILDING';
@@ -473,6 +512,17 @@
           text.textContent = 'UI update failed — see details below.';
           return;
         }
+        if (identityState === 'DEPENDENCIES_MISSING') {
+          dot.classList.remove('ok', 'stalled');
+          text.textContent = 'TSF needs one setup step — see below.';
+          return;
+        }
+        if (identityState === 'INSTALLING') {
+          dot.classList.remove('ok', 'stalled');
+          document.getElementById('dependencies-missing-hint').style.display = 'none';
+          text.textContent = 'Setting up TSF (installing dependencies)…';
+          return;
+        }
         if (identityState === 'BUILDING') {
           dot.classList.remove('ok', 'stalled');
           text.textContent = 'Updating to the latest version…';
@@ -492,6 +542,27 @@
     showStalledHintIfDue();
     text.textContent = setupRevealed ? 'Still waiting for the TSF backend…' : 'Checking…';
   }
+
+  // Pre-UI Productization V1, Priority 4 gap 2: the one real, explicit,
+  // owner-triggered action this page offers. POST /api/ui-setup blocks
+  // until the real (bounded) install -- and, on success, build -- finish,
+  // so the button stays disabled for the duration rather than allowing a
+  // second concurrent click; checkReady() runs immediately after so the
+  // page reflects the real outcome without waiting for the next poll tick.
+  document.getElementById('setup-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('setup-btn');
+    btn.disabled = true;
+    btn.textContent = 'Setting up…';
+    try {
+      await fetch(TSF_URL + '/api/ui-setup', { method: 'POST', cache: 'no-store' });
+    } catch (e) {
+      // Backend unreachable mid-request -- the next poll tick will report
+      // the real, current state honestly; nothing to fabricate here.
+    }
+    btn.disabled = false;
+    btn.textContent = 'Set up TSF';
+    checkReady();
+  });
 
   document.getElementById('recheck-btn').addEventListener('click', checkReady);
   checkReady();
