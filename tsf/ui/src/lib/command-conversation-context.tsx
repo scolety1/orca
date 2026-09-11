@@ -1,5 +1,19 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ChatMessage, ChatResponse } from '@/lib/types'
+import { api } from '@/lib/api'
+
+// Command architecture, Command history rehydration: the durable
+// server-side thread (chatThreads.__command__, server/chat-http-routes.mjs)
+// already exists and already survives a restart -- the ONE thing missing
+// was the visible transcript actually reading it back on mount. Reuses the
+// SAME real endpoint/client method PlannerChatPanel.tsx already calls for
+// its own (different) thread, GET /api/chat/:projectId with the durable
+// Command thread's own real key -- no new endpoint, no second frontend
+// chat database. Fetched exactly once, at the provider's own single real
+// mount (it sits above the router in App.tsx and never unmounts on
+// navigation -- see this file's own header), so dock <-> full-page
+// switching never re-fetches or re-triggers this.
+const COMMAND_THREAD_ID = '__command__'
 
 // Full Command Mode: the ONE real conversation Command's dock and its
 // full-page /command view both show -- lifted out of CommandPanel's own
@@ -56,6 +70,33 @@ export function CommandConversationProvider({ children }: { children: ReactNode 
   const [providerLabel, setProviderLabel] = useState<string | null>(null)
   const [live, setLive] = useState<boolean | null>(null)
   const [selfRepair, setSelfRepair] = useState(false)
+  // Real, honest degrade on failure (e.g. backend not yet reachable at
+  // first paint): logs and leaves the transcript empty, never crashes the
+  // app or fabricates history. A fresh reload naturally retries via the
+  // same effect. `cancelled` guards against setting state after a fast
+  // unmount (StrictMode's double-invoke in dev, or a genuinely fast route
+  // change before this resolves).
+  useEffect(() => {
+    let cancelled = false
+    api
+      .chatHistory(COMMAND_THREAD_ID)
+      .then((history) => {
+        if (cancelled || history.length === 0) {
+          return
+        }
+        // Only apply the durable history if nothing local has been added
+        // in the meantime (a real, if unlikely, race: the user sends a
+        // message before this in-flight fetch resolves) -- never clobber
+        // a message the operator can already see on screen.
+        setMessages((prev) => (prev.length === 0 ? history : prev))
+      })
+      .catch((err) => {
+        console.error('Failed to rehydrate Command history:', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const addMessage = useCallback((message: CommandMessage) => {
     setMessages((prev) => [...prev, message])
   }, [])
