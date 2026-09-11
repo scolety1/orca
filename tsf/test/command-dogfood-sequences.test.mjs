@@ -11,7 +11,13 @@ import { rmSync } from 'node:fs'
 import path from 'node:path'
 
 const HERE = import.meta.dirname
-const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-state.test-command-dogfood-${process.pid}.json`)
+const STATE_FILE = path.join(
+  HERE,
+  '..',
+  'server',
+  '.local-state',
+  `operator-state.test-command-dogfood-${process.pid}.json`
+)
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 const NONEXISTENT = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 const PLANNER_STUB = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
@@ -25,22 +31,40 @@ process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
 process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const { respondCommand } = await import('../server/command-responder.mjs')
-const { readResearchMissionStatus, readActiveResearchPaidApproval } = await import('../server/research-mission-driver.mjs')
+const { readResearchMissionStatus, readActiveResearchPaidApproval } =
+  await import('../server/research-mission-driver.mjs')
 const { EXA_PROVIDER_ID } = await import('../adapters/exa-research-worker.mjs')
 const { withKeepGoingRun, readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 const { createOvernightRun } = await import('../domain/keep-going.mjs')
 const { loadState } = await import('../server/data-store.mjs')
 
 function cleanupStateFile() {
-  for (const suffix of ['', '.tmp', '.keep-going.lock', '.research.lock']) rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  for (const suffix of [
+    '',
+    '.tmp',
+    '.keep-going.lock',
+    '.research.lock',
+    '.project-execution-hold.lock'
+  ]) {
+    rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  }
 }
 cleanupStateFile()
 
 const clock = () => new Date('2026-09-04T14:00:00.000Z')
-const STUB_DISPATCH_DEPS = { resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' }) }
+const STUB_DISPATCH_DEPS = {
+  resolveRepositoryIdentity: async () => ({ ok: false, reason: 'REPOSITORY_UNAVAILABLE' })
+}
 
 function project(id, displayName, sourceClass = 'REAL') {
-  return { id, displayName, sourceClass, mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  return {
+    id,
+    displayName,
+    sourceClass,
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }
 }
 
 // Simulates what http-server.mjs actually does: reload real persisted
@@ -49,13 +73,28 @@ function project(id, displayName, sourceClass = 'REAL') {
 // exact real conversational-context plumbing, not a hand-built shortcut.
 async function turn(message, projects, extra = {}) {
   const state = loadState()
-  const result = await respondCommand({ message, projects, opState: { ...state, ...extra }, clock, deps: STUB_DISPATCH_DEPS })
+  const result = await respondCommand({
+    message,
+    projects,
+    opState: { ...state, ...extra },
+    clock,
+    deps: STUB_DISPATCH_DEPS
+  })
   const fresh = loadState()
   const threads = { ...fresh.chatThreads }
   threads.__command__ = [
     ...(threads.__command__ ?? []),
     { role: 'user', content: message, at: clock().toISOString() },
-    { role: 'assistant', content: result.text, at: clock().toISOString(), decisionClass: result.decisionClass, intent: result.intent, resolvedProjectIds: result.resolvedProjectIds, researchMissionId: result.researchMissionId ?? null, scope: result.scope }
+    {
+      role: 'assistant',
+      content: result.text,
+      at: clock().toISOString(),
+      decisionClass: result.decisionClass,
+      intent: result.intent,
+      resolvedProjectIds: result.resolvedProjectIds,
+      researchMissionId: result.researchMissionId ?? null,
+      scope: result.scope
+    }
   ]
   const { saveState } = await import('../server/data-store.mjs')
   saveState({ ...fresh, chatThreads: threads })
@@ -63,13 +102,45 @@ async function turn(message, projects, extra = {}) {
 }
 
 async function seedActiveRun(projectId) {
-  await withKeepGoingRun(projectId, () => createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock))
+  await withKeepGoingRun(projectId, () =>
+    createOvernightRun(
+      { id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] },
+      clock
+    )
+  )
 }
 
 async function seedNeedsYouRun(projectId, question) {
   await withKeepGoingRun(projectId, (current) => {
-    const run = current ?? createOvernightRun({ id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock)
+    const run =
+      current ??
+      createOvernightRun(
+        {
+          id: `run-${projectId}`,
+          projectId,
+          originalGoal: 'Test goal.',
+          acceptanceCriteria: ['X']
+        },
+        clock
+      )
     return { ...run, state: 'NEEDS_YOU', needsYou: [{ id: 'q1', question, resolvedAt: null }] }
+  })
+}
+
+async function seedStalledRun(projectId) {
+  await withKeepGoingRun(projectId, (current) => {
+    const run =
+      current ??
+      createOvernightRun(
+        {
+          id: `run-${projectId}`,
+          projectId,
+          originalGoal: 'Test goal.',
+          acceptanceCriteria: ['X']
+        },
+        clock
+      )
+    return { ...run, state: 'STALLED' }
   })
 }
 
@@ -78,8 +149,14 @@ async function seedNeedsYouRun(projectId, question) {
 // ---------------------------------------------------------------------
 test('dogfood A: global status -> what does that mean? -> what needs me? -> why is that blocked? (real state after each turn)', async () => {
   await seedActiveRun('dogfood-a-project')
-  await seedNeedsYouRun('dogfood-a-blocked-project', 'A real decision is pending on dogfood-a-blocked-project')
-  const projects = [project('dogfood-a-project', 'Dogfood A Project'), project('dogfood-a-blocked-project', 'Dogfood A Blocked Project')]
+  await seedNeedsYouRun(
+    'dogfood-a-blocked-project',
+    'A real decision is pending on dogfood-a-blocked-project'
+  )
+  const projects = [
+    project('dogfood-a-project', 'Dogfood A Project'),
+    project('dogfood-a-blocked-project', 'Dogfood A Blocked Project')
+  ]
 
   const status = await turn("what's running right now?", projects)
   assert.equal(status.scope, 'FLEET')
@@ -90,7 +167,11 @@ test('dogfood A: global status -> what does that mean? -> what needs me? -> why 
   // never a fabricated action.
   const explanation = await turn('what does that mean?', projects)
   assert.equal(explanation.intent, 'FOLLOW_UP_EXPLANATION')
-  assert.doesNotMatch(explanation.text, /^Paused|^Resumed|^Cancelled|^Created a real research mission/, 'must never fabricate an action from an unresolvable meta-question')
+  assert.doesNotMatch(
+    explanation.text,
+    /^Paused|^Resumed|^Cancelled|^Created a real research mission/,
+    'must never fabricate an action from an unresolvable meta-question'
+  )
 
   const needsYou = await turn('what needs me?', projects)
   assert.match(needsYou.text, /Dogfood A Blocked Project/)
@@ -122,7 +203,10 @@ test("dogfood B: what's going on with NWR? -> why? -> run it -> what's it doing 
 
   const runIt = await turn('run it', projects)
   assert.deepEqual(runIt.resolvedProjectIds, ['dogfood-b-nwr'])
-  assert.ok(runIt.dispatchResults, 'a real dispatch attempt was made against the back-referenced project')
+  assert.ok(
+    runIt.dispatchResults,
+    'a real dispatch attempt was made against the back-referenced project'
+  )
 
   const now = await turn("what's that project doing now?", projects)
   assert.deepEqual(now.resolvedProjectIds, ['dogfood-b-nwr'])
@@ -133,9 +217,16 @@ test("dogfood B: what's going on with NWR? -> why? -> run it -> what's it doing 
 // C. safe-project advisory -> why that one? -> run that -> prove durable state
 // ---------------------------------------------------------------------
 test('dogfood C: find me something safe to test on -> why that one? -> run that -> real durable dispatch attempt', async () => {
-  const projects = [project('dogfood-c-real', 'Dogfood C Real'), project('dogfood-c-test-project', 'dogfood-c-TEST-project')]
+  const projects = [
+    project('dogfood-c-real', 'Dogfood C Real'),
+    project('dogfood-c-test-project', 'dogfood-c-TEST-project')
+  ]
   const advisory = await turn('find me something safe to test on', projects)
-  assert.deepEqual(advisory.resolvedProjectIds, ['dogfood-c-test-project'], 'exactly one safe candidate -- remembered as a back-reference target')
+  assert.deepEqual(
+    advisory.resolvedProjectIds,
+    ['dogfood-c-test-project'],
+    'exactly one safe candidate -- remembered as a back-reference target'
+  )
   assert.equal(advisory.dispatchResults, undefined, 'advisory alone never dispatches')
 
   // Gap 1: "why that one?" grounds in real current state -- never a
@@ -147,7 +238,10 @@ test('dogfood C: find me something safe to test on -> why that one? -> run that 
 
   const runThat = await turn('run that', projects)
   assert.deepEqual(runThat.resolvedProjectIds, ['dogfood-c-test-project'])
-  assert.ok(runThat.dispatchResults, 'a real dispatch attempt was made -- durable proof, not a claimed action')
+  assert.ok(
+    runThat.dispatchResults,
+    'a real dispatch attempt was made -- durable proof, not a claimed action'
+  )
 })
 
 // ---------------------------------------------------------------------
@@ -157,7 +251,10 @@ test('dogfood D: research request -> status -> completeness -> artifacts, all gr
   const saved = process.env.TSF_PLANNER_CLAUDE_COMMAND
   process.env.TSF_PLANNER_CLAUDE_COMMAND = PLANNER_STUB
   try {
-    const created = await turn('research the history of the NFL salary cap from 2018 through 2020, sourced dataset, no money', [])
+    const created = await turn(
+      'research the history of the NFL salary cap from 2018 through 2020, sourced dataset, no money',
+      []
+    )
     // Round 3 Bug 1 fix: creation immediately attempts free-path progress
     // rather than waiting for a manual "continue" -- this fixture's spec
     // has fields with no free-path match, so it honestly surfaces a
@@ -194,7 +291,11 @@ test('dogfood D: research request -> status -> completeness -> artifacts, all gr
     assert.equal(advisory.intent, 'RESEARCH_PAID_ADVISORY')
     assert.equal(advisory.researchMissionId, missionId)
     assert.equal(advisory.live, false)
-    assert.equal(readActiveResearchPaidApproval(missionId, EXA_PROVIDER_ID, clock), null, 'advisory alone must never grant anything')
+    assert.equal(
+      readActiveResearchPaidApproval(missionId, EXA_PROVIDER_ID, clock),
+      null,
+      'advisory alone must never grant anything'
+    )
 
     // "use Exa up to $2" is the existing explicit scoped-approval flow --
     // a durable grant, still zero actual spend (no dispatch call made).
@@ -215,8 +316,11 @@ test('dogfood D: research request -> status -> completeness -> artifacts, all gr
     // creation time genuinely advanced this mission past CREATED.
     assert.equal(readResearchMissionStatus(missionId).phase, 'WAITING_NEEDS_INPUT')
   } finally {
-    if (saved === undefined) delete process.env.TSF_PLANNER_CLAUDE_COMMAND
-    else process.env.TSF_PLANNER_CLAUDE_COMMAND = saved
+    if (saved === undefined) {
+      delete process.env.TSF_PLANNER_CLAUDE_COMMAND
+    } else {
+      process.env.TSF_PLANNER_CLAUDE_COMMAND = saved
+    }
   }
 })
 
@@ -230,7 +334,11 @@ test('dogfood E: could Exa help? (advisory only) -> use Exa up to $2 (scoped gra
 
   const advisory = await turn(`could Exa help with ${missionId}?`, [])
   assert.equal(advisory.live, false)
-  assert.equal(readActiveResearchPaidApproval(missionId, EXA_PROVIDER_ID, clock), null, 'advisory must never itself grant anything')
+  assert.equal(
+    readActiveResearchPaidApproval(missionId, EXA_PROVIDER_ID, clock),
+    null,
+    'advisory must never itself grant anything'
+  )
 
   const grant = await turn(`use Exa for ${missionId} up to $2`, [])
   assert.match(grant.text, /Approved/)
@@ -245,16 +353,33 @@ test('dogfood E: could Exa help? (advisory only) -> use Exa up to $2 (scoped gra
 // F. multi-project overnight request with an explicit exclusion
 // ---------------------------------------------------------------------
 test('dogfood F: "run NWR and Nytheria overnight but don\'t touch TSF" -- correct inclusion/exclusion, real dispatch attempts only for the included two', async () => {
-  const projects = [project('dogfood-f-nwr', 'NWR'), project('dogfood-f-nytheria', 'Nytheria'), project('dogfood-f-tsf', 'TSF')]
-  const result = await turn('run dogfood-f-nwr and dogfood-f-nytheria overnight but do not touch dogfood-f-tsf', projects)
-  assert.deepEqual(new Set(result.resolvedProjectIds), new Set(['dogfood-f-nwr', 'dogfood-f-nytheria']))
-  assert.ok(!result.resolvedProjectIds.includes('dogfood-f-tsf'), 'the explicitly excluded project must never be dispatched to')
+  const projects = [
+    project('dogfood-f-nwr', 'NWR'),
+    project('dogfood-f-nytheria', 'Nytheria'),
+    project('dogfood-f-tsf', 'TSF')
+  ]
+  const result = await turn(
+    'run dogfood-f-nwr and dogfood-f-nytheria overnight but do not touch dogfood-f-tsf',
+    projects
+  )
+  assert.deepEqual(
+    new Set(result.resolvedProjectIds),
+    new Set(['dogfood-f-nwr', 'dogfood-f-nytheria'])
+  )
+  assert.ok(
+    !result.resolvedProjectIds.includes('dogfood-f-tsf'),
+    'the explicitly excluded project must never be dispatched to'
+  )
   // Lane M red-team finding class (fixed elsewhere in command-run-action-
   // bridge.test.mjs tonight; applied here too while touching this file):
   // assert.ok on an array is vacuously true for [] -- strengthened to
   // prove both included projects were genuinely dispatched to, and the
   // excluded one was not.
-  assert.equal(result.dispatchResults?.length, 2, 'real dispatch attempts were made for exactly the two included projects')
+  assert.equal(
+    result.dispatchResults?.length,
+    2,
+    'real dispatch attempts were made for exactly the two included projects'
+  )
   const dispatchedIds = new Set(result.dispatchResults.map((r) => r.projectId))
   assert.deepEqual(dispatchedIds, new Set(['dogfood-f-nwr', 'dogfood-f-nytheria']))
 })
@@ -294,17 +419,93 @@ test('dogfood G: pause NWR -> why? -> resume it (real state threaded through eve
 
   const why = await turn('why?', projects)
   assert.deepEqual(why.resolvedProjectIds, ['dogfood-g-nwr'])
-  assert.doesNotMatch(why.text, /^Paused|^Resumed/, 'a follow-up question must never itself re-trigger pause/resume')
-  assert.equal(readKeepGoingRun('dogfood-g-nwr').state, 'PAUSED', 'the follow-up question must not change real state')
+  assert.doesNotMatch(
+    why.text,
+    /^Paused|^Resumed/,
+    'a follow-up question must never itself re-trigger pause/resume'
+  )
+  assert.equal(
+    readKeepGoingRun('dogfood-g-nwr').state,
+    'PAUSED',
+    'the follow-up question must not change real state'
+  )
 
   const resume = await turn('resume it', projects)
   assert.match(resume.text, /^Resumed/)
-  assert.deepEqual(resume.resolvedProjectIds, ['dogfood-g-nwr'], 'must back-reference the SAME project from real prior-turn context, never guess')
+  assert.deepEqual(
+    resume.resolvedProjectIds,
+    ['dogfood-g-nwr'],
+    'must back-reference the SAME project from real prior-turn context, never guess'
+  )
   assert.equal(readKeepGoingRun('dogfood-g-nwr').state, 'ACTIVE')
 
   // The run's own transition history has exactly one PAUSED and one
   // ACTIVE(resume) transition -- the "why" turn appended neither.
   const run = readKeepGoingRun('dogfood-g-nwr')
   assert.equal(run.transitions.filter((t) => t.to === 'PAUSED').length, 1)
-  assert.equal(run.transitions.filter((t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME').length, 1)
+  assert.equal(
+    run.transitions.filter((t) => t.to === 'ACTIVE' && t.reason === 'OPERATOR_RESUME').length,
+    1
+  )
+})
+
+// Real finding (control-plane burn-in, live-reproduced before fixing,
+// same tick as this test): explainProjectState used to derive its
+// whole explanation from the Keep Going run's own live feed state
+// alone, with zero awareness of a real, active project execution hold
+// -- so this exact sequence used to answer "nothing is stuck, there's
+// just nothing in flight" immediately after the operator themselves
+// set a real, durable hold and the system itself durably recorded it
+// (confirmed by the hold turn's own "Held -- ... (recorded, releasable
+// later)" text). Same bug class as findings #15/#17 (a hold not
+// surfaced in a relevant read path), a new location.
+test('dogfood H: hold NWR (no run yet) -> why is it stuck? (an honest, hold-aware explanation, never a false "nothing in flight")', async () => {
+  const projects = [project('held-nwr', 'NWR')]
+
+  const hold = await turn(
+    'held-nwr is being handled by another agent right now, leave it alone -- do not touch it.',
+    projects
+  )
+  assert.match(hold.text, /Held/)
+  assert.deepEqual(hold.resolvedProjectIds, ['held-nwr'])
+
+  const why = await turn('why is it stuck?', projects)
+  assert.deepEqual(
+    why.resolvedProjectIds,
+    ['held-nwr'],
+    'must back-reference the SAME project from real prior-turn context, never guess'
+  )
+  assert.match(why.text, /on hold/i, 'must honestly explain the real, active hold')
+  assert.doesNotMatch(
+    why.text,
+    /nothing is stuck/i,
+    'must never contradict what the operator themselves just told the system and the system itself just durably recorded'
+  )
+})
+
+// The combined case: a run that is genuinely STALLED for its own real
+// reason AND separately held -- both real facts must survive, neither
+// silently dropped in favor of the other.
+test('dogfood H2: a STALLED run that is also held -> why? mentions both real facts, never drops either', async () => {
+  await seedStalledRun('held-stalled-nwr')
+  const projects = [project('held-stalled-nwr', 'NWR')]
+
+  const hold = await turn(
+    'held-stalled-nwr is being handled by another agent right now, leave it alone -- do not touch it.',
+    projects
+  )
+  assert.match(hold.text, /Held/)
+
+  const why = await turn('why is it stuck?', projects)
+  assert.deepEqual(why.resolvedProjectIds, ['held-stalled-nwr'])
+  assert.match(
+    why.text,
+    /STALLED/,
+    "the run's own real STALLED reason must still be honestly reported"
+  )
+  assert.match(
+    why.text,
+    /on hold/i,
+    'the real, active hold must ALSO be honestly reported -- neither real fact silently drops the other'
+  )
 })

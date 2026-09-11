@@ -17,7 +17,11 @@
 // repair/mutate anything even in principle, not merely by convention.
 import { fleetWorkStatus, fleetNeedsYouStatus } from '../domain/fleet-work-status.mjs'
 import { advisorySafeProjects } from './command-scope-classifier.mjs'
-import { readResearchMissionStatus, readResearchMissionReviewItems } from './research-mission-driver.mjs'
+import {
+  readResearchMissionStatus,
+  readResearchMissionReviewItems
+} from './research-mission-driver.mjs'
+import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 
 // Anchored narrowly on purpose: bare "why?" (optionally with a "?") is the
 // whole message: chat-responder.mjs's own RATIONALE pattern
@@ -56,14 +60,36 @@ function lastAnswerSummary(opState) {
 
 const NEEDS_ATTENTION_STATES = new Set(['NEEDS_YOU', 'STALLED'])
 
-function explainProjectState(project, keepGoingRuns, clock) {
+// Real finding (control-plane burn-in, live-reproduced before fixing):
+// this used to derive its whole explanation from the Keep Going run's
+// own live feed state alone, with zero awareness of a real, active
+// project execution hold -- so "X is being handled by another agent,
+// leave it alone" (which really, durably records the hold -- confirmed
+// by its own "Held -- ... (recorded, releasable later)" response text)
+// immediately followed by "why is it stuck?" answered "nothing is
+// stuck, there's just nothing in flight," directly contradicting what
+// the operator themselves just told the system and the system itself
+// just durably recorded. Same bug class as findings #15/#17 (a hold
+// not surfaced in a relevant read path), a new location. `hold` is
+// honestly `null` when none exists (isProjectExecutionHoldActive
+// treats that as inactive) -- never fabricated.
+function explainProjectState(project, keepGoingRuns, clock, hold) {
+  const held = isProjectExecutionHoldActive(hold)
   const [status] = fleetWorkStatus([project], keepGoingRuns, clock)
   if (!status.hasRun) {
-    return `**${project.displayName}** has no Keep Going run right now -- nothing is stuck, there's just nothing in flight.`
+    return held
+      ? `**${project.displayName}** is on hold -- ${hold.note ?? hold.reason} -- that's why nothing is in flight.`
+      : `**${project.displayName}** has no Keep Going run right now -- nothing is stuck, there's just nothing in flight.`
   }
   const needsAttention = NEEDS_ATTENTION_STATES.has(status.feed.state)
   const judgment = needsAttention ? "Yes, that's worth a look" : "No, that's expected"
-  return `**${project.displayName}** is ${status.feed.state}: ${status.feed.reason}. ${judgment}.`
+  // Additive, never replacing the real run-state explanation -- a run
+  // can be held AND genuinely stalled/needs-you for its own reason at
+  // the same time, and both facts are real.
+  const holdNote = held
+    ? ` Also on hold -- ${hold.note ?? hold.reason} -- nothing further will be dispatched until it's released.`
+    : ''
+  return `**${project.displayName}** is ${status.feed.state}: ${status.feed.reason}. ${judgment}.${holdNote}`
 }
 
 // Phase 6 fix: plannerMissions is now a real 4th argument -- see
@@ -72,7 +98,10 @@ function explainProjectState(project, keepGoingRuns, clock) {
 function explainNeedsYou(projects, keepGoingRuns, researchMissions, plannerMissions) {
   const items = fleetNeedsYouStatus(projects, keepGoingRuns, researchMissions, plannerMissions)
   if (items.length === 0) {
-    return { text: "There's nothing actually blocking on you right now -- the fleet-wide check came back empty.", resolvedProjectIds: [] }
+    return {
+      text: "There's nothing actually blocking on you right now -- the fleet-wide check came back empty.",
+      resolvedProjectIds: []
+    }
   }
   const [first, ...rest] = items
   const restNote = rest.length > 0 ? ` (${rest.length} more open item(s) besides this one.)` : ''
@@ -91,13 +120,18 @@ function explainGlobalAdvisory(projects) {
   if (safe.length === 0) {
     return "There wasn't a real disposable/test-only project in the catalog to point at -- every known project is a real one."
   }
-  const reasons = safe.map((p) => `**${p.displayName}** because ${p.sourceClass === 'FIXTURE' ? "it's a deterministic fixture, not real state" : "its own name marks it as a disposable test project"}`)
+  const reasons = safe.map(
+    (p) =>
+      `**${p.displayName}** because ${p.sourceClass === 'FIXTURE' ? "it's a deterministic fixture, not real state" : 'its own name marks it as a disposable test project'}`
+  )
   return `Because ${reasons.join('; ')} -- nothing else in the catalog is safe to experiment on freely.`
 }
 
 function explainResearchMission(missionId) {
   const status = readResearchMissionStatus(missionId)
-  if (!status) return `I don't have a research mission called ${missionId} anymore.`
+  if (!status) {
+    return `I don't have a research mission called ${missionId} anymore.`
+  }
   if (status.phase === 'WAITING_NEEDS_INPUT') {
     const openItems = readResearchMissionReviewItems(missionId) ?? []
     const first = openItems[0]
@@ -105,7 +139,8 @@ function explainResearchMission(missionId) {
   }
   const phaseExplain = {
     DRAFT: 'nothing has been scoped yet -- it exists as a record only',
-    CREATED: 'real scope exists (fields/expected items) but nothing has actually been dispatched yet',
+    CREATED:
+      'real scope exists (fields/expected items) but nothing has actually been dispatched yet',
     EXECUTING: 'real work is genuinely in flight',
     COMPLETE: 'it finished, verified against its own acceptance criteria',
     BLOCKED: 'it was stopped -- an operator decision or cancellation'
@@ -118,11 +153,18 @@ function explainResearchMission(missionId) {
 // its own return) or null when this message isn't an explanatory
 // follow-up at all -- the caller falls through unchanged.
 export function explainPriorAnswer({ message, opState, projects, clock = () => new Date() }) {
-  if (!isExplanatoryFollowUp(message)) return null
+  if (!isExplanatoryFollowUp(message)) {
+    return null
+  }
 
   const summary = lastAnswerSummary(opState)
   if (!summary) {
-    return { text: "There's nothing recent to explain -- ask me something first, or name a project directly.", resolvedProjectIds: [], researchMissionId: null, scope: 'FLEET' }
+    return {
+      text: "There's nothing recent to explain -- ask me something first, or name a project directly.",
+      resolvedProjectIds: [],
+      researchMissionId: null,
+      scope: 'FLEET'
+    }
   }
 
   // Phase 6 fix, ordering: checked BEFORE the generic resolvedProjectIds
@@ -134,7 +176,12 @@ export function explainPriorAnswer({ message, opState, projects, clock = () => n
   // actual open Needs You question the prior turn was about. answerType is
   // the more specific, correct signal of what "that" refers to here.
   if (summary.answerType === 'NEEDS_YOU_QUERY') {
-    const explanation = explainNeedsYou(projects, opState.keepGoingRuns ?? {}, opState.researchMissions ?? {}, opState.plannerMissions ?? {})
+    const explanation = explainNeedsYou(
+      projects,
+      opState.keepGoingRuns ?? {},
+      opState.researchMissions ?? {},
+      opState.plannerMissions ?? {}
+    )
     return {
       text: explanation.text,
       resolvedProjectIds: explanation.resolvedProjectIds,
@@ -147,26 +194,57 @@ export function explainPriorAnswer({ message, opState, projects, clock = () => n
   // with no single project/mission referent) -- refuse rather than guess
   // which one "that" means.
   if (summary.resolvedProjectIds.length > 1) {
-    return { text: "The previous answer covered more than one project -- which one do you mean?", resolvedProjectIds: [], researchMissionId: null, scope: 'FLEET' }
+    return {
+      text: 'The previous answer covered more than one project -- which one do you mean?',
+      resolvedProjectIds: [],
+      researchMissionId: null,
+      scope: 'FLEET'
+    }
   }
 
   if (summary.resolvedProjectIds.length === 1) {
     const project = projects.find((p) => p.id === summary.resolvedProjectIds[0])
     if (!project) {
-      return { text: "That project isn't in the current catalog anymore -- I can't explain something that no longer exists here.", resolvedProjectIds: [], researchMissionId: null, scope: 'FLEET' }
+      return {
+        text: "That project isn't in the current catalog anymore -- I can't explain something that no longer exists here.",
+        resolvedProjectIds: [],
+        researchMissionId: null,
+        scope: 'FLEET'
+      }
     }
-    return { text: explainProjectState(project, opState.keepGoingRuns ?? {}, clock), resolvedProjectIds: [project.id], researchMissionId: null, scope: 'PROJECT' }
+    const hold = opState.projectExecutionHolds?.[project.id] ?? null
+    return {
+      text: explainProjectState(project, opState.keepGoingRuns ?? {}, clock, hold),
+      resolvedProjectIds: [project.id],
+      researchMissionId: null,
+      scope: 'PROJECT'
+    }
   }
 
   if (summary.researchMissionId) {
-    return { text: explainResearchMission(summary.researchMissionId), resolvedProjectIds: [], researchMissionId: summary.researchMissionId, scope: 'RESEARCH' }
+    return {
+      text: explainResearchMission(summary.researchMissionId),
+      resolvedProjectIds: [],
+      researchMissionId: summary.researchMissionId,
+      scope: 'RESEARCH'
+    }
   }
 
   if (summary.answerType === 'GLOBAL_ADVISORY') {
-    return { text: explainGlobalAdvisory(projects), resolvedProjectIds: [], researchMissionId: null, scope: 'FLEET' }
+    return {
+      text: explainGlobalAdvisory(projects),
+      resolvedProjectIds: [],
+      researchMissionId: null,
+      scope: 'FLEET'
+    }
   }
 
   // GLOBAL_STATUS or anything else with no single referent -- an honest
   // "nothing specific to explain" rather than a guess.
-  return { text: "The previous answer was a fleet-wide summary, not about one specific thing -- ask about a project or mission by name for a real explanation.", resolvedProjectIds: [], researchMissionId: null, scope: 'FLEET' }
+  return {
+    text: 'The previous answer was a fleet-wide summary, not about one specific thing -- ask about a project or mission by name for a real explanation.',
+    resolvedProjectIds: [],
+    researchMissionId: null,
+    scope: 'FLEET'
+  }
 }
