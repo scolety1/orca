@@ -92,21 +92,41 @@ export async function runRepairAttempt({
   // a hold must block a fresh worker dispatch outright, never consume
   // retry budget or force an unwanted NEEDS_OWNER escalation. Mirrors
   // keep-going-dispatch-loop.mjs's own convention (`DISPATCH_BLOCKED_BY_
-  // HOLD`, nothing durable mutated) rather than self-improvement-
-  // adoption.mjs's double-check pattern: unlike attemptRepairAdoption,
-  // nothing awaited happens between this read and the real dispatch call
-  // below (buildAuthorityEnvelope and the Lifecycle construction are both
-  // synchronous), so a single fresh-enough check here is sufficient.
-  if (finding.projectId) {
+  // HOLD`, nothing durable mutated).
+  //
+  // Adversarial-review finding (P1, reproduced by tracing the real code):
+  // this comment originally claimed a single early check was sufficient
+  // because "nothing awaited happens between this read and the real
+  // dispatch call below" -- that was wrong. `lifecycle.
+  // dispatchWorkerForTask` (planner-session-lifecycle.mjs) itself awaits
+  // a real cross-process file-lock + disk mutate (`recordDispatchAttempt`)
+  // BEFORE it calls the real `dispatchWorker`, so a hold set during that
+  // window would still be silently bypassed by a single early check. A
+  // second, fresh check now runs immediately before that call too,
+  // mirroring self-improvement-adoption.mjs's own established double-
+  // check pattern (initial + fresh-right-before-the-real-action) --
+  // narrowing the race to dispatchWorkerForTask's own internal mutate
+  // window, the smallest window reachable without modifying that shared,
+  // generic, multi-mission-type primitive itself (a bigger, riskier
+  // change, already recorded as a separate architectural finding).
+  async function refuseIfHoldActive() {
+    if (!finding.projectId) {
+      return null
+    }
     const readHold = deps.readProjectExecutionHold ?? readProjectExecutionHold
     const hold = readHold(finding.projectId)
-    if (isProjectExecutionHoldActive(hold)) {
-      return {
-        outcome: 'BLOCKED_BY_PROJECT_EXECUTION_HOLD',
-        reason: `project execution hold active -- ${hold.reason}${hold.note ? `: ${hold.note}` : ''} (set by ${hold.setBy})`,
-        finding
-      }
+    if (!isProjectExecutionHoldActive(hold)) {
+      return null
     }
+    return {
+      outcome: 'BLOCKED_BY_PROJECT_EXECUTION_HOLD',
+      reason: `project execution hold active -- ${hold.reason}${hold.note ? `: ${hold.note}` : ''} (set by ${hold.setBy})`,
+      finding
+    }
+  }
+  const earlyHoldBlock = await refuseIfHoldActive()
+  if (earlyHoldBlock) {
+    return earlyHoldBlock
   }
 
   const attemptsSoFar = checkpointBefore.verifierResults.filter(
@@ -167,7 +187,7 @@ export async function runRepairAttempt({
   const Lifecycle = deps.PlannerSessionLifecycle ?? PlannerSessionLifecycle
   const plannerSessionId = deps.plannerSessionId ?? plannerSessionIdFor(missionId)
   let liveDispatchSiblingSnapshot = null
-  const dispatchWorker =
+  const dispatchWorkerImpl =
     deps.dispatchWorker ??
     (async () => {
       const result = await dispatchRepairWorker({
@@ -182,19 +202,49 @@ export async function runRepairAttempt({
       liveDispatchSiblingSnapshot = result.siblingStatusesBefore ?? null
       return result
     })
+  // Fresh re-check wrapped AROUND the real dispatch, not merely placed
+  // before calling dispatchWorkerForTask (that would be separated from
+  // the check above by only synchronous code -- zero real wall-clock
+  // narrowing, since JS never yields to the event loop across
+  // synchronous statements). `dispatchWorkerForTask` (planner-session-
+  // lifecycle.mjs) awaits its own internal cross-process file-lock
+  // mutate BEFORE calling this function -- this check runs immediately
+  // after that real await, right before the real dispatch, genuinely
+  // narrowing the race to the smallest window reachable without editing
+  // that shared, generic, multi-mission-type primitive itself.
+  const dispatchWorker = async (...args) => {
+    const freshHoldBlock = await refuseIfHoldActive()
+    if (freshHoldBlock) {
+      const error = new Error(
+        'project execution hold detected immediately before the real dispatch'
+      )
+      error.code = 'TSF_SELF_IMPROVEMENT_HOLD_DETECTED_AT_DISPATCH'
+      error.holdBlock = freshHoldBlock
+      throw error
+    }
+    return dispatchWorkerImpl(...args)
+  }
   const lifecycle = new Lifecycle({
     missionId,
     plannerSessionId,
     deps: { clock, dispatchWorker, ...deps.lifecycleDeps }
   })
 
-  const dispatch = await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>
-    lifecycle.dispatchWorkerForTask({
-      taskId: taskFingerprint,
-      kind: 'SELF_IMPROVEMENT_REPAIR_WORKER',
-      taskFingerprint
-    })
-  )
+  let dispatch
+  try {
+    dispatch = await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>
+      lifecycle.dispatchWorkerForTask({
+        taskId: taskFingerprint,
+        kind: 'SELF_IMPROVEMENT_REPAIR_WORKER',
+        taskFingerprint
+      })
+    )
+  } catch (error) {
+    if (error.code === 'TSF_SELF_IMPROVEMENT_HOLD_DETECTED_AT_DISPATCH') {
+      return error.holdBlock
+    }
+    throw error
+  }
   const worker = dispatch.worker
   // Re-derived, not read off `worker` -- see the real-bug comment above.
   const worktreePath = deriveRepairAttemptWorktreePath({

@@ -264,6 +264,62 @@ test('a real active project execution hold blocks a fresh repair-attempt worker 
   )
 })
 
+// Adversarial-review finding (P1, reproduced by tracing the real code):
+// lifecycle.dispatchWorkerForTask awaits a real cross-process mutate
+// BEFORE calling the real dispatchWorker -- a hold set during that
+// window used to be silently missed by a single early check. Proven
+// here with a stateful fake readProjectExecutionHold: no hold on the
+// FIRST read (the early check passes, matching a real "hold appeared
+// after the early check but before the real dispatch" scenario), a real
+// active hold on every read after that (the fresh check wrapped around
+// the real dispatch call) -- the attempt must still be refused, and
+// nothing durable mutated by the refused attempt itself.
+test('a project execution hold that appears AFTER the early check but before the real dispatch call is still caught by the fresh, wrapped check', async () => {
+  const projectId = 'selfimprove-repair-cycle-hold-race-fixture'
+  const finding = eligibleFinding('tsf/domain/hold-race-fixture.mjs', { projectId })
+  const missionId = await originate(finding)
+  const hold = createProjectExecutionHold(
+    { projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'OPERATOR_CHAT' },
+    clock
+  )
+  let readCount = 0
+  const staggeredReadHold = () => {
+    readCount += 1
+    return readCount === 1 ? null : hold
+  }
+
+  const dispatchCountBefore = fakeWorkerCallCount
+  const result = await runRepairAttempt({
+    finding,
+    missionId,
+    canonicalRepoPath: CANONICAL_REPO_PATH,
+    clock,
+    deps: {
+      dispatchWorker: fakeWorker(),
+      runIndependentVerification: fakeVerifier('VERIFIED_PASS'),
+      readProjectExecutionHold: staggeredReadHold,
+      ...LIFECYCLE_DEPS,
+      ...FAKE_BASE_SHA_DEPS
+    }
+  })
+
+  assert.ok(
+    readCount >= 2,
+    'sanity: the hold must genuinely be read more than once (early check + fresh check)'
+  )
+  assert.equal(result.outcome, 'BLOCKED_BY_PROJECT_EXECUTION_HOLD')
+  assert.equal(
+    fakeWorkerCallCount,
+    dispatchCountBefore,
+    'a hold caught by the fresh check must never reach the real dispatch'
+  )
+  assert.equal(
+    readFinding(finding.findingId).status,
+    'FIX_MISSION_CREATED',
+    'the durable record is untouched, safe to retry once the hold clears'
+  )
+})
+
 // A finding with no real project (platform-wide diagnostic, projectId
 // null) has nothing to check a hold against -- must proceed exactly as
 // before this fix, never fabricate a block.

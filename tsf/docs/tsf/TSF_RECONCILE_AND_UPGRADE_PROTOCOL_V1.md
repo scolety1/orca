@@ -141,7 +141,12 @@ reused rather than one-off scripts:
   STALE_DOC, UPGRADE_OPPORTUNITY) each reach their real, expected
   disposition through the real finding lifecycle/adoption chain --
   including a real disposable git fixture reproducing RED, merging, and
-  redogfooding to genuine RESOLVED for the REAL_BUG case.
+  redogfooding to genuine RESOLVED for the REAL_BUG case. Scope,
+  corrected by adversarial review: this proves the lifecycle enforces
+  its own invariants once a finding is correctly classified into a
+  condition -- it does not and cannot prove reconciliation itself was
+  performed correctly, since `RECONCILE_AUDIT` is a directed, human/
+  agent judgment call, not a mechanical detector.
 - **The protocol's own gauntlet**
   (`test/reconcile-upgrade-protocol-gauntlet.test.mjs`) -- reconciles
   the 14 required test cases and 8 required mutations against real,
@@ -163,16 +168,32 @@ orchestration runtime.
 This is enforced by `domain/reconcile-upgrade-classification.mjs`
 (`classifyReconcileUpgradeIntent`), wired into the existing, already-
 proven `domain/parent-mission-intent-classification.mjs`'s
-`shouldSuppressResearchCreation` at the **highest priority** -- ahead of
-even the dataset-construction-shape check. This closes a real,
-reproduced risk: several of the brief's own trigger phrases (most
-notably "Research this area and upgrade it.") contain the bare word
-"research" with no nearby software vocabulary, and would otherwise fall
-through to the classifier's own bare `/\bresearch\b/` default and
-reproduce the exact class of bug `parent-mission-intent-
-classification.mjs` was originally built to prevent. Regression-tested
-against all 8 literal example phrases in `test/parent-mission-intent-
-classification.test.mjs`.
+`shouldSuppressResearchCreation`. This closes a real, reproduced risk:
+several of the brief's own trigger phrases (most notably "Research this
+area and upgrade it.") contain the bare word "research" with no nearby
+software vocabulary, and would otherwise fall through to the
+classifier's own bare `/\bresearch\b/` default and reproduce the exact
+class of bug `parent-mission-intent-classification.mjs` was originally
+built to prevent.
+
+**Priority, corrected by adversarial review**: the dataset-construction-
+shape check (an enumerated entity universe / fields-to-collect / "build
+a dataset of X" shape) wins FIRST, ahead of the reconcile-upgrade
+trigger -- not the reverse. An earlier version of this wiring checked
+the reconcile-upgrade trigger first, "ahead of even the dataset-
+construction-shape check" -- adversarial review found, and live-
+reproduced, that this broke the module's own core guarantee in the
+OTHER direction: two of the trigger patterns (a research-then-upgrade
+shape, and a bare "audit this &lt;noun&gt;" shape) are broad enough to also
+match a genuinely unambiguous dataset-research request (e.g. "Research
+every 2008 NFL player and improve the accuracy of our existing roster
+data." -- this codebase's own canonical dataset-research example
+phrase, with one mundane trailing clause), hijacking it into
+SOFTWARE_PRODUCT_ENGINEERING. None of the 8 literal brief phrases
+contain dataset-construction vocabulary, so this reordering changes
+nothing for any of them. Regression-tested against all 8 literal
+example phrases, plus the specific adversarial repro cases (both
+directions), in `test/parent-mission-intent-classification.test.mjs`.
 
 ## DONE definition
 

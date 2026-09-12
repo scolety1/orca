@@ -47,11 +47,30 @@ export const PARENT_MISSION_INTENTS = Object.freeze({
 // the bare word "research" with NO nearby software-signal vocabulary --
 // left unhandled, classifyParentMissionIntent's own bare `/\bresearch\b/i`
 // fallback below would misclassify them as DATASET_RESEARCH, reproducing
-// the exact bug this whole module exists to prevent. Checked at the
-// HIGHEST priority in shouldSuppressResearchCreation -- even ahead of the
-// dataset-construction-shape check -- since an explicit reconcile/audit/
-// upgrade directive is a more specific, more intentional signal than a
-// generic "does this look like it's building a dataset" heuristic.
+// the exact bug this whole module exists to prevent.
+//
+// Adversarial-review finding (P0, reproduced live): checking this at
+// the HIGHEST priority -- as the original comment here claimed, "even
+// ahead of the dataset-construction-shape check" -- broke the exact
+// guarantee this whole module exists for, in the OTHER direction: two
+// of these patterns (the research-then-upgrade pattern, and the bare
+// "audit this <noun>" pattern) are broad enough to also match a
+// genuinely UNAMBIGUOUS dataset-research request, e.g. "Research every
+// 2008 NFL player and improve the accuracy of our existing roster
+// data." -- literally this codebase's OWN canonical dataset-research
+// example phrase (see RESEARCH_CONSTRUCTION_PATTERNS' own
+// `/\bevery\s+\d{4}\b/i` comment below) with one mundane trailing
+// clause. Checking reconcile-upgrade ahead of construction-shape
+// hijacked it into SOFTWARE_PRODUCT_ENGINEERING. Fixed by swapping the
+// order (see shouldSuppressResearchCreation/classifyParentMissionIntent
+// below): the already-established, already-well-tested dataset-
+// construction-shape check now wins FIRST, exactly like it already won
+// over the negation check for the same reason (a specific, well-formed
+// dataset-research shape is more intentional evidence than a broader
+// keyword match) -- reconcile-upgrade is checked only once construction-
+// shape has ruled itself out. None of the 8 literal brief trigger
+// phrases contain dataset-construction vocabulary, so this reordering
+// changes nothing for any of them (regression-tested below).
 const RECONCILE_UPGRADE_TRIGGER_PATTERNS = [
   /\bresearch\b(?:\s+\S+){0,6}?\s+\b(?:and|then)\s+(?:upgrade|improve|fix|finish|productioniz|harden)/i,
   /\bdogfood\s+(?:this|it|that)\b/i,
@@ -62,11 +81,23 @@ const RECONCILE_UPGRADE_TRIGGER_PATTERNS = [
   /\bcompare\s+this\s+(?:part|area|piece)\s+against\s+the\s+best\s+systems\b/i,
   /\bfix\s+anything\s+objectively\s+wrong\b/i,
   /\bupgrade\s+(?:this|it|that)\s+(?:capability|area|workflow|feature)\b/i,
-  /\breconcile\s+(?:and|&)\s+upgrade\b/i
+  /\breconcile\s+(?:and|&)\s+upgrade\b/i,
+  // Adversarial-review finding (P0, reproduced live, the INVERSE
+  // failure): a real, plausible owner paraphrase of "Figure out what we
+  // already have and finish it." -- e.g. "Research what's already built
+  // here and complete the rest." or "...we already built and wrap it
+  // up." -- matched none of the patterns above and fell through to the
+  // bare-research default, reproducing the original misrouting bug this
+  // whole module exists to prevent. Generalizes the existing "figure out
+  // what we already have" trigger to the broader "already built/have...
+  // finish/complete/wrap up" phrasing family.
+  /\balready\s+(?:built|have)\b.{0,60}\b(?:finish|complete|wrap\s+(?:it\s+)?up|wrap-up)\b/i
 ]
 
 export function hasReconcileUpgradeTriggerSignal(message) {
-  if (typeof message !== 'string' || !message.trim()) {return false}
+  if (typeof message !== 'string' || !message.trim()) {
+    return false
+  }
   return RECONCILE_UPGRADE_TRIGGER_PATTERNS.some((re) => re.test(message))
 }
 
@@ -92,7 +123,9 @@ const NEGATES_RESEARCH_CREATION_PATTERNS = [
 ]
 
 export function negatesResearchCreation(message) {
-  if (typeof message !== 'string' || !message.trim()) {return false}
+  if (typeof message !== 'string' || !message.trim()) {
+    return false
+  }
   return NEGATES_RESEARCH_CREATION_PATTERNS.some((re) => re.test(message))
 }
 
@@ -115,7 +148,9 @@ const RESEARCH_CONSTRUCTION_PATTERNS = [
 ]
 
 export function hasResearchConstructionSignal(message) {
-  if (typeof message !== 'string' || !message.trim()) {return false}
+  if (typeof message !== 'string' || !message.trim()) {
+    return false
+  }
   return RESEARCH_CONSTRUCTION_PATTERNS.some((re) => re.test(message))
 }
 
@@ -179,16 +214,23 @@ const WEAK_SOFTWARE_SIGNAL_PATTERNS = [
 // this is what makes short imperative test phrasings like "Build feature
 // X. As part of it, research Y." classify correctly without inflating the
 // generic weak-word list.
-const IMPERATIVE_START_PATTERN = /^\s*(?:fix|repair|implement|build|patch|refactor|deploy|migrate|debug|resolve|ship|hotfix)\b/i
+const IMPERATIVE_START_PATTERN =
+  /^\s*(?:fix|repair|implement|build|patch|refactor|deploy|migrate|debug|resolve|ship|hotfix)\b/i
 
 function softwareSignalScore(message) {
   let score = 0
-  if (IMPERATIVE_START_PATTERN.test(message)) {score += 2}
+  if (IMPERATIVE_START_PATTERN.test(message)) {
+    score += 2
+  }
   for (const re of STRONG_SOFTWARE_SIGNAL_PATTERNS) {
-    if (re.test(message)) {score += 2}
+    if (re.test(message)) {
+      score += 2
+    }
   }
   for (const re of WEAK_SOFTWARE_SIGNAL_PATTERNS) {
-    if (re.test(message)) {score += 1}
+    if (re.test(message)) {
+      score += 1
+    }
   }
   return score
 }
@@ -200,40 +242,64 @@ const SOFTWARE_DOMINANCE_THRESHOLD = 2
 // RESEARCH_CREATE_OR_CONTINUE's bare research/dataset trigger be refused
 // anyway, because the WHOLE message reads as a software mission?
 //
-// Priority: (0) TSF Reconcile & Upgrade Protocol V1 -- an explicit
+// Priority: (0) a genuine dataset-construction shape (enumerated
+// universe/fields-to-collect/explicit "build a dataset of X") wins
+// FIRST, over everything below -- a specific, well-formed dataset-
+// research shape is the single most intentional, unambiguous signal a
+// message can carry, and this precedence is the ALREADY-ESTABLISHED
+// precedent this whole priority list follows (see its own next rule:
+// construction-shape already won over negation for the identical
+// reason). (1) TSF Reconcile & Upgrade Protocol V1 next -- an explicit
 // reconcile/audit/upgrade directive (domain/reconcile-upgrade-
 // classification.mjs's own trigger phrases, e.g. "Research this area and
-// upgrade it.") wins over EVERYTHING below, including the dataset-
-// construction check -- this is the most specific, most intentional
-// signal a message can carry, and several of its own real example
-// phrases contain the bare word "research" with no nearby software
-// vocabulary, which would otherwise fall through to this function's own
-// bare-`research` default and reproduce the exact bug this whole module
-// exists to prevent. (1) a genuine dataset-construction shape (enumerated
-// universe/fields-to-collect/explicit "build a dataset of X") always
-// wins next, even over an unrelated negation clause elsewhere in the same
+// upgrade it.") wins over everything remaining below -- several of its
+// own real example phrases contain the bare word "research" with no
+// nearby software vocabulary, which would otherwise fall through to this
+// function's own bare-`research` default and reproduce the exact bug
+// this whole module exists to prevent.
+//   Adversarial-review finding (P0, reproduced live): this reconcile-
+//   upgrade check used to run FIRST, ahead of even construction-shape --
+//   two of its own patterns (the research-then-upgrade pattern, and the
+//   bare "audit this <noun>" pattern) are broad enough to also match a
+//   genuinely unambiguous dataset-research request (e.g. "Research
+//   every 2008 NFL player and improve the accuracy of our existing
+//   roster data.", literally this codebase's own canonical dataset-
+//   research example phrase with a mundane trailing clause), hijacking
+//   it into SOFTWARE_PRODUCT_ENGINEERING. Reordered below construction-
+//   shape to fix it. None of the 8 literal brief trigger phrases contain
+//   dataset-construction vocabulary, so this reordering changes nothing
+//   for any of them (regression-tested).
+// (2) otherwise, an unrelated negation clause elsewhere in the same
 // message -- adversarial-review finding: negation used to be checked
 // unconditionally first, so a message combining a real, well-formed
 // dataset-research request with an unrelated negated clause ("do not
 // start a research mission for the software work. Separately: research
 // every 2008 NFL player and collect exact routes run, source, team and
-// position.") was wrongly refused. (2) otherwise, explicit negation of
-// research-creation wins; (3) otherwise, a message needs a software-signal
-// score >= SOFTWARE_DOMINANCE_THRESHOLD to be treated as software-
-// dominant; (4) the default (a bare, low-signal "research X" message,
-// matching every pre-existing supported research phrasing) stays
-// eligible for Dataset Research, unchanged from before this fix. Kept in
-// sync with classifyParentMissionIntent's own, equivalent ordering below
-// -- the two must never disagree on this precedence.
+// position.") was wrongly refused. (3) otherwise, a message needs a
+// software-signal score >= SOFTWARE_DOMINANCE_THRESHOLD to be treated as
+// software-dominant; (4) the default (a bare, low-signal "research X"
+// message, matching every pre-existing supported research phrasing)
+// stays eligible for Dataset Research, unchanged from before this fix.
+// Kept in sync with classifyParentMissionIntent's own, equivalent
+// ordering below -- the two must never disagree on this precedence.
 export function shouldSuppressResearchCreation(message) {
-  if (typeof message !== 'string' || !message.trim()) {return false}
-  if (hasReconcileUpgradeTriggerSignal(message)) {return true}
-  if (hasResearchConstructionSignal(message)) {return false}
-  if (negatesResearchCreation(message)) {return true}
+  if (typeof message !== 'string' || !message.trim()) {
+    return false
+  }
+  if (hasResearchConstructionSignal(message)) {
+    return false
+  }
+  if (hasReconcileUpgradeTriggerSignal(message)) {
+    return true
+  }
+  if (negatesResearchCreation(message)) {
+    return true
+  }
   return softwareSignalScore(message) >= SOFTWARE_DOMINANCE_THRESHOLD
 }
 
-const STATUS_QUERY_PATTERN = /\b(what'?s|what is|how'?s|how is)\s+(running|going|the status|happening)\b|\bstatus\b/i
+const STATUS_QUERY_PATTERN =
+  /\b(what'?s|what is|how'?s|how is)\s+(running|going|the status|happening)\b|\bstatus\b/i
 const MULTI_PROJECT_HINT_PATTERN = /\b(and|then|,)\b.*\b(and|then|,)\b/i // crude: at least two conjunctions/clauses
 
 // Best-effort, advisory-only full classification (not consulted by the
@@ -244,18 +310,22 @@ const MULTI_PROJECT_HINT_PATTERN = /\b(and|then|,)\b.*\b(and|then|,)\b/i // crud
 // classification, which remains the real, authoritative classifier for
 // Global Command's own status/advisory/project-required branches.
 export function classifyParentMissionIntent(message) {
-  if (typeof message !== 'string' || !message.trim()) {return PARENT_MISSION_INTENTS.OTHER}
-  // Same precedence as shouldSuppressResearchCreation above: a Reconcile
-  // & Upgrade trigger wins first, then construction signal, then
-  // negation -- the two functions can never disagree.
-  if (hasReconcileUpgradeTriggerSignal(message)) {
-    return PARENT_MISSION_INTENTS.SOFTWARE_PRODUCT_ENGINEERING
+  if (typeof message !== 'string' || !message.trim()) {
+    return PARENT_MISSION_INTENTS.OTHER
   }
+  // Same precedence as shouldSuppressResearchCreation above: construction
+  // signal wins first, then a Reconcile & Upgrade trigger, then negation
+  // -- the two functions can never disagree.
   if (hasResearchConstructionSignal(message)) {
     return PARENT_MISSION_INTENTS.DATASET_RESEARCH
   }
+  if (hasReconcileUpgradeTriggerSignal(message)) {
+    return PARENT_MISSION_INTENTS.SOFTWARE_PRODUCT_ENGINEERING
+  }
   if (negatesResearchCreation(message)) {
-    return softwareSignalScore(message) > 0 ? PARENT_MISSION_INTENTS.SOFTWARE_PRODUCT_ENGINEERING : PARENT_MISSION_INTENTS.OTHER
+    return softwareSignalScore(message) > 0
+      ? PARENT_MISSION_INTENTS.SOFTWARE_PRODUCT_ENGINEERING
+      : PARENT_MISSION_INTENTS.OTHER
   }
   if (softwareSignalScore(message) >= SOFTWARE_DOMINANCE_THRESHOLD) {
     return PARENT_MISSION_INTENTS.SOFTWARE_PRODUCT_ENGINEERING
