@@ -127,6 +127,28 @@ assertion, a dogfood scan).
 
 Never build a third verification engine.
 
+## Proven
+
+Two real, disposable/durable proof artifacts back this protocol, both
+reused rather than one-off scripts:
+
+- **The disposable pilot** (`server/reconcile-upgrade-eval-cases.mjs` /
+  `-eval-runner.mjs`, packId `reconcile-upgrade-disposable-pilot`) --
+  itself just a new `RECONCILE_UPGRADE` category on the existing eval-
+  pack engine/registry/HTTP stack, runnable any time via
+  `POST /api/eval/reconcile-upgrade-disposable-pilot/run`. Proves the 5
+  seeded conditions (ALREADY_SOLVED, PARTIALLY_SOLVED, REAL_BUG,
+  STALE_DOC, UPGRADE_OPPORTUNITY) each reach their real, expected
+  disposition through the real finding lifecycle/adoption chain --
+  including a real disposable git fixture reproducing RED, merging, and
+  redogfooding to genuine RESOLVED for the REAL_BUG case.
+- **The protocol's own gauntlet**
+  (`test/reconcile-upgrade-protocol-gauntlet.test.mjs`) -- reconciles
+  the 14 required test cases and 8 required mutations against real,
+  cited coverage already spread across the suite, adding new tests only
+  for genuine gaps (currently one: a second-layer issue becoming its
+  own real, linked finding via the existing `evidence` field).
+
 ## Owner triggers / planner routing
 
 Natural-language triggers ("Research this area and upgrade it.",
@@ -198,3 +220,18 @@ verified. Only the two real, boundedly-fixable gaps were patched --
 nothing was invented to "find" more bugs than the trace actually
 surfaced, and the third (real, but architecturally larger) gap was
 recorded rather than rushed.
+
+A same-day continuation of this exact trace found a fourth real gap the
+first pass missed (`global-run-status.ts`'s `GlobalRunStatusIndicator`,
+mounted in `AppShell.tsx` and visible from every page -- not just
+HQ -- had the identical exclusion), patched and mutation-verified the
+same way. A `REPEAT` of an already-run trace, prompted by asking
+"does anything ELSE consume this same real signal?", found a real gap
+the first pass's own scope didn't cover -- exactly the lifecycle this
+protocol is for.
+
+## Also produced by this protocol
+
+`docs/tsf/TSF_UI_REDESIGN_BASELINE.md` -- an objective UI dogfood pass
+(no subjective redesign) against the real, rendered TSF UI, screen by
+screen, for the owner's separate UI review to build on.
