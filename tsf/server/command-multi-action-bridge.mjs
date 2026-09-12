@@ -12,7 +12,10 @@
 import { decomposeMultiAction } from '../domain/command-multi-action-decomposition.mjs'
 import { trimAttentionItem, buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
-import { createProjectExecutionHold, releaseProjectExecutionHold } from '../domain/project-execution-hold.mjs'
+import {
+  createProjectExecutionHold,
+  releaseProjectExecutionHold
+} from '../domain/project-execution-hold.mjs'
 import { classifyDecision, classifyIntent } from './chat-responder.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
@@ -20,6 +23,11 @@ import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { classifyAdoptionCommandIntent } from '../domain/command-adoption-execution.mjs'
 import { executeCommandAdoption } from './command-adoption-execution.mjs'
 import { readAllProjectCanonicalBases } from './project-canonical-base-store.mjs'
+import {
+  classifyContinueAction,
+  pauseProjectRun,
+  resumeProjectRun
+} from './command-run-action-bridge.mjs'
 
 // A2's own required test: the gate this file's caller (command-responder.mjs)
 // uses to decide "is this genuinely a multi-project, multi-action message,
@@ -34,7 +42,9 @@ const GENERIC_INTENTS = new Set(['GENERAL', 'STATUS_QUERY'])
 export function classifyMultiActionEntries(message, projects, aliases) {
   const entries = decomposeMultiAction(message, projects, aliases)
   const targets = new Set(entries.map((e) => e.target))
-  const distinguishingIntents = new Set(entries.filter((e) => !GENERIC_INTENTS.has(e.intent)).map((e) => e.intent))
+  const distinguishingIntents = new Set(
+    entries.filter((e) => !GENERIC_INTENTS.has(e.intent)).map((e) => e.intent)
+  )
   return targets.size >= 2 && distinguishingIntents.size >= 2 ? entries : null
 }
 
@@ -80,8 +90,12 @@ export function classifyMultiActionEntries(message, projects, aliases) {
 export function classifySingleTargetHoldEntries(message, projects, aliases) {
   const entries = decomposeMultiAction(message, projects, aliases)
   const targets = new Set(entries.map((e) => e.target))
-  if (targets.size !== 1) { return null }
-  const holdEntries = entries.filter((e) => e.intent === 'EXTERNAL_WORK_HOLD' || e.intent === 'RELEASE_HOLD')
+  if (targets.size !== 1) {
+    return null
+  }
+  const holdEntries = entries.filter(
+    (e) => e.intent === 'EXTERNAL_WORK_HOLD' || e.intent === 'RELEASE_HOLD'
+  )
   return holdEntries.length > 0 ? holdEntries : null
 }
 
@@ -95,7 +109,12 @@ async function applyExternalWorkHold(project, rawClause, clock, deps) {
     current && current.status === 'ACTIVE'
       ? current
       : createProjectExecutionHold(
-          { projectId: project.id, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'OPERATOR_CHAT', note: rawClause },
+          {
+            projectId: project.id,
+            reason: 'EXTERNAL_WORK_ACTIVE',
+            setBy: 'OPERATOR_CHAT',
+            note: rawClause
+          },
           clock
         )
   )
@@ -189,7 +208,11 @@ async function executeAdoptionCandidate(project, rawClause, opState, clock, deps
   // as command-adoption-command-bridge.mjs's own single-project path.
   const classification = classifyAdoptionCommandIntent(rawClause, [project])
   if (classification === 'AMBIGUOUS') {
-    return { text: `ambiguous adoption language -- won't guess; say "adopt it" explicitly.`, category: null, ok: false }
+    return {
+      text: `ambiguous adoption language -- won't guess; say "adopt it" explicitly.`,
+      category: null,
+      ok: false
+    }
   }
   if (classification === 'NOT_ADOPTION') {
     return reportAdoptionCandidate(project, opState, clock, deps)
@@ -220,7 +243,12 @@ async function executeAdoptionCandidate(project, rawClause, opState, clock, deps
 // same real choke point, never a second, duplicated hold check invented in
 // this file.
 async function dispatchAction(project, rawClause, clock, deps) {
-  const dispatch = await planAndDispatchFromCommand({ projects: [project], message: rawClause, clock, deps })
+  const dispatch = await planAndDispatchFromCommand({
+    projects: [project],
+    message: rawClause,
+    clock,
+    deps
+  })
   const [result] = dispatch.results
   if (result.ok) {
     return { text: `${result.detail}.`, category: null, ok: true }
@@ -235,7 +263,9 @@ async function dispatchAction(project, rawClause, clock, deps) {
 function reportStatus(project, opState, clock) {
   const [status] = fleetWorkStatus([project], opState.keepGoingRuns ?? {}, clock)
   return {
-    text: status.hasRun ? `${status.feed.state} -- ${status.feed.reason}.` : 'no Keep Going run right now.',
+    text: status.hasRun
+      ? `${status.feed.state} -- ${status.feed.reason}.`
+      : 'no Keep Going run right now.',
     category: null,
     ok: true
   }
@@ -273,6 +303,28 @@ async function handleEntry(entry, project, opState, clock, deps) {
   if (entry.intent === 'START_KEEP_GOING' || entry.intent === 'ASSESS_AND_UPGRADE') {
     return dispatchAction(project, entry.rawClause, clock, deps)
   }
+  if (entry.intent === 'PAUSE') {
+    const pause = deps.pauseProjectRun ?? pauseProjectRun
+    try {
+      await pause(project.id, 'OPERATOR_CHAT_PAUSE', clock)
+      return { text: 'Paused -- the Keep Going run is now paused.', category: null, ok: true }
+    } catch (error) {
+      return { text: `couldn't pause -- ${error.message}.`, category: null, ok: false }
+    }
+  }
+  if (entry.intent === 'RESUME') {
+    const classifyContinue = deps.classifyContinueAction ?? classifyContinueAction
+    if (classifyContinue(project.id) === 'DISPATCH') {
+      return dispatchAction(project, entry.rawClause, clock, deps)
+    }
+    const resume = deps.resumeProjectRun ?? resumeProjectRun
+    try {
+      await resume(project.id, clock)
+      return { text: 'Resumed -- the Keep Going run is active again.', category: null, ok: true }
+    } catch (error) {
+      return { text: `couldn't resume -- ${error.message}.`, category: null, ok: false }
+    }
+  }
   // Adversarial-review finding (Batch 3, BLOCKING): unlike adoption,
   // dispatchAction (below) has no independent re-derivation/safety check
   // of its own -- it goes straight to a real planAndDispatchFromCommand
@@ -291,7 +343,13 @@ async function handleEntry(entry, project, opState, clock, deps) {
 // durable/dispatch outcomes, never an intention). A4: resultItems reflects
 // the FULL multi-project result set for real referential continuity on the
 // NEXT turn (Part A2), never just one child project's.
-export async function respondMultiActionCommand({ projects, opState, clock = () => new Date(), deps = {}, entries }) {
+export async function respondMultiActionCommand({
+  projects,
+  opState,
+  clock = () => new Date(),
+  deps = {},
+  entries
+}) {
   const byProject = new Map()
   for (const entry of entries) {
     if (!byProject.has(entry.target)) {

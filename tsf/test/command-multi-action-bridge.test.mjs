@@ -16,10 +16,21 @@ process.env.TSF_PLANNER_CODEX_COMMAND = NONEXISTENT
 // against this (shared, contended) host's actual live memory.
 process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
 process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
-const STATE_FILE = path.join(import.meta.dirname, '..', 'server', '.local-state', `operator-state.test-command-multi-action-bridge-${process.pid}.json`)
+const STATE_FILE = path.join(
+  import.meta.dirname,
+  '..',
+  'server',
+  '.local-state',
+  `operator-state.test-command-multi-action-bridge-${process.pid}.json`
+)
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 function cleanupStateFile() {
-  for (const suffix of ['', '.tmp', '.self-improvement-finding.lock', '.project-execution-hold.lock']) {
+  for (const suffix of [
+    '',
+    '.tmp',
+    '.self-improvement-finding.lock',
+    '.project-execution-hold.lock'
+  ]) {
     rmSync(`${STATE_FILE}${suffix}`, { force: true })
   }
 }
@@ -27,21 +38,35 @@ cleanupStateFile()
 test.after(cleanupStateFile)
 
 const { respondCommand } = await import('../server/command-responder.mjs')
-const { classifyMultiActionEntries, classifySingleTargetHoldEntries } = await import('../server/command-multi-action-bridge.mjs')
-const { readProjectExecutionHold, withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
-const { createProjectExecutionHold, releaseProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
+const { classifyMultiActionEntries, classifySingleTargetHoldEntries, respondMultiActionCommand } =
+  await import('../server/command-multi-action-bridge.mjs')
+const { readProjectExecutionHold, withProjectExecutionHold } =
+  await import('../server/project-execution-hold-store.mjs')
+const { createProjectExecutionHold, releaseProjectExecutionHold } =
+  await import('../domain/project-execution-hold.mjs')
 const { createOvernightRun, completeRun } = await import('../domain/keep-going.mjs')
 const { withKeepGoingRun, readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 
 const clock = () => new Date('2026-09-07T09:00:00.000Z')
 
 function project(id, displayName, overrides = {}) {
-  return { id, displayName, sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] }, ...overrides }
+  return {
+    id,
+    displayName,
+    sourceClass: 'REAL',
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] },
+    ...overrides
+  }
 }
 
 const PROJECTS = [
   project('niners-war-room', 'Niners War Room'),
-  project('worldforge-sablewake-live-runtime-repair-v3', 'Worldforge-Sablewake-Live-Runtime-Repair-V3'),
+  project(
+    'worldforge-sablewake-live-runtime-repair-v3',
+    'Worldforge-Sablewake-Live-Runtime-Repair-V3'
+  ),
   project('easylifehq-github-io', 'EasyLifeHQ'),
   project('tsf-orca', 'TSF Orca')
 ]
@@ -49,34 +74,69 @@ const PROJECTS = [
 const opState = { keepGoingRuns: {} }
 
 const MISSION_MESSAGE =
-  "NWR is being handled by another AI, leave it alone. Nytheria looks good, adopt that run and keep going overnight. EasyLife needs serious work -- get EasyWorkouts up so I can start logging workouts."
+  'NWR is being handled by another AI, leave it alone. Nytheria looks good, adopt that run and keep going overnight. EasyLife needs serious work -- get EasyWorkouts up so I can start logging workouts.'
 
-test('classifyMultiActionEntries: the mission\'s own literal message clears the gate (3 targets, distinct intents)', () => {
+test("classifyMultiActionEntries: the mission's own literal message clears the gate (3 targets, distinct intents)", () => {
   const entries = classifyMultiActionEntries(MISSION_MESSAGE, PROJECTS, undefined)
   assert.ok(entries)
   assert.equal(new Set(entries.map((e) => e.target)).size, 3)
 })
 
-test('classifyMultiActionEntries: a same-action-to-N-projects message (dispatchAndRespond\'s own job) never clears the gate', () => {
-  assert.equal(classifyMultiActionEntries('get niners-war-room and worldforge-sablewake-live-runtime-repair-v3 ready', PROJECTS, undefined), null)
+test("classifyMultiActionEntries: a same-action-to-N-projects message (dispatchAndRespond's own job) never clears the gate", () => {
+  assert.equal(
+    classifyMultiActionEntries(
+      'get niners-war-room and worldforge-sablewake-live-runtime-repair-v3 ready',
+      PROJECTS,
+      undefined
+    ),
+    null
+  )
 })
 
 test('classifyMultiActionEntries: an ordinary single-project message never clears the gate', () => {
-  assert.equal(classifyMultiActionEntries('go ahead and fix niners-war-room', PROJECTS, undefined), null)
+  assert.equal(
+    classifyMultiActionEntries('go ahead and fix niners-war-room', PROJECTS, undefined),
+    null
+  )
 })
 
-test('respondCommand: the mission\'s own literal message produces a real, grouped-by-project, per-action response', async () => {
+test("respondCommand: the mission's own literal message produces a real, grouped-by-project, per-action response", async () => {
   // A real, live-feed READY_FOR_ADOPTION run for WorldForge -- so
   // ADOPT_CANDIDATE_REPORT's "can't adopt" honesty is exercised against a
   // real ready candidate, not just the (also real, also honest) "nothing
   // ready" empty case.
-  const readyRun = completeRun(createOvernightRun({ id: 'run-worldforge', projectId: 'worldforge-sablewake-live-runtime-repair-v3', originalGoal: 'Repair the runtime.', acceptanceCriteria: ['X'] }, clock), clock)
-  const opStateWithReadyRun = { keepGoingRuns: { 'worldforge-sablewake-live-runtime-repair-v3': readyRun } }
-  const result = await respondCommand({ message: MISSION_MESSAGE, projects: PROJECTS, opState: opStateWithReadyRun, clock })
+  const readyRun = completeRun(
+    createOvernightRun(
+      {
+        id: 'run-worldforge',
+        projectId: 'worldforge-sablewake-live-runtime-repair-v3',
+        originalGoal: 'Repair the runtime.',
+        acceptanceCriteria: ['X']
+      },
+      clock
+    ),
+    clock
+  )
+  const opStateWithReadyRun = {
+    keepGoingRuns: { 'worldforge-sablewake-live-runtime-repair-v3': readyRun }
+  }
+  const result = await respondCommand({
+    message: MISSION_MESSAGE,
+    projects: PROJECTS,
+    opState: opStateWithReadyRun,
+    clock
+  })
 
   assert.equal(result.intent, 'MULTI_ACTION')
   assert.equal(result.scope, 'MULTI_PROJECT')
-  assert.deepEqual(new Set(result.resolvedProjectIds), new Set(['niners-war-room', 'worldforge-sablewake-live-runtime-repair-v3', 'easylifehq-github-io']))
+  assert.deepEqual(
+    new Set(result.resolvedProjectIds),
+    new Set([
+      'niners-war-room',
+      'worldforge-sablewake-live-runtime-repair-v3',
+      'easylifehq-github-io'
+    ])
+  )
 
   // A6: grouped by project, real headers.
   assert.match(result.text, /\*\*Niners War Room\*\*/)
@@ -103,14 +163,23 @@ test('respondCommand: the mission\'s own literal message produces a real, groupe
   assert.ok(Array.isArray(result.resultItems))
   assert.deepEqual(
     new Set(result.resultItems.map((i) => i.project?.id)),
-    new Set(['niners-war-room', 'worldforge-sablewake-live-runtime-repair-v3', 'easylifehq-github-io'])
+    new Set([
+      'niners-war-room',
+      'worldforge-sablewake-live-runtime-repair-v3',
+      'easylifehq-github-io'
+    ])
   )
 })
 
 test('A5: a held target refuses its own action honestly while the other targets in the SAME message still execute/report normally', async () => {
   await withProjectExecutionHold('worldforge-sablewake-live-runtime-repair-v3', () =>
     createProjectExecutionHold(
-      { projectId: 'worldforge-sablewake-live-runtime-repair-v3', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup', note: 'pre-seeded for this test' },
+      {
+        projectId: 'worldforge-sablewake-live-runtime-repair-v3',
+        reason: 'EXTERNAL_WORK_ACTIVE',
+        setBy: 'test-setup',
+        note: 'pre-seeded for this test'
+      },
       clock
     )
   )
@@ -124,16 +193,30 @@ test('A5: a held target refuses its own action honestly while the other targets 
     createOrcaWorktree: async () => ({ ok: true, worktreePath: 'C:/stub-worktree' }),
     resolveRepositoryIdentity: async () => ({
       ok: true,
-      identity: { root: 'C:/stub-repo', worktree: 'C:/stub-worktree', branch: 'main', head: 'a'.repeat(40), tree: 'a'.repeat(40) }
+      identity: {
+        root: 'C:/stub-repo',
+        worktree: 'C:/stub-worktree',
+        branch: 'main',
+        head: 'a'.repeat(40),
+        tree: 'a'.repeat(40)
+      }
     }),
-    invokeLiveStructuredAnalysis: async () => ({ ok: false, reason: 'STUBBED_NO_LIVE_CALL', detail: 'test stub -- never a real live call' }),
+    invokeLiveStructuredAnalysis: async () => ({
+      ok: false,
+      reason: 'STUBBED_NO_LIVE_CALL',
+      detail: 'test stub -- never a real live call'
+    }),
     // Fleet Dispatch Readiness + Explicit Command Adoption V1, Part C:
     // ensureWorktreeForDispatch now resolves a real canonical base ref
     // before creating a worktree -- stubbed here (this fixture's `root`
     // doesn't really exist on disk) so this test still reaches the REAL
     // hold check it's actually proving, same deps-injection convention as
     // every other stub above.
-    resolveProjectCanonicalBase: async () => ({ resolved: true, ref: 'main', source: 'REPO_STANDARD_DEFAULT' })
+    resolveProjectCanonicalBase: async () => ({
+      resolved: true,
+      ref: 'main',
+      source: 'REPO_STANDARD_DEFAULT'
+    })
   }
   // A local project list with a real `root` (unlike the shared PROJECTS
   // fixture) -- required to reach past ensureWorktreeForDispatch's own
@@ -141,26 +224,92 @@ test('A5: a held target refuses its own action honestly while the other targets 
   // this test is proving; dispatchDeps stubs everything downstream of that
   // guard so nothing here ever touches a real repo or real live provider.
   const projectsWithRoot = PROJECTS.map((p) => ({ ...p, root: 'C:/stub-repo-root' }))
-  const message = 'NWR needs serious work. WorldForge: keep going overnight. EasyLife: adopt that run.'
-  const result = await respondCommand({ message, projects: projectsWithRoot, opState, clock, deps: dispatchDeps })
+  const message =
+    'NWR needs serious work. WorldForge: keep going overnight. EasyLife: adopt that run.'
+  const result = await respondCommand({
+    message,
+    projects: projectsWithRoot,
+    opState,
+    clock,
+    deps: dispatchDeps
+  })
 
   assert.equal(result.intent, 'MULTI_ACTION')
   // The held target's own line is an honest refusal naming the real hold reason.
-  assert.match(result.text, /Worldforge-Sablewake-Live-Runtime-Repair-V3[\s\S]*couldn't start[\s\S]*EXTERNAL_WORK_ACTIVE/)
+  assert.match(
+    result.text,
+    /Worldforge-Sablewake-Live-Runtime-Repair-V3[\s\S]*couldn't start[\s\S]*EXTERNAL_WORK_ACTIVE/
+  )
   // The other two targets are NOT dropped/crashed -- each still has its own real section.
   assert.match(result.text, /\*\*Niners War Room\*\*/)
   assert.match(result.text, /\*\*EasyLifeHQ\*\*/)
-  assert.deepEqual(new Set(result.resolvedProjectIds), new Set(['niners-war-room', 'worldforge-sablewake-live-runtime-repair-v3', 'easylifehq-github-io']))
+  assert.deepEqual(
+    new Set(result.resolvedProjectIds),
+    new Set([
+      'niners-war-room',
+      'worldforge-sablewake-live-runtime-repair-v3',
+      'easylifehq-github-io'
+    ])
+  )
 })
 
 test('A5: a TIM_REQUIRED clause on one target refuses that action only, independent of the other targets in the same message', async () => {
-  const message = 'TSF Orca: push it to production. Nytheria looks good, adopt that run and keep going overnight.'
+  const message =
+    'TSF Orca: push it to production. Nytheria looks good, adopt that run and keep going overnight.'
   const result = await respondCommand({ message, projects: PROJECTS, opState, clock })
   assert.equal(result.intent, 'MULTI_ACTION')
   assert.match(result.text, /TSF Orca[\s\S]*consequential decision/)
   // The independent, ungated target still got its own real report/dispatch attempt.
   assert.match(result.text, /\*\*Worldforge-Sablewake-Live-Runtime-Repair-V3\*\*/)
-  assert.doesNotMatch(result.text, /Worldforge-Sablewake-Live-Runtime-Repair-V3[\s\S]*consequential decision/)
+  assert.doesNotMatch(
+    result.text,
+    /Worldforge-Sablewake-Live-Runtime-Repair-V3[\s\S]*consequential decision/
+  )
+})
+
+test("PAUSE/RESUME failures are reported per target and never block another target's adoption", async () => {
+  const pauseTarget = project('pause-failure-target', 'PauseFailureTarget')
+  const resumeTarget = project('resume-failure-target', 'ResumeFailureTarget')
+  const adoptionTarget = project('adoption-after-run-failures', 'AdoptionAfterRunFailures')
+  let adoptionCalls = 0
+  const result = await respondMultiActionCommand({
+    projects: [pauseTarget, resumeTarget, adoptionTarget],
+    opState,
+    clock,
+    entries: [
+      { target: pauseTarget.id, intent: 'PAUSE', rawClause: 'pause PauseFailureTarget' },
+      { target: resumeTarget.id, intent: 'RESUME', rawClause: 'resume ResumeFailureTarget' },
+      {
+        target: adoptionTarget.id,
+        intent: 'ADOPT_CANDIDATE_REPORT',
+        rawClause: 'adopt AdoptionAfterRunFailures'
+      }
+    ],
+    deps: {
+      pauseProjectRun: async () => {
+        throw new Error('pause refused')
+      },
+      classifyContinueAction: () => 'RESUME',
+      resumeProjectRun: async () => {
+        throw new Error('resume refused')
+      },
+      executeCommandAdoption: async () => {
+        adoptionCalls++
+        return {
+          ok: true,
+          alreadyIncluded: false,
+          priorCanonicalSha: 'a'.repeat(40),
+          resultingCanonicalSha: 'b'.repeat(40),
+          receipt: { receiptHash: 'c'.repeat(64) }
+        }
+      }
+    }
+  })
+
+  assert.match(result.text, /couldn't pause -- pause refused\./)
+  assert.match(result.text, /couldn't resume -- resume refused\./)
+  assert.match(result.text, /adopted -- canonical advanced/)
+  assert.equal(adoptionCalls, 1)
 })
 
 // FIXED (real, live-confirmed P0 -- Full Conversational Control Plane
@@ -219,7 +368,14 @@ test('Batch-4: a negated hold request never writes a real, durable project execu
   // touched by earlier tests in this file (a real, intentionally-durable
   // hold from the mission-literal-message test), so it is not a clean
   // slate here.
-  const freshProject = { id: 'batch4-fresh-hold-target', displayName: 'Batch4FreshHoldTarget', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  const freshProject = {
+    id: 'batch4-fresh-hold-target',
+    displayName: 'Batch4FreshHoldTarget',
+    sourceClass: 'REAL',
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }
   const before = readProjectExecutionHold(freshProject.id)
   assert.equal(before, null, 'sanity: no pre-existing hold for this fresh fixture project')
   // Needs a second, genuinely distinguishing action on a different target
@@ -229,8 +385,14 @@ test('Batch-4: a negated hold request never writes a real, durable project execu
   // below) -- also proven negation-safe there, since decomposeMultiAction
   // itself (shared by both gates) correctly classifies a negated hold
   // clause as GENERAL, never EXTERNAL_WORK_HOLD.
-  const message = "Don't leave batch4-fresh-hold-target alone, keep working on it directly. EasyLifeHQ needs serious work."
-  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  const message =
+    "Don't leave batch4-fresh-hold-target alone, keep working on it directly. EasyLifeHQ needs serious work."
+  const result = await respondCommand({
+    message,
+    projects: [...PROJECTS, freshProject],
+    opState,
+    clock
+  })
   assert.equal(result.intent, 'MULTI_ACTION')
   assert.match(result.text, /Batch4FreshHoldTarget[\s\S]*no action taken/i)
   const after = readProjectExecutionHold(freshProject.id)
@@ -249,12 +411,25 @@ test('Batch-4: a negated hold request never writes a real, durable project execu
 // never set a real hold. Fixed with classifySingleTargetHoldEntries, a
 // narrower ADDITIONAL gate reusing the same real per-clause decomposer.
 test('real finding, FIXED: a genuinely single-target hold request now really sets a durable execution hold via respondCommand', async () => {
-  const freshProject = { id: 'single-target-hold-fixture', displayName: 'SingleTargetHoldFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  const freshProject = {
+    id: 'single-target-hold-fixture',
+    displayName: 'SingleTargetHoldFixture',
+    sourceClass: 'REAL',
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }
   const before = readProjectExecutionHold(freshProject.id)
   assert.equal(before, null, 'sanity: no pre-existing hold for this fresh fixture project')
 
-  const message = 'single-target-hold-fixture is being handled by another agent right now, leave it alone -- do not touch it.'
-  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  const message =
+    'single-target-hold-fixture is being handled by another agent right now, leave it alone -- do not touch it.'
+  const result = await respondCommand({
+    message,
+    projects: [...PROJECTS, freshProject],
+    opState,
+    clock
+  })
   assert.match(result.text, /SingleTargetHoldFixture[\s\S]*Held/)
 
   const after = readProjectExecutionHold(freshProject.id)
@@ -268,15 +443,34 @@ test('real finding, FIXED: a genuinely single-target hold request now really set
 // ZERO real execution anywhere -- releaseProjectExecutionHold (already
 // real, already tested) was never called from any chat/command path.
 test('real finding, FIXED: a genuinely single-target release request really lifts a durable execution hold via respondCommand', async () => {
-  const freshProject = { id: 'single-target-release-fixture', displayName: 'SingleTargetReleaseFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  const freshProject = {
+    id: 'single-target-release-fixture',
+    displayName: 'SingleTargetReleaseFixture',
+    sourceClass: 'REAL',
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }
   await withProjectExecutionHold(freshProject.id, () =>
-    createProjectExecutionHold({ projectId: freshProject.id, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' }, clock)
+    createProjectExecutionHold(
+      { projectId: freshProject.id, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' },
+      clock
+    )
   )
   const before = readProjectExecutionHold(freshProject.id)
-  assert.equal(before.status, 'ACTIVE', 'sanity: a real, active hold exists before the release request')
+  assert.equal(
+    before.status,
+    'ACTIVE',
+    'sanity: a real, active hold exists before the release request'
+  )
 
   const message = 'release the hold on single-target-release-fixture.'
-  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  const result = await respondCommand({
+    message,
+    projects: [...PROJECTS, freshProject],
+    opState,
+    clock
+  })
   assert.match(result.text, /SingleTargetReleaseFixture[\s\S]*Released/)
 
   const after = readProjectExecutionHold(freshProject.id)
@@ -285,29 +479,68 @@ test('real finding, FIXED: a genuinely single-target release request really lift
 })
 
 test('real finding, FIXED: releasing a project with no active hold is an honest no-op, never a fabricated "released" claim', async () => {
-  const freshProject = { id: 'release-nothing-fixture', displayName: 'ReleaseNothingFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
-  assert.equal(readProjectExecutionHold(freshProject.id), null, 'sanity: no hold at all for this fresh fixture')
+  const freshProject = {
+    id: 'release-nothing-fixture',
+    displayName: 'ReleaseNothingFixture',
+    sourceClass: 'REAL',
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }
+  assert.equal(
+    readProjectExecutionHold(freshProject.id),
+    null,
+    'sanity: no hold at all for this fresh fixture'
+  )
 
   const message = 'release the hold on release-nothing-fixture.'
-  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  const result = await respondCommand({
+    message,
+    projects: [...PROJECTS, freshProject],
+    opState,
+    clock
+  })
   assert.match(result.text, /Nothing to release/)
   assert.doesNotMatch(result.text, /Released/)
-  assert.equal(readProjectExecutionHold(freshProject.id), null, 'must never fabricate a hold record that was never real')
+  assert.equal(
+    readProjectExecutionHold(freshProject.id),
+    null,
+    'must never fabricate a hold record that was never real'
+  )
 })
 
 test('real finding, FIXED: a negated release request classifies MULTI_ACTION_DECLINED, never really releases -- "Don\'t release the hold on niners-war-room."', async () => {
   const projectId = 'negated-release-fixture'
-  const freshProject = { id: projectId, displayName: 'NegatedReleaseFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  const freshProject = {
+    id: projectId,
+    displayName: 'NegatedReleaseFixture',
+    sourceClass: 'REAL',
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }
   await withProjectExecutionHold(projectId, () =>
-    createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' }, clock)
+    createProjectExecutionHold(
+      { projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' },
+      clock
+    )
   )
 
   const message = `Don't release the hold on ${projectId}.`
-  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  const result = await respondCommand({
+    message,
+    projects: [...PROJECTS, freshProject],
+    opState,
+    clock
+  })
   assert.doesNotMatch(result.text, /Released/)
 
   const after = readProjectExecutionHold(projectId)
-  assert.equal(after.status, 'ACTIVE', 'a negated release request must never actually lift the real hold')
+  assert.equal(
+    after.status,
+    'ACTIVE',
+    'a negated release request must never actually lift the real hold'
+  )
 })
 
 // Round-2 independent-review finding (real, live-reproduced by the
@@ -321,15 +554,36 @@ test('real finding, FIXED: a negated release request classifies MULTI_ACTION_DEC
 // computing the hold entries without an early return, then merging a
 // matching hold into whichever PAUSE/RESUME outcome actually fires.
 test('real finding (round 2), FIXED: a message combining a real PAUSE directive with a real hold directive for the SAME project executes BOTH via respondCommand, never silently drops either', async () => {
-  const freshProject = { id: 'pause-and-hold-fixture', displayName: 'PauseAndHoldFixture', sourceClass: 'REAL', mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] } }
+  const freshProject = {
+    id: 'pause-and-hold-fixture',
+    displayName: 'PauseAndHoldFixture',
+    sourceClass: 'REAL',
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] }
+  }
   await withKeepGoingRun(freshProject.id, () =>
-    createOvernightRun({ id: `run-${freshProject.id}`, projectId: freshProject.id, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] }, clock)
+    createOvernightRun(
+      {
+        id: `run-${freshProject.id}`,
+        projectId: freshProject.id,
+        originalGoal: 'Test goal.',
+        acceptanceCriteria: ['X']
+      },
+      clock
+    )
   )
   const before = readProjectExecutionHold(freshProject.id)
   assert.equal(before, null, 'sanity: no pre-existing hold for this fresh fixture project')
 
-  const message = 'Pause PauseAndHoldFixture. It is being handled by another agent right now, leave it alone -- do not touch it.'
-  const result = await respondCommand({ message, projects: [...PROJECTS, freshProject], opState, clock })
+  const message =
+    'Pause PauseAndHoldFixture. It is being handled by another agent right now, leave it alone -- do not touch it.'
+  const result = await respondCommand({
+    message,
+    projects: [...PROJECTS, freshProject],
+    opState,
+    clock
+  })
   assert.match(result.text, /Paused/, 'the real pause must still execute')
   assert.match(result.text, /Held/, 'the real hold must ALSO execute -- never silently dropped')
 
@@ -341,15 +595,31 @@ test('real finding (round 2), FIXED: a message combining a real PAUSE directive 
 
 test('classifySingleTargetHoldEntries: a negated single-target hold request is never classified as a real hold entry', () => {
   const freshProject = { id: 'negated-single-hold', displayName: 'NegatedSingleHold' }
-  const entries = classifySingleTargetHoldEntries("Don't hold negated-single-hold, keep working on it directly.", [freshProject], {})
-  assert.equal(entries, null, 'a negated hold clause must never classify as a real EXTERNAL_WORK_HOLD entry')
+  const entries = classifySingleTargetHoldEntries(
+    "Don't hold negated-single-hold, keep working on it directly.",
+    [freshProject],
+    {}
+  )
+  assert.equal(
+    entries,
+    null,
+    'a negated hold clause must never classify as a real EXTERNAL_WORK_HOLD entry'
+  )
 })
 
-test('classifySingleTargetHoldEntries: a genuinely 2-target message is left to classifyMultiActionEntries\' own gate, never double-handled here', () => {
+test("classifySingleTargetHoldEntries: a genuinely 2-target message is left to classifyMultiActionEntries' own gate, never double-handled here", () => {
   const projectA = { id: 'dual-target-a', displayName: 'DualTargetA' }
   const projectB = { id: 'dual-target-b', displayName: 'DualTargetB' }
-  const entries = classifySingleTargetHoldEntries('dual-target-a is being handled by another agent, leave it alone. dual-target-b needs serious work.', [projectA, projectB], {})
-  assert.equal(entries, null, 'a genuinely 2-target message must be left to classifyMultiActionEntries, never matched by this narrower single-target gate')
+  const entries = classifySingleTargetHoldEntries(
+    'dual-target-a is being handled by another agent, leave it alone. dual-target-b needs serious work.',
+    [projectA, projectB],
+    {}
+  )
+  assert.equal(
+    entries,
+    null,
+    'a genuinely 2-target message must be left to classifyMultiActionEntries, never matched by this narrower single-target gate'
+  )
 })
 
 // Independent-review finding (real, test-quality gap found and fixed
@@ -373,17 +643,29 @@ test('classifySingleTargetHoldEntries: scoped to ONLY project A ([project], neve
   // decomposeMultiAction is given ONLY [projectA] -- exactly what chat-
   // http-routes.mjs's own holdCommandResult block passes -- so it has no
   // knowledge of projectB at all, regardless of what the message text says.
-  const entries = classifySingleTargetHoldEntries('scoped-hold-b is being handled by another agent, leave it alone.', [projectA], {})
+  const entries = classifySingleTargetHoldEntries(
+    'scoped-hold-b is being handled by another agent, leave it alone.',
+    [projectA],
+    {}
+  )
   if (entries) {
     for (const entry of entries) {
-      assert.notEqual(entry.target, projectB.id, 'a message naming project B must never produce an entry whose target is B, when B was never in the passed-in projects array')
+      assert.notEqual(
+        entry.target,
+        projectB.id,
+        'a message naming project B must never produce an entry whose target is B, when B was never in the passed-in projects array'
+      )
     }
   }
   // The real, expected outcome given B is entirely unknown to this call:
   // no entry can resolve to any real project at all, so this returns null
   // -- asserted explicitly, not just the weaker "never targets B" check
   // above, since a null result is the strongest possible proof here.
-  assert.equal(entries, null, 'with B entirely absent from the projects array, no real entry can be produced for it -- not even an empty non-null array')
+  assert.equal(
+    entries,
+    null,
+    'with B entirely absent from the projects array, no real entry can be produced for it -- not even an empty non-null array'
+  )
 })
 
 // Full Control Plane Exhaustive Gauntlet V1, Batch 6: STATEFUL, MULTI-TURN
@@ -401,10 +683,24 @@ function stubbedDispatchDeps() {
     createOrcaWorktree: async () => ({ ok: true, worktreePath: 'C:/stub-worktree' }),
     resolveRepositoryIdentity: async () => ({
       ok: true,
-      identity: { root: 'C:/stub-repo', worktree: 'C:/stub-worktree', branch: 'main', head: 'a'.repeat(40), tree: 'a'.repeat(40) }
+      identity: {
+        root: 'C:/stub-repo',
+        worktree: 'C:/stub-worktree',
+        branch: 'main',
+        head: 'a'.repeat(40),
+        tree: 'a'.repeat(40)
+      }
     }),
-    invokeLiveStructuredAnalysis: async () => ({ ok: false, reason: 'STUBBED_NO_LIVE_CALL', detail: 'test stub -- never a real live call' }),
-    resolveProjectCanonicalBase: async () => ({ resolved: true, ref: 'main', source: 'REPO_STANDARD_DEFAULT' })
+    invokeLiveStructuredAnalysis: async () => ({
+      ok: false,
+      reason: 'STUBBED_NO_LIVE_CALL',
+      detail: 'test stub -- never a real live call'
+    }),
+    resolveProjectCanonicalBase: async () => ({
+      resolved: true,
+      ref: 'main',
+      source: 'REPO_STANDARD_DEFAULT'
+    })
   }
 }
 const STATEFUL_PROJECTS = [
@@ -414,15 +710,32 @@ const STATEFUL_PROJECTS = [
 
 test('Batch-6: a hold created via one real chat turn blocks a dispatch attempted in a SEPARATE, later chat turn', async () => {
   const dispatchDeps = stubbedDispatchDeps()
-  const turn1 = 'batch6-held-project is being handled by another AI, leave it alone. batch6-other-project needs serious work.'
-  await respondCommand({ message: turn1, projects: STATEFUL_PROJECTS, opState, clock, deps: dispatchDeps })
+  const turn1 =
+    'batch6-held-project is being handled by another AI, leave it alone. batch6-other-project needs serious work.'
+  await respondCommand({
+    message: turn1,
+    projects: STATEFUL_PROJECTS,
+    opState,
+    clock,
+    deps: dispatchDeps
+  })
   assert.equal(readProjectExecutionHold('batch6-held-project')?.status, 'ACTIVE')
 
   // A genuinely separate later call -- not the same message, not a
   // pre-seeded store write.
-  const turn2 = 'batch6-held-project needs serious work. batch6-other-project: keep going overnight.'
-  const result = await respondCommand({ message: turn2, projects: STATEFUL_PROJECTS, opState, clock, deps: dispatchDeps })
-  assert.match(result.text, /Batch6HeldProject[\s\S]*couldn't start[\s\S]*PROJECT_EXECUTION_HOLD_ACTIVE/)
+  const turn2 =
+    'batch6-held-project needs serious work. batch6-other-project: keep going overnight.'
+  const result = await respondCommand({
+    message: turn2,
+    projects: STATEFUL_PROJECTS,
+    opState,
+    clock,
+    deps: dispatchDeps
+  })
+  assert.match(
+    result.text,
+    /Batch6HeldProject[\s\S]*couldn't start[\s\S]*PROJECT_EXECUTION_HOLD_ACTIVE/
+  )
   // The unrelated project's own dispatch attempt still reaches the same
   // real downstream (fails only at the stubbed live-call point, never at
   // a hold it was never under).
@@ -431,11 +744,18 @@ test('Batch-6: a hold created via one real chat turn blocks a dispatch attempted
 
 test('Batch-6: releasing a hold (directly through the real store, orthogonal to whether chat can also do it) lets a LATER turn dispatch again', async () => {
   const dispatchDeps = stubbedDispatchDeps()
-  const heldProject = project('batch6-release-then-redispatch', 'Batch6ReleaseThenRedispatch', { root: 'C:/stub-repo-root' })
-  const otherProject = project('batch6-release-then-redispatch-other', 'Batch6ReleaseThenRedispatchOther', { root: 'C:/stub-repo-root' })
+  const heldProject = project('batch6-release-then-redispatch', 'Batch6ReleaseThenRedispatch', {
+    root: 'C:/stub-repo-root'
+  })
+  const otherProject = project(
+    'batch6-release-then-redispatch-other',
+    'Batch6ReleaseThenRedispatchOther',
+    { root: 'C:/stub-repo-root' }
+  )
   const projects = [heldProject, otherProject]
 
-  const turn1 = 'batch6-release-then-redispatch is being handled by another AI, leave it alone. batch6-release-then-redispatch-other needs serious work.'
+  const turn1 =
+    'batch6-release-then-redispatch is being handled by another AI, leave it alone. batch6-release-then-redispatch-other needs serious work.'
   await respondCommand({ message: turn1, projects, opState, clock, deps: dispatchDeps })
   assert.equal(readProjectExecutionHold(heldProject.id)?.status, 'ACTIVE')
 
@@ -444,9 +764,19 @@ test('Batch-6: releasing a hold (directly through the real store, orthogonal to 
   )
   assert.equal(readProjectExecutionHold(heldProject.id)?.status, 'RELEASED')
 
-  const turn3 = 'batch6-release-then-redispatch needs serious work. batch6-release-then-redispatch-other: keep going overnight.'
-  const result = await respondCommand({ message: turn3, projects, opState, clock, deps: dispatchDeps })
-  assert.doesNotMatch(result.text, /Batch6ReleaseThenRedispatch\*\*[\s\S]*PROJECT_EXECUTION_HOLD_ACTIVE/)
+  const turn3 =
+    'batch6-release-then-redispatch needs serious work. batch6-release-then-redispatch-other: keep going overnight.'
+  const result = await respondCommand({
+    message: turn3,
+    projects,
+    opState,
+    clock,
+    deps: dispatchDeps
+  })
+  assert.doesNotMatch(
+    result.text,
+    /Batch6ReleaseThenRedispatch\*\*[\s\S]*PROJECT_EXECUTION_HOLD_ACTIVE/
+  )
   assert.match(result.text, /Batch6ReleaseThenRedispatch\*\*[\s\S]*STUBBED_NO_LIVE_CALL/)
 })
 
@@ -465,10 +795,12 @@ test('Batch-6: a duplicate/retried hold-request turn is idempotent -- the origin
   const heldProject = project('batch6-duplicate-hold-turn', 'Batch6DuplicateHoldTurn')
   const otherProject = project('batch6-duplicate-hold-turn-other', 'Batch6DuplicateHoldTurnOther')
   const projects = [heldProject, otherProject]
-  const firstMessage = 'batch6-duplicate-hold-turn is being handled by another AI, leave it alone. batch6-duplicate-hold-turn-other needs serious work.'
+  const firstMessage =
+    'batch6-duplicate-hold-turn is being handled by another AI, leave it alone. batch6-duplicate-hold-turn-other needs serious work.'
   // Genuinely different wording (still a real EXTERNAL_WORK_HOLD trigger --
   // "hold off on X") so the note text actually differs from firstMessage's.
-  const secondMessage = 'hold off on batch6-duplicate-hold-turn. batch6-duplicate-hold-turn-other needs serious work.'
+  const secondMessage =
+    'hold off on batch6-duplicate-hold-turn. batch6-duplicate-hold-turn-other needs serious work.'
 
   await respondCommand({ message: firstMessage, projects, opState, clock })
   const first = readProjectExecutionHold(heldProject.id)
@@ -480,9 +812,21 @@ test('Batch-6: a duplicate/retried hold-request turn is idempotent -- the origin
   await respondCommand({ message: secondMessage, projects, opState, clock })
   const second = readProjectExecutionHold(heldProject.id)
 
-  assert.equal(second.note, first.note, 'a duplicate/restated turn must never overwrite the original note with the later wording')
-  assert.equal(second.setAt, first.setAt, 'a duplicate turn must never overwrite the original setAt')
-  assert.equal(second.history.length, first.history.length, 'a duplicate turn must never append a second SET history entry')
+  assert.equal(
+    second.note,
+    first.note,
+    'a duplicate/restated turn must never overwrite the original note with the later wording'
+  )
+  assert.equal(
+    second.setAt,
+    first.setAt,
+    'a duplicate turn must never overwrite the original setAt'
+  )
+  assert.equal(
+    second.history.length,
+    first.history.length,
+    'a duplicate turn must never append a second SET history entry'
+  )
   assert.equal(second.history.length, 1)
 })
 
@@ -497,17 +841,28 @@ test('Batch-6: a duplicate/retried hold-request turn is idempotent -- the origin
 // own real idempotent-or-create shape.
 test('Batch-7: N genuinely concurrent duplicate hold-request chat calls for the same project are idempotent -- exactly one SET record', async () => {
   const heldProject = project('batch7-concurrent-duplicate', 'Batch7ConcurrentDuplicate')
-  const otherProject = project('batch7-concurrent-duplicate-other', 'Batch7ConcurrentDuplicateOther')
+  const otherProject = project(
+    'batch7-concurrent-duplicate-other',
+    'Batch7ConcurrentDuplicateOther'
+  )
   const projects = [heldProject, otherProject]
-  const message = 'batch7-concurrent-duplicate is being handled by another AI, leave it alone. batch7-concurrent-duplicate-other needs serious work.'
+  const message =
+    'batch7-concurrent-duplicate is being handled by another AI, leave it alone. batch7-concurrent-duplicate-other needs serious work.'
 
   const N = 10
   const results = await Promise.all(
     Array.from({ length: N }, () => respondCommand({ message, projects, opState, clock }))
   )
 
-  assert.ok(results.every((r) => /Held --/.test(r.text)), 'every one of the N concurrent calls must report the hold as held, never an error')
+  assert.ok(
+    results.every((r) => /Held --/.test(r.text)),
+    'every one of the N concurrent calls must report the hold as held, never an error'
+  )
   const hold = readProjectExecutionHold(heldProject.id)
   assert.equal(hold.status, 'ACTIVE')
-  assert.equal(hold.history.length, 1, `exactly one SET history entry despite ${N} genuinely concurrent duplicate calls`)
+  assert.equal(
+    hold.history.length,
+    1,
+    `exactly one SET history entry despite ${N} genuinely concurrent duplicate calls`
+  )
 })

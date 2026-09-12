@@ -1,7 +1,7 @@
 // TSF Control Plane -- Command Act Model V1, LIVE DISPOSABLE EXECUTION PROOF
 // (CASE-31/CASE-32 structural P0 repair, Full Conversational Control Plane
 // Exhaustive Gauntlet V1). Proves, through REAL backend paths (a real git
-// repo per project, a real COMPLETE Keep Going run built through the actual
+// repo per project, a real Keep Going run built through the actual
 // domain state machine, a real candidate worktree, the REAL top-level
 // server/command-responder.mjs respondCommand entry point -- the exact same
 // code a real chat turn goes through), that the 5 dangerous phrases the
@@ -26,13 +26,9 @@ test.after(() => rmSync(ROOT, { recursive: true, force: true }))
 
 const { respondCommand } = await import('../server/command-responder.mjs')
 const { loadState, saveState } = await import('../server/data-store.mjs')
-const {
-  createOvernightRun,
-  planWave,
-  dispatchWave,
-  settleInFlightWave,
-  completeRun
-} = await import('../domain/keep-going.mjs')
+const { createOvernightRun, planWave, dispatchWave, settleInFlightWave, pauseRun, completeRun } =
+  await import('../domain/keep-going.mjs')
+const { readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 
 function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -52,7 +48,10 @@ function initFixtureRepo(name) {
 function createCandidateWorktree(canonicalRepoPath, worktreeName, branch, commitMessage) {
   const worktreePath = path.join(ROOT, worktreeName)
   git(canonicalRepoPath, ['worktree', 'add', '-b', branch, worktreePath, 'main'])
-  writeFileSync(path.join(worktreePath, 'existing-file.mjs'), `export const x = ${Date.now()}${Math.random()}\n`)
+  writeFileSync(
+    path.join(worktreePath, 'existing-file.mjs'),
+    `export const x = ${Date.now()}${Math.random()}\n`
+  )
   git(worktreePath, ['add', '.'])
   git(worktreePath, ['commit', '-q', '-m', commitMessage])
   return worktreePath
@@ -64,29 +63,54 @@ function seedOnboardedProject(projectId, repoPath) {
     ...opState,
     onboardedProjects: {
       ...opState.onboardedProjects,
-      [projectId]: { repoPath, lastAnalysis: null, receipts: [], acceptedAt: '2026-09-07T00:00:00.000Z', refreshedAt: '2026-09-07T00:00:00.000Z' }
+      [projectId]: {
+        repoPath,
+        lastAnalysis: null,
+        receipts: [],
+        acceptedAt: '2026-09-07T00:00:00.000Z',
+        refreshedAt: '2026-09-07T00:00:00.000Z'
+      }
     }
   })
 }
 
-function seedCompleteKeepGoingRun(projectId, worktree, clock) {
-  let run = createOvernightRun({
-    id: `run:${projectId}`,
-    projectId,
-    originalGoal: 'ship the fixture change',
-    acceptanceCriteria: ['the fixture change lands']
-  }, clock)
-  const workItem = { id: `work:${projectId}`, scope: ['existing-file.mjs'], worktree }
-  const wavePlan = planWave(run, [workItem], clock)
-  const dispatchRecords = [{ workItemId: workItem.id, scope: workItem.scope, taskId: `task:${projectId}`, dispatchId: `dispatch:${projectId}`, worktree }]
-  run = dispatchWave(run, wavePlan, dispatchRecords, clock, run.revision)
-  const waveResult = {
-    schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
-    outcomes: dispatchRecords.map((r) => ({ ...r, outcome: 'COMPLETED', rawStatus: 'completed' })),
-    settledAt: new Date().toISOString()
+function seedKeepGoingRun(projectId, worktree, state, clock) {
+  let run = createOvernightRun(
+    {
+      id: `run:${projectId}`,
+      projectId,
+      originalGoal: 'ship the fixture change',
+      acceptanceCriteria: ['the fixture change lands']
+    },
+    clock
+  )
+  if (state === 'COMPLETE') {
+    const workItem = { id: `work:${projectId}`, scope: ['existing-file.mjs'], worktree }
+    const wavePlan = planWave(run, [workItem], clock)
+    const dispatchRecords = [
+      {
+        workItemId: workItem.id,
+        scope: workItem.scope,
+        taskId: `task:${projectId}`,
+        dispatchId: `dispatch:${projectId}`,
+        worktree
+      }
+    ]
+    run = dispatchWave(run, wavePlan, dispatchRecords, clock, run.revision)
+    const waveResult = {
+      schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
+      outcomes: dispatchRecords.map((r) => ({
+        ...r,
+        outcome: 'COMPLETED',
+        rawStatus: 'completed'
+      })),
+      settledAt: new Date().toISOString()
+    }
+    run = settleInFlightWave(run, waveResult, clock, run.revision)
+    run = completeRun(run, clock)
+  } else if (state === 'PAUSED') {
+    run = pauseRun(run, 'TEST_SETUP', clock)
   }
-  run = settleInFlightWave(run, waveResult, clock, run.revision)
-  run = completeRun(run, clock)
   const opState = loadState()
   saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
   return run
@@ -99,12 +123,17 @@ const clock = () => new Date('2026-09-07T12:00:00.000Z')
 // adoption is actually OBSERVABLE (a project with no run at all would just
 // fail closed regardless of whether the bug existed -- an unconvincing
 // proof).
-function seedProject(label) {
+function seedProject(label, runState = 'COMPLETE') {
   const projectId = `live-proof-${label.toLowerCase()}`
   const canonicalRepoPath = initFixtureRepo(`${label}-canonical`)
-  const worktree = createCandidateWorktree(canonicalRepoPath, `${label}-candidate`, `command/${projectId}`, `a real, verified fix for ${label}`)
+  const worktree = createCandidateWorktree(
+    canonicalRepoPath,
+    `${label}-candidate`,
+    `command/${projectId}`,
+    `a real, verified fix for ${label}`
+  )
   seedOnboardedProject(projectId, canonicalRepoPath)
-  seedCompleteKeepGoingRun(projectId, worktree, clock)
+  seedKeepGoingRun(projectId, worktree, runState, clock)
   return {
     id: projectId,
     displayName: label,
@@ -129,7 +158,11 @@ test('LIVE PROOF: "Adopt A -- actually, don\'t." => A canonical branch genuinely
   const A = seedProject('LiveA1')
   const before = head(A.root)
   await runControl("Adopt A -- actually, don't.".replace('A', A.displayName), [A])
-  assert.equal(head(A.root), before, 'A must never merge when the final current-owner act is a reversal')
+  assert.equal(
+    head(A.root),
+    before,
+    'A must never merge when the final current-owner act is a reversal'
+  )
 })
 
 test('LIVE PROOF: quoted "adopt A" grants no authority -- "Claude said \'adopt A\', but I don\'t want that." => A canonical branch genuinely unchanged', async () => {
@@ -139,42 +172,74 @@ test('LIVE PROOF: quoted "adopt A" grants no authority -- "Claude said \'adopt A
   assert.equal(head(A.root), before, 'a quoted "adopt A" must never reach a real merge')
 })
 
-// Real, disclosed finding from this live proof (not hidden): PAUSE has no
-// real multi-action execution intent (existingMultiActionIntent: GENERAL,
-// per this module's own explicitly-authorized CASE-32 gap -- "classify/
-// document the separate PAUSE-model gap without allowing cross-target
-// bleed"), and GENERAL is excluded from classifyMultiActionEntries' own
-// >=2-distinguishing-intents gate (server/command-multi-action-bridge.mjs).
-// So "Pause A, adopt B." never actually clears that gate at all -- it
-// falls through to server/command-adoption-command-bridge.mjs's single-
-// project path, which (per CASE-29's own real fix, this mission) sees TWO
-// projects named alongside adoption language and safely REFUSES
-// (NEEDS_OWNER) rather than guessing which one to adopt. The real,
-// consequential safety property the directive cares about still holds --
-// A's branch never mutates, and B's doesn't either (a false decline, not a
-// false adoption: under-acts, never wrongly over-acts) -- but B does NOT
-// currently reach ITS OWN authorized adoption path in this exact
-// combination. Documented here rather than asserted away.
-test('LIVE PROOF: "Pause A, adopt B." => A canonical branch unchanged (B also does not merge here -- a disclosed, safe ambiguity refusal, not a wrongful mutation of either branch)', async () => {
-  const A = seedProject('LiveA3')
+test('LIVE PROOF: "Pause A, adopt B." durably pauses A, adopts B, and never adopts A', async () => {
+  const A = seedProject('LiveA3', 'ACTIVE')
   const B = seedProject('LiveB3')
   const aBefore = head(A.root)
   const bBefore = head(B.root)
   const result = await runControl(`Pause ${A.displayName}, adopt ${B.displayName}.`, [A, B])
+  assert.equal(
+    readKeepGoingRun(A.id).state,
+    'PAUSED',
+    'A must durably transition from ACTIVE to PAUSED'
+  )
   assert.equal(head(A.root), aBefore, 'PAUSE on A must never bleed into a real merge for A')
-  assert.equal(head(B.root), bBefore, 'disclosed gap: PAUSE+ADOPT together currently falls through to a safe NEEDS_OWNER refusal rather than B\'s own authorized adoption path -- never a wrongful mutation of either branch')
-  assert.equal(result.decisionClass, 'NEEDS_OWNER')
+  assert.notEqual(
+    head(B.root),
+    bBefore,
+    'B must genuinely merge through its own authorized adoption path'
+  )
+  assert.equal(result.intent, 'MULTI_ACTION')
 })
 
-test('LIVE PROOF: decomposeMultiAction itself correctly scopes "Pause A, adopt B." per target at the domain level (the real fix, independent of the multi-action gate\'s own separate, disclosed PAUSE-execution gap)', async () => {
+test('LIVE PROOF: decomposeMultiAction scopes real PAUSE and adoption intents to their own targets', async () => {
   const { decomposeMultiAction } = await import('../domain/command-multi-action-decomposition.mjs')
   const A = { id: 'scope-proof-a', displayName: 'ScopeProofA' }
   const B = { id: 'scope-proof-b', displayName: 'ScopeProofB' }
-  const entries = decomposeMultiAction(`Pause ${A.displayName}, adopt ${B.displayName}.`, [A, B], {})
+  const entries = decomposeMultiAction(
+    `Pause ${A.displayName}, adopt ${B.displayName}.`,
+    [A, B],
+    {}
+  )
   const aEntries = entries.filter((e) => e.target === A.id)
   const bEntries = entries.filter((e) => e.target === B.id)
-  assert.equal(aEntries.some((e) => e.intent === 'ADOPT_CANDIDATE_REPORT'), false, 'the CASE-32 fix itself: A must never receive ADOPT_CANDIDATE_REPORT')
-  assert.equal(bEntries.some((e) => e.intent === 'ADOPT_CANDIDATE_REPORT'), true)
+  assert.equal(
+    aEntries.some((e) => e.intent === 'PAUSE'),
+    true
+  )
+  assert.equal(
+    aEntries.some((e) => e.intent === 'ADOPT_CANDIDATE_REPORT'),
+    false,
+    'the CASE-32 fix itself: A must never receive ADOPT_CANDIDATE_REPORT'
+  )
+  assert.equal(
+    bEntries.some((e) => e.intent === 'ADOPT_CANDIDATE_REPORT'),
+    true
+  )
+})
+
+test('LIVE PROOF: "Don\'t pause A, adopt B." leaves A ACTIVE while B still adopts', async () => {
+  const A = seedProject('LiveA8', 'ACTIVE')
+  const B = seedProject('LiveB8')
+  const aBefore = head(A.root)
+  const bBefore = head(B.root)
+  const result = await runControl(`Don't pause ${A.displayName}, adopt ${B.displayName}.`, [A, B])
+  assert.equal(readKeepGoingRun(A.id).state, 'ACTIVE', 'the negated pause must leave A unchanged')
+  assert.equal(head(A.root), aBefore, 'the negated pause must not bleed adoption onto A')
+  assert.notEqual(head(B.root), bBefore, 'B must still genuinely merge')
+  assert.equal(result.intent, 'MULTI_ACTION')
+})
+
+test('LIVE PROOF: "Resume A, adopt B." resumes a PAUSED A rather than dispatching, while B adopts', async () => {
+  const A = seedProject('LiveA9', 'PAUSED')
+  const B = seedProject('LiveB9')
+  const aBefore = head(A.root)
+  const bBefore = head(B.root)
+  const result = await runControl(`Resume ${A.displayName}, adopt ${B.displayName}.`, [A, B])
+  assert.equal(readKeepGoingRun(A.id).state, 'ACTIVE', 'the PAUSED run must durably resume')
+  assert.equal(head(A.root), aBefore, 'resume must not dispatch or adopt A')
+  assert.notEqual(head(B.root), bBefore, 'B must still genuinely merge')
+  assert.equal(result.intent, 'MULTI_ACTION')
 })
 
 test('LIVE PROOF: "Adopt A, not B." => B canonical branch genuinely unchanged', async () => {
@@ -192,10 +257,21 @@ test('LIVE PROOF: "Pause A, adopt B, leave C alone." => C canonical branch ABSOL
   const aBefore = head(A.root)
   const bBefore = head(B.root)
   const cBefore = head(C.root)
-  const result = await runControl(`Pause ${A.displayName}, adopt ${B.displayName}, leave ${C.displayName} alone.`, [A, B, C])
-  assert.equal(head(C.root), cBefore, 'ABSOLUTELY NO ADOPT C -- C must never merge under any circumstance here')
+  const result = await runControl(
+    `Pause ${A.displayName}, adopt ${B.displayName}, leave ${C.displayName} alone.`,
+    [A, B, C]
+  )
+  assert.equal(
+    head(C.root),
+    cBefore,
+    'ABSOLUTELY NO ADOPT C -- C must never merge under any circumstance here'
+  )
   assert.equal(head(A.root), aBefore, 'PAUSE on A must never bleed into a real merge for A')
-  assert.notEqual(head(B.root), bBefore, 'B must genuinely enter the authorized adoption path and merge')
+  assert.notEqual(
+    head(B.root),
+    bBefore,
+    'B must genuinely enter the authorized adoption path and merge'
+  )
   assert.equal(result.intent, 'MULTI_ACTION')
 })
 
@@ -204,7 +280,11 @@ test('POSITIVE CONTROL: "Adopt B." => B follows the normal, explicit, governed a
   const before = head(B.root)
   const result = await runControl(`Adopt ${B.displayName}.`, [B])
   const after = head(B.root)
-  assert.notEqual(after, before, 'an unambiguous, explicit, unnegated adoption request must still genuinely merge')
+  assert.notEqual(
+    after,
+    before,
+    'an unambiguous, explicit, unnegated adoption request must still genuinely merge'
+  )
   assert.match(result.text ?? '', /adopted/i)
 })
 
@@ -228,6 +308,10 @@ test('LIVE PROOF (P0, round-3 finding): "Don\'t adopt A, adopt B." => A canonica
   const aBefore = head(A.root)
   const bBefore = head(B.root)
   await runControl(`Don't adopt ${A.displayName}, adopt ${B.displayName}.`, [A, B])
-  assert.equal(head(A.root), aBefore, 'A must never merge -- this is the exact P0 the truncated-rawClause bug let through')
+  assert.equal(
+    head(A.root),
+    aBefore,
+    'A must never merge -- this is the exact P0 the truncated-rawClause bug let through'
+  )
   assert.notEqual(head(B.root), bBefore, 'B must still genuinely merge through the authorized path')
 })

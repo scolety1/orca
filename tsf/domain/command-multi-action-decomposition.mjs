@@ -65,8 +65,10 @@ export const MULTI_ACTION_INTENTS = Object.freeze([
   'ADOPT_CANDIDATE_DECLINED',
   'START_KEEP_GOING',
   'ASSESS_AND_UPGRADE',
+  'PAUSE',
+  'RESUME',
   // A single shared id for a negated START_KEEP_GOING/ASSESS_AND_UPGRADE/
-  // EXTERNAL_WORK_HOLD/RELEASE_HOLD act -- deliberately NOT a per-action
+  // EXTERNAL_WORK_HOLD/RELEASE_HOLD/PAUSE/RESUME act -- deliberately NOT a per-action
   // *_DECLINED variant like adoption's own: none of these has adoption's
   // own independent, real-state-grounded re-derivation function to route a
   // declined variant through, so this is routed to a single, generic,
