@@ -60,11 +60,11 @@ async function get(base, urlPath) {
   return { status: res.status, body: await res.json() }
 }
 
-test('GET /api/eval lists all 10 real, registered eval packs (Phase 13 added 2 GOLDEN_PATH packs)', async () => {
+test('GET /api/eval lists all 11 real, registered eval packs (Phase 13 added 2 GOLDEN_PATH packs; TSF Reconcile & Upgrade Protocol V1 added RECONCILE_UPGRADE)', async () => {
   await withServer(async (base) => {
     const res = await get(base, '/api/eval')
     assert.equal(res.status, 200)
-    assert.equal(res.body.packs.length, 10)
+    assert.equal(res.body.packs.length, 11)
   })
 })
 

@@ -33,6 +33,18 @@ process.env.STUB_MODE = 'success'
 process.env.TSF_ORCA_CLI_COMMAND = ORCA_STUB
 process.env.STUB_ORCA_MODE = 'success'
 process.env.STUB_ORCA_REPOS = '[]'
+// Lane 9 regression-sweep finding: a real dispatch tick consults the
+// Resource Pressure Governor, which reads REAL host memory unless
+// forced -- on this shared, often-loaded machine that can genuinely
+// read CRITICAL/EMERGENCY, making a real dispatch legitimately refuse
+// (DISPATCH_WAITING_FOR_RESOURCES instead of WAVE_DISPATCHED). Isolated
+// reproduction: the exact same test passes 100% of the time with this
+// forcing in place, and intermittently fails without it purely as a
+// function of real host load -- not a code defect. Matches the same
+// forcing convention already used throughout this suite (e.g.
+// eval-pack-registry.test.mjs, chat-dispatch-mission-specification.test.mjs).
+process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 
