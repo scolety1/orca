@@ -31,7 +31,15 @@ export const SOURCE_DETECTORS = Object.freeze([
   'RESEARCH_EVAL',
   'RUNTIME_ASSERTION',
   'SECURITY_ADVERSARIAL',
-  'RESOURCE_DIAGNOSTIC'
+  'RESOURCE_DIAGNOSTIC',
+  // TSF Reconcile & Upgrade Protocol V1: a finding originated by a
+  // deliberate, directed reconciliation/audit pass (research -> reconcile
+  // -> trace -> classify), as opposed to the 7 detectors above, which are
+  // all automated/mechanical (an eval pack, a runtime assertion, a
+  // dogfood scan). A protocol run is a genuinely different kind of
+  // originator -- a human- or director-directed trace of a chosen
+  // capability -- not a new parallel finding system.
+  'RECONCILE_AUDIT'
 ])
 
 export const FINDING_STATUSES = Object.freeze([
@@ -51,7 +59,22 @@ export const FINDING_STATUSES = Object.freeze([
   // real defect"). Reusing REJECTED_FALSE_POSITIVE for this would
   // mischaracterize a real finding's own history; this is the honest
   // status instead.
-  'DISMISSED_BY_OWNER'
+  'DISMISSED_BY_OWNER',
+  // TSF Reconcile & Upgrade Protocol V1: the finding's claim was real,
+  // but reconciliation/tracing discovered it is ALREADY fixed (by
+  // unrelated prior work) -- deliberately distinct from
+  // REJECTED_FALSE_POSITIVE ("this was never a real defect at all" -- a
+  // detector/reporting error) and from RESOLVED (a real defect THIS
+  // lifecycle fixed via a verified patch). Conflating "already fine, no
+  // action taken by us" with either of those would mischaracterize the
+  // finding's own real history. "Working as designed" (NOT_A_BUG in the
+  // protocol's own vocabulary) is the ONE closely-related outcome that
+  // deliberately reuses REJECTED_FALSE_POSITIVE instead of a fourth
+  // status here -- transition there with reason 'WORKING_AS_DESIGNED':
+  // it genuinely IS the same "this finding's claim doesn't represent a
+  // real defect" bucket, just discovered by design-intent review rather
+  // than by a detector being wrong from the start.
+  'ALREADY_SOLVED'
 ])
 
 // Mirrors research-mission.mjs's NODE_ALLOWED shape exactly (a frozen map of
@@ -79,18 +102,32 @@ export const FINDING_STATUSES = Object.freeze([
 //   same design: a detector re-observing the identical symptom (same
 //   content-addressed findingId) must never silently reopen an owner's
 //   own dismissal -- see recordFindingRecurrence below.
+// - ALREADY_SOLVED (TSF Reconcile & Upgrade Protocol V1) is legal from
+//   the EXACT SAME states as REJECTED_FALSE_POSITIVE -- the two are
+//   sibling "no fix mission needed" terminal outcomes, discovered at
+//   exactly the same real reconciliation points (an initial detection,
+//   a mechanical re-verification, an owner triage, or a re-opened
+//   regression can each turn out to already be fine), differing only in
+//   WHY: false-positive means the detector was wrong; already-solved
+//   means the detector was right but something else already fixed it.
+//   Deliberately NOT reachable from FIX_MISSION_CREATED/FIX_IN_PROGRESS/
+//   READY_FOR_ADOPTION -- once a real fix mission is already underway or
+//   a candidate exists, "already solved" is not an honest outcome to
+//   claim; RESOLVED (via a real verified patch) or DISMISSED_BY_OWNER
+//   are the real options from there.
 const STATUS_ALLOWED = Object.freeze({
-  DETECTED: ['VERIFIED', 'REJECTED_FALSE_POSITIVE'],
-  VERIFIED: ['ELIGIBLE_FOR_AUTOFIX', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
-  ELIGIBLE_FOR_AUTOFIX: ['FIX_MISSION_CREATED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
-  NEEDS_OWNER: ['FIX_MISSION_CREATED', 'RESOLVED', 'REJECTED_FALSE_POSITIVE', 'DISMISSED_BY_OWNER'],
+  DETECTED: ['VERIFIED', 'REJECTED_FALSE_POSITIVE', 'ALREADY_SOLVED'],
+  VERIFIED: ['ELIGIBLE_FOR_AUTOFIX', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE', 'ALREADY_SOLVED'],
+  ELIGIBLE_FOR_AUTOFIX: ['FIX_MISSION_CREATED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE', 'ALREADY_SOLVED'],
+  NEEDS_OWNER: ['FIX_MISSION_CREATED', 'RESOLVED', 'REJECTED_FALSE_POSITIVE', 'DISMISSED_BY_OWNER', 'ALREADY_SOLVED'],
   FIX_MISSION_CREATED: ['FIX_IN_PROGRESS', 'NEEDS_OWNER'],
   FIX_IN_PROGRESS: ['READY_FOR_ADOPTION', 'NEEDS_OWNER'],
   READY_FOR_ADOPTION: ['RESOLVED', 'NEEDS_OWNER', 'DISMISSED_BY_OWNER'],
   RESOLVED: ['REOPENED'],
-  REOPENED: ['VERIFIED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
+  REOPENED: ['VERIFIED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE', 'ALREADY_SOLVED'],
   REJECTED_FALSE_POSITIVE: [],
-  DISMISSED_BY_OWNER: []
+  DISMISSED_BY_OWNER: [],
+  ALREADY_SOLVED: []
 })
 
 export function assertFindingTransition(fromStatus, toStatus) {

@@ -24,6 +24,8 @@ import { PLATFORM_GOLDEN_PATH_BASICS_PACK } from './platform-golden-path-eval-ca
 import { runPlatformGoldenPathEvalPack } from './platform-golden-path-eval-runner.mjs'
 import { RESEARCH_GOLDEN_PATH_BASICS_PACK } from './research-golden-path-eval-cases.mjs'
 import { runResearchGoldenPathEvalPack } from './research-golden-path-eval-runner.mjs'
+import { RECONCILE_UPGRADE_PILOT_PACK } from './reconcile-upgrade-eval-cases.mjs'
+import { runReconcileUpgradeEvalPack } from './reconcile-upgrade-eval-runner.mjs'
 import { normalizeEvalPack } from '../domain/evaluation-pack.mjs'
 
 const REGISTRY = {
@@ -66,6 +68,10 @@ const REGISTRY = {
   [RESEARCH_GOLDEN_PATH_BASICS_PACK.packId]: {
     pack: normalizeEvalPack(RESEARCH_GOLDEN_PATH_BASICS_PACK),
     run: async (pack, clock) => runResearchGoldenPathEvalPack(pack, clock)
+  },
+  [RECONCILE_UPGRADE_PILOT_PACK.packId]: {
+    pack: normalizeEvalPack(RECONCILE_UPGRADE_PILOT_PACK),
+    run: async (pack, clock) => runReconcileUpgradeEvalPack(pack, clock)
   }
 }
 

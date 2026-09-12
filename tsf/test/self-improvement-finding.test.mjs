@@ -74,20 +74,26 @@ test('findingIdFor is deterministic and distinguishes distinct symptoms', () => 
 // the module's own STATUS_ALLOWED (not imported) so the test is a real
 // check against the mission's own status enum, not a tautology.
 const EXPECTED_ALLOWED = {
-  DETECTED: ['VERIFIED', 'REJECTED_FALSE_POSITIVE'],
-  VERIFIED: ['ELIGIBLE_FOR_AUTOFIX', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
-  ELIGIBLE_FOR_AUTOFIX: ['FIX_MISSION_CREATED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
+  DETECTED: ['VERIFIED', 'REJECTED_FALSE_POSITIVE', 'ALREADY_SOLVED'],
+  VERIFIED: ['ELIGIBLE_FOR_AUTOFIX', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE', 'ALREADY_SOLVED'],
+  ELIGIBLE_FOR_AUTOFIX: ['FIX_MISSION_CREATED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE', 'ALREADY_SOLVED'],
   // Manual Self-Improvement Finding Disposition V1: DISMISSED_BY_OWNER
   // added as a real, legal edge from the same two states the owner's own
-  // "Dismiss" action is ever offered from.
-  NEEDS_OWNER: ['FIX_MISSION_CREATED', 'RESOLVED', 'REJECTED_FALSE_POSITIVE', 'DISMISSED_BY_OWNER'],
+  // "Dismiss" action is ever offered from. TSF Reconcile & Upgrade
+  // Protocol V1: ALREADY_SOLVED added everywhere REJECTED_FALSE_POSITIVE
+  // is legal (DETECTED/VERIFIED/ELIGIBLE_FOR_AUTOFIX/NEEDS_OWNER/REOPENED)
+  // -- a sibling "no fix mission needed" terminal outcome -- but never
+  // once a real fix mission is already underway (FIX_MISSION_CREATED
+  // onward), where RESOLVED/DISMISSED_BY_OWNER are the honest options.
+  NEEDS_OWNER: ['FIX_MISSION_CREATED', 'RESOLVED', 'REJECTED_FALSE_POSITIVE', 'DISMISSED_BY_OWNER', 'ALREADY_SOLVED'],
   FIX_MISSION_CREATED: ['FIX_IN_PROGRESS', 'NEEDS_OWNER'],
   FIX_IN_PROGRESS: ['READY_FOR_ADOPTION', 'NEEDS_OWNER'],
   READY_FOR_ADOPTION: ['RESOLVED', 'NEEDS_OWNER', 'DISMISSED_BY_OWNER'],
   RESOLVED: ['REOPENED'],
-  REOPENED: ['VERIFIED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE'],
+  REOPENED: ['VERIFIED', 'NEEDS_OWNER', 'REJECTED_FALSE_POSITIVE', 'ALREADY_SOLVED'],
   REJECTED_FALSE_POSITIVE: [],
-  DISMISSED_BY_OWNER: []
+  DISMISSED_BY_OWNER: [],
+  ALREADY_SOLVED: []
 }
 
 test('transitionFinding: every legal transition in the full status matrix succeeds', async (t) => {
@@ -190,4 +196,56 @@ test('applyDetection never auto-resurrects an owner-dismissed finding on unchang
   // already the real, existing policy, not something this feature adds.
   const differentFindingId = findingIdFor(baseRaw({ reproduction: { steps: ['a genuinely different repro'] } }))
   assert.notEqual(differentFindingId, finding.findingId)
+})
+
+// TSF Reconcile & Upgrade Protocol V1: ALREADY_SOLVED is a real, honest,
+// distinct terminal outcome -- "the claim was real, but something else
+// already fixed it" -- never conflated with REJECTED_FALSE_POSITIVE
+// ("never a real defect") or RESOLVED ("we fixed it ourselves").
+test('transitionFinding: ALREADY_SOLVED is reachable from DETECTED/VERIFIED/ELIGIBLE_FOR_AUTOFIX/NEEDS_OWNER/REOPENED, terminal, and distinct from REJECTED_FALSE_POSITIVE', () => {
+  let finding = createFinding(baseRaw(), clock)
+  finding = transitionFinding(finding, 'ALREADY_SOLVED', { reason: 'RECONCILIATION_FOUND_EXISTING_FIX' }, clock)
+  assert.equal(finding.status, 'ALREADY_SOLVED')
+  assert.notEqual(finding.status, 'REJECTED_FALSE_POSITIVE')
+  assert.throws(
+    () => transitionFinding(finding, 'RESOLVED', {}, clock),
+    (error) => error.code === 'TSF_INVALID_FINDING_TRANSITION'
+  )
+})
+
+// A real, verified fix mission already underway must never be honestly
+// describable as "already solved" -- that would let a real, in-progress
+// mission silently vanish from the fleet's own accounting.
+test('transitionFinding: ALREADY_SOLVED is illegal once a real fix mission is underway (FIX_MISSION_CREATED/FIX_IN_PROGRESS/READY_FOR_ADOPTION)', () => {
+  for (const inFlightStatus of ['FIX_MISSION_CREATED', 'FIX_IN_PROGRESS', 'READY_FOR_ADOPTION']) {
+    const finding = { ...createFinding(baseRaw(), clock), status: inFlightStatus }
+    assert.throws(
+      () => transitionFinding(finding, 'ALREADY_SOLVED', {}, clock),
+      (error) => error.code === 'TSF_INVALID_FINDING_TRANSITION'
+    )
+  }
+})
+
+// NOT_A_BUG (the protocol's own vocabulary) deliberately reuses
+// REJECTED_FALSE_POSITIVE rather than a fourth status -- both mean "this
+// finding's claim doesn't represent a real defect," just discovered by
+// design-intent review instead of a detector being wrong from the start.
+// This test documents/proves that mapping stays real and callable, not
+// just asserted in a comment.
+test('transitionFinding: "not a bug / working as designed" maps onto the real, existing REJECTED_FALSE_POSITIVE status with an honest reason code', () => {
+  let finding = createFinding(baseRaw(), clock)
+  finding = transitionFinding(finding, 'VERIFIED', { reason: 'RECHECKED' }, clock)
+  finding = transitionFinding(finding, 'REJECTED_FALSE_POSITIVE', { reason: 'WORKING_AS_DESIGNED' }, clock)
+  assert.equal(finding.status, 'REJECTED_FALSE_POSITIVE')
+  assert.equal(finding.transitions.at(-1).reason, 'WORKING_AS_DESIGNED')
+})
+
+// Mirrors the DISMISSED_BY_OWNER precedent exactly: unchanged evidence
+// must never auto-resurrect an ALREADY_SOLVED finding.
+test('applyDetection never auto-resurrects an ALREADY_SOLVED finding on unchanged evidence', () => {
+  let finding = createFinding(baseRaw(), clock)
+  finding = transitionFinding(finding, 'ALREADY_SOLVED', { reason: 'RECONCILIATION_FOUND_EXISTING_FIX' }, clock)
+  const recurred = applyDetection(finding, baseRaw(), later)
+  assert.equal(recurred.status, 'ALREADY_SOLVED', 'must stay ALREADY_SOLVED on unchanged evidence')
+  assert.equal(recurred.occurrences, 2, 'the recurrence must still be visible via occurrences')
 })

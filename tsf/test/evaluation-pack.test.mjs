@@ -76,7 +76,7 @@ test('normalizeEvalPack accepts and returns a well-formed pack unchanged in shap
   assert.equal(normalized.cases.length, 2)
 })
 
-test('EVAL_CATEGORIES covers all 9 required capability categories (Phase 13 added GOLDEN_PATH)', () => {
+test('EVAL_CATEGORIES covers all 10 required capability categories (TSF Reconcile & Upgrade Protocol V1 added RECONCILE_UPGRADE)', () => {
   assert.deepEqual(
     [...EVAL_CATEGORIES].sort(),
     [
@@ -85,6 +85,7 @@ test('EVAL_CATEGORIES covers all 9 required capability categories (Phase 13 adde
       'GOLDEN_PATH',
       'MEMORY',
       'PLANNER',
+      'RECONCILE_UPGRADE',
       'ROUTING',
       'UI_DOGFOOD',
       'VERIFIER',

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import {
   PARENT_MISSION_INTENTS,
   classifyParentMissionIntent,
+  hasReconcileUpgradeTriggerSignal,
   hasResearchConstructionSignal,
   negatesResearchCreation,
   shouldSuppressResearchCreation
@@ -165,4 +166,47 @@ test('classifyParentMissionIntent: a real long-paste (16KB+) software mission re
   assert.ok(longMessage.length > 16000, 'fixture should genuinely exceed 16KB')
   assert.equal(classifyParentMissionIntent(longMessage), PARENT_MISSION_INTENTS.SOFTWARE_PRODUCT_ENGINEERING)
   assert.equal(shouldSuppressResearchCreation(longMessage), true)
+})
+
+// TSF Reconcile & Upgrade Protocol V1, Lane 2: the mission brief's own
+// literal example trigger phrases must resolve as SOFTWARE_PRODUCT_
+// ENGINEERING, never DATASET_RESEARCH -- exactly the class of bug this
+// whole module exists to prevent. "Research this area and upgrade it."
+// is the real, reproduced risk: it contains the bare word "research"
+// with no nearby software-signal vocabulary, and would otherwise fall
+// through to classifyParentMissionIntent's own bare `/\bresearch\b/i`
+// default.
+test('Reconcile & Upgrade Protocol V1: every literal owner trigger phrase from the mission brief is recognized and stays SOFTWARE_PRODUCT_ENGINEERING, never DATASET_RESEARCH', () => {
+  const cases = [
+    'Research this area and upgrade it.',
+    'Dogfood this.',
+    'Make this production-ready.',
+    'Figure out what we already have and finish it.',
+    "Find what's weak here.",
+    'Audit this workflow.',
+    'Compare this part against the best systems and improve it.',
+    'Fix anything objectively wrong here.'
+  ]
+  for (const message of cases) {
+    assert.equal(hasReconcileUpgradeTriggerSignal(message), true, `expected a real trigger match for: ${message}`)
+    assert.equal(shouldSuppressResearchCreation(message), true, `expected suppression for: ${message}`)
+    assert.equal(classifyParentMissionIntent(message), PARENT_MISSION_INTENTS.SOFTWARE_PRODUCT_ENGINEERING, `expected SOFTWARE_PRODUCT_ENGINEERING for: ${message}`)
+    assert.notEqual(classifyParentMissionIntent(message), PARENT_MISSION_INTENTS.DATASET_RESEARCH, `must never read as DATASET_RESEARCH: ${message}`)
+  }
+})
+
+// The trigger check must never accidentally suppress a genuine dataset-
+// construction request -- checked at HIGHEST priority in
+// shouldSuppressResearchCreation, so this proves it doesn't over-match a
+// real research request that happens to share incidental vocabulary.
+test('Reconcile & Upgrade Protocol V1: a genuine dataset-construction request is never mistaken for a reconcile/upgrade trigger', () => {
+  const realResearchRequests = [
+    'Build me a dataset of every 2008 NFL player and their team.',
+    'Research every team in the NFL and collect their win totals.',
+    'I need a research specification with an entity universe of 500 companies and fields to collect.'
+  ]
+  for (const message of realResearchRequests) {
+    assert.equal(hasReconcileUpgradeTriggerSignal(message), false, `must not false-positive on: ${message}`)
+    assert.equal(shouldSuppressResearchCreation(message), false, `a genuine dataset request must stay eligible for Dataset Research: ${message}`)
+  }
 })

@@ -12,10 +12,23 @@ const HERE = import.meta.dirname
 // test file's own established convention, e.g. http-eval.test.mjs) so the
 // REQUIRED PROOF run below never touches the real, shared local dev state
 // file on this host.
-const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-state.test-eval-pack-registry-${process.pid}.json`)
+const STATE_FILE = path.join(
+  HERE,
+  '..',
+  'server',
+  '.local-state',
+  `operator-state.test-eval-pack-registry-${process.pid}.json`
+)
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 function cleanupStateFile() {
-  for (const suffix of ['', '.tmp', '.keep-going.lock', '.research.lock', '.research-library.lock', '.platform-learning-ledger.lock']) {
+  for (const suffix of [
+    '',
+    '.tmp',
+    '.keep-going.lock',
+    '.research.lock',
+    '.research-library.lock',
+    '.platform-learning-ledger.lock'
+  ]) {
     rmSync(`${STATE_FILE}${suffix}`, { force: true })
   }
 }
@@ -35,9 +48,9 @@ process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(8 * 1024 ** 3)
 const { listEvalPacks, getEvalPackEntry } = await import('../server/eval-pack-registry.mjs')
 const { runEvalPack } = await import('../domain/evaluation-pack.mjs')
 
-test('listEvalPacks names all 10 required categories (M9 + Phase 1 UI_DOGFOOD + Phase 13 GOLDEN_PATH x2), each with a real, non-empty pack', () => {
+test('listEvalPacks names all 11 required categories (M9 + Phase 1 UI_DOGFOOD + Phase 13 GOLDEN_PATH x2 + TSF Reconcile & Upgrade Protocol V1 RECONCILE_UPGRADE), each with a real, non-empty pack', () => {
   const packs = listEvalPacks()
-  assert.equal(packs.length, 10)
+  assert.equal(packs.length, 11)
   assert.deepEqual(
     packs.map((p) => p.category).sort(),
     [
@@ -47,6 +60,7 @@ test('listEvalPacks names all 10 required categories (M9 + Phase 1 UI_DOGFOOD + 
       'GOLDEN_PATH',
       'MEMORY',
       'PLANNER',
+      'RECONCILE_UPGRADE',
       'ROUTING',
       'UI_DOGFOOD',
       'VERIFIER',

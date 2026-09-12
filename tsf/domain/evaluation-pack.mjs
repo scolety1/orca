@@ -21,7 +21,14 @@ export const EVAL_CATEGORIES = Object.freeze([
   // a whole real pipeline composes end to end in one run -- not another
   // per-function unit-test category. See platform-golden-path-eval-*.mjs
   // and research-golden-path-eval-*.mjs.
-  'GOLDEN_PATH'
+  'GOLDEN_PATH',
+  // TSF Reconcile & Upgrade Protocol V1: the protocol's own disposable
+  // pilot -- proves the 5 seeded classification outcomes (ALREADY_SOLVED,
+  // PARTIALLY_SOLVED, REAL_BUG, STALE_DOC, UPGRADE_OPPORTUNITY) each
+  // reach the real, expected disposition through real self-improvement-
+  // finding.mjs/adoption machinery, never a hand-typed stand-in. See
+  // reconcile-upgrade-eval-cases.mjs / reconcile-upgrade-eval-runner.mjs.
+  'RECONCILE_UPGRADE'
 ])
 
 const ASSERTION_TYPES = new Set(['EQUALS', 'CONTAINS', 'NOT_CONTAINS', 'MATCHES', 'GTE', 'LTE'])
