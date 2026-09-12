@@ -28,6 +28,7 @@ const { originateRepairMission } =
   await import('../server/self-improvement-mission-origination.mjs')
 const { runRepairAttempt } = await import('../server/self-improvement-repair-cycle.mjs')
 const { readFinding } = await import('../server/self-improvement-finding-store.mjs')
+const { readPlannerMissionRecord } = await import('../server/planner-mission-store.mjs')
 const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 const { withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
 
@@ -261,6 +262,62 @@ test('a real active project execution hold blocks a fresh repair-attempt worker 
     readFinding(finding.findingId).status,
     'FIX_MISSION_CREATED',
     'the durable record is untouched'
+  )
+})
+
+test('resource-pressure refusal returns BLOCKED_BY_RESOURCE_PRESSURE, preserves the finding, and records the mission resource state', async () => {
+  const finding = eligibleFinding('tsf/domain/resource-pressure-fixture.mjs')
+  const missionId = await originate(finding)
+  const findingBefore = readFinding(finding.findingId)
+  const checkpointBefore = readPlannerMissionRecord(missionId).checkpoint
+  const governorReason = 'host memory critical -- no new heavyweight dispatch; let active work checkpoint and replan'
+
+  const result = await runRepairAttempt({
+    finding: findingBefore,
+    missionId,
+    canonicalRepoPath: CANONICAL_REPO_PATH,
+    clock,
+    deps: {
+      ...LIFECYCLE_DEPS,
+      workerDeps: {
+        collectHostMemoryEvidence: () => ({
+          totalBytes: 16 * GB,
+          freeBytes: 2 * GB,
+          availableBytes: 2 * GB,
+          usedPercent: 87.5
+        })
+      }
+    }
+  })
+
+  assert.equal(result.outcome, 'BLOCKED_BY_RESOURCE_PRESSURE')
+  assert.equal(result.tier, 'CRITICAL')
+  assert.match(result.reason, /tier CRITICAL/)
+  assert.match(result.reason, new RegExp(governorReason))
+  assert.deepEqual(result.finding, findingBefore)
+  assert.deepEqual(readFinding(finding.findingId), findingBefore)
+  const resourceState = {
+    tier: 'CRITICAL',
+    reason: governorReason,
+    observedAt: clock().toISOString()
+  }
+  const checkpointAfter = readPlannerMissionRecord(missionId).checkpoint
+  assert.deepEqual(checkpointAfter.resourceState, resourceState)
+  // Director review finding: an earlier draft rebuilt the checkpoint from
+  // the STALE pre-attempt snapshot instead of the fresh current record,
+  // silently discarding the real, already-durably-written dispatch-attempt
+  // bookkeeping dispatchWorkerForTask's own internal catch makes just
+  // before this error reaches runRepairAttempt (recordDispatchAttempt's
+  // UNKNOWN, then resolveDispatchAttempt's real FAILED_CLEAN resolution --
+  // see planner-session-lifecycle.mjs). That real entry must survive.
+  const taskFingerprint = `${missionId}:attempt-1`
+  const dispatchAttempt = checkpointAfter.dispatchAttempts.find((a) => a.taskFingerprint === taskFingerprint)
+  assert.ok(dispatchAttempt, 'the real dispatch-attempt bookkeeping entry must survive, never silently reverted')
+  assert.equal(dispatchAttempt.outcome, 'FAILED_CLEAN')
+  assert.ok(dispatchAttempt.resolvedAt, 'a cleanly-refused attempt must be resolved, never left UNKNOWN')
+  assert.ok(
+    checkpointAfter.revision > checkpointBefore.revision,
+    'the checkpoint must have genuinely advanced, not reverted to a stale snapshot'
   )
 })
 

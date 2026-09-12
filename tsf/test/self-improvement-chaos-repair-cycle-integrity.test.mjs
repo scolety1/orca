@@ -112,18 +112,28 @@ test('scenario 3: verifier crashes (throws) -- finding never silently transition
   assert.equal(readFinding(finding.findingId).status, 'FIX_IN_PROGRESS', 'a crashed verifier must never advance the finding past FIX_IN_PROGRESS')
 })
 
+// TSF Post-Protocol Objective Closure V1, Finding 2 fix: this scenario
+// originally asserted runRepairAttempt REJECTS (throws) on a resource-
+// pressure refusal -- that was the real, unintentional gap the fix
+// closes (the error used to propagate uncaught, with no finding-specific
+// durable record or owner-facing signal). runRepairAttempt now returns a
+// clean, structured BLOCKED_BY_RESOURCE_PRESSURE outcome instead of
+// throwing -- see self-improvement-repair-cycle.test.mjs's own dedicated
+// test for the full contract (outcome shape, checkpoint resourceState,
+// preserved dispatch-attempt bookkeeping). This scenario keeps its own
+// original, still-valuable assertion: blocked so early that dispatch
+// never even starts, so the finding must stay at its pre-attempt status,
+// never falsely advance to FIX_IN_PROGRESS.
 test('scenario 5: resource pressure turns CRITICAL between origination and dispatch -- no worker dispatch attempted mid-cycle', async () => {
   const { canonicalRepoPath, finding, missionId } = await setUp('repo-pressure-mid-cycle')
-  await assert.rejects(
-    runRepairAttempt({
-      finding,
-      missionId,
-      canonicalRepoPath,
-      clock: () => new Date(),
-      deps: { lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory }, workerDeps: { collectHostMemoryEvidence: fakeCriticalMemory } }
-    }),
-    (error) => error.code === 'TSF_SELF_IMPROVEMENT_DISPATCH_BLOCKED_BY_RESOURCE_PRESSURE'
-  )
+  const result = await runRepairAttempt({
+    finding,
+    missionId,
+    canonicalRepoPath,
+    clock: () => new Date(),
+    deps: { lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory }, workerDeps: { collectHostMemoryEvidence: fakeCriticalMemory } }
+  })
+  assert.equal(result.outcome, 'BLOCKED_BY_RESOURCE_PRESSURE')
   // Blocked so early that dispatch never even starts -- the finding must
   // stay at its pre-attempt status, never falsely advance to FIX_IN_PROGRESS.
   assert.equal(readFinding(finding.findingId).status, 'FIX_MISSION_CREATED')

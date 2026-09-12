@@ -110,6 +110,7 @@ export async function dispatchRepairWorker({ finding, envelope, missionId, attem
     const error = new Error(`repair worker dispatch blocked by Resource Pressure Governor (tier ${admission.tier}): ${admission.reason}`)
     error.code = 'TSF_SELF_IMPROVEMENT_DISPATCH_BLOCKED_BY_RESOURCE_PRESSURE'
     error.tier = admission.tier
+    error.reason = admission.reason
     throw error
   }
 

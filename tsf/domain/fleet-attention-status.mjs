@@ -6,6 +6,7 @@
 // for the locked reconciliation this implements.
 import { fleetNeedsYouStatus } from './fleet-work-status.mjs'
 import { summarizeWorkFromRuns } from './work-feed-summary.mjs'
+import { computeRepairMissionId } from '../server/self-improvement-mission-origination.mjs'
 
 export const ATTENTION_CATEGORIES = Object.freeze([
   'NEEDS_OWNER',
@@ -267,10 +268,6 @@ function selfImprovementItems(selfImprovementFindings, displayNameById) {
   return items
 }
 
-// No durable per-mission "waiting for resources" signal exists anywhere in
-// this codebase (confirmed in the checkpoint doc's own Phase 1 sweep) -- a
-// per-mission wait list would be fabricated. The only honest signal is the
-// live, host-wide tier itself.
 // Multi-Project Command + Real Fleet Orchestration Overnight V1, Part B: a
 // real, active project execution hold is exactly the "known, not urgent,
 // not actionable by Tim right now" shape BLOCKED_EXTERNAL already exists
@@ -342,6 +339,29 @@ function resourceBlockedRunItems(keepGoingRuns, displayNameById) {
     })
 }
 
+// A refused repair dispatch records its governor observation on the repair
+// mission's own durable checkpoint, so this is finding-specific evidence
+// rather than an inference from the current host-wide pressure tier.
+function resourceBlockedSelfImprovementItems(selfImprovementFindings, plannerMissionRecords, displayNameById) {
+  return Object.values(selfImprovementFindings)
+    .filter((finding) => ['FIX_MISSION_CREATED', 'FIX_IN_PROGRESS'].includes(finding.status))
+    .flatMap((finding) => {
+      const resourceState = plannerMissionRecords[computeRepairMissionId(finding.findingId)]?.checkpoint?.resourceState
+      if (!resourceState) { return [] }
+      return [{
+        id: `finding:${finding.findingId}:waitingForResources`,
+        category: 'WAITING_FOR_RESOURCES',
+        severity: finding.severity ?? DEFAULT_SEVERITY_BY_CATEGORY.WAITING_FOR_RESOURCES,
+        project: projectRef(displayNameById, finding.projectId),
+        label: finding.affectedSurface,
+        reason: `repair is waiting for resources at tier ${resourceState.tier}: ${resourceState.reason}`,
+        changedAt: resourceState.observedAt,
+        deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId },
+        source: { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId }
+      }]
+    })
+}
+
 export function buildFleetAttentionItems({
   projects,
   keepGoingRuns = {},
@@ -371,7 +391,8 @@ export function buildFleetAttentionItems({
     ...completedRecentlyItems(workSummary.recentlyCompleted, displayNameById),
     ...selfImprovementItems(selfImprovementFindings, displayNameById),
     ...holdItems(projectExecutionHolds, displayNameById),
-    ...resourceBlockedRunItems(keepGoingRuns, displayNameById)
+    ...resourceBlockedRunItems(keepGoingRuns, displayNameById),
+    ...resourceBlockedSelfImprovementItems(selfImprovementFindings, plannerMissionRecords, displayNameById)
   ]
   const resourceItem = resourcePressureItem(resourcePressureState)
   if (resourceItem) { items.push(resourceItem) }

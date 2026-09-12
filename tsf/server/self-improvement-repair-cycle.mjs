@@ -7,7 +7,8 @@
 // forever, per self-improvement-mission-origination.mjs's content-
 // addressed missionId) rather than spawning a new mission per attempt.
 import { PlannerSessionLifecycle } from './planner-session-lifecycle.mjs'
-import { readPlannerMissionRecord } from './planner-mission-store.mjs'
+import { readPlannerMissionRecord, withPlannerMissionRecord } from './planner-mission-store.mjs'
+import { recordResourceState } from '../domain/planner-mission-checkpoint.mjs'
 import { transitionFinding } from '../domain/self-improvement-finding.mjs'
 import { buildAuthorityEnvelope } from '../domain/self-improvement-authority-envelope.mjs'
 import {
@@ -242,6 +243,42 @@ export async function runRepairAttempt({
   } catch (error) {
     if (error.code === 'TSF_SELF_IMPROVEMENT_HOLD_DETECTED_AT_DISPATCH') {
       return error.holdBlock
+    }
+    if (error.code === 'TSF_SELF_IMPROVEMENT_DISPATCH_BLOCKED_BY_RESOURCE_PRESSURE') {
+      // Archaeology found this refusal escaped uncaught, leaving no mission-
+      // specific checkpoint or owner-facing explanation for the wait.
+      //
+      // Director review fix: the first draft built the new checkpoint from
+      // the STALE `checkpointBefore` (read at the very top of this
+      // function, before this attempt's own dispatch bookkeeping), not the
+      // FRESH `current` this callback receives -- silently discarding the
+      // two real, already-durably-written `_mutate` calls
+      // dispatchWorkerForTask's own catch already made just before this
+      // error reached here (recordDispatchAttempt's UNKNOWN, then
+      // resolveDispatchAttempt's real FAILED_CLEAN resolution -- see that
+      // method, planner-session-lifecycle.mjs). Reverting real, persisted
+      // bookkeeping this way -- even bookkeeping this path doesn't itself
+      // depend on for correctness -- violates this codebase's own
+      // durable-record discipline (never silently erase real history).
+      // Building on `current.checkpoint` instead preserves that real
+      // dispatch-attempt entry while still recording the new resource
+      // state on top of it.
+      const writeRecord = deps.withPlannerMissionRecord ?? withPlannerMissionRecord
+      const observedAt = clock().toISOString()
+      await writeRecord(missionId, (current) => ({
+        ...current,
+        checkpoint: recordResourceState(
+          current.checkpoint,
+          { tier: error.tier, reason: error.reason, observedAt },
+          clock
+        )
+      }))
+      return {
+        outcome: 'BLOCKED_BY_RESOURCE_PRESSURE',
+        reason: `repair worker is waiting for resources at tier ${error.tier}: ${error.reason}`,
+        tier: error.tier,
+        finding
+      }
     }
     throw error
   }

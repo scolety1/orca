@@ -19,6 +19,8 @@ import {
 import { recordDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { createFinding, transitionFinding } from '../domain/self-improvement-finding.mjs'
 import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
+import { createPlannerMissionCheckpoint, recordResourceState } from '../domain/planner-mission-checkpoint.mjs'
+import { computeRepairMissionId } from '../server/self-improvement-mission-origination.mjs'
 
 const clock = () => new Date('2026-09-07T12:00:00.000Z')
 
@@ -83,6 +85,26 @@ function rawFinding(overrides = {}) {
     verificationMethod: 'EVAL_PACK_RERUN',
     ...overrides
   }
+}
+
+function repairFinding(affectedSurface, status = 'FIX_MISSION_CREATED') {
+  let finding = createFinding(rawFinding({ affectedSurface }), clock)
+  for (const nextStatus of ['VERIFIED', 'ELIGIBLE_FOR_AUTOFIX', 'FIX_MISSION_CREATED']) {
+    finding = transitionFinding(finding, nextStatus, { reason: 'x' }, clock)
+  }
+  return status === 'FIX_IN_PROGRESS'
+    ? transitionFinding(finding, 'FIX_IN_PROGRESS', { reason: 'x' }, clock)
+    : finding
+}
+
+function plannerRecordForRepair(finding, resourceState = null) {
+  const missionId = computeRepairMissionId(finding.findingId)
+  let checkpoint = createPlannerMissionCheckpoint(
+    { missionId, missionGoal: 'repair', phase: 'REPAIR_DISPATCH', repoState: { branch: 'main', sha: 'a'.repeat(40) } },
+    clock
+  )
+  if (resourceState) { checkpoint = recordResourceState(checkpoint, resourceState, clock) }
+  return [missionId, { lease: null, checkpoint }]
 }
 
 test('empty everything -> empty array', () => {
@@ -349,6 +371,74 @@ test('self-improvement: a finding in a status not on the notify-worthy list (e.g
   const finding = createFinding(rawFinding(), clock)
   const items = buildFleetAttentionItems({ projects: [], selfImprovementFindings: { [finding.findingId]: finding }, clock })
   assert.deepEqual(items, [])
+})
+
+test('self-improvement resource wait: FIX_MISSION_CREATED and FIX_IN_PROGRESS findings with marked checkpoints produce finding-specific WAITING_FOR_RESOURCES items', () => {
+  const findings = [
+    repairFinding('resource-wait-created'),
+    repairFinding('resource-wait-progress', 'FIX_IN_PROGRESS')
+  ]
+  const resourceState = { tier: 'CRITICAL', reason: 'host memory critical', observedAt: clock().toISOString() }
+  const plannerMissionRecords = Object.fromEntries(
+    findings.map((finding) => plannerRecordForRepair(finding, resourceState))
+  )
+  const items = buildFleetAttentionItems({
+    projects: [],
+    selfImprovementFindings: Object.fromEntries(findings.map((finding) => [finding.findingId, finding])),
+    plannerMissionRecords,
+    clock
+  })
+
+  assert.equal(items.length, 2)
+  for (const finding of findings) {
+    const item = items.find((candidate) => candidate.source.id === finding.findingId)
+    assert.ok(item)
+    assert.equal(item.category, 'WAITING_FOR_RESOURCES')
+    assert.match(item.reason, /tier CRITICAL: host memory critical/)
+    assert.equal(item.changedAt, clock().toISOString())
+    assert.deepEqual(item.source, { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId })
+  }
+})
+
+test('self-improvement resource wait: a repair finding with an unmarked checkpoint produces no WAITING_FOR_RESOURCES item', () => {
+  const finding = repairFinding('healthy-repair')
+  const [missionId, record] = plannerRecordForRepair(finding)
+
+  const items = buildFleetAttentionItems({
+    projects: [],
+    selfImprovementFindings: { [finding.findingId]: finding },
+    plannerMissionRecords: { [missionId]: record },
+    clock
+  })
+
+  assert.equal(items.find((item) => item.category === 'WAITING_FOR_RESOURCES'), undefined)
+})
+
+test('self-improvement resource wait: finding-specific and host-wide WAITING_FOR_RESOURCES items remain distinct without duplication', () => {
+  const finding = repairFinding('resource-wait-with-host-pressure')
+  const resourcePressureState = buildResourcePressureState(
+    { hostMemory: { totalBytes: 16e9, freeBytes: 2e9, availableBytes: 2e9 } },
+    clock
+  )
+  const [missionId, record] = plannerRecordForRepair(finding, {
+    tier: resourcePressureState.tier,
+    reason: resourcePressureState.admission.reason,
+    observedAt: resourcePressureState.observedAt
+  })
+
+  const items = buildFleetAttentionItems({
+    projects: [],
+    selfImprovementFindings: { [finding.findingId]: finding },
+    plannerMissionRecords: { [missionId]: record },
+    resourcePressureState,
+    clock
+  })
+  const resourceItems = items.filter((item) => item.category === 'WAITING_FOR_RESOURCES')
+
+  assert.equal(resourceItems.length, 2)
+  assert.deepEqual(new Set(resourceItems.map((item) => item.id)).size, 2)
+  assert.ok(resourceItems.some((item) => item.source.kind === 'SELF_IMPROVEMENT_FINDING'))
+  assert.ok(resourceItems.some((item) => item.source.kind === 'RESOURCE_PRESSURE_TIER'))
 })
 
 test('resource pressure: appears only at CRITICAL/EMERGENCY, never fabricates a per-mission entry', () => {
