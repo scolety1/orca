@@ -142,7 +142,8 @@ export function transitionResearchMission(
   { reason, evidence = [], expectedRevision } = {},
   clock
 ) {
-  if (!RESEARCH_MISSION_STATES.includes(to)) throw new Error(`unknown research mission state: ${to}`)
+  if (!RESEARCH_MISSION_STATES.includes(to))
+    throw new Error(`unknown research mission state: ${to}`)
   assertExpectedRevision(mission, expectedRevision)
   if (!MISSION_ALLOWED[mission.state]?.includes(to)) {
     const error = new Error(`invalid research mission transition: ${mission.state} -> ${to}`)
@@ -159,11 +160,26 @@ export function transitionResearchMission(
 }
 
 export const pauseResearchMission = (mission, reason, clock, expectedRevision) =>
-  transitionResearchMission(mission, 'PAUSED', { reason: reason ?? 'OPERATOR_PAUSE', expectedRevision }, clock)
+  transitionResearchMission(
+    mission,
+    'PAUSED',
+    { reason: reason ?? 'OPERATOR_PAUSE', expectedRevision },
+    clock
+  )
 export const resumeResearchMission = (mission, clock, expectedRevision) =>
-  transitionResearchMission(mission, 'ACTIVE', { reason: 'OPERATOR_RESUME', expectedRevision }, clock)
+  transitionResearchMission(
+    mission,
+    'ACTIVE',
+    { reason: 'OPERATOR_RESUME', expectedRevision },
+    clock
+  )
 export const completeResearchMission = (mission, clock, expectedRevision) =>
-  transitionResearchMission(mission, 'COMPLETE', { reason: 'RESEARCH_MISSION_SATISFIED', expectedRevision }, clock)
+  transitionResearchMission(
+    mission,
+    'COMPLETE',
+    { reason: 'RESEARCH_MISSION_SATISFIED', expectedRevision },
+    clock
+  )
 export const blockResearchMission = (mission, reason, evidence, clock, expectedRevision) =>
   transitionResearchMission(mission, 'BLOCKED', { reason, evidence, expectedRevision }, clock)
 
@@ -239,7 +255,9 @@ export function findResearchNode(mission, nodeId) {
 // data, not a bespoke readiness computation.
 export function readyResearchNodes(mission) {
   const completed = new Set(
-    mission.nodes.filter((n) => n.status === 'COMPLETED' || n.status === 'CANCELLED').map((n) => n.id)
+    mission.nodes
+      .filter((n) => n.status === 'COMPLETED' || n.status === 'CANCELLED')
+      .map((n) => n.id)
   )
   return mission.nodes.filter(
     (n) => n.status === 'PENDING' && n.dependencies.every((d) => completed.has(d))
@@ -258,15 +276,20 @@ export const RESEARCH_MISSION_PHASES = Object.freeze([
   'DRAFT',
   'CREATED',
   'EXECUTING',
+  'WAITING_FOR_RESOURCES',
   'WAITING_NEEDS_INPUT',
   'COMPLETE',
   'BLOCKED'
 ])
 
 export function computeResearchMissionPhase(mission) {
+  // Terminal and owner-directed states outrank a transient resource wait.
   if (mission.state === 'COMPLETE') return 'COMPLETE'
   if (mission.state === 'BLOCKED') return 'BLOCKED'
   if (mission.state === 'NEEDS_YOU') return 'WAITING_NEEDS_INPUT'
+  if (mission.checkpoints?.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES') {
+    return 'WAITING_FOR_RESOURCES'
+  }
   if (mission.nodes.length === 0) return 'DRAFT'
   // "Real progress" is a node that has actually been dispatched (a real
   // network/worker call was attempted) or has real epistemic content
@@ -283,7 +306,11 @@ export function computeResearchMissionPhase(mission) {
   // pre-existing dispatch path either confirmed or was a no-op that
   // recorded no attempt at all.
   const hasRealProgress = mission.nodes.some(
-    (n) => n.dispatchRecords?.length > 0 || n.dispatchAttempts?.length > 0 || n.status === 'ADMITTED' || n.status === 'COMPLETED'
+    (n) =>
+      n.dispatchRecords?.length > 0 ||
+      n.dispatchAttempts?.length > 0 ||
+      n.status === 'ADMITTED' ||
+      n.status === 'COMPLETED'
   )
   return hasRealProgress ? 'EXECUTING' : 'CREATED'
 }
@@ -326,7 +353,14 @@ export function checkpointResearchMission(
   if (!phase?.trim()) throw new Error('a phase label is required to checkpoint')
   assertExpectedRevision(mission, expectedRevision)
   const at = isoNow(clock)
-  const record = { phase, note, evidence, nodeCount: mission.nodes.length, state: mission.state, at }
+  const record = {
+    phase,
+    note,
+    evidence,
+    nodeCount: mission.nodes.length,
+    state: mission.state,
+    at
+  }
   const previousHash = mission.checkpoints.at(-1)?.hash ?? null
   const hash = sha256({ previousHash, record })
   const next = deepClone(mission)
@@ -399,7 +433,12 @@ export function raiseResearchNeedsYou(
     next.updatedAt = at
     return next
   }
-  return transitionResearchMission(next, 'NEEDS_YOU', { reason: 'HUMAN_DECISION_REQUIRED', evidence: nodeId ? [nodeId] : [] }, clock)
+  return transitionResearchMission(
+    next,
+    'NEEDS_YOU',
+    { reason: 'HUMAN_DECISION_REQUIRED', evidence: nodeId ? [nodeId] : [] },
+    clock
+  )
 }
 
 // Trust + Scale Hardening (human review integration): the graceful
@@ -417,7 +456,13 @@ export function raiseResearchNeedsYou(
 // is persisted until the eventual withResearchMission write, so this
 // remains safe, but do not assume the revision counter advances by
 // exactly 1 per call.
-export function escalateResearchNodeToNeedsYou(mission, nodeId, { question, category = 'SOURCE_UNAVAILABLE' }, clock, expectedRevision) {
+export function escalateResearchNodeToNeedsYou(
+  mission,
+  nodeId,
+  { question, category = 'SOURCE_UNAVAILABLE' },
+  clock,
+  expectedRevision
+) {
   assertExpectedRevision(mission, expectedRevision)
   const node = findResearchNode(mission, nodeId)
   if (!node) throw new Error(`unknown research node: ${nodeId}`)
@@ -427,7 +472,17 @@ export function escalateResearchNodeToNeedsYou(mission, nodeId, { question, cate
   next.nodes[idx] = { ...next.nodes[idx], status: 'BLOCKED' }
   next.revision += 1
   next.updatedAt = isoNow(clock)
-  return raiseResearchNeedsYou(next, { question: question ?? `Research node ${nodeId} could not be completed and needs human review.`, nodeId, category }, clock, next.revision)
+  return raiseResearchNeedsYou(
+    next,
+    {
+      question:
+        question ?? `Research node ${nodeId} could not be completed and needs human review.`,
+      nodeId,
+      category
+    },
+    clock,
+    next.revision
+  )
 }
 
 export function resolveResearchNeedsYou(mission, needsYouId, resolution, clock, expectedRevision) {

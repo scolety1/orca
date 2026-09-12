@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   blockRun,
+  checkpointRun,
   claimTick,
   completeRun,
   createOvernightRun,
@@ -133,6 +134,38 @@ test('a dispatch tick holding the lock with nothing in flight yet -> WAITING', (
   assert.equal(projectLiveWorkFeedState(run).state, 'WAITING')
 })
 
+test('a resource-wait checkpoint with no dispatched waves -> WAITING, not PLANNING', () => {
+  const run = checkpointRun(
+    baseRun(),
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock
+  )
+  const result = projectLiveWorkFeedState(run)
+  assert.equal(run.waves.length, 0)
+  assert.equal(result.state, 'WAITING')
+  assert.match(result.reason, /host memory critical/)
+})
+
+test('an in-flight wave stays WORKING even if the latest checkpoint is a resource wait', () => {
+  let run = baseRun()
+  const plan = planWave(run, [{ id: 't1', scope: ['a.mjs'] }], clock)
+  run = dispatchWave(
+    run,
+    plan,
+    [{ workItemId: 't1', scope: ['a.mjs'], taskId: 'task-1', dispatchId: 'ctx-1' }],
+    clock,
+    run.revision
+  )
+  run = checkpointRun(
+    run,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    run.revision
+  )
+  assert.ok(run.inFlightWave)
+  assert.equal(projectLiveWorkFeedState(run).state, 'WORKING')
+})
+
 function runWithOneSettledWave() {
   let run = baseRun()
   const plan = planWave(run, [{ id: 't1', scope: ['a.mjs'] }], clock)
@@ -163,6 +196,19 @@ function runWithOneSettledWave() {
   )
   return run
 }
+
+test('a resource-wait checkpoint after a settled wave -> WAITING, not a gap-derived state', () => {
+  let run = runWithOneSettledWave()
+  run = checkpointRun(
+    run,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    run.revision
+  )
+  const gap = { satisfiedCriteria: ['CRITERION_A'], remainingGaps: ['CRITERION_B'] }
+  assert.equal(run.waves.length, 1)
+  assert.equal(projectLiveWorkFeedState(run, gap).state, 'WAITING')
+})
 
 test('ACTIVE with settled waves and no gap supplied -> WORKING, not a guessed VERIFYING/REVISION', () => {
   const run = runWithOneSettledWave()

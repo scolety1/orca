@@ -357,6 +357,31 @@ function resourceBlockedRunItems(keepGoingRuns, displayNameById) {
     })
 }
 
+// ACTIVE avoids retaining a stale wait beside a later authoritative outcome.
+function resourceBlockedResearchMissionItems(researchMissions, displayNameById) {
+  return Object.values(researchMissions)
+    .filter(
+      (mission) =>
+        mission.state === 'ACTIVE' &&
+        mission.checkpoints?.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES'
+    )
+    .map((mission) => {
+      const lastCheckpoint = mission.checkpoints.at(-1)
+      const detail = lastCheckpoint.note ?? lastCheckpoint.reason ?? 'resource pressure'
+      return {
+        id: `research:${mission.id}:waitingForResources`,
+        category: 'WAITING_FOR_RESOURCES',
+        severity: DEFAULT_SEVERITY_BY_CATEGORY.WAITING_FOR_RESOURCES,
+        project: projectRef(displayNameById, mission.projectId),
+        label: mission.specification?.researchQuestion ?? mission.id,
+        reason: `waiting for host resources: ${detail}`,
+        changedAt: lastCheckpoint.at,
+        deepLink: { kind: 'RESEARCH_MISSION', id: mission.id },
+        source: { kind: 'RESEARCH_MISSION', id: mission.id }
+      }
+    })
+}
+
 // A refused repair dispatch records its governor observation on the repair
 // mission's own durable checkpoint, so this is finding-specific evidence
 // rather than an inference from the current host-wide pressure tier.
@@ -440,6 +465,7 @@ export function buildFleetAttentionItems({
     ...selfImprovementItems(selfImprovementFindings, displayNameById),
     ...holdItems(projectExecutionHolds, displayNameById),
     ...resourceBlockedRunItems(keepGoingRuns, displayNameById),
+    ...resourceBlockedResearchMissionItems(researchMissions, displayNameById),
     ...resourceBlockedSelfImprovementItems(
       selfImprovementFindings,
       plannerMissionRecords,

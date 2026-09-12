@@ -19,6 +19,7 @@ import {
 } from '../domain/keep-going.mjs'
 import {
   addResearchNode,
+  checkpointResearchMission,
   createResearchMission,
   raiseResearchNeedsYou,
   transitionResearchMission
@@ -736,6 +737,103 @@ test('Resource-Wait Auto-Resume V1: a per-project resource-blocked run appears W
   assert.equal(
     noItems.find((i) => i.id === 'run:p3:waitingForResources'),
     undefined
+  )
+})
+
+test('research resource wait: an ordinary mission produces a mission-specific WAITING_FOR_RESOURCES item', () => {
+  let mission = baseMission('mission:resource-wait')
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = checkpointResearchMission(
+    mission,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    mission.revision
+  )
+  const items = buildFleetAttentionItems({
+    projects: [project('test', { displayName: 'Test Project' })],
+    researchMissions: { [mission.id]: mission },
+    clock
+  })
+  const item = items.find(
+    (candidate) => candidate.id === `research:${mission.id}:waitingForResources`
+  )
+  assert.ok(item)
+  assert.equal(item.category, 'WAITING_FOR_RESOURCES')
+  assert.deepEqual(item.project, { id: 'test', displayName: 'Test Project' })
+  assert.match(item.reason, /host memory critical/)
+  assert.equal(item.changedAt, clock().toISOString())
+  assert.deepEqual(item.deepLink, { kind: 'RESEARCH_MISSION', id: mission.id })
+  assert.deepEqual(item.source, { kind: 'RESEARCH_MISSION', id: mission.id })
+})
+
+test('research resource wait: an unmarked checkpoint produces no WAITING_FOR_RESOURCES item', () => {
+  let mission = baseMission('mission:normal-checkpoint')
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = checkpointResearchMission(
+    mission,
+    { phase: 'RESEARCH_DISPATCH_STARTED', note: 'dispatch admitted' },
+    clock,
+    mission.revision
+  )
+  const items = buildFleetAttentionItems({
+    projects: [],
+    researchMissions: { [mission.id]: mission },
+    clock
+  })
+  assert.equal(
+    items.find((item) => item.category === 'WAITING_FOR_RESOURCES'),
+    undefined
+  )
+})
+
+test('research resource wait: research, Keep Going, and self-improvement items coexist without duplication', () => {
+  let run = newRun('run:resource-wait', 'p1')
+  run = checkpointRun(
+    run,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    run.revision
+  )
+  let mission = baseMission('mission:resource-wait-coexistence')
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = checkpointResearchMission(
+    mission,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    mission.revision
+  )
+  const finding = repairFinding('resource-wait-coexistence')
+  const [plannerMissionId, plannerRecord] = plannerRecordForRepair(finding, {
+    tier: 'CRITICAL',
+    reason: 'host memory critical',
+    observedAt: clock().toISOString()
+  })
+  const items = buildFleetAttentionItems({
+    projects: [project('p1'), project('test')],
+    keepGoingRuns: { p1: run },
+    researchMissions: { [mission.id]: mission },
+    selfImprovementFindings: { [finding.findingId]: finding },
+    plannerMissionRecords: { [plannerMissionId]: plannerRecord },
+    clock
+  })
+  const resourceItems = items.filter((item) => item.category === 'WAITING_FOR_RESOURCES')
+  assert.equal(resourceItems.length, 3)
+  assert.equal(new Set(resourceItems.map((item) => item.id)).size, 3)
+  assert.deepEqual(
+    new Set(resourceItems.map((item) => item.source.kind)),
+    new Set(['KEEP_GOING_RUN', 'RESEARCH_MISSION', 'SELF_IMPROVEMENT_FINDING'])
   )
 })
 

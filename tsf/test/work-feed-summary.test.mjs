@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { summarizeWorkFromRuns } from '../domain/work-feed-summary.mjs'
-import { addResearchNode, createResearchMission, raiseResearchNeedsYou, transitionResearchMission } from '../domain/research-mission.mjs'
+import {
+  addResearchNode,
+  checkpointResearchMission,
+  createResearchMission,
+  raiseResearchNeedsYou,
+  transitionResearchMission
+} from '../domain/research-mission.mjs'
 import { recordDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import {
   createOvernightRun,
@@ -163,7 +169,13 @@ test('finding #11: a COMPLETE run with a matching real ADVANCED canonical-base e
   const canonicalBases = {
     'p-complete': {
       history: [
-        { action: 'ADVANCED', ref: 'refs/heads/main', resultingSha: 'deadbeef', missionId: completeRunView.id, at: '2026-08-24T12:00:00.000Z' }
+        {
+          action: 'ADVANCED',
+          ref: 'refs/heads/main',
+          resultingSha: 'deadbeef',
+          missionId: completeRunView.id,
+          at: '2026-08-24T12:00:00.000Z'
+        }
       ]
     }
   }
@@ -179,7 +191,10 @@ test('finding #11: a COMPLETE run with a matching real ADVANCED canonical-base e
   assert.equal(summary.recentlyCompleted[0].id, 'p-complete')
   assert.equal(summary.recentlyCompleted[0].missionId, completeRunView.id)
   assert.equal(summary.recentlyCompleted[0].adoptedAt, '2026-08-24T12:00:00.000Z')
-  assert.equal(summary.recentlyCompleted[0].reason, 'a real adoption merge landed for this run -- no longer ready for adoption')
+  assert.equal(
+    summary.recentlyCompleted[0].reason,
+    'a real adoption merge landed for this run -- no longer ready for adoption'
+  )
 })
 
 // The negative case: a canonical-base history entry for a DIFFERENT
@@ -190,7 +205,13 @@ test('finding #11: a canonical-base entry for a different missionId does not ove
   const canonicalBases = {
     'p-complete-2': {
       history: [
-        { action: 'ADVANCED', ref: 'refs/heads/main', resultingSha: 'cafebabe', missionId: 'some-earlier-unrelated-run', at: '2026-08-01T00:00:00.000Z' }
+        {
+          action: 'ADVANCED',
+          ref: 'refs/heads/main',
+          resultingSha: 'cafebabe',
+          missionId: 'some-earlier-unrelated-run',
+          at: '2026-08-01T00:00:00.000Z'
+        }
       ]
     }
   }
@@ -213,7 +234,11 @@ test('finding #11: a canonical-base entry for a different missionId does not ove
 // -- a COMPLETE run stays readyForAdoption.
 test('finding #11: omitting canonicalBases entirely preserves the pre-fix readyForAdoption classification', () => {
   const completeRunView = completeRun(newRun('r-complete-3', 'p-complete-3'), clock)
-  const summary = summarizeWorkFromRuns([project('p-complete-3')], { 'p-complete-3': completeRunView }, clock)
+  const summary = summarizeWorkFromRuns(
+    [project('p-complete-3')],
+    { 'p-complete-3': completeRunView },
+    clock
+  )
   assert.deepEqual(
     summary.readyForAdoption.map((p) => p.id),
     ['p-complete-3']
@@ -268,7 +293,15 @@ function baseMissionSpec() {
     researchQuestion: 'q',
     entityType: 'FIXTURE',
     requestedFields: [],
-    sourcePolicy: { preferredSources: [], disallowedSources: [], licensingConstraints: [], freshnessPolicy: 'UNSPECIFIED', requireIndependentSources: false, minSourceCount: 0, allowCrossMissionLibraryReuse: true },
+    sourcePolicy: {
+      preferredSources: [],
+      disallowedSources: [],
+      licensingConstraints: [],
+      freshnessPolicy: 'UNSPECIFIED',
+      requireIndependentSources: false,
+      minSourceCount: 0,
+      allowCrossMissionLibraryReuse: true
+    },
     temporalRequirements: { asOfDate: '2026-08-25', periodScope: 'UNSPECIFIED' },
     budget: { maxCostUsd: 0, maxLatencyMs: null, maxToolCallsPerNode: null },
     toolPermissions: []
@@ -276,21 +309,104 @@ function baseMissionSpec() {
 }
 
 test('a research mission with a real dispatch attempt (EXECUTING) appears in active, the exact Round 5 aggregation gap fix', () => {
-  let mission = createResearchMission({ id: 'mission:executing', projectId: 'p', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] } }, clock)
-  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
-  mission = recordDispatchAttempt(mission, 'node:a', { taskFingerprint: 'a'.repeat(64) }, clock, mission.revision)
+  let mission = createResearchMission(
+    {
+      id: 'mission:executing',
+      projectId: 'p',
+      specification: baseMissionSpec(),
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 1,
+        expectedEntities: []
+      }
+    },
+    clock
+  )
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = recordDispatchAttempt(
+    mission,
+    'node:a',
+    { taskFingerprint: 'a'.repeat(64) },
+    clock,
+    mission.revision
+  )
   const summary = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission })
-  assert.deepEqual(summary.active.map((x) => x.missionId), ['mission:executing'])
+  assert.deepEqual(
+    summary.active.map((x) => x.missionId),
+    ['mission:executing']
+  )
   assert.equal(summary.active[0].kind, 'RESEARCH_MISSION')
   assert.equal(summary.active[0].phase, 'EXECUTING')
+})
+
+test('a resource-blocked research mission appears in active, not silently outside every Work section', () => {
+  let mission = createResearchMission(
+    {
+      id: 'mission:resource-wait',
+      projectId: 'p',
+      specification: baseMissionSpec(),
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 1,
+        expectedEntities: []
+      }
+    },
+    clock
+  )
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = checkpointResearchMission(
+    mission,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    mission.revision
+  )
+  const summary = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission })
+  assert.deepEqual(
+    summary.active.map((x) => x.missionId),
+    ['mission:resource-wait']
+  )
+  assert.equal(summary.active[0].phase, 'WAITING_FOR_RESOURCES')
 })
 
 // IA consolidation: HQ/Work render a real title/stats line straight from
 // this item -- no second round-trip needed.
 test('a research work item carries enough fields to render on HQ/Work without a second fetch', () => {
-  let mission = createResearchMission({ id: 'mission:enriched', projectId: 'proj-1', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 3, expectedEntities: [] } }, clock)
-  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
-  mission = recordDispatchAttempt(mission, 'node:a', { taskFingerprint: 'a'.repeat(64) }, clock, mission.revision)
+  let mission = createResearchMission(
+    {
+      id: 'mission:enriched',
+      projectId: 'proj-1',
+      specification: baseMissionSpec(),
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 3,
+        expectedEntities: []
+      }
+    },
+    clock
+  )
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = recordDispatchAttempt(
+    mission,
+    'node:a',
+    { taskFingerprint: 'a'.repeat(64) },
+    clock,
+    mission.revision
+  )
   const item = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission }).active[0]
   assert.equal(item.researchQuestion, 'q')
   assert.equal(item.entityType, 'FIXTURE')
@@ -300,23 +416,86 @@ test('a research work item carries enough fields to render on HQ/Work without a 
 })
 
 test('a research mission WAITING_NEEDS_INPUT appears in needsYou, alongside any real Keep Going needsYou items', () => {
-  let mission = createResearchMission({ id: 'mission:needs-you', projectId: 'p', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] } }, clock)
-  mission = raiseResearchNeedsYou(mission, { question: 'approve paid access?' }, clock, mission.revision)
+  let mission = createResearchMission(
+    {
+      id: 'mission:needs-you',
+      projectId: 'p',
+      specification: baseMissionSpec(),
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 1,
+        expectedEntities: []
+      }
+    },
+    clock
+  )
+  mission = raiseResearchNeedsYou(
+    mission,
+    { question: 'approve paid access?' },
+    clock,
+    mission.revision
+  )
   const summary = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission })
-  assert.deepEqual(summary.needsYou.map((x) => x.missionId), ['mission:needs-you'])
+  assert.deepEqual(
+    summary.needsYou.map((x) => x.missionId),
+    ['mission:needs-you']
+  )
 })
 
 test('a COMPLETE research mission appears in recentlyCompleted', () => {
-  let mission = createResearchMission({ id: 'mission:complete', projectId: 'p', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] } }, clock)
-  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
-  mission = transitionResearchMission(mission, 'COMPLETE', { reason: 'x', expectedRevision: mission.revision }, clock)
+  let mission = createResearchMission(
+    {
+      id: 'mission:complete',
+      projectId: 'p',
+      specification: baseMissionSpec(),
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 1,
+        expectedEntities: []
+      }
+    },
+    clock
+  )
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = transitionResearchMission(
+    mission,
+    'COMPLETE',
+    { reason: 'x', expectedRevision: mission.revision },
+    clock
+  )
   const summary = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission })
-  assert.deepEqual(summary.recentlyCompleted.map((x) => x.missionId), ['mission:complete'])
+  assert.deepEqual(
+    summary.recentlyCompleted.map((x) => x.missionId),
+    ['mission:complete']
+  )
 })
 
 test('a genuinely untouched CREATED research mission (no dispatch attempt at all) does not appear anywhere -- "started must mean something real"', () => {
-  let mission = createResearchMission({ id: 'mission:created', projectId: 'p', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] } }, clock)
-  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  let mission = createResearchMission(
+    {
+      id: 'mission:created',
+      projectId: 'p',
+      specification: baseMissionSpec(),
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 1,
+        expectedEntities: []
+      }
+    },
+    clock
+  )
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   const summary = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission })
   assert.deepEqual(summary.active, [])
   assert.deepEqual(summary.needsYou, [])
@@ -332,10 +511,31 @@ test('backward compatible: omitting researchMissions entirely (existing callers)
 // BLOCKED entry at all, so a mission genuinely awaiting a human decision
 // was invisible in every bucket -- neither active, needsYou, nor blocked.
 test('a BLOCKED research mission appears in blocked, not nowhere', () => {
-  let mission = createResearchMission({ id: 'mission:blocked', projectId: 'p', specification: baseMissionSpec(), expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] } }, clock)
-  mission = transitionResearchMission(mission, 'BLOCKED', { reason: 'no legal source found', expectedRevision: mission.revision }, clock)
+  let mission = createResearchMission(
+    {
+      id: 'mission:blocked',
+      projectId: 'p',
+      specification: baseMissionSpec(),
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 1,
+        expectedEntities: []
+      }
+    },
+    clock
+  )
+  mission = transitionResearchMission(
+    mission,
+    'BLOCKED',
+    { reason: 'no legal source found', expectedRevision: mission.revision },
+    clock
+  )
   const summary = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission })
-  assert.deepEqual(summary.blocked.filter((x) => x.kind === 'RESEARCH_MISSION').map((x) => x.missionId), ['mission:blocked'])
+  assert.deepEqual(
+    summary.blocked.filter((x) => x.kind === 'RESEARCH_MISSION').map((x) => x.missionId),
+    ['mission:blocked']
+  )
   assert.deepEqual(summary.active, [])
   assert.deepEqual(summary.needsYou, [])
 })

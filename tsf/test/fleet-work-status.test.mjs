@@ -1,10 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fleetNeedsYouStatus, fleetResearchStatus, fleetWorkStatus } from '../domain/fleet-work-status.mjs'
+import {
+  fleetNeedsYouStatus,
+  fleetResearchStatus,
+  fleetWorkStatus
+} from '../domain/fleet-work-status.mjs'
 import { createOvernightRun, dispatchWave, checkpointRun } from '../domain/keep-going.mjs'
-import { addResearchNode, createResearchMission, raiseResearchNeedsYou } from '../domain/research-mission.mjs'
+import {
+  addResearchNode,
+  checkpointResearchMission,
+  createResearchMission,
+  raiseResearchNeedsYou
+} from '../domain/research-mission.mjs'
 import { markResearchNodeReady, recordResearchNodeDispatch } from '../domain/research-node.mjs'
-import { createPlannerMissionCheckpoint, raisePlannerNeedsYou } from '../domain/planner-mission-checkpoint.mjs'
+import {
+  createPlannerMissionCheckpoint,
+  raisePlannerNeedsYou
+} from '../domain/planner-mission-checkpoint.mjs'
 
 const clock = () => new Date('2026-08-25T00:00:00.000Z')
 
@@ -96,8 +108,32 @@ function baseMission(id = 'mission:a') {
     {
       id,
       projectId: 'test',
-      specification: { schemaVersion: 'TSF_RESEARCH_SPECIFICATION_V1', id: 's', researchQuestion: 'q', entityType: 'T', requestedFields: [], sourcePolicy: { preferredSources: [], disallowedSources: [], licensingConstraints: [], freshnessPolicy: 'UNSPECIFIED', requireIndependentSources: false, minSourceCount: 0, allowCrossMissionLibraryReuse: true }, temporalRequirements: { asOfDate: null, periodScope: null }, budget: { maxCostUsd: null, maxLatencyMs: null, maxToolCallsPerNode: null }, toolPermissions: [] },
-      expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'T', expectedCount: 0, expectedEntities: [], source: 'test' }
+      specification: {
+        schemaVersion: 'TSF_RESEARCH_SPECIFICATION_V1',
+        id: 's',
+        researchQuestion: 'q',
+        entityType: 'T',
+        requestedFields: [],
+        sourcePolicy: {
+          preferredSources: [],
+          disallowedSources: [],
+          licensingConstraints: [],
+          freshnessPolicy: 'UNSPECIFIED',
+          requireIndependentSources: false,
+          minSourceCount: 0,
+          allowCrossMissionLibraryReuse: true
+        },
+        temporalRequirements: { asOfDate: null, periodScope: null },
+        budget: { maxCostUsd: null, maxLatencyMs: null, maxToolCallsPerNode: null },
+        toolPermissions: []
+      },
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'T',
+        expectedCount: 0,
+        expectedEntities: [],
+        source: 'test'
+      }
     },
     clock
   )
@@ -106,16 +142,53 @@ function baseMission(id = 'mission:a') {
 test('fleetResearchStatus: a DRAFT (zero-node) or CREATED (nodes, nothing dispatched) mission is never reported as active', () => {
   const draft = baseMission('mission:draft')
   let created = baseMission('mission:created')
-  created = addResearchNode(created, { id: 'n1', requestedFields: [], requestedOutputSchema: {} }, clock)
+  created = addResearchNode(
+    created,
+    { id: 'n1', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   assert.deepEqual(fleetResearchStatus({ [draft.id]: draft, [created.id]: created }), [])
 })
 
 test('fleetResearchStatus: an EXECUTING mission (real dispatch history) IS reported as active', () => {
   let mission = baseMission('mission:executing')
-  mission = addResearchNode(mission, { id: 'n1', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(
+    mission,
+    { id: 'n1', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   mission = markResearchNodeReady(mission, 'n1', clock, mission.revision)
-  mission = recordResearchNodeDispatch(mission, 'n1', { taskFingerprint: 'a'.repeat(64), workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() } }, clock, mission.revision)
-  assert.deepEqual(fleetResearchStatus({ [mission.id]: mission }), [{ missionId: mission.id, phase: 'EXECUTING', state: 'ACTIVE' }])
+  mission = recordResearchNodeDispatch(
+    mission,
+    'n1',
+    {
+      taskFingerprint: 'a'.repeat(64),
+      workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() }
+    },
+    clock,
+    mission.revision
+  )
+  assert.deepEqual(fleetResearchStatus({ [mission.id]: mission }), [
+    { missionId: mission.id, phase: 'EXECUTING', state: 'ACTIVE' }
+  ])
+})
+
+test('fleetResearchStatus: a WAITING_FOR_RESOURCES mission remains reported as active', () => {
+  let mission = baseMission('mission:resource-wait')
+  mission = addResearchNode(
+    mission,
+    { id: 'n1', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = checkpointResearchMission(
+    mission,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    mission.revision
+  )
+  assert.deepEqual(fleetResearchStatus({ [mission.id]: mission }), [
+    { missionId: mission.id, phase: 'WAITING_FOR_RESOURCES', state: 'ACTIVE' }
+  ])
 })
 
 test('fleetResearchStatus: a WAITING_NEEDS_INPUT mission IS reported as active, distinctly labeled', () => {
@@ -136,10 +209,24 @@ test('fleetResearchStatus: defaults to empty for an absent/undefined researchMis
 // durable needsYou arrays Work/Flight Recorder/Research status already
 // read.
 test('fleetNeedsYouStatus: aggregates open Needs You across projects AND research missions, resolved entries excluded, real displayName used', () => {
-  const run = { needsYou: [{ id: 'q1', question: 'Real question A', resolvedAt: null }, { id: 'q1b', question: 'already resolved', resolvedAt: '2026-01-01T00:00:00.000Z' }] }
+  const run = {
+    needsYou: [
+      { id: 'q1', question: 'Real question A', resolvedAt: null },
+      { id: 'q1b', question: 'already resolved', resolvedAt: '2026-01-01T00:00:00.000Z' }
+    ]
+  }
   let mission = baseMission('mission:needs')
-  mission = raiseResearchNeedsYou(mission, { question: 'Real research question B' }, clock, mission.revision)
-  const items = fleetNeedsYouStatus([project('proj-a', { displayName: 'Project A' })], { 'proj-a': run }, { [mission.id]: mission })
+  mission = raiseResearchNeedsYou(
+    mission,
+    { question: 'Real research question B' },
+    clock,
+    mission.revision
+  )
+  const items = fleetNeedsYouStatus(
+    [project('proj-a', { displayName: 'Project A' })],
+    { 'proj-a': run },
+    { [mission.id]: mission }
+  )
   assert.equal(items.length, 2)
   assert.deepEqual(items.map((i) => i.source).sort(), ['PROJECT', 'RESEARCH'])
   const projectItem = items.find((i) => i.source === 'PROJECT')
@@ -165,12 +252,26 @@ test('fleetNeedsYouStatus: empty when nothing is actually outstanding', () => {
 test('fleetNeedsYouStatus: a real Planner Context Lifecycle needsYou entry is now a real 4th source, alongside PROJECT and RESEARCH', () => {
   const run = { needsYou: [{ id: 'q1', question: 'Real question A', resolvedAt: null }] }
   let mission = baseMission('mission:needs')
-  mission = raiseResearchNeedsYou(mission, { question: 'Real research question B' }, clock, mission.revision)
+  mission = raiseResearchNeedsYou(
+    mission,
+    { question: 'Real research question B' },
+    clock,
+    mission.revision
+  )
   let checkpoint = createPlannerMissionCheckpoint(
-    { missionId: 'planner-x', missionGoal: 'ship it', phase: 'BUILD', repoState: { branch: 'main', sha: 'a'.repeat(40) } },
+    {
+      missionId: 'planner-x',
+      missionGoal: 'ship it',
+      phase: 'BUILD',
+      repoState: { branch: 'main', sha: 'a'.repeat(40) }
+    },
     clock
   )
-  checkpoint = raisePlannerNeedsYou(checkpoint, { question: 'Real planner question C', category: 'AUTHORITY_REQUIRED' }, clock)
+  checkpoint = raisePlannerNeedsYou(
+    checkpoint,
+    { question: 'Real planner question C', category: 'AUTHORITY_REQUIRED' },
+    clock
+  )
   const plannerMissionRecords = { 'planner-x': { lease: null, checkpoint } }
 
   const items = fleetNeedsYouStatus(
@@ -196,15 +297,26 @@ test('fleetNeedsYouStatus: a real Planner Context Lifecycle needsYou entry is no
 
 test('fleetNeedsYouStatus: a resolved planner needsYou entry is excluded, matching PROJECT/RESEARCH resolved-entry handling', () => {
   let checkpoint = createPlannerMissionCheckpoint(
-    { missionId: 'planner-y', missionGoal: 'ship it', phase: 'BUILD', repoState: { branch: 'main', sha: 'b'.repeat(40) } },
+    {
+      missionId: 'planner-y',
+      missionGoal: 'ship it',
+      phase: 'BUILD',
+      repoState: { branch: 'main', sha: 'b'.repeat(40) }
+    },
     clock
   )
   checkpoint = raisePlannerNeedsYou(checkpoint, { question: 'resolved already' }, clock)
-  checkpoint = { ...checkpoint, needsYou: checkpoint.needsYou.map((n) => ({ ...n, resolvedAt: clock().toISOString() })) }
+  checkpoint = {
+    ...checkpoint,
+    needsYou: checkpoint.needsYou.map((n) => ({ ...n, resolvedAt: clock().toISOString() }))
+  }
   const items = fleetNeedsYouStatus([], {}, {}, { 'planner-y': { lease: null, checkpoint } })
   assert.deepEqual(items, [])
 })
 
 test('fleetNeedsYouStatus: a planner mission record with no checkpoint yet (lease-only) never throws', () => {
-  assert.deepEqual(fleetNeedsYouStatus([], {}, {}, { 'planner-z': { lease: {}, checkpoint: null } }), [])
+  assert.deepEqual(
+    fleetNeedsYouStatus([], {}, {}, { 'planner-z': { lease: {}, checkpoint: null } }),
+    []
+  )
 })

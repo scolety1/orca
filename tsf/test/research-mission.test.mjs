@@ -12,7 +12,11 @@ import {
   resumeResearchMission,
   transitionResearchMission
 } from '../domain/research-mission.mjs'
-import { markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
+import {
+  markResearchNodeReady,
+  recordResearchNodeDispatch,
+  recordResearchNodeResult
+} from '../domain/research-node.mjs'
 import { recordDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { buildNflQb2001Specification } from '../fixtures/nfl-2001-qb-research-fixture.mjs'
 
@@ -42,7 +46,12 @@ const clock = () => new Date('2026-09-10T12:00:00.000Z')
 function baseMission() {
   const specification = buildNflQb2001Specification()
   return createResearchMission(
-    { id: 'mission:test', projectId: 'fixture:proj', specification, expectedUniverse: specification.expectedUniverse },
+    {
+      id: 'mission:test',
+      projectId: 'fixture:proj',
+      specification,
+      expectedUniverse: specification.expectedUniverse
+    },
     clock
   )
 }
@@ -52,16 +61,31 @@ test('createResearchMission requires a valid specification and expectedUniverse'
   assert.equal(mission.state, 'ACTIVE')
   assert.equal(mission.revision, 0)
   assert.equal(mission.nodes.length, 0)
-  assert.throws(() => createResearchMission({ id: 'm', projectId: 'p', specification: {}, expectedUniverse: {} }, clock), /ResearchSpecification/)
+  assert.throws(
+    () =>
+      createResearchMission(
+        { id: 'm', projectId: 'p', specification: {}, expectedUniverse: {} },
+        clock
+      ),
+    /ResearchSpecification/
+  )
 })
 
 test('addResearchNode appends a PENDING node and is idempotent by id', () => {
   let mission = baseMission()
-  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   assert.equal(mission.nodes.length, 1)
   assert.equal(mission.nodes[0].status, 'PENDING')
   const revisionAfterFirstAdd = mission.revision
-  const replay = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
+  const replay = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   assert.equal(replay.nodes.length, 1)
   assert.equal(replay.revision, revisionAfterFirstAdd, 'idempotent replay must not bump revision')
 })
@@ -69,11 +93,29 @@ test('addResearchNode appends a PENDING node and is idempotent by id', () => {
 test('addResearchNode rejects an unknown dependency and a real dependency cycle', () => {
   let mission = baseMission()
   assert.throws(
-    () => addResearchNode(mission, { id: 'node:a', dependencies: ['node:missing'], requestedFields: [], requestedOutputSchema: {} }, clock),
+    () =>
+      addResearchNode(
+        mission,
+        {
+          id: 'node:a',
+          dependencies: ['node:missing'],
+          requestedFields: [],
+          requestedOutputSchema: {}
+        },
+        clock
+      ),
     /unknown node/
   )
-  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
-  mission = addResearchNode(mission, { id: 'node:b', dependencies: ['node:a'], requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = addResearchNode(
+    mission,
+    { id: 'node:b', dependencies: ['node:a'], requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   // node:a cannot retroactively depend on node:b without re-adding -- but a
   // fresh 3rd node forming a genuine cycle (c -> a is fine; a cycle needs
   // an edge back) is exercised via topologicalOrder directly elsewhere
@@ -89,7 +131,10 @@ test('transitionResearchMission enforces the allowed transition table and expect
   assert.throws(() => pauseResearchMission(mission, 'x', clock, 0), /stale revision/)
   mission = resumeResearchMission(mission, clock, mission.revision)
   assert.equal(mission.state, 'ACTIVE')
-  assert.throws(() => transitionResearchMission(mission, 'NOT_A_STATE', {}, clock), /unknown research mission state/)
+  assert.throws(
+    () => transitionResearchMission(mission, 'NOT_A_STATE', {}, clock),
+    /unknown research mission state/
+  )
 })
 
 test('checkpointResearchMission hash-chains sequential checkpoints', () => {
@@ -103,23 +148,48 @@ test('checkpointResearchMission hash-chains sequential checkpoints', () => {
 
 test('raiseResearchNeedsYou / resolveResearchNeedsYou round-trips through NEEDS_YOU', () => {
   let mission = baseMission()
-  mission = raiseResearchNeedsYou(mission, { question: 'Which Jim Miller is this?' }, clock, mission.revision)
+  mission = raiseResearchNeedsYou(
+    mission,
+    { question: 'Which Jim Miller is this?' },
+    clock,
+    mission.revision
+  )
   assert.equal(mission.state, 'NEEDS_YOU')
   const questionId = mission.needsYou[0].id
-  mission = resolveResearchNeedsYou(mission, questionId, 'RESOLVED_VIA_2001_ROSTER', clock, mission.revision)
+  mission = resolveResearchNeedsYou(
+    mission,
+    questionId,
+    'RESOLVED_VIA_2001_ROSTER',
+    clock,
+    mission.revision
+  )
   assert.equal(mission.state, 'ACTIVE')
   assert.ok(mission.needsYou[0].resolvedAt)
 })
 
-test('raiseResearchNeedsYou accepts an optional named review category, proven live in the bake-off\'s UNRESOLVED_CONFLICT escalation', () => {
+test("raiseResearchNeedsYou accepts an optional named review category, proven live in the bake-off's UNRESOLVED_CONFLICT escalation", () => {
   let mission = baseMission()
-  mission = raiseResearchNeedsYou(mission, { question: 'signingBonusUsd conflict', category: 'UNRESOLVED_CONFLICT' }, clock, mission.revision)
+  mission = raiseResearchNeedsYou(
+    mission,
+    { question: 'signingBonusUsd conflict', category: 'UNRESOLVED_CONFLICT' },
+    clock,
+    mission.revision
+  )
   assert.equal(mission.needsYou[0].category, 'UNRESOLVED_CONFLICT')
 })
 
 test('raiseResearchNeedsYou rejects an unknown category rather than silently accepting it', () => {
   const mission = baseMission()
-  assert.throws(() => raiseResearchNeedsYou(mission, { question: 'x', category: 'NOT_A_REAL_CATEGORY' }, clock, mission.revision), /unknown research Needs You category/)
+  assert.throws(
+    () =>
+      raiseResearchNeedsYou(
+        mission,
+        { question: 'x', category: 'NOT_A_REAL_CATEGORY' },
+        clock,
+        mission.revision
+      ),
+    /unknown research Needs You category/
+  )
 })
 
 // Trust + Scale Hardening (human review integration): escalating one
@@ -127,27 +197,76 @@ test('raiseResearchNeedsYou rejects an unknown category rather than silently acc
 // -- an independent, unrelated node keeps its own status untouched.
 test('escalateResearchNodeToNeedsYou blocks the one affected FAILED node and raises Needs You, leaving an unrelated node untouched', () => {
   let mission = baseMission()
-  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
-  mission = addResearchNode(mission, { id: 'node:b', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = addResearchNode(
+    mission,
+    { id: 'node:b', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   mission = markResearchNodeReady(mission, 'node:a', clock, mission.revision)
-  mission = recordResearchNodeDispatch(mission, 'node:a', { taskFingerprint: 'a'.repeat(64), workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() } }, clock, mission.revision)
-  mission = recordResearchNodeResult(mission, 'node:a', failedResultFor('node:a'), clock, mission.revision)
-  assert.equal(mission.nodes.find((n) => n.id === 'node:a').status, 'FAILED', 'precondition: a FAILED provider result must produce an honest FAILED node status')
+  mission = recordResearchNodeDispatch(
+    mission,
+    'node:a',
+    {
+      taskFingerprint: 'a'.repeat(64),
+      workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() }
+    },
+    clock,
+    mission.revision
+  )
+  mission = recordResearchNodeResult(
+    mission,
+    'node:a',
+    failedResultFor('node:a'),
+    clock,
+    mission.revision
+  )
+  assert.equal(
+    mission.nodes.find((n) => n.id === 'node:a').status,
+    'FAILED',
+    'precondition: a FAILED provider result must produce an honest FAILED node status'
+  )
 
-  mission = escalateResearchNodeToNeedsYou(mission, 'node:a', { question: 'Provider repeatedly failed for node:a' }, clock, mission.revision)
+  mission = escalateResearchNodeToNeedsYou(
+    mission,
+    'node:a',
+    { question: 'Provider repeatedly failed for node:a' },
+    clock,
+    mission.revision
+  )
   const nodeA = mission.nodes.find((n) => n.id === 'node:a')
   const nodeB = mission.nodes.find((n) => n.id === 'node:b')
   assert.equal(nodeA.status, 'BLOCKED')
-  assert.equal(nodeB.status, 'PENDING', 'an unrelated node must never be affected by another node\'s escalation')
+  assert.equal(
+    nodeB.status,
+    'PENDING',
+    "an unrelated node must never be affected by another node's escalation"
+  )
   assert.equal(mission.state, 'NEEDS_YOU')
   assert.equal(mission.needsYou[0].nodeId, 'node:a')
-  assert.equal(mission.needsYou[0].category, 'SOURCE_UNAVAILABLE', 'defaults to SOURCE_UNAVAILABLE when not overridden')
+  assert.equal(
+    mission.needsYou[0].category,
+    'SOURCE_UNAVAILABLE',
+    'defaults to SOURCE_UNAVAILABLE when not overridden'
+  )
 })
 
 test('escalateResearchNodeToNeedsYou rejects a node that has never actually failed/admitted -- BLOCKED is not reachable from PENDING', () => {
   let mission = baseMission()
-  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
-  assert.throws(() => escalateResearchNodeToNeedsYou(mission, 'node:a', { question: 'x' }, clock, mission.revision), /invalid research node transition/)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  assert.throws(
+    () =>
+      escalateResearchNodeToNeedsYou(mission, 'node:a', { question: 'x' }, clock, mission.revision),
+    /invalid research node transition/
+  )
 })
 
 // Hands-on pilot Finding 3: "Started" must mean something real. Every
@@ -160,15 +279,32 @@ test('computeResearchMissionPhase: DRAFT for a zero-node mission', () => {
 
 test('computeResearchMissionPhase: CREATED once real nodes exist but none has ever been dispatched', () => {
   let mission = baseMission()
-  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   assert.equal(computeResearchMissionPhase(mission), 'CREATED')
 })
 
 test('computeResearchMissionPhase: EXECUTING once a node has real dispatch history, even before any result comes back', () => {
   let mission = baseMission()
-  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   mission = markResearchNodeReady(mission, 'node:a', clock, mission.revision)
-  mission = recordResearchNodeDispatch(mission, 'node:a', { taskFingerprint: 'a'.repeat(64), workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() } }, clock, mission.revision)
+  mission = recordResearchNodeDispatch(
+    mission,
+    'node:a',
+    {
+      taskFingerprint: 'a'.repeat(64),
+      workerRunRef: { provider: 'FAKE', providerRunId: 'r1', dispatchedAt: clock().toISOString() }
+    },
+    clock,
+    mission.revision
+  )
   assert.equal(computeResearchMissionPhase(mission), 'EXECUTING')
 })
 
@@ -184,10 +320,77 @@ test('computeResearchMissionPhase: EXECUTING once a node has real dispatch histo
 // CREATED/idle just because no attempt has yet succeeded.
 test('computeResearchMissionPhase: EXECUTING once a node has a real dispatchAttempt, even if every attempt so far cleanly failed with no dispatchRecord', () => {
   let mission = baseMission()
-  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
-  mission = recordDispatchAttempt(mission, 'node:a', { taskFingerprint: 'a'.repeat(64) }, clock, mission.revision)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = recordDispatchAttempt(
+    mission,
+    'node:a',
+    { taskFingerprint: 'a'.repeat(64) },
+    clock,
+    mission.revision
+  )
   assert.equal(mission.nodes[0].dispatchRecords.length, 0, 'no dispatchRecord exists yet')
   assert.equal(computeResearchMissionPhase(mission), 'EXECUTING')
+})
+
+test('computeResearchMissionPhase: a resource wait before real progress overrides CREATED', () => {
+  let mission = baseMission()
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = checkpointResearchMission(
+    mission,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    mission.revision
+  )
+  assert.equal(computeResearchMissionPhase(mission), 'WAITING_FOR_RESOURCES')
+})
+
+test('computeResearchMissionPhase: a resource wait after real progress overrides EXECUTING', () => {
+  let mission = baseMission()
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = recordDispatchAttempt(
+    mission,
+    'node:a',
+    { taskFingerprint: 'a'.repeat(64) },
+    clock,
+    mission.revision
+  )
+  mission = checkpointResearchMission(
+    mission,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    mission.revision
+  )
+  assert.equal(computeResearchMissionPhase(mission), 'WAITING_FOR_RESOURCES')
+})
+
+test('computeResearchMissionPhase: COMPLETE/BLOCKED/NEEDS_YOU outrank a resource-wait checkpoint', () => {
+  const terminalCases = [
+    ['COMPLETE', 'COMPLETE'],
+    ['BLOCKED', 'BLOCKED'],
+    ['NEEDS_YOU', 'WAITING_NEEDS_INPUT']
+  ]
+  for (const [state, expectedPhase] of terminalCases) {
+    let mission = transitionResearchMission(baseMission(), state, { reason: 'x' }, clock)
+    mission = checkpointResearchMission(
+      mission,
+      { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+      clock,
+      mission.revision
+    )
+    assert.equal(computeResearchMissionPhase(mission), expectedPhase)
+  }
 })
 
 test('computeResearchMissionPhase: WAITING_NEEDS_INPUT mirrors mission.state NEEDS_YOU exactly -- never a second, independently-derived answer', () => {
@@ -199,7 +402,11 @@ test('computeResearchMissionPhase: WAITING_NEEDS_INPUT mirrors mission.state NEE
 
 test('computeResearchMissionPhase: COMPLETE/BLOCKED mirror mission.state exactly', () => {
   let mission = baseMission()
-  mission = addResearchNode(mission, { id: 'node:a', requestedFields: [], requestedOutputSchema: {} }, clock)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
   const complete = transitionResearchMission(mission, 'COMPLETE', { reason: 'x' }, clock)
   assert.equal(computeResearchMissionPhase(complete), 'COMPLETE')
   const blocked = transitionResearchMission(mission, 'BLOCKED', { reason: 'x' }, clock)

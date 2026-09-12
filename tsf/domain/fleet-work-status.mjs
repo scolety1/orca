@@ -16,15 +16,21 @@ import { computeResearchMissionPhase } from './research-mission.mjs'
 // "is any research currently active" is computed, read by both Command's
 // fleet-status text and (for a real UI) the same Work/Home surface reading
 // fleetWorkStatus above. A mission only counts as active here in the
-// EXECUTING or WAITING_NEEDS_INPUT phases -- DRAFT/CREATED (declared scope,
-// nothing has actually run yet) deliberately do not, matching
-// computeResearchMissionPhase's own "started must mean something real"
-// contract exactly.
-const ACTIVE_RESEARCH_PHASES = new Set(['EXECUTING', 'WAITING_NEEDS_INPUT'])
+// EXECUTING, WAITING_FOR_RESOURCES, or WAITING_NEEDS_INPUT phases -- DRAFT/
+// CREATED (declared scope, nothing has actually run yet) deliberately do not.
+const ACTIVE_RESEARCH_PHASES = new Set([
+  'EXECUTING',
+  'WAITING_FOR_RESOURCES',
+  'WAITING_NEEDS_INPUT'
+])
 
 export function fleetResearchStatus(researchMissions = {}) {
   return Object.values(researchMissions)
-    .map((mission) => ({ missionId: mission.id, phase: computeResearchMissionPhase(mission), state: mission.state }))
+    .map((mission) => ({
+      missionId: mission.id,
+      phase: computeResearchMissionPhase(mission),
+      state: mission.state
+    }))
     .filter((entry) => ACTIVE_RESEARCH_PHASES.has(entry.phase))
 }
 
@@ -56,7 +62,12 @@ export function fleetResearchStatus(researchMissions = {}) {
 // checkpoint carries no such field (repoState is branch/sha/worktreePath,
 // not a project id), so PLANNER items honestly report projectId: null
 // rather than guessing one.
-export function fleetNeedsYouStatus(projects, keepGoingRuns = {}, researchMissions = {}, plannerMissionRecords = {}) {
+export function fleetNeedsYouStatus(
+  projects,
+  keepGoingRuns = {},
+  researchMissions = {},
+  plannerMissionRecords = {}
+) {
   const displayNameById = new Map(projects.map((p) => [p.id, p.displayName]))
   const items = []
   for (const [projectId, run] of Object.entries(keepGoingRuns)) {
@@ -85,7 +96,9 @@ export function fleetNeedsYouStatus(projects, keepGoingRuns = {}, researchMissio
   }
   for (const [missionId, record] of Object.entries(plannerMissionRecords)) {
     for (const entry of record?.checkpoint?.needsYou ?? []) {
-      if (entry.resolvedAt) { continue }
+      if (entry.resolvedAt) {
+        continue
+      }
       items.push({
         source: 'PLANNER',
         label: `Planner ${missionId}`,

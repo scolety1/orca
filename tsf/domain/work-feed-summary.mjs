@@ -18,12 +18,11 @@ import { computeResearchMissionPhase } from './research-mission.mjs'
 // Command's own fleet-status text (fleet-work-status.mjs's
 // fleetResearchStatus). Mapped onto the SAME phase vocabulary
 // computeResearchMissionPhase already produces -- no second, independently-
-// derived classification. Disclosed, not fixed here: there is no durable
-// per-mission "WAITING_FOR_RESOURCES" signal to bucket from (that decision
-// is made fresh each driver cycle, never persisted) -- a real, small,
-// separately-scoped follow-up, not implemented in this pass.
+// derived classification.
 const RESEARCH_PHASE_SECTION = Object.freeze({
   EXECUTING: 'active',
+  // Match Keep Going's WAITING precedent until Work gains a waiting section.
+  WAITING_FOR_RESOURCES: 'active',
   WAITING_NEEDS_INPUT: 'needsYou',
   COMPLETE: 'recentlyCompleted',
   BLOCKED: 'blocked'
@@ -78,10 +77,23 @@ const RUN_FEED_SECTION = Object.freeze({
 // from a KEEP_GOING_RUN_ADOPTED entry (a real merge the operator may NOT
 // already know about from THIS surface -- the whole point of this fix).
 function recentlyCompletedEntry(project, missionId, adoptedAt, reason = null, sourceKind = null) {
-  return { id: project.id, displayName: project.displayName, missionId, adoptedAt, reason, sourceKind }
+  return {
+    id: project.id,
+    displayName: project.displayName,
+    missionId,
+    adoptedAt,
+    reason,
+    sourceKind
+  }
 }
 
-export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () => new Date(), researchMissions = {}, canonicalBases = {}) {
+export function summarizeWorkFromRuns(
+  projects,
+  keepGoingRuns = {},
+  clock = () => new Date(),
+  researchMissions = {},
+  canonicalBases = {}
+) {
   const statusByProjectId = new Map(
     fleetWorkStatus(projects, keepGoingRuns, clock).map((status) => [status.projectId, status])
   )
@@ -218,6 +230,10 @@ export function summarizeWorkFromRuns(projects, keepGoingRuns = {}, clock = () =
     stalled,
     blocked: [...blocked, ...researchBlocked],
     readyForAdoption: [...legacyReadyForAdoption, ...runReadyForAdoption],
-    recentlyCompleted: [...legacyRecentlyCompleted, ...runRecentlyCompleted, ...researchRecentlyCompleted]
+    recentlyCompleted: [
+      ...legacyRecentlyCompleted,
+      ...runRecentlyCompleted,
+      ...researchRecentlyCompleted
+    ]
   }
 }

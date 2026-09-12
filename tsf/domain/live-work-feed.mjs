@@ -66,6 +66,11 @@ export function projectLiveWorkFeedState(run, gap = null) {
   if (run.tickLock?.kind === 'DISPATCH') {
     return { state: 'WAITING', reason: 'a dispatch tick currently holds the run lock' }
   }
+  const lastCheckpoint = run.checkpoints.at(-1)
+  if (lastCheckpoint?.phase === 'DISPATCH_WAITING_FOR_RESOURCES') {
+    const detail = lastCheckpoint.note ?? lastCheckpoint.reason ?? 'resource pressure'
+    return { state: 'WAITING', reason: `waiting for host resources: ${detail}` }
+  }
   if (run.waves.length === 0) {
     return { state: 'PLANNING', reason: 'run started, no wave dispatched yet' }
   }
