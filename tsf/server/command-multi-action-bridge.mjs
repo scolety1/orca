@@ -23,11 +23,7 @@ import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { classifyAdoptionCommandIntent } from '../domain/command-adoption-execution.mjs'
 import { executeCommandAdoption } from './command-adoption-execution.mjs'
 import { readAllProjectCanonicalBases } from './project-canonical-base-store.mjs'
-import {
-  classifyContinueAction,
-  pauseProjectRun,
-  resumeProjectRun
-} from './command-run-action-bridge.mjs'
+import { executeAction } from './action-executor.mjs'
 
 // A2's own required test: the gate this file's caller (command-responder.mjs)
 // uses to decide "is this genuinely a multi-project, multi-action message,
@@ -304,26 +300,29 @@ async function handleEntry(entry, project, opState, clock, deps) {
     return dispatchAction(project, entry.rawClause, clock, deps)
   }
   if (entry.intent === 'PAUSE') {
-    const pause = deps.pauseProjectRun ?? pauseProjectRun
-    try {
-      await pause(project.id, 'OPERATOR_CHAT_PAUSE', clock)
+    const execute = deps.executeAction ?? executeAction
+    const result = await execute({
+      type: 'PAUSE',
+      target: project.id,
+      parameters: { reason: 'OPERATOR_CHAT_PAUSE' },
+      clock,
+      deps
+    })
+    if (result.ok) {
       return { text: 'Paused -- the Keep Going run is now paused.', category: null, ok: true }
-    } catch (error) {
-      return { text: `couldn't pause -- ${error.message}.`, category: null, ok: false }
     }
+    return { text: `couldn't pause -- ${result.detail}.`, category: null, ok: false }
   }
   if (entry.intent === 'RESUME') {
-    const classifyContinue = deps.classifyContinueAction ?? classifyContinueAction
-    if (classifyContinue(project.id) === 'DISPATCH') {
+    const execute = deps.executeAction ?? executeAction
+    const result = await execute({ type: 'RESUME', target: project.id, clock, deps })
+    if (!result.ok) {
+      return { text: `couldn't resume -- ${result.detail}.`, category: null, ok: false }
+    }
+    if (result.action === 'DISPATCH') {
       return dispatchAction(project, entry.rawClause, clock, deps)
     }
-    const resume = deps.resumeProjectRun ?? resumeProjectRun
-    try {
-      await resume(project.id, clock)
-      return { text: 'Resumed -- the Keep Going run is active again.', category: null, ok: true }
-    } catch (error) {
-      return { text: `couldn't resume -- ${error.message}.`, category: null, ok: false }
-    }
+    return { text: 'Resumed -- the Keep Going run is active again.', category: null, ok: true }
   }
   // Adversarial-review finding (Batch 3, BLOCKING): unlike adoption,
   // dispatchAction (below) has no independent re-derivation/safety check

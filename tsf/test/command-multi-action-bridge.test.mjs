@@ -267,6 +267,40 @@ test('A5: a TIM_REQUIRED clause on one target refuses that action only, independ
   )
 })
 
+test('Stage 2 Phase 1 convergence: a PAUSE entry reaches the canonical action-executor boundary (deps.executeAction), not a direct pauseProjectRun call', async () => {
+  const target = project('convergence-pause-target', 'ConvergencePauseTarget')
+  const calls = []
+  await respondMultiActionCommand({
+    projects: [target, project('convergence-adopt-target', 'ConvergenceAdoptTarget')],
+    opState,
+    clock,
+    entries: [
+      { target: target.id, intent: 'PAUSE', rawClause: 'pause ConvergencePauseTarget' },
+      {
+        target: 'convergence-adopt-target',
+        intent: 'ADOPT_CANDIDATE_REPORT',
+        rawClause: 'adopt ConvergenceAdoptTarget'
+      }
+    ],
+    deps: {
+      executeAction: async (request) => {
+        calls.push(request)
+        return { ok: true, action: 'PAUSE' }
+      },
+      executeCommandAdoption: async () => ({
+        ok: true,
+        alreadyIncluded: false,
+        priorCanonicalSha: 'a'.repeat(40),
+        resultingCanonicalSha: 'b'.repeat(40),
+        receipt: { receiptHash: 'c'.repeat(64) }
+      })
+    }
+  })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].type, 'PAUSE')
+  assert.equal(calls[0].target, target.id)
+})
+
 test("PAUSE/RESUME failures are reported per target and never block another target's adoption", async () => {
   const pauseTarget = project('pause-failure-target', 'PauseFailureTarget')
   const resumeTarget = project('resume-failure-target', 'ResumeFailureTarget')

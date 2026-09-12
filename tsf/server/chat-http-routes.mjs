@@ -29,9 +29,16 @@ import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
 import { attachDueAttentionNotices } from './attention-status-reconciler.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
-import { classifyRunActionVerb, classifyContinueAction, pauseProjectRun, resumeProjectRun } from './command-run-action-bridge.mjs'
-import { shouldRouteToAdoptionCommandBridge, respondAdoptionCommand } from './command-adoption-command-bridge.mjs'
-import { classifySingleTargetHoldEntries, respondMultiActionCommand } from './command-multi-action-bridge.mjs'
+import { classifyRunActionVerb } from './command-run-action-bridge.mjs'
+import { executeAction } from './action-executor.mjs'
+import {
+  shouldRouteToAdoptionCommandBridge,
+  respondAdoptionCommand
+} from './command-adoption-command-bridge.mjs'
+import {
+  classifySingleTargetHoldEntries,
+  respondMultiActionCommand
+} from './command-multi-action-bridge.mjs'
 
 // Configures which real, known project id actually IS TSF's own -- self-
 // repair (domain/self-repair-authority.mjs) can never be authorized for any
@@ -49,7 +56,13 @@ const SELF_REPAIR_PROJECT_ID = process.env.TSF_SELF_REPAIR_PROJECT_ID || null
 // 6). `selfRepairFromBranch` is only ever set by an already-authorized
 // self-repair caller (domain/self-repair-authority.mjs); every other
 // caller auto-provisions from the repo's own default base.
-async function dispatchFromChat({ project, message, placement, selfRepairFromBranch, attachments = [] }) {
+async function dispatchFromChat({
+  project,
+  message,
+  placement,
+  selfRepairFromBranch,
+  attachments = []
+}) {
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
   // Coordinator adoption-review fix: planAndDispatchFromChat's own hold
@@ -186,7 +199,13 @@ async function dispatchFromChat({ project, message, placement, selfRepairFromBra
 // match either.
 //
 // GET /api/chat/:projectId (history)
-export async function handleChatRoute(parts, req, res, { map, opState, projects }, { json, readBody, saveState }) {
+export async function handleChatRoute(
+  parts,
+  req,
+  res,
+  { map, opState, projects },
+  { json, readBody, saveState }
+) {
   if (parts[1] !== 'chat') {
     return false
   }
@@ -238,11 +257,21 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
       const resolution = resolveProjectsFromText(message, projects, {
         aliases: commandAliases
       })
-      const contextFallbackProject = resolution.matches.length === 0 ? await resolveRouteContextFallback({ message, contextProjectId: body.contextProjectId, map }) : null
+      const contextFallbackProject =
+        resolution.matches.length === 0
+          ? await resolveRouteContextFallback({
+              message,
+              contextProjectId: body.contextProjectId,
+              map
+            })
+          : null
       if (resolution.matches.length === 1 && resolution.matches[0].matchedOn !== 'fuzzy') {
         project = resolution.matches[0].project
         matchedOn = resolution.matches[0].matchedOn
-      } else if (contextFallbackProject) { project = contextFallbackProject; matchedOn = 'routeContext' } else {
+      } else if (contextFallbackProject) {
+        project = contextFallbackProject
+        matchedOn = 'routeContext'
+      } else {
         const commandResult = await respondCommand({
           message,
           projects,
@@ -291,7 +320,14 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
         ].slice(-200)
         saveState({ ...freshState, chatThreads: threads })
         // Both reconcilers run, neither replaces the other -- completion notices first, then attention notices.
-        json(res, 200, await attachDueAttentionNotices(await attachDueCompletionNotices(commandResult, () => new Date()), () => new Date()))
+        json(
+          res,
+          200,
+          await attachDueAttentionNotices(
+            await attachDueCompletionNotices(commandResult, () => new Date()),
+            () => new Date()
+          )
+        )
         return true
       }
     }
@@ -370,7 +406,14 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
     // mission is attributed to it (never 'COMMAND_CHAT') -- checked
     // before dispatch/live-planner so a research-shaped message never
     // reaches either.
-    const projectResearchResult = project ? await respondResearchCommandForProject({ project, message, opState, clock: () => new Date() }) : null
+    const projectResearchResult = project
+      ? await respondResearchCommandForProject({
+          project,
+          message,
+          opState,
+          clock: () => new Date()
+        })
+      : null
 
     // TSF Overnight Control-Plane Burn-In V2, Lane L (live disposable
     // E2E) -- real, live-confirmed finding (not guessed): PAUSE/RESUME
@@ -479,8 +522,15 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
     // incidentally overlapping) is far cheaper than a real, irreversible
     // wrong-project merge.
     let adoptionCommandResult = null
-    if (project && !projectResearchResult && decisionClass !== 'TIM_REQUIRED' && shouldRouteToAdoptionCommandBridge(message, projects)) {
-      const messageNamedProjects = resolveProjectsFromText(message, projects, { aliases: loadProjectAliases() })
+    if (
+      project &&
+      !projectResearchResult &&
+      decisionClass !== 'TIM_REQUIRED' &&
+      shouldRouteToAdoptionCommandBridge(message, projects)
+    ) {
+      const messageNamedProjects = resolveProjectsFromText(message, projects, {
+        aliases: loadProjectAliases()
+      })
       const conflictingMention = messageNamedProjects.matches.find(
         (m) => m.project.id !== project.id
       )
@@ -490,7 +540,8 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
           decisionClass: 'NEEDS_OWNER',
           text: `This is scoped to **${project.displayName}**, but the message names **${conflictingMention.project.displayName}** -- I won't guess which one you mean. Say "adopt it" to adopt **${project.displayName}**, or switch to **${conflictingMention.project.displayName}**'s own chat to adopt that one.`,
           plannerRole: 'PLANNER_DEEP',
-          providerLabel: 'PLANNER_DEEP · adoption target conflicts with the current scope, no action taken',
+          providerLabel:
+            'PLANNER_DEEP · adoption target conflicts with the current scope, no action taken',
           live: false,
           resolvedProjectIds: [],
           scope: 'ADOPTION_COMMAND'
@@ -506,67 +557,72 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
     }
 
     let runActionResult = null
-    if (project && !projectResearchResult && decisionClass !== 'TIM_REQUIRED' && !adoptionCommandResult) {
+    if (
+      project &&
+      !projectResearchResult &&
+      decisionClass !== 'TIM_REQUIRED' &&
+      !adoptionCommandResult
+    ) {
       const runActionVerb = classifyRunActionVerb(message)
       if (runActionVerb === 'PAUSE') {
-        try {
-          await pauseProjectRun(project.id, 'OPERATOR_CHAT_PAUSE', () => new Date())
-          runActionResult = {
-            intent: 'PROJECT_ACTION',
-            decisionClass: 'AUTO_DECIDE',
-            text: `Paused **${project.displayName}**.`,
-            plannerRole: 'PLANNER_DEEP',
-            providerLabel: 'PLANNER_DEEP · real pause via Keep Going',
-            live: true,
-            resolvedProjectIds: [project.id],
-            scope: 'PROJECT'
-          }
-        } catch (error) {
-          runActionResult = {
-            intent: 'PROJECT_ACTION',
-            decisionClass: 'AUTO_DECIDE',
-            text: `Couldn't pause **${project.displayName}**: ${error.message}.`,
-            plannerRole: 'PLANNER_DEEP',
-            providerLabel: 'PLANNER_DEEP · action refused',
-            live: false,
-            resolvedProjectIds: [project.id],
-            scope: 'PROJECT'
-          }
-        }
-      } else if (runActionVerb === 'RESUME') {
-        // Independent-review finding (real, fixed here): classifyContinueAction
-        // does a real, synchronous state read (loadState()) that was
-        // previously OUTSIDE any try/catch -- a corrupted state file or
-        // transient I/O error on this one read would have 500'd the whole
-        // route instead of an honest refusal. Moved inside this try so any
-        // failure here is caught exactly like a failed resumeProjectRun
-        // already is.
-        try {
-          const continueAction = classifyContinueAction(project.id)
-          // "RESUME" classified but the run is NOT actually paused (nothing
-          // durable to resume) is deliberately left unhandled here -- it
-          // falls through unchanged to this route's existing dispatch-
-          // worthy logic below (a real, separate, narrower, disclosed gap:
-          // classifyIntent doesn't yet recognize "continue X" as dispatch-
-          // worthy on THIS route either; tracked, not fixed tonight).
-          if (continueAction === 'RESUME') {
-            await resumeProjectRun(project.id, () => new Date())
-            runActionResult = {
+        const actionResult = await executeAction({
+          type: 'PAUSE',
+          target: project.id,
+          parameters: { reason: 'OPERATOR_CHAT_PAUSE' },
+          clock: () => new Date()
+        })
+        runActionResult = actionResult.ok
+          ? {
               intent: 'PROJECT_ACTION',
               decisionClass: 'AUTO_DECIDE',
-              text: `Resumed **${project.displayName}**.`,
+              text: `Paused **${project.displayName}**.`,
               plannerRole: 'PLANNER_DEEP',
-              providerLabel: 'PLANNER_DEEP · real resume via Keep Going',
+              providerLabel: 'PLANNER_DEEP · real pause via Keep Going',
               live: true,
               resolvedProjectIds: [project.id],
               scope: 'PROJECT'
             }
-          }
-        } catch (error) {
+          : {
+              intent: 'PROJECT_ACTION',
+              decisionClass: 'AUTO_DECIDE',
+              text: `Couldn't pause **${project.displayName}**: ${actionResult.detail}.`,
+              plannerRole: 'PLANNER_DEEP',
+              providerLabel: 'PLANNER_DEEP · action refused',
+              live: false,
+              resolvedProjectIds: [project.id],
+              scope: 'PROJECT'
+            }
+      } else if (runActionVerb === 'RESUME') {
+        // "RESUME" classified but the run is NOT actually paused (nothing
+        // durable to resume) is deliberately left unhandled here -- it
+        // falls through unchanged to this route's existing dispatch-
+        // worthy logic below (a real, separate, narrower, disclosed gap:
+        // classifyIntent doesn't yet recognize "continue X" as dispatch-
+        // worthy on THIS route either; tracked, not fixed tonight).
+        // executeAction folds the classifyContinueAction read into the same
+        // typed call, so a corrupted-state-file/transient-I/O failure on
+        // that read is caught exactly like a failed resume already is.
+        const actionResult = await executeAction({
+          type: 'RESUME',
+          target: project.id,
+          clock: () => new Date()
+        })
+        if (actionResult.ok && actionResult.action === 'RESUME') {
           runActionResult = {
             intent: 'PROJECT_ACTION',
             decisionClass: 'AUTO_DECIDE',
-            text: `Couldn't resume **${project.displayName}**: ${error.message}.`,
+            text: `Resumed **${project.displayName}**.`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel: 'PLANNER_DEEP · real resume via Keep Going',
+            live: true,
+            resolvedProjectIds: [project.id],
+            scope: 'PROJECT'
+          }
+        } else if (!actionResult.ok) {
+          runActionResult = {
+            intent: 'PROJECT_ACTION',
+            decisionClass: 'AUTO_DECIDE',
+            text: `Couldn't resume **${project.displayName}**: ${actionResult.detail}.`,
             plannerRole: 'PLANNER_DEEP',
             providerLabel: 'PLANNER_DEEP · action refused',
             live: false,
@@ -608,7 +664,12 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
     // real, distinct intents for the same target must never partially
     // execute one while silently dropping another.
     let holdCommandResult = null
-    if (project && !projectResearchResult && decisionClass !== 'TIM_REQUIRED' && !adoptionCommandResult) {
+    if (
+      project &&
+      !projectResearchResult &&
+      decisionClass !== 'TIM_REQUIRED' &&
+      !adoptionCommandResult
+    ) {
       const holdEntries = classifySingleTargetHoldEntries(message, [project], loadProjectAliases())
       if (holdEntries) {
         holdCommandResult = await respondMultiActionCommand({
@@ -626,12 +687,32 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
         ? {
             ...runActionResult,
             text: `${runActionResult.text}\n\n${holdCommandResult.text}`,
-            resolvedProjectIds: [...new Set([...(runActionResult.resolvedProjectIds ?? []), ...(holdCommandResult.resolvedProjectIds ?? [])])],
-            resultItems: [...(runActionResult.resultItems ?? []), ...(holdCommandResult.resultItems ?? [])]
+            resolvedProjectIds: [
+              ...new Set([
+                ...(runActionResult.resolvedProjectIds ?? []),
+                ...(holdCommandResult.resolvedProjectIds ?? [])
+              ])
+            ],
+            resultItems: [
+              ...(runActionResult.resultItems ?? []),
+              ...(holdCommandResult.resultItems ?? [])
+            ]
           }
         : null
 
-    if (!project) { result = respond(project, message) } else if (projectResearchResult) { result = projectResearchResult } else if (adoptionCommandResult) { result = adoptionCommandResult } else if (combinedRunActionAndHoldResult) { result = combinedRunActionAndHoldResult } else if (runActionResult) { result = runActionResult } else if (holdCommandResult) { result = holdCommandResult } else if (decisionClass === 'TIM_REQUIRED') {
+    if (!project) {
+      result = respond(project, message)
+    } else if (projectResearchResult) {
+      result = projectResearchResult
+    } else if (adoptionCommandResult) {
+      result = adoptionCommandResult
+    } else if (combinedRunActionAndHoldResult) {
+      result = combinedRunActionAndHoldResult
+    } else if (runActionResult) {
+      result = runActionResult
+    } else if (holdCommandResult) {
+      result = holdCommandResult
+    } else if (decisionClass === 'TIM_REQUIRED') {
       // Consequential phrasing is refused deterministically, before ever
       // spending a live call on it — not left to the model's judgment.
       // Label this distinctly from an actually-unavailable provider: one
@@ -639,8 +720,7 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
       // not called for this message.
       result = {
         ...respond(project, message, liveRun, liveGap),
-        providerLabel:
-          'PLANNER_DEEP · policy refusal — consequential action, no live call made',
+        providerLabel: 'PLANNER_DEEP · policy refusal — consequential action, no live call made',
         live: false
       }
     } else if (dispatchWorthy) {
@@ -726,7 +806,14 @@ export async function handleChatRoute(parts, req, res, { map, opState, projects 
       }
     ].slice(-200)
     saveState({ ...freshState, chatThreads: threads, plannerSessions: nextPlannerSessions })
-    json(res, 200, await attachDueAttentionNotices(await attachDueCompletionNotices(result, () => new Date()), () => new Date()))
+    json(
+      res,
+      200,
+      await attachDueAttentionNotices(
+        await attachDueCompletionNotices(result, () => new Date()),
+        () => new Date()
+      )
+    )
     return true
   }
 

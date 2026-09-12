@@ -24,33 +24,42 @@ import {
   resolveAllProjectsQuantifier,
   resolveProjectsFromText
 } from './project-name-resolver.mjs'
-import {
-  fleetResearchStatus,
-  fleetWorkStatus
-} from '../domain/fleet-work-status.mjs'
+import { fleetResearchStatus, fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { isAuthorizedSelfRepair } from '../domain/self-repair-authority.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { shouldRouteToResearchBridge, respondResearchCommand } from './command-research-bridge.mjs'
 import { shouldRouteToDogfoodBridge, respondDogfoodCommand } from './command-dogfood-bridge.mjs'
-import { shouldRouteToSelfImprovementBridge, respondSelfImprovementCommand } from './command-self-improvement-bridge.mjs'
-import { shouldRouteToFleetAttentionBridge, respondFleetAttentionCommand } from './command-fleet-attention-bridge.mjs'
-import { classifyMultiActionEntries, classifySingleTargetHoldEntries, respondMultiActionCommand } from './command-multi-action-bridge.mjs'
-import { shouldRouteToAdoptionCommandBridge, respondAdoptionCommand } from './command-adoption-command-bridge.mjs'
-import { shouldRouteToRuntimeIdentityBridge, respondRuntimeIdentityCommand } from './command-runtime-identity-bridge.mjs'
+import {
+  shouldRouteToSelfImprovementBridge,
+  respondSelfImprovementCommand
+} from './command-self-improvement-bridge.mjs'
+import {
+  shouldRouteToFleetAttentionBridge,
+  respondFleetAttentionCommand
+} from './command-fleet-attention-bridge.mjs'
+import {
+  classifyMultiActionEntries,
+  classifySingleTargetHoldEntries,
+  respondMultiActionCommand
+} from './command-multi-action-bridge.mjs'
+import {
+  shouldRouteToAdoptionCommandBridge,
+  respondAdoptionCommand
+} from './command-adoption-command-bridge.mjs'
+import {
+  shouldRouteToRuntimeIdentityBridge,
+  respondRuntimeIdentityCommand
+} from './command-runtime-identity-bridge.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import {
   advisorySafeProjects,
   buildGlobalAdvisoryText,
   classifyGlobalScope
 } from './command-scope-classifier.mjs'
-import {
-  classifyContinueAction,
-  classifyRunActionVerb,
-  pauseProjectRun,
-  resumeProjectRun
-} from './command-run-action-bridge.mjs'
+import { classifyRunActionVerb } from './command-run-action-bridge.mjs'
+import { executeAction } from './action-executor.mjs'
 import { explainPriorAnswer } from './command-followup-context.mjs'
 
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
@@ -304,7 +313,14 @@ export async function respondCommand({
   const aliasesForMultiAction = aliases ?? loadProjectAliases()
   const multiActionEntries = classifyMultiActionEntries(message, projects, aliasesForMultiAction)
   if (multiActionEntries) {
-    return respondMultiActionCommand({ message, projects, opState, clock, deps, entries: multiActionEntries })
+    return respondMultiActionCommand({
+      message,
+      projects,
+      opState,
+      clock,
+      deps,
+      entries: multiActionEntries
+    })
   }
   // TSF Overnight Control-Plane Burn-In V2, real finding (not guessed):
   // classifyMultiActionEntries' own >=2-target gate above never actually
@@ -329,7 +345,11 @@ export async function respondCommand({
   // classifyRunActionVerb block below can merge it in when both target
   // the SAME project; the standalone hold-only fallback lives just after
   // that block, for when no run-action verb also matched.
-  const singleTargetHoldEntries = classifySingleTargetHoldEntries(message, projects, aliasesForMultiAction)
+  const singleTargetHoldEntries = classifySingleTargetHoldEntries(
+    message,
+    projects,
+    aliasesForMultiAction
+  )
 
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
@@ -481,21 +501,43 @@ export async function respondCommand({
       // silently drops one real action while claiming the other as
       // complete success -- see the header comment above
       // singleTargetHoldEntries for the full finding.
-      const matchingHoldEntries =
-        singleTargetHoldEntries?.every((e) => e.target === targetProject.id) ? singleTargetHoldEntries : null
+      const matchingHoldEntries = singleTargetHoldEntries?.every(
+        (e) => e.target === targetProject.id
+      )
+        ? singleTargetHoldEntries
+        : null
       async function mergeMatchingHold(baseResult) {
         if (!matchingHoldEntries) return baseResult
-        const holdResult = await respondMultiActionCommand({ message, projects, opState, clock, deps, entries: matchingHoldEntries })
+        const holdResult = await respondMultiActionCommand({
+          message,
+          projects,
+          opState,
+          clock,
+          deps,
+          entries: matchingHoldEntries
+        })
         return {
           ...baseResult,
           text: `${baseResult.text}\n\n${holdResult.text}`,
-          resolvedProjectIds: [...new Set([...(baseResult.resolvedProjectIds ?? []), ...(holdResult.resolvedProjectIds ?? [])])],
+          resolvedProjectIds: [
+            ...new Set([
+              ...(baseResult.resolvedProjectIds ?? []),
+              ...(holdResult.resolvedProjectIds ?? [])
+            ])
+          ],
           resultItems: [...(baseResult.resultItems ?? []), ...(holdResult.resultItems ?? [])]
         }
       }
       if (runActionVerb === 'PAUSE') {
-        try {
-          await pauseProjectRun(targetProject.id, 'OPERATOR_CHAT_PAUSE', clock)
+        const execute = deps.executeAction ?? executeAction
+        const actionResult = await execute({
+          type: 'PAUSE',
+          target: targetProject.id,
+          parameters: { reason: 'OPERATOR_CHAT_PAUSE' },
+          clock,
+          deps
+        })
+        if (actionResult.ok) {
           return await mergeMatchingHold({
             intent: 'PROJECT_ACTION',
             decisionClass,
@@ -506,50 +548,53 @@ export async function respondCommand({
             resolvedProjectIds: [targetProject.id],
             scope: 'PROJECT'
           })
-        } catch (error) {
-          return await mergeMatchingHold({
-            intent: 'PROJECT_ACTION',
-            decisionClass,
-            text: `Couldn't pause **${targetProject.displayName}**: ${error.message}.`,
-            plannerRole: 'PLANNER_DEEP',
-            providerLabel: 'PLANNER_DEEP · action refused',
-            live: false,
-            resolvedProjectIds: [targetProject.id],
-            scope: 'PROJECT'
-          })
         }
+        return await mergeMatchingHold({
+          intent: 'PROJECT_ACTION',
+          decisionClass,
+          text: `Couldn't pause **${targetProject.displayName}**: ${actionResult.detail}.`,
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel: 'PLANNER_DEEP · action refused',
+          live: false,
+          resolvedProjectIds: [targetProject.id],
+          scope: 'PROJECT'
+        })
       }
       // RESUME/"continue" -- genuinely ambiguous in isolation
       // (classifyContinueAction decides using the REAL current run state,
       // never guessed from the verb alone): a PAUSED run resumes; anything
       // else (no run yet, or an already-ACTIVE run with nothing durable to
       // resume from) means the same thing "run it" does.
-      const action = classifyContinueAction(targetProject.id)
-      if (action === 'RESUME') {
-        try {
-          await resumeProjectRun(targetProject.id, clock)
-          return await mergeMatchingHold({
-            intent: 'PROJECT_ACTION',
-            decisionClass,
-            text: `Resumed **${targetProject.displayName}** (${resolvedVia}).`,
-            plannerRole: 'PLANNER_DEEP',
-            providerLabel: 'PLANNER_DEEP · real resume via Keep Going',
-            live: true,
-            resolvedProjectIds: [targetProject.id],
-            scope: 'PROJECT'
-          })
-        } catch (error) {
-          return await mergeMatchingHold({
-            intent: 'PROJECT_ACTION',
-            decisionClass,
-            text: `Couldn't resume **${targetProject.displayName}**: ${error.message}.`,
-            plannerRole: 'PLANNER_DEEP',
-            providerLabel: 'PLANNER_DEEP · action refused',
-            live: false,
-            resolvedProjectIds: [targetProject.id],
-            scope: 'PROJECT'
-          })
-        }
+      const execute = deps.executeAction ?? executeAction
+      const actionResult = await execute({
+        type: 'RESUME',
+        target: targetProject.id,
+        clock,
+        deps
+      })
+      if (actionResult.ok && actionResult.action === 'RESUME') {
+        return await mergeMatchingHold({
+          intent: 'PROJECT_ACTION',
+          decisionClass,
+          text: `Resumed **${targetProject.displayName}** (${resolvedVia}).`,
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel: 'PLANNER_DEEP · real resume via Keep Going',
+          live: true,
+          resolvedProjectIds: [targetProject.id],
+          scope: 'PROJECT'
+        })
+      }
+      if (!actionResult.ok) {
+        return await mergeMatchingHold({
+          intent: 'PROJECT_ACTION',
+          decisionClass,
+          text: `Couldn't resume **${targetProject.displayName}**: ${actionResult.detail}.`,
+          plannerRole: 'PLANNER_DEEP',
+          providerLabel: 'PLANNER_DEEP · action refused',
+          live: false,
+          resolvedProjectIds: [targetProject.id],
+          scope: 'PROJECT'
+        })
       }
       // RESUME reclassified to DISPATCH (nothing durable to resume) falls
       // through to the real dispatch pipeline -- a genuinely different
@@ -572,7 +617,14 @@ export async function respondCommand({
   // real, single-target hold entry computed earlier still deserves its
   // own real execution/report, exactly as before this round's fix.
   if (singleTargetHoldEntries) {
-    return respondMultiActionCommand({ message, projects, opState, clock, deps, entries: singleTargetHoldEntries })
+    return respondMultiActionCommand({
+      message,
+      projects,
+      opState,
+      clock,
+      deps,
+      entries: singleTargetHoldEntries
+    })
   }
 
   if (!DISPATCH_WORTHY_INTENTS.has(intent)) {
