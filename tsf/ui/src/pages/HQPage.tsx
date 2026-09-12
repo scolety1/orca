@@ -36,7 +36,13 @@ import { SelfImprovementFindingCard } from '@/components/SelfImprovementFindingC
 import { useCommandDock, useReloadOnDockActivity } from '@/lib/command-dock-context'
 import { useForegroundPolling } from '@/lib/use-foreground-polling'
 
-function SectionTitle({ icon: Icon, children }: { icon: typeof Compass; children: React.ReactNode }) {
+function SectionTitle({
+  icon: Icon,
+  children
+}: {
+  icon: typeof Compass
+  children: React.ReactNode
+}) {
   return (
     <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
       <Icon className="size-3.5" />
@@ -55,8 +61,18 @@ function SectionTitle({ icon: Icon, children }: { icon: typeof Compass; children
 // /health-repair remain real, reachable routes (deep links, More page) --
 // this page only changes what's in PRIMARY navigation.
 export function HQPage() {
-  const { data: portfolio, loading: pLoading, error: pError, reload: reloadPortfolio } = useApi(() => api.portfolio(), [])
-  const { data: work, loading: wLoading, error: wError, reload: reloadWork } = useApi(() => api.work(), [])
+  const {
+    data: portfolio,
+    loading: pLoading,
+    error: pError,
+    reload: reloadPortfolio
+  } = useApi(() => api.portfolio(), [])
+  const {
+    data: work,
+    loading: wLoading,
+    error: wError,
+    reload: reloadWork
+  } = useApi(() => api.work(), [])
   // Operator Attention V1, Wave 2 + Operator Polish V1, Wave A: a real,
   // currently-invisible gap -- a self-improvement finding the eligibility
   // classifier declined to autofix, or a planner mission's own needsYou
@@ -99,7 +115,9 @@ export function HQPage() {
   const needsYou = buildHomeNeedsYouItems(work)
   const researchNeedsYou = work.needsYou.filter(isResearchMissionWorkItem)
   const otherNeedsYou = attention ? buildOtherNeedsYouItems(attention.items) : []
-  const degradedProjects = portfolio.knownProjects.filter((p) => p.healthStatus === 'DEGRADED' || p.healthStatus === 'BLOCKED')
+  const degradedProjects = portfolio.knownProjects.filter(
+    (p) => p.healthStatus === 'DEGRADED' || p.healthStatus === 'BLOCKED'
+  )
   const activeProjects = work.active.filter((p): p is WorkItem => !isResearchMissionWorkItem(p))
   const activeResearch = work.active.filter(isResearchMissionWorkItem)
   // A Keep Going run genuinely WAITING (e.g. for provider capacity/resource
@@ -113,7 +131,8 @@ export function HQPage() {
   const waitingForResources = activeProjects.filter((p) => p.liveWorkFeed?.state === 'WAITING')
   const recentlyCompletedResearch = work.recentlyCompleted.filter(isResearchMissionWorkItem)
   const recentlyCompletedProjects = work.recentlyCompleted.filter(
-    (p): p is Exclude<RecentlyCompletedItem, { kind: 'RESEARCH_MISSION' }> => !isResearchMissionWorkItem(p)
+    (p): p is Exclude<RecentlyCompletedItem, { kind: 'RESEARCH_MISSION' }> =>
+      !isResearchMissionWorkItem(p)
   )
 
   async function prepareDegraded() {
@@ -160,7 +179,9 @@ export function HQPage() {
                 needsYou items are real but not projects, so their count is
                 added honestly rather than folded into that function's
                 meaning. */}
-            <div className="text-2xl font-semibold">{countDistinctNeedsYouProjects(needsYou) + otherNeedsYou.length}</div>
+            <div className="text-2xl font-semibold">
+              {countDistinctNeedsYouProjects(needsYou) + otherNeedsYou.length}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -201,7 +222,9 @@ export function HQPage() {
               {degradedProjects.length === 1 ? 's' : ''} Health preparation.
             </div>
             <div className="flex items-center gap-3">
-              {prepareResult && <span className="text-[11px] text-muted-foreground">{prepareResult}</span>}
+              {prepareResult && (
+                <span className="text-[11px] text-muted-foreground">{prepareResult}</span>
+              )}
               <Button size="sm" disabled={preparing} onClick={prepareDegraded}>
                 {preparing ? 'Preparing…' : 'Prepare Projects for Work'}
               </Button>
@@ -224,7 +247,11 @@ export function HQPage() {
               <Link
                 key={homeNeedsYouItemKey(p)}
                 to={projectDeepLinkTo(p.id, {
-                  tab: p.liveWorkFeed ? (p.liveWorkFeed.state === 'READY_FOR_ADOPTION' ? 'adoption' : 'keep-going') : undefined,
+                  tab: p.liveWorkFeed
+                    ? p.liveWorkFeed.state === 'READY_FOR_ADOPTION'
+                      ? 'adoption'
+                      : 'keep-going'
+                    : undefined,
                   runId: p.runId
                 })}
               >
@@ -233,7 +260,11 @@ export function HQPage() {
                     <div>
                       <div className="text-sm font-medium">{p.displayName}</div>
                       <div className="text-xs text-muted-foreground">
-                        {p.liveWorkFeed?.reason ?? p.mission.blockedReason ?? (p.candidate?.state === 'READY_FOR_ADOPTION' ? 'Candidate is ready for your adoption decision.' : p.mission.state)}
+                        {p.liveWorkFeed?.reason ??
+                          p.mission.blockedReason ??
+                          (p.candidate?.state === 'READY_FOR_ADOPTION'
+                            ? 'Candidate is ready for your adoption decision.'
+                            : p.mission.state)}
                       </div>
                     </div>
                     <StatusChip status={p.health.status} />
@@ -248,15 +279,37 @@ export function HQPage() {
               // Pre-UI Productization V1, Priority 5: a planner Needs-You
               // item is now inline-resolvable (a real answer action, no
               // standalone page needed) rather than a permanent dead end.
-              if (item.kind === 'PLANNER_MISSION_NEEDS_YOU' && item.plannerMissionId && item.plannerNeedsYouId) {
-                return <PlannerNeedsYouCard key={item.id} item={item} onResolved={reloadAttention} />
+              if (
+                item.kind === 'PLANNER_MISSION_NEEDS_YOU' &&
+                item.plannerMissionId &&
+                item.plannerNeedsYouId
+              ) {
+                return (
+                  <PlannerNeedsYouCard key={item.id} item={item} onResolved={reloadAttention} />
+                )
               }
               // Manual Self-Improvement Finding Disposition V1: a
               // self-improvement finding is now inline-resolvable too
               // (Apply verified fix / Start fix / Dismiss) -- no standalone
               // page needed, no more permanent dead end.
               if (item.kind === 'SELF_IMPROVEMENT_FINDING' && item.findingId) {
-                return <SelfImprovementFindingCard key={item.id} item={item} onChanged={reloadAttention} />
+                return (
+                  <SelfImprovementFindingCard
+                    key={item.id}
+                    item={item}
+                    onChanged={reloadAttention}
+                  />
+                )
+              }
+              // TSF Reconcile & Upgrade Protocol V1, Lane 4 self-dogfood
+              // fix: PROJECT_EXECUTION_HOLD falls through to this generic
+              // card -- read-only by design (releasing a hold is already a
+              // real Command chat action, not a disposition action a card
+              // button should duplicate).
+              const otherNeedsYouKindLabel: Record<typeof item.kind, string> = {
+                PLANNER_MISSION_NEEDS_YOU: 'Planner',
+                SELF_IMPROVEMENT_FINDING: 'Self-improvement',
+                PROJECT_EXECUTION_HOLD: 'Execution hold'
               }
               const cardBody = (
                 <Card className="border-status-degraded/40 bg-status-degraded/5 transition-colors hover:border-status-degraded/70">
@@ -265,7 +318,7 @@ export function HQPage() {
                       <div className="text-sm font-medium">{item.label}</div>
                       <div className="text-xs text-muted-foreground">{item.reason}</div>
                     </div>
-                    <Badge variant="degraded">{item.kind === 'PLANNER_MISSION_NEEDS_YOU' ? 'Planner' : 'Self-improvement'}</Badge>
+                    <Badge variant="degraded">{otherNeedsYouKindLabel[item.kind]}</Badge>
                   </CardContent>
                 </Card>
               )
@@ -285,13 +338,19 @@ export function HQPage() {
         <section>
           <SectionTitle icon={Compass}>Active work</SectionTitle>
           {activeProjects.length === 0 ? (
-            <EmptyState title="No active work" description="Nothing is currently in planning or execution." />
+            <EmptyState
+              title="No active work"
+              description="Nothing is currently in planning or execution."
+            />
           ) : (
             <div className="flex flex-col gap-2">
               {activeProjects.map((p) => (
                 <Link
                   key={p.id}
-                  to={projectDeepLinkTo(p.id, { tab: p.liveWorkFeed ? 'keep-going' : undefined, runId: p.runId })}
+                  to={projectDeepLinkTo(p.id, {
+                    tab: p.liveWorkFeed ? 'keep-going' : undefined,
+                    runId: p.runId
+                  })}
                   className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
                 >
                   {p.displayName} — {p.liveWorkFeed?.reason ?? p.mission.state}
@@ -303,7 +362,10 @@ export function HQPage() {
         <section>
           <SectionTitle icon={FlaskConical}>Active research</SectionTitle>
           {activeResearch.length === 0 ? (
-            <EmptyState title="No active research" description="Ask Command to research something to get started." />
+            <EmptyState
+              title="No active research"
+              description="Ask Command to research something to get started."
+            />
           ) : (
             <div className="flex flex-col gap-2">
               {activeResearch.map((item) => (
@@ -318,11 +380,18 @@ export function HQPage() {
         <section>
           <SectionTitle icon={Clock}>Waiting for resources</SectionTitle>
           {waitingForResources.length === 0 ? (
-            <EmptyState title="Nothing waiting" description="No run is currently paused for provider/resource capacity." />
+            <EmptyState
+              title="Nothing waiting"
+              description="No run is currently paused for provider/resource capacity."
+            />
           ) : (
             <div className="flex flex-col gap-2">
               {waitingForResources.map((p) => (
-                <Link key={p.id} to={projectDeepLinkTo(p.id, { tab: 'keep-going', runId: p.runId })} className="rounded-md border border-border p-3 text-sm hover:border-primary/50">
+                <Link
+                  key={p.id}
+                  to={projectDeepLinkTo(p.id, { tab: 'keep-going', runId: p.runId })}
+                  className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
+                >
                   {p.displayName} — {p.liveWorkFeed?.reason ?? 'Waiting for resources'}
                 </Link>
               ))}
@@ -332,16 +401,27 @@ export function HQPage() {
         <section>
           <SectionTitle icon={ShieldCheck}>Verification / adoption</SectionTitle>
           {work.verifying.length === 0 && work.readyForAdoption.length === 0 ? (
-            <EmptyState title="Nothing to verify" description="No work is currently being verified or waiting on an adoption decision." />
+            <EmptyState
+              title="Nothing to verify"
+              description="No work is currently being verified or waiting on an adoption decision."
+            />
           ) : (
             <div className="flex flex-col gap-2">
               {work.verifying.map((p) => (
-                <Link key={`verifying-${p.id}`} to={projectDeepLinkTo(p.id, { tab: 'keep-going', runId: p.runId })} className="rounded-md border border-border p-3 text-sm hover:border-primary/50">
+                <Link
+                  key={`verifying-${p.id}`}
+                  to={projectDeepLinkTo(p.id, { tab: 'keep-going', runId: p.runId })}
+                  className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
+                >
                   {p.displayName} — Verifying
                 </Link>
               ))}
               {work.readyForAdoption.map((p) => (
-                <Link key={`adopt-${p.id}`} to={projectDeepLinkTo(p.id, { tab: 'adoption', runId: p.runId })} className="rounded-md border border-border p-3 text-sm hover:border-primary/50">
+                <Link
+                  key={`adopt-${p.id}`}
+                  to={projectDeepLinkTo(p.id, { tab: 'adoption', runId: p.runId })}
+                  className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
+                >
                   {p.displayName} — Ready for adoption
                 </Link>
               ))}
@@ -357,7 +437,11 @@ export function HQPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {recentlyCompletedProjects.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`} className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50">
+              <Link
+                key={p.id}
+                to={`/projects/${p.id}`}
+                className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50"
+              >
                 <span>{p.displayName}</span>
                 <Badge variant="healthy">Adopted</Badge>
               </Link>
@@ -372,11 +456,18 @@ export function HQPage() {
       <section className="mb-8">
         <SectionTitle icon={AlertTriangle}>Project health</SectionTitle>
         {degradedProjects.length === 0 ? (
-          <EmptyState icon={<CheckCircle2 className="size-6" />} title="All known projects are healthy" />
+          <EmptyState
+            icon={<CheckCircle2 className="size-6" />}
+            title="All known projects are healthy"
+          />
         ) : (
           <div className="flex flex-col gap-2">
             {degradedProjects.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}`} className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50">
+              <Link
+                key={p.id}
+                to={`/projects/${p.id}`}
+                className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50"
+              >
                 <span>{p.displayName}</span>
                 <div className="flex items-center gap-2">
                   <StatusChip status={p.healthStatus} />

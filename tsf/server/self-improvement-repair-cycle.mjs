@@ -10,13 +10,22 @@ import { PlannerSessionLifecycle } from './planner-session-lifecycle.mjs'
 import { readPlannerMissionRecord } from './planner-mission-store.mjs'
 import { transitionFinding } from '../domain/self-improvement-finding.mjs'
 import { buildAuthorityEnvelope } from '../domain/self-improvement-authority-envelope.mjs'
-import { DEFAULT_SELF_IMPROVEMENT_RETRY_BUDGET, decideRepairRetryOrEscalate } from '../domain/self-improvement-retry-budget.mjs'
-import { deriveRepairAttemptBranch, deriveRepairAttemptWorktreePath, dispatchRepairWorker } from './self-improvement-worker-dispatch.mjs'
+import {
+  DEFAULT_SELF_IMPROVEMENT_RETRY_BUDGET,
+  decideRepairRetryOrEscalate
+} from '../domain/self-improvement-retry-budget.mjs'
+import {
+  deriveRepairAttemptBranch,
+  deriveRepairAttemptWorktreePath,
+  dispatchRepairWorker
+} from './self-improvement-worker-dispatch.mjs'
 import { currentHeadSha } from './self-improvement-worktree.mjs'
 import { runIndependentVerification } from './self-improvement-verifier-dispatch.mjs'
 import { observeCanonicalRepoState } from './planner-mission-repo-state.mjs'
 import { withFinding } from './self-improvement-finding-store.mjs'
 import { recordSelfImprovementReceipt } from './self-improvement-receipt-store.mjs'
+import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
+import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 
 function plannerSessionIdFor(missionId) {
   // Deterministic, stable across every tick of this mission's whole life
@@ -43,9 +52,13 @@ async function withLeaseRecovery(lifecycle, canonicalRepoPath, deps, fn) {
   try {
     return await fn()
   } catch (error) {
-    if (error.code !== 'TSF_PLANNER_LEASE_NOT_HELD') { throw error }
+    if (error.code !== 'TSF_PLANNER_LEASE_NOT_HELD') {
+      throw error
+    }
     const observeRepoState = deps.observeRepoState ?? observeCanonicalRepoState
-    await lifecycle.acquireLeaseAndHydrate({ observedRepoState: observeRepoState(canonicalRepoPath) })
+    await lifecycle.acquireLeaseAndHydrate({
+      observedRepoState: observeRepoState(canonicalRepoPath)
+    })
     return fn()
   }
 }
@@ -54,21 +67,67 @@ async function withLeaseRecovery(lifecycle, canonicalRepoPath, deps, fn) {
 // escalate. Never loops internally -- a caller (the fleet driver, or a
 // test) decides whether/when to call this again, exactly like
 // research-autonomy-policy.mjs's "one action per tick" discipline.
-export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, clock = () => new Date(), budget = DEFAULT_SELF_IMPROVEMENT_RETRY_BUDGET, deps = {} }) {
+export async function runRepairAttempt({
+  finding,
+  missionId,
+  canonicalRepoPath,
+  clock = () => new Date(),
+  budget = DEFAULT_SELF_IMPROVEMENT_RETRY_BUDGET,
+  deps = {}
+}) {
   const readRecord = deps.readPlannerMissionRecord ?? readPlannerMissionRecord
   const checkpointBefore = readRecord(missionId)?.checkpoint
   if (!checkpointBefore) {
-    throw new Error(`no checkpoint exists for mission ${missionId} -- call originateRepairMission first`)
+    throw new Error(
+      `no checkpoint exists for mission ${missionId} -- call originateRepairMission first`
+    )
   }
 
-  const attemptsSoFar = checkpointBefore.verifierResults.filter((r) => r.verdict === 'VERIFIED_FAIL').length
+  // TSF Reconcile & Upgrade Protocol V1, Lane 4 self-dogfood fix: a real,
+  // confirmed gap -- this was the one dispatch path in the whole program
+  // with zero project-execution-hold awareness (keep-going-dispatch-
+  // loop.mjs's dispatchStep and self-improvement-adoption.mjs's own
+  // attemptRepairAdoption both already gate on it; this repair-attempt
+  // path never did). Checked FIRST, before the retry/escalate decision --
+  // a hold must block a fresh worker dispatch outright, never consume
+  // retry budget or force an unwanted NEEDS_OWNER escalation. Mirrors
+  // keep-going-dispatch-loop.mjs's own convention (`DISPATCH_BLOCKED_BY_
+  // HOLD`, nothing durable mutated) rather than self-improvement-
+  // adoption.mjs's double-check pattern: unlike attemptRepairAdoption,
+  // nothing awaited happens between this read and the real dispatch call
+  // below (buildAuthorityEnvelope and the Lifecycle construction are both
+  // synchronous), so a single fresh-enough check here is sufficient.
+  if (finding.projectId) {
+    const readHold = deps.readProjectExecutionHold ?? readProjectExecutionHold
+    const hold = readHold(finding.projectId)
+    if (isProjectExecutionHoldActive(hold)) {
+      return {
+        outcome: 'BLOCKED_BY_PROJECT_EXECUTION_HOLD',
+        reason: `project execution hold active -- ${hold.reason}${hold.note ? `: ${hold.note}` : ''} (set by ${hold.setBy})`,
+        finding
+      }
+    }
+  }
+
+  const attemptsSoFar = checkpointBefore.verifierResults.filter(
+    (r) => r.verdict === 'VERIFIED_FAIL'
+  ).length
   const writeFinding = deps.withFinding ?? withFinding
   const recordReceipt = deps.recordSelfImprovementReceipt ?? recordSelfImprovementReceipt
 
-  const decision = decideRepairRetryOrEscalate(attemptsSoFar, budget, `${attemptsSoFar} verified-fail attempt(s) already recorded`)
+  const decision = decideRepairRetryOrEscalate(
+    attemptsSoFar,
+    budget,
+    `${attemptsSoFar} verified-fail attempt(s) already recorded`
+  )
   if (decision.type === 'ESCALATE') {
     const nextFinding = await writeFinding(finding.findingId, (current) =>
-      transitionFinding(current ?? finding, 'NEEDS_OWNER', { reason: 'REPAIR_RETRY_BUDGET_EXCEEDED', evidence: [{ missionId, attemptsSoFar }] }, clock)
+      transitionFinding(
+        current ?? finding,
+        'NEEDS_OWNER',
+        { reason: 'REPAIR_RETRY_BUDGET_EXCEEDED', evidence: [{ missionId, attemptsSoFar }] },
+        clock
+      )
     )
     return { outcome: 'ESCALATED', reason: decision.question, finding: nextFinding }
   }
@@ -111,11 +170,23 @@ export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, 
   const dispatchWorker =
     deps.dispatchWorker ??
     (async () => {
-      const result = await dispatchRepairWorker({ finding, envelope, missionId, attemptNumber, canonicalRepoPath, clock, deps: deps.workerDeps ?? {} })
+      const result = await dispatchRepairWorker({
+        finding,
+        envelope,
+        missionId,
+        attemptNumber,
+        canonicalRepoPath,
+        clock,
+        deps: deps.workerDeps ?? {}
+      })
       liveDispatchSiblingSnapshot = result.siblingStatusesBefore ?? null
       return result
     })
-  const lifecycle = new Lifecycle({ missionId, plannerSessionId, deps: { clock, dispatchWorker, ...deps.lifecycleDeps } })
+  const lifecycle = new Lifecycle({
+    missionId,
+    plannerSessionId,
+    deps: { clock, dispatchWorker, ...deps.lifecycleDeps }
+  })
 
   const dispatch = await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>
     lifecycle.dispatchWorkerForTask({
@@ -126,22 +197,56 @@ export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, 
   )
   const worker = dispatch.worker
   // Re-derived, not read off `worker` -- see the real-bug comment above.
-  const worktreePath = deriveRepairAttemptWorktreePath({ canonicalRepoPath, missionId, attemptNumber })
+  const worktreePath = deriveRepairAttemptWorktreePath({
+    canonicalRepoPath,
+    missionId,
+    attemptNumber
+  })
   const branch = deriveRepairAttemptBranch({ missionId, attemptNumber })
   if (!dispatch.alreadyDispatched) {
-    await recordReceipt(missionId, { kind: 'WORKER_DISPATCHED', missionId, findingId: finding.findingId, detail: { attemptNumber, providerId: worker.providerId, worktreePath } }, clock)
+    await recordReceipt(
+      missionId,
+      {
+        kind: 'WORKER_DISPATCHED',
+        missionId,
+        findingId: finding.findingId,
+        detail: { attemptNumber, providerId: worker.providerId, worktreePath }
+      },
+      clock
+    )
   }
 
   let currentFinding = finding
   if (attemptNumber === 1) {
-    await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () => lifecycle.advancePhase('FIX_IN_PROGRESS'))
-    currentFinding = await writeFinding(finding.findingId, (current) => transitionFinding(current, 'FIX_IN_PROGRESS', { reason: 'FIRST_REPAIR_ATTEMPT_DISPATCHED', evidence: [{ missionId }] }, clock))
+    await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>
+      lifecycle.advancePhase('FIX_IN_PROGRESS')
+    )
+    currentFinding = await writeFinding(finding.findingId, (current) =>
+      transitionFinding(
+        current,
+        'FIX_IN_PROGRESS',
+        { reason: 'FIRST_REPAIR_ATTEMPT_DISPATCHED', evidence: [{ missionId }] },
+        clock
+      )
+    )
   }
 
   await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>
-    lifecycle.recordWorkerResult(worker.workerId, { status: worker.exitCode === 0 && !worker.timedOut ? 'COMPLETED' : 'FAILED', result: { exitCode: worker.exitCode, timedOut: worker.timedOut } })
+    lifecycle.recordWorkerResult(worker.workerId, {
+      status: worker.exitCode === 0 && !worker.timedOut ? 'COMPLETED' : 'FAILED',
+      result: { exitCode: worker.exitCode, timedOut: worker.timedOut }
+    })
   )
-  await recordReceipt(missionId, { kind: 'WORKER_RESULT', missionId, findingId: finding.findingId, detail: { attemptNumber, exitCode: worker.exitCode, timedOut: worker.timedOut } }, clock)
+  await recordReceipt(
+    missionId,
+    {
+      kind: 'WORKER_RESULT',
+      missionId,
+      findingId: finding.findingId,
+      detail: { attemptNumber, exitCode: worker.exitCode, timedOut: worker.timedOut }
+    },
+    clock
+  )
 
   const verify = deps.runIndependentVerification ?? runIndependentVerification
   // Real git read (injectable, like every other real side effect here) --
@@ -160,13 +265,31 @@ export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, 
     deps: deps.verifierDeps ?? {}
   })
   await withLeaseRecovery(lifecycle, canonicalRepoPath, deps, () =>
-    lifecycle.recordVerifierResult({ verifier: 'VERIFIER_INDEPENDENT', verdict: verification.verdict, detail: verification.detail })
+    lifecycle.recordVerifierResult({
+      verifier: 'VERIFIER_INDEPENDENT',
+      verdict: verification.verdict,
+      detail: verification.detail
+    })
   )
-  await recordReceipt(missionId, { kind: 'VERIFIER_RESULT', missionId, findingId: finding.findingId, detail: { attemptNumber, verdict: verification.verdict, reasons: verification.reasons } }, clock)
+  await recordReceipt(
+    missionId,
+    {
+      kind: 'VERIFIER_RESULT',
+      missionId,
+      findingId: finding.findingId,
+      detail: { attemptNumber, verdict: verification.verdict, reasons: verification.reasons }
+    },
+    clock
+  )
 
   if (verification.verdict === 'VERIFIED_PASS') {
     const nextFinding = await writeFinding(finding.findingId, (current) =>
-      transitionFinding(current ?? currentFinding, 'READY_FOR_ADOPTION', { reason: 'VERIFIER_PASSED', evidence: [{ missionId, attemptNumber }] }, clock)
+      transitionFinding(
+        current ?? currentFinding,
+        'READY_FOR_ADOPTION',
+        { reason: 'VERIFIER_PASSED', evidence: [{ missionId, attemptNumber }] },
+        clock
+      )
     )
     return { outcome: 'READY_FOR_ADOPTION', worker, verification, finding: nextFinding }
   }
@@ -174,5 +297,10 @@ export async function runRepairAttempt({ finding, missionId, canonicalRepoPath, 
   // VERIFIED_FAIL: stay FIX_IN_PROGRESS -- the NEXT call to
   // runRepairAttempt re-derives attemptsSoFar from this now-recorded
   // VERIFIED_FAIL and either retries (budget remaining) or escalates.
-  return { outcome: 'VERIFIED_FAIL_WILL_RETRY_OR_ESCALATE_NEXT_TICK', worker, verification, finding: currentFinding }
+  return {
+    outcome: 'VERIFIED_FAIL_WILL_RETRY_OR_ESCALATE_NEXT_TICK',
+    worker,
+    verification,
+    finding: currentFinding
+  }
 }

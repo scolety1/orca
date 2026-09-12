@@ -1,4 +1,11 @@
-import { isResearchMissionWorkItem, type AttentionCategory, type AttentionItem, type ProjectDetail, type WorkItem, type WorkSummary } from './types.ts'
+import {
+  isResearchMissionWorkItem,
+  type AttentionCategory,
+  type AttentionItem,
+  type ProjectDetail,
+  type WorkItem,
+  type WorkSummary
+} from './types.ts'
 
 export type HomeNeedsYouItem = WorkItem & { keyPrefix: string }
 
@@ -17,9 +24,13 @@ export type HomeNeedsYouItem = WorkItem & { keyPrefix: string }
 // out here rather than typed into HomeNeedsYouItem, which is project-only.
 export function buildHomeNeedsYouItems(work: WorkSummary): HomeNeedsYouItem[] {
   return [
-    ...work.needsYou.filter((p): p is WorkItem => !isResearchMissionWorkItem(p)).map((p) => ({ ...p, keyPrefix: 'needs-you' })),
+    ...work.needsYou
+      .filter((p): p is WorkItem => !isResearchMissionWorkItem(p))
+      .map((p) => ({ ...p, keyPrefix: 'needs-you' })),
     ...work.stalled.map((p) => ({ ...p, keyPrefix: 'stalled' })),
-    ...work.blocked.filter((p): p is ProjectDetail => !isResearchMissionWorkItem(p)).map((p) => ({ ...p, keyPrefix: 'blocked' })),
+    ...work.blocked
+      .filter((p): p is ProjectDetail => !isResearchMissionWorkItem(p))
+      .map((p) => ({ ...p, keyPrefix: 'blocked' })),
     ...work.readyForAdoption.map((p) => ({ ...p, keyPrefix: 'ready-for-adoption' }))
   ]
 }
@@ -56,7 +67,7 @@ export type OtherNeedsYouItem = {
   label: string
   reason: string
   projectId: string | null
-  kind: 'SELF_IMPROVEMENT_FINDING' | 'PLANNER_MISSION_NEEDS_YOU'
+  kind: 'SELF_IMPROVEMENT_FINDING' | 'PLANNER_MISSION_NEEDS_YOU' | 'PROJECT_EXECUTION_HOLD'
   // Manual Self-Improvement Finding Disposition V1: which real action(s)
   // the card should offer -- READY_FOR_ADOPTION means a real verified
   // candidate exists (Apply verified fix); NEEDS_OWNER/
@@ -77,6 +88,17 @@ export type OtherNeedsYouItem = {
   findingId: string | null
 }
 
+// TSF Reconcile & Upgrade Protocol V1, Lane 4 self-dogfood fix: a real,
+// confirmed gap -- the server (fleet-attention-status.mjs's holdItems)
+// has always correctly produced a source.kind === 'PROJECT_EXECUTION_HOLD'
+// attention item for a real active hold, and GET /api/attention already
+// serves it, but this function silently excluded it -- the ONLY page
+// calling api.attention() (this one, HQPage.tsx) rendered a hold
+// NOWHERE, not even a generic BLOCKED_EXTERNAL card. Included here as a
+// read-only item (no findingId/plannerMissionId -- there is no
+// disposition ACTION for a hold the way there is for a finding; releasing
+// one is already a real Command chat action, not a new button to build).
+//
 // Self-improvement findings surface under THREE real categories (see
 // domain/fleet-attention-status.mjs's selfImprovementItems) -- all three
 // are now real, actionable Needs-You cards (Manual Self-Improvement
@@ -88,8 +110,11 @@ export function buildOtherNeedsYouItems(attentionItems: AttentionItem[]): OtherN
     .filter(
       (i) =>
         i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ||
+        i.source.kind === 'PROJECT_EXECUTION_HOLD' ||
         (i.source.kind === 'SELF_IMPROVEMENT_FINDING' &&
-          (i.category === 'NEEDS_OWNER' || i.category === 'READY_FOR_ADOPTION' || i.category === 'FAILED_REQUIRES_ATTENTION'))
+          (i.category === 'NEEDS_OWNER' ||
+            i.category === 'READY_FOR_ADOPTION' ||
+            i.category === 'FAILED_REQUIRES_ATTENTION'))
     )
     .map((i) => ({
       id: i.id,
@@ -98,7 +123,8 @@ export function buildOtherNeedsYouItems(attentionItems: AttentionItem[]): OtherN
       projectId: i.project?.id ?? null,
       kind: i.source.kind as OtherNeedsYouItem['kind'],
       category: i.category,
-      plannerMissionId: i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ? (i.deepLink.id ?? null) : null,
+      plannerMissionId:
+        i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ? (i.deepLink.id ?? null) : null,
       plannerNeedsYouId: i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ? i.source.id : null,
       findingId: i.source.kind === 'SELF_IMPROVEMENT_FINDING' ? i.source.id : null
     }))

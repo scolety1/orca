@@ -165,7 +165,9 @@ test('buildOtherNeedsYouItems: findingId carries the real, raw source.id for a s
 })
 
 test('buildOtherNeedsYouItems: a finding with a real project carries its real projectId', () => {
-  const items = buildOtherNeedsYouItems([attentionItem({ project: { id: 'proj-1', displayName: 'Project One' } })])
+  const items = buildOtherNeedsYouItems([
+    attentionItem({ project: { id: 'proj-1', displayName: 'Project One' } })
+  ])
   assert.equal(items[0].projectId, 'proj-1')
 })
 
@@ -194,8 +196,14 @@ test('buildOtherNeedsYouItems: a real planner needsYou item appears, with an hon
 // Dedup must be id-based, never label-based: two distinct planner missions
 // can genuinely raise a needsYou question with the exact same label text.
 test('buildOtherNeedsYouItems: two distinct planner missions with the same label text both appear, never merged (id-based, not label-based)', () => {
-  const missionA = plannerAttentionItem({ id: 'needsyou:PLANNER:entry-a', source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-a' } })
-  const missionB = plannerAttentionItem({ id: 'needsyou:PLANNER:entry-b', source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-b' } })
+  const missionA = plannerAttentionItem({
+    id: 'needsyou:PLANNER:entry-a',
+    source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-a' }
+  })
+  const missionB = plannerAttentionItem({
+    id: 'needsyou:PLANNER:entry-b',
+    source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-b' }
+  })
   const items = buildOtherNeedsYouItems([missionA, missionB])
   assert.equal(items.length, 2)
   assert.equal(new Set(items.map((i) => i.id)).size, 2)
@@ -207,7 +215,9 @@ test('buildOtherNeedsYouItems: two distinct planner missions with the same label
 test('buildOtherNeedsYouItems: the same planner needsYou item observed twice (two consecutive attention snapshots) never duplicates by id', () => {
   const first = plannerAttentionItem()
   const second = plannerAttentionItem()
-  const ids = new Set([...buildOtherNeedsYouItems([first]), ...buildOtherNeedsYouItems([second])].map((i) => i.id))
+  const ids = new Set(
+    [...buildOtherNeedsYouItems([first]), ...buildOtherNeedsYouItems([second])].map((i) => i.id)
+  )
   assert.equal(ids.size, 1)
 })
 
@@ -239,4 +249,52 @@ test('buildOtherNeedsYouItems: a self-improvement finding never fabricates plann
   const items = buildOtherNeedsYouItems([attentionItem()])
   assert.equal(items[0].plannerMissionId, null)
   assert.equal(items[0].plannerNeedsYouId, null)
+})
+
+// TSF Reconcile & Upgrade Protocol V1, Lane 4 self-dogfood fix: a real,
+// confirmed gap -- the server already produces a PROJECT_EXECUTION_HOLD
+// attention item (fleet-attention-status.mjs's holdItems) but this
+// function silently excluded it, so a real hold was rendered NOWHERE in
+// the UI. Fixture mirrors that real server shape field-for-field.
+function holdAttentionItem(overrides: Partial<AttentionItem> = {}): AttentionItem {
+  return attentionItem({
+    id: 'hold:proj-held',
+    category: 'BLOCKED_EXTERNAL',
+    project: { id: 'proj-held', displayName: 'Held Project' },
+    label: 'Held Project',
+    reason: 'execution held -- EXTERNAL_WORK_ACTIVE',
+    deepLink: { kind: 'PROJECT', id: 'proj-held' },
+    source: { kind: 'PROJECT_EXECUTION_HOLD', id: 'proj-held' },
+    ...overrides
+  })
+}
+
+test('buildOtherNeedsYouItems: a real active project execution hold now appears (was silently excluded before this fix)', () => {
+  const items = buildOtherNeedsYouItems([holdAttentionItem()])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].id, 'hold:proj-held')
+  assert.equal(items[0].kind, 'PROJECT_EXECUTION_HOLD')
+  assert.equal(items[0].projectId, 'proj-held')
+  assert.equal(items[0].reason, 'execution held -- EXTERNAL_WORK_ACTIVE')
+})
+
+test('buildOtherNeedsYouItems: a hold item never fabricates a findingId/plannerMissionId/plannerNeedsYouId -- read-only, no disposition action exists for it', () => {
+  const items = buildOtherNeedsYouItems([holdAttentionItem()])
+  assert.equal(items[0].findingId, null)
+  assert.equal(items[0].plannerMissionId, null)
+  assert.equal(items[0].plannerNeedsYouId, null)
+})
+
+test('buildOtherNeedsYouItems: a hold and a self-improvement finding for the same project are both distinct, never merged', () => {
+  const hold = holdAttentionItem()
+  const finding = attentionItem({
+    id: 'finding:x',
+    project: { id: 'proj-held', displayName: 'Held Project' }
+  })
+  const items = buildOtherNeedsYouItems([hold, finding])
+  assert.equal(items.length, 2)
+  assert.deepEqual(
+    items.map((i) => i.kind).sort(),
+    ['PROJECT_EXECUTION_HOLD', 'SELF_IMPROVEMENT_FINDING'].sort()
+  )
 })
