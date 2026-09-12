@@ -180,10 +180,21 @@ it should?" Traced 9 real paths. Result: 6 `ALREADY_CORRECT` (each with
 real, passing test evidence -- write/release wiring, the Keep Going
 dispatch gate, the self-improvement adoption path's own existing double-
 check, "why is it stuck?" honesty, restart/reload durability), 3 real
-`GAP`s (self-improvement's own worker-dispatch branch had zero hold
-awareness; the shared planner-dispatch primitive has no hold concept at
-all, documented as an architectural finding for a future cycle rather
-than patched immediately given its broader blast radius; the UI rendered
-a hold nowhere at all, not even the generic attention card). Only the
-real gaps were patched -- nothing was invented to "find" more bugs than
-the trace actually surfaced.
+`GAP`s: (1) self-improvement's own worker-dispatch branch
+(`self-improvement-repair-cycle.mjs`'s `runRepairAttempt`) had zero hold
+awareness -- **patched**: checked first, before the retry/escalate
+decision, mirroring `keep-going-dispatch-loop.mjs`'s own
+`DISPATCH_BLOCKED_BY_HOLD` convention, mutation-verified; (2) the shared
+`planner-session-lifecycle.mjs`'s `dispatchWorkerForTask` primitive has
+no hold concept at all, documented as an architectural finding for a
+future cycle rather than patched immediately given its broader blast
+radius (many callers, different project-context assumptions); (3) the UI
+rendered a hold nowhere at all, not even the generic `BLOCKED_EXTERNAL`
+attention card -- **patched**: `home-needs-you-items.ts`'s
+`buildOtherNeedsYouItems` now includes the server's already-real
+`PROJECT_EXECUTION_HOLD` attention item (read-only card -- releasing a
+hold is already a real Command chat action, not a new button), mutation-
+verified. Only the two real, boundedly-fixable gaps were patched --
+nothing was invented to "find" more bugs than the trace actually
+surfaced, and the third (real, but architecturally larger) gap was
+recorded rather than rushed.
