@@ -191,30 +191,41 @@ export function FleetPage() {
               {portfolio.workSet.map((id) => {
                 const feed = liveWorkFeedLookup?.get(id)
                 return (
-                <div key={id} className="flex items-center gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selected[id] ?? false}
-                    onChange={(e) => setSelected((prev) => ({ ...prev, [id]: e.target.checked }))}
-                    aria-label={`Select ${id} for scheduling`}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{id}</span>
-                  {feed && (
-                    <Badge variant={liveWorkFeedBadgeVariant(feed.state)} title={feed.reason}>
-                      {feed.state}
-                    </Badge>
-                  )}
-                  <label className="text-[11px] text-muted-foreground">Priority</label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="w-16 rounded-md border border-input bg-input px-2 py-1 text-xs"
-                    value={priorities[id] ?? 1}
-                    onChange={(e) =>
-                      setPriorities((prev) => ({ ...prev, [id]: Number(e.target.value) }))
-                    }
-                  />
-                </div>
+                  <div key={id} className="flex items-center gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selected[id] ?? false}
+                      onChange={(e) => setSelected((prev) => ({ ...prev, [id]: e.target.checked }))}
+                      aria-label={`Select ${displayNameById.get(id) ?? id} for scheduling`}
+                    />
+                    {/* TSF Reconcile & Upgrade Protocol V1, Lane 6 objective UI
+                      dogfood: this row rendered the raw internal project id
+                      (e.g. "weird-talent-marketplace") as its only label --
+                      the SAME class of bug this file's own ProjectScheduleCard
+                      already fixed once (see its header comment,
+                      tsf-operator-hardening-v2) via this exact
+                      displayNameById lookup, just never applied to this
+                      sibling row. Falls back to the raw id, never fabricates
+                      a name, matching ProjectScheduleCard's own convention. */}
+                    <span className="min-w-0 flex-1 truncate" title={id}>
+                      {displayNameById.get(id) ?? id}
+                    </span>
+                    {feed && (
+                      <Badge variant={liveWorkFeedBadgeVariant(feed.state)} title={feed.reason}>
+                        {feed.state}
+                      </Badge>
+                    )}
+                    <label className="text-[11px] text-muted-foreground">Priority</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-16 rounded-md border border-input bg-input px-2 py-1 text-xs"
+                      value={priorities[id] ?? 1}
+                      onChange={(e) =>
+                        setPriorities((prev) => ({ ...prev, [id]: Number(e.target.value) }))
+                      }
+                    />
+                  </div>
                 )
               })}
               <div className="flex items-center gap-3">
