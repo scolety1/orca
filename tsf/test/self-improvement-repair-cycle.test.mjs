@@ -31,6 +31,7 @@ const { readFinding } = await import('../server/self-improvement-finding-store.m
 const { readPlannerMissionRecord } = await import('../server/planner-mission-store.mjs')
 const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 const { withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
+const { buildFleetAttentionItems } = await import('../domain/fleet-attention-status.mjs')
 
 function cleanupStateFile() {
   for (const suffix of [
@@ -318,6 +319,63 @@ test('resource-pressure refusal returns BLOCKED_BY_RESOURCE_PRESSURE, preserves 
   assert.ok(
     checkpointAfter.revision > checkpointBefore.revision,
     'the checkpoint must have genuinely advanced, not reverted to a stale snapshot'
+  )
+})
+
+// Independent-adversarial-review finding (real, reproduced): a resource-
+// pressure marker from an earlier BLOCKED_BY_RESOURCE_PRESSURE attempt on
+// the SAME attempt slot (resource refusals never consume budget, so a
+// retry reuses the same attemptNumber/taskFingerprint) used to survive
+// even once a later attempt genuinely proceeded past the resource check
+// -- so a finding that had since moved on to a real dispatch, and even
+// failed verification for a completely unrelated reason, still showed a
+// stale, false "waiting for resources" signal on its own durable
+// checkpoint. Reaching a real dispatch means resource pressure is no
+// longer the honest explanation for this mission's current state.
+test('a stale resource-pressure marker from an earlier blocked attempt is cleared once a later attempt genuinely proceeds, even if that later attempt then fails verification for an unrelated reason', async () => {
+  const finding = eligibleFinding('tsf/domain/stale-resource-marker-fixture.mjs')
+  const missionId = await originate(finding)
+
+  const blocked = await runRepairAttempt({
+    finding,
+    missionId,
+    canonicalRepoPath: CANONICAL_REPO_PATH,
+    clock,
+    deps: {
+      ...LIFECYCLE_DEPS,
+      workerDeps: {
+        collectHostMemoryEvidence: () => ({ totalBytes: 16 * GB, freeBytes: 2 * GB, availableBytes: 2 * GB, usedPercent: 87.5 })
+      }
+    }
+  })
+  assert.equal(blocked.outcome, 'BLOCKED_BY_RESOURCE_PRESSURE')
+  assert.ok(readPlannerMissionRecord(missionId).checkpoint.resourceState, 'sanity: the marker really is set after the blocked attempt')
+
+  // Resources recover; the SAME attempt slot proceeds for real, but
+  // verification fails for a reason that has nothing to do with resources.
+  const failed = await runRepairAttempt({
+    finding: blocked.finding,
+    missionId,
+    canonicalRepoPath: CANONICAL_REPO_PATH,
+    clock,
+    deps: { dispatchWorker: fakeWorker(), runIndependentVerification: fakeVerifier('VERIFIED_FAIL', ['REPRODUCTION_STILL_FAILS']), ...LIFECYCLE_DEPS, ...FAKE_BASE_SHA_DEPS }
+  })
+  assert.equal(failed.outcome, 'VERIFIED_FAIL_WILL_RETRY_OR_ESCALATE_NEXT_TICK')
+  assert.equal(failed.finding.status, 'FIX_IN_PROGRESS')
+
+  const checkpointAfter = readPlannerMissionRecord(missionId).checkpoint
+  assert.equal(checkpointAfter.resourceState, null, 'the stale resource-wait marker must be cleared once a real dispatch proceeds')
+
+  const items = buildFleetAttentionItems({
+    projects: [],
+    selfImprovementFindings: { [failed.finding.findingId]: failed.finding },
+    plannerMissionRecords: { [missionId]: readPlannerMissionRecord(missionId) },
+    clock
+  })
+  assert.equal(
+    items.find((item) => item.category === 'WAITING_FOR_RESOURCES'),
+    undefined,
+    'a finding that is genuinely progressing (dispatched, verified, failed for an unrelated reason) must never show a false "waiting for resources" attention item'
   )
 })
 

@@ -283,6 +283,28 @@ export async function runRepairAttempt({
     throw error
   }
   const worker = dispatch.worker
+  // Independent-adversarial-review finding (real, reproduced): a resource-
+  // pressure marker recorded by an earlier BLOCKED_BY_RESOURCE_PRESSURE
+  // attempt on this SAME attempt slot (resource refusals never consume
+  // budget, so a retry reuses the same attemptNumber/taskFingerprint) was
+  // never cleared once a later attempt genuinely proceeded past the
+  // resource check -- so a finding that had since moved on to a real
+  // dispatch, and even failed verification for a completely unrelated
+  // reason, still showed a stale, false WAITING_FOR_RESOURCES attention
+  // item. Reaching this point means resource pressure is NOT currently
+  // blocking this mission (dispatch just succeeded, whether freshly or as
+  // an already-registered resume) -- clear any stale marker so the
+  // projection stays honest. Cheap, conditional: only writes if a marker
+  // was actually present, so a mission that was never resource-blocked
+  // never gets a needless extra checkpoint revision.
+  const readRecordForClear = deps.readPlannerMissionRecord ?? readPlannerMissionRecord
+  if (readRecordForClear(missionId)?.checkpoint?.resourceState) {
+    const writeRecordForClear = deps.withPlannerMissionRecord ?? withPlannerMissionRecord
+    await writeRecordForClear(missionId, (current) => ({
+      ...current,
+      checkpoint: recordResourceState(current.checkpoint, null, clock)
+    }))
+  }
   // Re-derived, not read off `worker` -- see the real-bug comment above.
   const worktreePath = deriveRepairAttemptWorktreePath({
     canonicalRepoPath,
