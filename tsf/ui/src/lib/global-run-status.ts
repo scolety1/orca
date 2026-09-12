@@ -106,12 +106,24 @@ export function resolveAttentionDeepLink(item: AttentionItem): string | null {
 // READY_FOR_ADOPTION) already reaches this indicator via its own real
 // liveWorkFeed, so including it here too would double-count the same real
 // fact.
+//
+// TSF Reconcile & Upgrade Protocol V1, Lane 5 (continuation of Lane 4's
+// own hold-surfacing family): a real, active PROJECT_EXECUTION_HOLD has
+// no liveWorkFeed of its own either -- a hold gates dispatch, it does not
+// itself flip a project's legacy work.blocked/liveWorkFeed classification
+// (project-execution-hold-store.mjs is its own durable store). Lane 4
+// fixed this indicator's sibling (HQPage.tsx's buildOtherNeedsYouItems)
+// but missed this one -- THIS component is mounted once in AppShell.tsx,
+// visible from every page, not just HQ, so a real active hold was
+// invisible in the one place an operator can check "what's happening"
+// from anywhere in the app.
 export function selectExtraAttentionItems(items: AttentionItem[]): AttentionItem[] {
   return items.filter(
     (i) =>
       i.source.kind === 'SELF_IMPROVEMENT_FINDING' ||
       i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ||
       i.source.kind === 'PROJECT_ADOPTION_CANDIDATE' ||
+      i.source.kind === 'PROJECT_EXECUTION_HOLD' ||
       i.category === 'WAITING_FOR_RESOURCES'
   )
 }

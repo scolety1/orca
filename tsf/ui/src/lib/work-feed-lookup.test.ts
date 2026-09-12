@@ -49,3 +49,13 @@ test('liveWorkFeedBadgeVariant: STALLED reads as blocked (urgent), READY_FOR_ADO
 test('liveWorkFeedBadgeVariant: an unrecognized state falls back to neutral, never throws', () => {
   assert.equal(liveWorkFeedBadgeVariant('SOMETHING_NEW'), 'neutral')
 })
+
+// TSF Reconcile & Upgrade Protocol V1, Lane 5: BLOCKED_EXTERNAL (a real,
+// active project execution hold's category, now merged into
+// GlobalRunStatusIndicator by global-run-status.ts's
+// selectExtraAttentionItems) must read as urgent (blocked), never fall
+// back to the bland 'neutral' default -- that fallback would silently
+// understate a real, active hold.
+test('liveWorkFeedBadgeVariant: BLOCKED_EXTERNAL (a real active project execution hold) reads as blocked, not the neutral fallback', () => {
+  assert.equal(liveWorkFeedBadgeVariant('BLOCKED_EXTERNAL'), 'blocked')
+})

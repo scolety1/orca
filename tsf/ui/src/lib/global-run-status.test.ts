@@ -40,7 +40,9 @@ test('an empty WorkSummary -> no items', () => {
 })
 
 test('a legacy work.blocked/active project with no liveWorkFeed is honestly excluded -- no run to report on', () => {
-  const work = emptyWork({ active: [{ id: 'legacy-1', displayName: 'legacy' } as WorkSummary['active'][number]] })
+  const work = emptyWork({
+    active: [{ id: 'legacy-1', displayName: 'legacy' } as WorkSummary['active'][number]]
+  })
   assert.deepEqual(buildGlobalRunStatusItems(work), [])
 })
 
@@ -115,7 +117,10 @@ test('WAITING vs WAITING: a paused run and a dispatch-lock-held run share the sa
   })
   const items = buildGlobalRunStatusItems(emptyWork({ active: [paused, lockHeld] }))
   assert.equal(items.find((i) => i.id === 'paused-proj')?.reason, 'run state is PAUSED')
-  assert.equal(items.find((i) => i.id === 'lock-proj')?.reason, 'a dispatch tick currently holds the run lock')
+  assert.equal(
+    items.find((i) => i.id === 'lock-proj')?.reason,
+    'a dispatch tick currently holds the run lock'
+  )
 })
 
 // A run genuinely started but with no checkpoint activity beyond its own
@@ -177,10 +182,23 @@ test('selectExtraAttentionItems: includes every self-improvement-sourced item an
     project: null,
     source: { kind: 'RESOURCE_PRESSURE_TIER', id: 'CRITICAL' }
   })
-  const projectNeedsOwner = attentionItem({ id: 'needsyou:PROJECT:1', source: { kind: 'KEEP_GOING_RUN', id: 'p1' } })
-  const projectStalled = attentionItem({ id: 'run:p1:stalled', category: 'FAILED_REQUIRES_ATTENTION', source: { kind: 'KEEP_GOING_RUN', id: 'p1' } })
+  const projectNeedsOwner = attentionItem({
+    id: 'needsyou:PROJECT:1',
+    source: { kind: 'KEEP_GOING_RUN', id: 'p1' }
+  })
+  const projectStalled = attentionItem({
+    id: 'run:p1:stalled',
+    category: 'FAILED_REQUIRES_ATTENTION',
+    source: { kind: 'KEEP_GOING_RUN', id: 'p1' }
+  })
 
-  const result = selectExtraAttentionItems([attentionItem(), selfImprovementReady, resourcePressure, projectNeedsOwner, projectStalled])
+  const result = selectExtraAttentionItems([
+    attentionItem(),
+    selfImprovementReady,
+    resourcePressure,
+    projectNeedsOwner,
+    projectStalled
+  ])
   assert.deepEqual(
     result.map((i) => i.id).sort(),
     ['finding:x', 'finding:y', 'resource-pressure:CRITICAL'].sort()
@@ -227,18 +245,67 @@ test('selectExtraAttentionItems: includes a planner-mission-needsYou-sourced ite
     deepLink: { kind: 'PLANNER_MISSION', id: 'mission-1' },
     source: { kind: 'PLANNER_MISSION_NEEDS_YOU', id: 'entry-1' }
   })
-  const projectNeedsOwner = attentionItem({ id: 'needsyou:PROJECT:1', source: { kind: 'KEEP_GOING_RUN', id: 'p1' } })
+  const projectNeedsOwner = attentionItem({
+    id: 'needsyou:PROJECT:1',
+    source: { kind: 'KEEP_GOING_RUN', id: 'p1' }
+  })
 
   const result = selectExtraAttentionItems([plannerNeedsYou, projectNeedsOwner])
-  assert.deepEqual(result.map((i) => i.id), ['needsyou:PLANNER:entry-1'])
+  assert.deepEqual(
+    result.map((i) => i.id),
+    ['needsyou:PLANNER:entry-1']
+  )
+})
+
+// TSF Reconcile & Upgrade Protocol V1, Lane 5 (continuation of Lane 4's
+// own hold-surfacing family): a real, active PROJECT_EXECUTION_HOLD has
+// no liveWorkFeed of its own either (same reasoning as a self-improvement
+// finding/planner needsYou item) -- was previously silently excluded from
+// this indicator, which is mounted in AppShell.tsx and visible from
+// every page, not just HQ.
+test('selectExtraAttentionItems: includes a real active project execution hold', () => {
+  const hold = attentionItem({
+    id: 'hold:proj-1',
+    category: 'BLOCKED_EXTERNAL',
+    project: { id: 'proj-1', displayName: 'Project One' },
+    deepLink: { kind: 'PROJECT', id: 'proj-1' },
+    source: { kind: 'PROJECT_EXECUTION_HOLD', id: 'proj-1' }
+  })
+  const projectNeedsOwner = attentionItem({
+    id: 'needsyou:PROJECT:1',
+    source: { kind: 'KEEP_GOING_RUN', id: 'p1' }
+  })
+
+  const result = selectExtraAttentionItems([hold, projectNeedsOwner])
+  assert.deepEqual(
+    result.map((i) => i.id),
+    ['hold:proj-1']
+  )
 })
 
 test('resolveAttentionDeepLink: a PROJECT deep link resolves to the real project route; every other kind is honestly null (no route exists yet)', () => {
-  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'PROJECT', id: 'proj-1' } })), '/projects/proj-1')
-  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'RESEARCH_MISSION', id: 'm1' } })), null)
-  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'PLANNER_MISSION', id: 'm1' } })), null)
-  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:x' } })), null)
-  assert.equal(resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'RESOURCE_PRESSURE', id: null } })), null)
+  assert.equal(
+    resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'PROJECT', id: 'proj-1' } })),
+    '/projects/proj-1'
+  )
+  assert.equal(
+    resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'RESEARCH_MISSION', id: 'm1' } })),
+    null
+  )
+  assert.equal(
+    resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'PLANNER_MISSION', id: 'm1' } })),
+    null
+  )
+  assert.equal(
+    resolveAttentionDeepLink(
+      attentionItem({ deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: 'finding:x' } })
+    ),
+    null
+  )
+  assert.equal(
+    resolveAttentionDeepLink(attentionItem({ deepLink: { kind: 'RESOURCE_PRESSURE', id: null } })),
+    null
+  )
 })
 
 test('attentionItemToGlobalRunStatusItem: maps a real attention item field-for-field, falling back to label when no project is known', () => {
@@ -256,7 +323,10 @@ test('attentionItemToGlobalRunStatusItem: maps a real attention item field-for-f
 
 test('attentionItemToGlobalRunStatusItem: uses the real project displayName when a project is known', () => {
   const mapped = attentionItemToGlobalRunStatusItem(
-    attentionItem({ project: { id: 'proj-1', displayName: 'Project One' }, deepLink: { kind: 'PROJECT', id: 'proj-1' } })
+    attentionItem({
+      project: { id: 'proj-1', displayName: 'Project One' },
+      deepLink: { kind: 'PROJECT', id: 'proj-1' }
+    })
   )
   assert.equal(mapped.displayName, 'Project One')
   assert.equal(mapped.linkTo, '/projects/proj-1')

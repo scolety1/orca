@@ -36,9 +36,17 @@ export function buildLiveWorkFeedLookup(
 // liveWorkFeed state string above, so both vocabularies share one map
 // (READY_FOR_ADOPTION is deliberately the SAME key/color in both -- genuinely
 // the same real meaning) rather than a second parallel function callers
-// would have to choose between. BLOCKED_EXTERNAL intentionally omitted --
-// never one of the categories GlobalRunStatusIndicator merges in (see
-// global-run-status.ts's selectExtraAttentionItems).
+// would have to choose between.
+//
+// TSF Reconcile & Upgrade Protocol V1, Lane 5: BLOCKED_EXTERNAL was
+// previously omitted here on the theory it was never one of the
+// categories GlobalRunStatusIndicator merges in -- global-run-status.ts's
+// selectExtraAttentionItems now includes PROJECT_EXECUTION_HOLD (its own
+// real gap fix), which always carries this category, so an entry is
+// required here too or a real, active hold would render with the bland
+// 'neutral' fallback (a silently understated, not-actually-neutral
+// state) instead of correctly reading as blocked, same as STALLED/
+// FAILED_REQUIRES_ATTENTION.
 const BADGE_VARIANT: Record<string, 'primary' | 'neutral' | 'degraded' | 'healthy' | 'blocked'> = {
   PLANNING: 'neutral',
   WORKING: 'primary',
@@ -52,7 +60,8 @@ const BADGE_VARIANT: Record<string, 'primary' | 'neutral' | 'degraded' | 'health
   NEEDS_OWNER: 'degraded',
   FAILED_REQUIRES_ATTENTION: 'blocked',
   WAITING_FOR_RESOURCES: 'degraded',
-  COMPLETED_RECENTLY: 'healthy'
+  COMPLETED_RECENTLY: 'healthy',
+  BLOCKED_EXTERNAL: 'blocked'
 }
 
 // Same live-work-feed state vocabulary (now extended with the fleet-
