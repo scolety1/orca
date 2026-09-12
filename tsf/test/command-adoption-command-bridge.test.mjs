@@ -29,7 +29,11 @@ test('respondAdoptionCommand: ambiguous phrasing returns a NEEDS_OWNER-shaped re
     exactMatchProjects: [project('worldforge', 'WorldForge')],
     projects: [project('worldforge', 'WorldForge')],
     clock,
-    deps: { executeCommandAdoption: async () => { throw new Error('must never be called for ambiguous phrasing') } }
+    deps: {
+      executeCommandAdoption: async () => {
+        throw new Error('must never be called for ambiguous phrasing')
+      }
+    }
   })
   assert.equal(result.decisionClass, 'NEEDS_OWNER')
   assert.match(result.text, /won't guess/)
@@ -57,7 +61,14 @@ test('respondAdoptionCommand: explicit intent + exact project match calls the re
     deps: {
       executeCommandAdoption: async ({ project: p }) => {
         calledWith = p
-        return { ok: true, alreadyIncluded: false, priorCanonicalSha: 'a'.repeat(40), candidateSha: 'b'.repeat(40), resultingCanonicalSha: 'b'.repeat(40), receipt: { receiptHash: 'c'.repeat(64) } }
+        return {
+          ok: true,
+          alreadyIncluded: false,
+          priorCanonicalSha: 'a'.repeat(40),
+          candidateSha: 'b'.repeat(40),
+          resultingCanonicalSha: 'b'.repeat(40),
+          receipt: { receiptHash: 'c'.repeat(64) }
+        }
       }
     }
   })
@@ -74,7 +85,11 @@ test('respondAdoptionCommand: explicit intent + exact project match reports a re
     projects: [worldforge],
     clock,
     deps: {
-      executeCommandAdoption: async () => ({ ok: false, reason: 'NOT_READY_FOR_ADOPTION', detail: 'state is ACTIVE, requires COMPLETE' })
+      executeCommandAdoption: async () => ({
+        ok: false,
+        reason: 'NOT_READY_FOR_ADOPTION',
+        detail: 'state is ACTIVE, requires COMPLETE'
+      })
     }
   })
   assert.match(result.text, /couldn't adopt/)
@@ -87,8 +102,20 @@ test('respondAdoptionCommand: "adopt both of those" resolves via referent resolu
   const worldforge = project('worldforge', 'WorldForge')
   const nwr = project('niners-war-room', 'Niners War Room')
   const priorResultItems = [
-    { id: 'run:worldforge:readyForAdoption', category: 'READY_FOR_ADOPTION', label: 'WorldForge', project: { id: 'worldforge', displayName: 'WorldForge' }, reason: 'ready' },
-    { id: 'run:niners-war-room:readyForAdoption', category: 'READY_FOR_ADOPTION', label: 'Niners War Room', project: { id: 'niners-war-room', displayName: 'Niners War Room' }, reason: 'ready' }
+    {
+      id: 'run:worldforge:readyForAdoption',
+      category: 'READY_FOR_ADOPTION',
+      label: 'WorldForge',
+      project: { id: 'worldforge', displayName: 'WorldForge' },
+      reason: 'ready'
+    },
+    {
+      id: 'run:niners-war-room:readyForAdoption',
+      category: 'READY_FOR_ADOPTION',
+      label: 'Niners War Room',
+      project: { id: 'niners-war-room', displayName: 'Niners War Room' },
+      reason: 'ready'
+    }
   ]
   const calledProjectIds = []
   const result = await respondAdoptionCommand({
@@ -100,7 +127,14 @@ test('respondAdoptionCommand: "adopt both of those" resolves via referent resolu
     deps: {
       executeCommandAdoption: async ({ project: p }) => {
         calledProjectIds.push(p.id)
-        return { ok: true, alreadyIncluded: true, priorCanonicalSha: 'a'.repeat(40), candidateSha: 'a'.repeat(40), resultingCanonicalSha: 'a'.repeat(40), receipt: { receiptHash: 'c'.repeat(64) } }
+        return {
+          ok: true,
+          alreadyIncluded: true,
+          priorCanonicalSha: 'a'.repeat(40),
+          candidateSha: 'a'.repeat(40),
+          resultingCanonicalSha: 'a'.repeat(40),
+          receipt: { receiptHash: 'c'.repeat(64) }
+        }
       }
     }
   })
@@ -115,7 +149,11 @@ test('respondAdoptionCommand: explicit intent, no exact match, no resolvable ref
     priorResultItems: [],
     projects: [],
     clock,
-    deps: { executeCommandAdoption: async () => { throw new Error('must never be called with no resolvable target') } }
+    deps: {
+      executeCommandAdoption: async () => {
+        throw new Error('must never be called with no resolvable target')
+      }
+    }
   })
   assert.equal(result.decisionClass, 'NEEDS_OWNER')
   assert.match(result.text, /can't tell which candidate/)
@@ -143,11 +181,21 @@ test('respondAdoptionCommand: 2+ exact-matched projects alongside adoption langu
     deps: {
       executeCommandAdoption: async ({ project: p }) => {
         calledProjectIds.push(p.id)
-        return { ok: true, alreadyIncluded: false, priorCanonicalSha: 'a'.repeat(40), resultingCanonicalSha: 'b'.repeat(40), receipt: { receiptHash: 'c'.repeat(40) } }
+        return {
+          ok: true,
+          alreadyIncluded: false,
+          priorCanonicalSha: 'a'.repeat(40),
+          resultingCanonicalSha: 'b'.repeat(40),
+          receipt: { receiptHash: 'c'.repeat(40) }
+        }
       }
     }
   })
-  assert.deepEqual(calledProjectIds, [], 'no real adoption attempt must be made against any project when the target is genuinely ambiguous')
+  assert.deepEqual(
+    calledProjectIds,
+    [],
+    'no real adoption attempt must be made against any project when the target is genuinely ambiguous'
+  )
   assert.equal(result.decisionClass, 'NEEDS_OWNER')
   assert.match(result.text, /won't guess/)
   assert.match(result.text, /Batch12ProjectX/)
@@ -167,7 +215,13 @@ test('respondAdoptionCommand: a single exact-matched project still adopts normal
     deps: {
       executeCommandAdoption: async ({ project: p }) => {
         calledProjectIds.push(p.id)
-        return { ok: true, alreadyIncluded: false, priorCanonicalSha: 'a'.repeat(40), resultingCanonicalSha: 'b'.repeat(40), receipt: { receiptHash: 'c'.repeat(40) } }
+        return {
+          ok: true,
+          alreadyIncluded: false,
+          priorCanonicalSha: 'a'.repeat(40),
+          resultingCanonicalSha: 'b'.repeat(40),
+          receipt: { receiptHash: 'c'.repeat(40) }
+        }
       }
     }
   })
@@ -184,7 +238,7 @@ test('respondAdoptionCommand: a single exact-matched project still adopts normal
 // closes the dangerous consequence for this exact message shape. This
 // test pins that end-to-end guarantee so the corpus's own regressionTestFile
 // reference for CASE-32 has real, matching coverage.
-test('CASE-32 (deferred, disclosed): the decomposer-level comma-bleed never reaches a real adoption, because CASE-29\'s own multi-match refusal still applies', async () => {
+test("CASE-32 (deferred, disclosed): the decomposer-level comma-bleed never reaches a real adoption, because CASE-29's own multi-match refusal still applies", async () => {
   const projectA = project('case32-project-a', 'Case32ProjectA')
   const projectB = project('case32-project-b', 'Case32ProjectB')
   const calledProjectIds = []
@@ -196,10 +250,53 @@ test('CASE-32 (deferred, disclosed): the decomposer-level comma-bleed never reac
     deps: {
       executeCommandAdoption: async ({ project: p }) => {
         calledProjectIds.push(p.id)
-        return { ok: true, alreadyIncluded: false, priorCanonicalSha: 'a'.repeat(40), resultingCanonicalSha: 'b'.repeat(40), receipt: { receiptHash: 'c'.repeat(40) } }
+        return {
+          ok: true,
+          alreadyIncluded: false,
+          priorCanonicalSha: 'a'.repeat(40),
+          resultingCanonicalSha: 'b'.repeat(40),
+          receipt: { receiptHash: 'c'.repeat(40) }
+        }
       }
     }
   })
-  assert.deepEqual(calledProjectIds, [], 'no real adoption attempt for either project despite the decomposer-level comma-bleed')
+  assert.deepEqual(
+    calledProjectIds,
+    [],
+    'no real adoption attempt for either project despite the decomposer-level comma-bleed'
+  )
   assert.equal(result.decisionClass, 'NEEDS_OWNER')
+})
+
+test('Stage 2 Phase 2 convergence: an explicit single-project adoption reaches the canonical action-executor (deps.executeAction), not executeCommandAdoption directly', async () => {
+  const target = project('convergence-adopt-target', 'ConvergenceAdoptTarget')
+  const calls = []
+  await respondAdoptionCommand({
+    message: 'adopt it',
+    exactMatchProjects: [target],
+    priorResultItems: [
+      {
+        id: `run:${target.id}:readyForAdoption`,
+        category: 'READY_FOR_ADOPTION',
+        project: { id: target.id, displayName: target.displayName }
+      }
+    ],
+    projects: [target],
+    clock,
+    deps: {
+      executeAction: async (request) => {
+        calls.push(request)
+        return {
+          ok: true,
+          alreadyIncluded: false,
+          priorCanonicalSha: 'a'.repeat(40),
+          resultingCanonicalSha: 'b'.repeat(40),
+          receipt: { receiptHash: 'c'.repeat(64) }
+        }
+      }
+    }
+  })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].type, 'ADOPT')
+  assert.equal(calls[0].target.id, target.id)
 })

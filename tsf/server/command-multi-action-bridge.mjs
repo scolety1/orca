@@ -21,7 +21,6 @@ import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
 import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { classifyAdoptionCommandIntent } from '../domain/command-adoption-execution.mjs'
-import { executeCommandAdoption } from './command-adoption-execution.mjs'
 import { readAllProjectCanonicalBases } from './project-canonical-base-store.mjs'
 import { executeAction } from './action-executor.mjs'
 
@@ -213,8 +212,8 @@ async function executeAdoptionCandidate(project, rawClause, opState, clock, deps
   if (classification === 'NOT_ADOPTION') {
     return reportAdoptionCandidate(project, opState, clock, deps)
   }
-  const execute = deps.executeCommandAdoption ?? executeCommandAdoption
-  const result = await execute({ project, clock, deps })
+  const execute = deps.executeAction ?? executeAction
+  const result = await execute({ type: 'ADOPT', target: project, clock, deps })
   if (result.ok) {
     return {
       text: result.alreadyIncluded

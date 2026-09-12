@@ -9,9 +9,9 @@
 // engine (server/command-adoption-execution.mjs) -- never two execution
 // paths.
 import { classifyAdoptionCommandIntent } from '../domain/command-adoption-execution.mjs'
-import { executeCommandAdoption } from './command-adoption-execution.mjs'
 import { resolveCommandReferent } from '../domain/command-referent-resolution.mjs'
 import { trimAttentionItem } from '../domain/fleet-attention-status.mjs'
+import { executeAction } from './action-executor.mjs'
 
 // `projects` (optional, the real registered project list): threaded
 // through to classifyAdoptionCommandIntent's own accept/approve object-
@@ -54,11 +54,11 @@ function outcomeText(project, result) {
 }
 
 async function adoptForProjects(targetProjects, clock, deps) {
-  const execute = deps.executeCommandAdoption ?? executeCommandAdoption
+  const execute = deps.executeAction ?? executeAction
   const outcomes = []
   for (const project of targetProjects) {
     // eslint-disable-next-line no-await-in-loop -- a real, deliberate merge per project; sequential keeps a real git working-tree op from racing another project's own, never a correctness dependency between them
-    const result = await execute({ project, clock, deps })
+    const result = await execute({ type: 'ADOPT', target: project, clock, deps })
     outcomes.push({ project, result })
   }
   return outcomes
@@ -78,13 +78,15 @@ function respondFromOutcomes(outcomes) {
     scope: outcomes.length > 1 ? 'MULTI_PROJECT' : 'PROJECT',
     resultItems: outcomes
       .filter(({ result }) => !result.ok)
-      .map(({ project, result }) => trimAttentionItem({
-        id: `adoption-command:${project.id}`,
-        category: result.reason === 'PROJECT_EXECUTION_HOLD_ACTIVE' ? 'BLOCKED_EXTERNAL' : null,
-        label: project.displayName,
-        project: { id: project.id, displayName: project.displayName },
-        reason: `${result.reason}${result.detail ? `: ${result.detail}` : ''}`
-      }))
+      .map(({ project, result }) =>
+        trimAttentionItem({
+          id: `adoption-command:${project.id}`,
+          category: result.reason === 'PROJECT_EXECUTION_HOLD_ACTIVE' ? 'BLOCKED_EXTERNAL' : null,
+          label: project.displayName,
+          project: { id: project.id, displayName: project.displayName },
+          reason: `${result.reason}${result.detail ? `: ${result.detail}` : ''}`
+        })
+      )
   }
 }
 
@@ -95,7 +97,14 @@ function respondFromOutcomes(outcomes) {
 // the prior __command__ turn's trimmed AttentionItem[] (Part A2), used only
 // when the message itself named no project at all (a referring phrase like
 // "adopt both of those").
-export async function respondAdoptionCommand({ message, exactMatchProjects = [], priorResultItems = [], projects, clock = () => new Date(), deps = {} }) {
+export async function respondAdoptionCommand({
+  message,
+  exactMatchProjects = [],
+  priorResultItems = [],
+  projects,
+  clock = () => new Date(),
+  deps = {}
+}) {
   const classification = classifyAdoptionCommandIntent(message, projects)
   if (classification === 'NOT_ADOPTION') {
     return null
@@ -140,7 +149,8 @@ export async function respondAdoptionCommand({ message, exactMatchProjects = [],
       decisionClass: 'NEEDS_OWNER',
       text: `That names more than one project alongside adoption language (${exactMatchProjects.map((p) => `**${p.displayName}**`).join(', ')}) -- I won't guess which one(s) you actually meant to adopt. Say "adopt <project>" for exactly the one you mean.`,
       plannerRole: 'PLANNER_DEEP',
-      providerLabel: 'PLANNER_DEEP · adoption target ambiguous across multiple named projects, no action taken',
+      providerLabel:
+        'PLANNER_DEEP · adoption target ambiguous across multiple named projects, no action taken',
       live: false,
       resolvedProjectIds: [],
       scope: 'ADOPTION_COMMAND',
@@ -157,14 +167,19 @@ export async function respondAdoptionCommand({ message, exactMatchProjects = [],
         decisionClass: 'NEEDS_OWNER',
         text: `I found what you're referring to, but none of it is actually ready for adoption right now -- nothing to do.`,
         plannerRole: 'PLANNER_DEEP',
-        providerLabel: 'PLANNER_DEEP · adoption referent resolved to no ready-for-adoption candidate',
+        providerLabel:
+          'PLANNER_DEEP · adoption referent resolved to no ready-for-adoption candidate',
         live: false,
         resolvedProjectIds: [],
         scope: 'ADOPTION_COMMAND'
       }
     }
-    const targetProjectIds = [...new Set(readyItems.map((item) => item.project?.id).filter(Boolean))]
-    const targetProjects = targetProjectIds.map((id) => projects.find((p) => p.id === id)).filter(Boolean)
+    const targetProjectIds = [
+      ...new Set(readyItems.map((item) => item.project?.id).filter(Boolean))
+    ]
+    const targetProjects = targetProjectIds
+      .map((id) => projects.find((p) => p.id === id))
+      .filter(Boolean)
     if (targetProjects.length === 0) {
       return ambiguousResponse(message)
     }
@@ -179,7 +194,8 @@ export async function respondAdoptionCommand({ message, exactMatchProjects = [],
     decisionClass: 'NEEDS_OWNER',
     text: `I can't tell which candidate you mean -- name a project (by id or display name) before I adopt anything.`,
     plannerRole: 'PLANNER_DEEP',
-    providerLabel: 'PLANNER_DEEP · adoption intent explicit, but no confidently-identified candidate',
+    providerLabel:
+      'PLANNER_DEEP · adoption intent explicit, but no confidently-identified candidate',
     live: false,
     resolvedProjectIds: [],
     scope: 'ADOPTION_COMMAND'

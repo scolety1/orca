@@ -283,17 +283,25 @@ test('Stage 2 Phase 1 convergence: a PAUSE entry reaches the canonical action-ex
       }
     ],
     deps: {
+      // Type-aware: both PAUSE and ADOPT now converge on this SAME
+      // deps.executeAction seam (Stage 2 Phase 2), so a spy that ignores
+      // request.type would wrongly intercept the ADOPT entry too and hand
+      // it back a PAUSE-shaped result -- only PAUSE is spied on here; ADOPT
+      // gets a real adoption-shaped stub result, matching what the real
+      // executor would produce.
       executeAction: async (request) => {
-        calls.push(request)
-        return { ok: true, action: 'PAUSE' }
-      },
-      executeCommandAdoption: async () => ({
-        ok: true,
-        alreadyIncluded: false,
-        priorCanonicalSha: 'a'.repeat(40),
-        resultingCanonicalSha: 'b'.repeat(40),
-        receipt: { receiptHash: 'c'.repeat(64) }
-      })
+        if (request.type === 'PAUSE') {
+          calls.push(request)
+          return { ok: true, action: 'PAUSE' }
+        }
+        return {
+          ok: true,
+          alreadyIncluded: false,
+          priorCanonicalSha: 'a'.repeat(40),
+          resultingCanonicalSha: 'b'.repeat(40),
+          receipt: { receiptHash: 'c'.repeat(64) }
+        }
+      }
     }
   })
   assert.equal(calls.length, 1)
