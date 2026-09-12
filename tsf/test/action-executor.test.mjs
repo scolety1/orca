@@ -2,8 +2,11 @@
 // action-execution boundary. executeAction reimplements nothing: it is a
 // thin, typed dispatch layer over already-correct primitives --
 // pauseProjectRun/resumeProjectRun/classifyContinueAction
-// (command-run-action-bridge.mjs, Phase 1) and executeCommandAdoption
-// (command-adoption-execution.mjs, Phase 2).
+// (command-run-action-bridge.mjs, Phase 1), executeCommandAdoption
+// (command-adoption-execution.mjs, Phase 2), and
+// createProjectExecutionHold/releaseProjectExecutionHold/
+// withProjectExecutionHold (domain/project-execution-hold.mjs +
+// project-execution-hold-store.mjs, Phase 3).
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { executeAction } from '../server/action-executor.mjs'
@@ -99,11 +102,11 @@ test('RESUME: a thrown resumeProjectRun error is caught and reported as a typed 
 })
 
 test('an unsupported action type is honestly refused, never silently ignored or guessed at', async () => {
-  const result = await executeAction({ type: 'HOLD', target: 'p1', clock })
+  const result = await executeAction({ type: 'RERUN_FAILED', target: 'p1', clock })
   assert.deepEqual(result, {
     ok: false,
     reason: 'UNSUPPORTED_ACTION',
-    detail: 'unsupported action type: HOLD'
+    detail: 'unsupported action type: RERUN_FAILED'
   })
 })
 
@@ -155,4 +158,75 @@ test('ADOPT: a genuinely UNEXPECTED thrown error (not an expected {ok:false} ref
     }
   })
   assert.deepEqual(result, { ok: false, reason: 'ADOPT_FAILED', detail: 'git subprocess crashed' })
+})
+
+test('HOLD: creates a real hold via withProjectExecutionHold/createProjectExecutionHold when none is active', async () => {
+  const writes = []
+  const created = { status: 'ACTIVE', note: 'external work active' }
+  const result = await executeAction({
+    type: 'HOLD',
+    target: 'p1',
+    parameters: { note: 'external work active' },
+    clock,
+    deps: {
+      withProjectExecutionHold: async (projectId, mutate) => {
+        const next = mutate(null)
+        writes.push([projectId, next])
+        return next
+      },
+      createProjectExecutionHold: () => created
+    }
+  })
+  assert.deepEqual(result, { ok: true, action: 'HOLD', hold: created })
+  assert.deepEqual(writes, [['p1', created]])
+})
+
+test('HOLD: idempotent -- an already-ACTIVE hold is returned unchanged, never re-created', async () => {
+  const existing = { status: 'ACTIVE', note: 'original reason' }
+  let createCalled = false
+  const result = await executeAction({
+    type: 'HOLD',
+    target: 'p1',
+    clock,
+    deps: {
+      withProjectExecutionHold: async (projectId, mutate) => mutate(existing),
+      createProjectExecutionHold: () => {
+        createCalled = true
+      }
+    }
+  })
+  assert.deepEqual(result, { ok: true, action: 'HOLD', hold: existing })
+  assert.equal(createCalled, false)
+})
+
+test('RELEASE_HOLD: releases a real active hold, reports releasedSomething true', async () => {
+  const existing = { status: 'ACTIVE' }
+  const released = { status: 'RELEASED' }
+  const result = await executeAction({
+    type: 'RELEASE_HOLD',
+    target: 'p1',
+    clock,
+    deps: {
+      withProjectExecutionHold: async (projectId, mutate) => mutate(existing),
+      releaseProjectExecutionHold: () => released
+    }
+  })
+  assert.deepEqual(result, { ok: true, action: 'RELEASE_HOLD', releasedSomething: true })
+})
+
+test('RELEASE_HOLD: no active hold -> honest no-op, releasedSomething false, never calls releaseProjectExecutionHold', async () => {
+  let releaseCalled = false
+  const result = await executeAction({
+    type: 'RELEASE_HOLD',
+    target: 'p1',
+    clock,
+    deps: {
+      withProjectExecutionHold: async (projectId, mutate) => mutate(null),
+      releaseProjectExecutionHold: () => {
+        releaseCalled = true
+      }
+    }
+  })
+  assert.deepEqual(result, { ok: true, action: 'RELEASE_HOLD', releasedSomething: false })
+  assert.equal(releaseCalled, false)
 })

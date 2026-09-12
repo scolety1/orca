@@ -12,13 +12,8 @@
 import { decomposeMultiAction } from '../domain/command-multi-action-decomposition.mjs'
 import { trimAttentionItem, buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
 import { fleetWorkStatus } from '../domain/fleet-work-status.mjs'
-import {
-  createProjectExecutionHold,
-  releaseProjectExecutionHold
-} from '../domain/project-execution-hold.mjs'
 import { classifyDecision, classifyIntent } from './chat-responder.mjs'
 import { planAndDispatchFromCommand } from './chat-dispatch-bridge.mjs'
-import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { classifyAdoptionCommandIntent } from '../domain/command-adoption-execution.mjs'
 import { readAllProjectCanonicalBases } from './project-canonical-base-store.mjs'
@@ -99,22 +94,16 @@ export function classifySingleTargetHoldEntries(message, projects, aliases) {
 // (A6). Idempotent: re-stating an already-held project doesn't overwrite
 // its original setBy/setAt/reason.
 async function applyExternalWorkHold(project, rawClause, clock, deps) {
-  const withHold = deps.withProjectExecutionHold ?? withProjectExecutionHold
-  const hold = await withHold(project.id, (current) =>
-    current && current.status === 'ACTIVE'
-      ? current
-      : createProjectExecutionHold(
-          {
-            projectId: project.id,
-            reason: 'EXTERNAL_WORK_ACTIVE',
-            setBy: 'OPERATOR_CHAT',
-            note: rawClause
-          },
-          clock
-        )
-  )
+  const execute = deps.executeAction ?? executeAction
+  const result = await execute({
+    type: 'HOLD',
+    target: project.id,
+    parameters: { note: rawClause },
+    clock,
+    deps
+  })
   return {
-    text: `Held -- ${hold.note ?? 'external work active'} (recorded, releasable later).`,
+    text: `Held -- ${result.hold.note ?? 'external work active'} (recorded, releasable later).`,
     category: 'BLOCKED_EXTERNAL',
     ok: true
   }
@@ -129,17 +118,15 @@ async function applyExternalWorkHold(project, rawClause, clock, deps) {
 // releasing an already-released (or never-held) project is an honest
 // no-op report, never a fabricated "released" claim.
 async function applyExternalWorkRelease(project, rawClause, clock, deps) {
-  const withHold = deps.withProjectExecutionHold ?? withProjectExecutionHold
-  const release = deps.releaseProjectExecutionHold ?? releaseProjectExecutionHold
-  let releasedSomething = false
-  await withHold(project.id, (current) => {
-    if (!current || current.status !== 'ACTIVE') {
-      return current // nothing active to release -- honest no-op, never fabricated
-    }
-    releasedSomething = true
-    return release(current, { releasedBy: 'OPERATOR_CHAT', reason: rawClause }, clock)
+  const execute = deps.executeAction ?? executeAction
+  const result = await execute({
+    type: 'RELEASE_HOLD',
+    target: project.id,
+    parameters: { reason: rawClause },
+    clock,
+    deps
   })
-  if (!releasedSomething) {
+  if (!result.releasedSomething) {
     return {
       text: `Nothing to release -- there is no active hold on ${project.displayName} right now.`,
       category: null,

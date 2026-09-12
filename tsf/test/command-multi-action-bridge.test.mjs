@@ -309,6 +309,43 @@ test('Stage 2 Phase 1 convergence: a PAUSE entry reaches the canonical action-ex
   assert.equal(calls[0].target, target.id)
 })
 
+test('Stage 2 Phase 3 convergence: EXTERNAL_WORK_HOLD/RELEASE_HOLD entries reach deps.executeAction, not withProjectExecutionHold directly', async () => {
+  const holdTarget = project('convergence-hold-target', 'ConvergenceHoldTarget')
+  const releaseTarget = project('convergence-release-target', 'ConvergenceReleaseTarget')
+  const calls = []
+  const spy = async (request) => {
+    calls.push(request)
+    return request.type === 'HOLD'
+      ? { ok: true, action: 'HOLD', hold: { note: 'x' } }
+      : { ok: true, action: 'RELEASE_HOLD', releasedSomething: true }
+  }
+  await respondMultiActionCommand({
+    projects: [holdTarget, releaseTarget],
+    opState,
+    clock,
+    entries: [
+      {
+        target: holdTarget.id,
+        intent: 'EXTERNAL_WORK_HOLD',
+        rawClause: 'leave ConvergenceHoldTarget alone'
+      },
+      {
+        target: releaseTarget.id,
+        intent: 'RELEASE_HOLD',
+        rawClause: 'release the hold on ConvergenceReleaseTarget'
+      }
+    ],
+    deps: { executeAction: spy }
+  })
+  assert.deepEqual(
+    calls.map((c) => [c.type, c.target]),
+    [
+      ['HOLD', holdTarget.id],
+      ['RELEASE_HOLD', releaseTarget.id]
+    ]
+  )
+})
+
 test("PAUSE/RESUME failures are reported per target and never block another target's adoption", async () => {
   const pauseTarget = project('pause-failure-target', 'PauseFailureTarget')
   const resumeTarget = project('resume-failure-target', 'ResumeFailureTarget')
