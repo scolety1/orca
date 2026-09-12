@@ -9,7 +9,10 @@ import { classifyDispatchAdmission } from '../domain/resource-pressure-governor.
 import { buildWorkerPrompt } from '../domain/self-improvement-worker-prompt.mjs'
 import { resolveRole } from '../domain/routing.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
-import { createIsolatedRepairWorktree, snapshotSiblingWorktreeStatuses } from './self-improvement-worktree.mjs'
+import {
+  createIsolatedRepairWorktree,
+  snapshotSiblingWorktreeStatuses
+} from './self-improvement-worktree.mjs'
 import providerRoleMappings from '../routing/provider-role-mappings.v1.json' with { type: 'json' }
 import launchProfiles from '../providers/launch-profiles.v1.json' with { type: 'json' }
 
@@ -19,7 +22,12 @@ import launchProfiles from '../providers/launch-profiles.v1.json' with { type: '
 // this kind of heavyweight dispatch.
 const ADMISSION_FIELD = 'newHeavyweightWorkerDispatch'
 
-const SAFE_PROVIDER_LAUNCH_SCRIPT = resolve(import.meta.dirname, '..', 'providers', 'safe-provider-launch.mjs')
+const SAFE_PROVIDER_LAUNCH_SCRIPT = resolve(
+  import.meta.dirname,
+  '..',
+  'providers',
+  'safe-provider-launch.mjs'
+)
 
 // safe-provider-launch.mjs's own launch-profile `command` template
 // literally spells out `--provider <codex|claude>` -- read from the SAME
@@ -28,7 +36,9 @@ const SAFE_PROVIDER_LAUNCH_SCRIPT = resolve(import.meta.dirname, '..', 'provider
 // silently drift from it.
 function providerFlagFromProfile(profile) {
   const match = profile.command.match(/--provider\s+(\S+)/)
-  if (!match) { throw new Error(`launch profile command has no --provider flag: ${profile.command}`) }
+  if (!match) {
+    throw new Error(`launch profile command has no --provider flag: ${profile.command}`)
+  }
   return match[1]
 }
 
@@ -61,7 +71,11 @@ export function deriveRepairAttemptBranch({ missionId, attemptNumber }) {
 }
 
 export function deriveRepairAttemptWorktreePath({ canonicalRepoPath, missionId, attemptNumber }) {
-  return resolve(canonicalRepoPath, '..', `${sanitizeRepairMissionIdForGit(missionId)}-attempt-${attemptNumber}`)
+  return resolve(
+    canonicalRepoPath,
+    '..',
+    `${sanitizeRepairMissionIdForGit(missionId)}-attempt-${attemptNumber}`
+  )
 }
 
 // Real default: spawns safe-provider-launch.mjs itself as a child, piped
@@ -74,7 +88,15 @@ function realSpawnProviderProcess({ provider, workspace, providerArguments, time
   return new Promise((resolvePromise) => {
     const child = spawn(
       process.execPath,
-      [SAFE_PROVIDER_LAUNCH_SCRIPT, '--provider', provider, '--workspace', workspace, '--', ...providerArguments],
+      [
+        SAFE_PROVIDER_LAUNCH_SCRIPT,
+        '--provider',
+        provider,
+        '--workspace',
+        workspace,
+        '--',
+        ...providerArguments
+      ],
       { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
     )
     let stdout = ''
@@ -84,11 +106,20 @@ function realSpawnProviderProcess({ provider, workspace, providerArguments, time
       timedOut = true
       child.kill('SIGTERM')
     }, timeoutMs)
-    child.stdout.on('data', (chunk) => { stdout += chunk })
-    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
     child.on('error', (error) => {
       clearTimeout(timer)
-      resolvePromise({ exitCode: null, stdout, stderr: `${stderr}\n${error.message}`, timedOut: false })
+      resolvePromise({
+        exitCode: null,
+        stdout,
+        stderr: `${stderr}\n${error.message}`,
+        timedOut: false
+      })
     })
     child.on('close', (code) => {
       clearTimeout(timer)
@@ -103,11 +134,24 @@ function realSpawnProviderProcess({ provider, workspace, providerArguments, time
 // shape planner-session-lifecycle.mjs's dispatchWorkerForTask expects
 // ({ workerId, providerId, agentId, ... }) plus the worktree facts the
 // verifier/adoption steps need.
-export async function dispatchRepairWorker({ finding, envelope, missionId, attemptNumber, canonicalRepoPath, clock = () => new Date(), deps = {} }) {
+export async function dispatchRepairWorker({
+  finding,
+  envelope,
+  missionId,
+  attemptNumber,
+  canonicalRepoPath,
+  clock = () => new Date(),
+  deps = {}
+}) {
   const readHostMemory = deps.collectHostMemoryEvidence ?? collectHostMemoryEvidence
-  const admission = (deps.classifyDispatchAdmission ?? classifyDispatchAdmission)(readHostMemory(), ADMISSION_FIELD)
+  const admission = (deps.classifyDispatchAdmission ?? classifyDispatchAdmission)(
+    readHostMemory(),
+    ADMISSION_FIELD
+  )
   if (!admission.admitted) {
-    const error = new Error(`repair worker dispatch blocked by Resource Pressure Governor (tier ${admission.tier}): ${admission.reason}`)
+    const error = new Error(
+      `repair worker dispatch blocked by Resource Pressure Governor (tier ${admission.tier}): ${admission.reason}`
+    )
     error.code = 'TSF_SELF_IMPROVEMENT_DISPATCH_BLOCKED_BY_RESOURCE_PRESSURE'
     error.tier = admission.tier
     error.reason = admission.reason
@@ -135,7 +179,10 @@ export async function dispatchRepairWorker({ finding, envelope, missionId, attem
   // relative path -- something git-diff on THIS worktree alone can never
   // see. See self-improvement-worktree.mjs's snapshotSiblingWorktreeStatuses.
   const snapshotSiblings = deps.snapshotSiblingWorktreeStatuses ?? snapshotSiblingWorktreeStatuses
-  const siblingStatusesBefore = await snapshotSiblings(canonicalRepoPath, [canonicalRepoPath, worktree.worktreePath])
+  const siblingStatusesBefore = await snapshotSiblings(canonicalRepoPath, [
+    canonicalRepoPath,
+    worktree.worktreePath
+  ])
 
   const prompt = buildWorkerPrompt(finding, envelope)
   const spawnProcess = deps.spawnProviderProcess ?? realSpawnProviderProcess

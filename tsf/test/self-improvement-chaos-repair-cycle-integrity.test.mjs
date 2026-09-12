@@ -17,11 +17,14 @@ process.env.TSF_UI_STATE_FILE = STATE_FILE // set BEFORE any dynamic import belo
 test.after(() => rmSync(ROOT, { recursive: true, force: true }))
 
 const { createFinding, transitionFinding } = await import('../domain/self-improvement-finding.mjs')
-const { applyAutofixEligibility } = await import('../domain/self-improvement-autofix-eligibility.mjs')
-const { originateRepairMission } = await import('../server/self-improvement-mission-origination.mjs')
+const { applyAutofixEligibility } =
+  await import('../domain/self-improvement-autofix-eligibility.mjs')
+const { originateRepairMission } =
+  await import('../server/self-improvement-mission-origination.mjs')
 const { runRepairAttempt } = await import('../server/self-improvement-repair-cycle.mjs')
 const { readFinding } = await import('../server/self-improvement-finding-store.mjs')
-const { deriveRepairAttemptBranch, deriveRepairAttemptWorktreePath } = await import('../server/self-improvement-worker-dispatch.mjs')
+const { deriveRepairAttemptBranch, deriveRepairAttemptWorktreePath } =
+  await import('../server/self-improvement-worker-dispatch.mjs')
 const { createIsolatedRepairWorktree } = await import('../server/self-improvement-worktree.mjs')
 
 function git(cwd, args) {
@@ -40,8 +43,18 @@ function initFixtureRepo(name) {
 }
 
 const GB = 1024 ** 3
-const fakeHealthyMemory = () => ({ totalBytes: 16 * GB, freeBytes: 8 * GB, availableBytes: 8 * GB, usedPercent: 50 })
-const fakeCriticalMemory = () => ({ totalBytes: 16 * GB, freeBytes: 0.1 * GB, availableBytes: 0.1 * GB, usedPercent: 99 })
+const fakeHealthyMemory = () => ({
+  totalBytes: 16 * GB,
+  freeBytes: 8 * GB,
+  availableBytes: 8 * GB,
+  usedPercent: 50
+})
+const fakeCriticalMemory = () => ({
+  totalBytes: 16 * GB,
+  freeBytes: 0.1 * GB,
+  availableBytes: 0.1 * GB,
+  usedPercent: 99
+})
 
 async function setUp(name) {
   const canonicalRepoPath = initFixtureRepo(name)
@@ -71,8 +84,16 @@ async function setUp(name) {
 
 test('scenario 2: worker crashes after edit -- the worktree is real but gone before verification -- never a silent success', async () => {
   const { canonicalRepoPath, finding, missionId } = await setUp('repo-worker-crash')
-  const worktreePath = deriveRepairAttemptWorktreePath({ canonicalRepoPath, missionId, attemptNumber: 1 })
-  await createIsolatedRepairWorktree({ canonicalRepoPath, worktreePath, branch: deriveRepairAttemptBranch({ missionId, attemptNumber: 1 }) })
+  const worktreePath = deriveRepairAttemptWorktreePath({
+    canonicalRepoPath,
+    missionId,
+    attemptNumber: 1
+  })
+  await createIsolatedRepairWorktree({
+    canonicalRepoPath,
+    worktreePath,
+    branch: deriveRepairAttemptBranch({ missionId, attemptNumber: 1 })
+  })
   writeFileSync(path.join(worktreePath, 'fixture.mjs'), 'export const x = 2\n')
   git(worktreePath, ['add', '.'])
   git(worktreePath, ['commit', '-q', '-m', 'worker edit before crash'])
@@ -81,23 +102,59 @@ test('scenario 2: worker crashes after edit -- the worktree is real but gone bef
   git(canonicalRepoPath, ['worktree', 'remove', '--force', worktreePath])
   assert.equal(existsSync(worktreePath), false)
 
-  const fakeDispatch = async () => ({ workerId: 'crashed-worker', providerId: 'openai', agentId: 'codex', exitCode: 0, timedOut: false })
+  const fakeDispatch = async () => ({
+    workerId: 'crashed-worker',
+    providerId: 'openai',
+    agentId: 'codex',
+    exitCode: 0,
+    timedOut: false
+  })
   await assert.rejects(
-    runRepairAttempt({ finding, missionId, canonicalRepoPath, clock: () => new Date(), deps: { dispatchWorker: fakeDispatch, lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory } } }),
+    runRepairAttempt({
+      finding,
+      missionId,
+      canonicalRepoPath,
+      clock: () => new Date(),
+      deps: {
+        dispatchWorker: fakeDispatch,
+        lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory }
+      }
+    }),
     'a genuinely missing/gone worktree must throw, never resolve as a verified pass'
   )
 })
 
 test('scenario 3: verifier crashes (throws) -- finding never silently transitions as verified', async () => {
   const { canonicalRepoPath, finding, missionId } = await setUp('repo-verifier-crash')
-  const worktreePath = deriveRepairAttemptWorktreePath({ canonicalRepoPath, missionId, attemptNumber: 1 })
-  await createIsolatedRepairWorktree({ canonicalRepoPath, worktreePath, branch: deriveRepairAttemptBranch({ missionId, attemptNumber: 1 }) })
+  const worktreePath = deriveRepairAttemptWorktreePath({
+    canonicalRepoPath,
+    missionId,
+    attemptNumber: 1
+  })
+  await createIsolatedRepairWorktree({
+    canonicalRepoPath,
+    worktreePath,
+    branch: deriveRepairAttemptBranch({ missionId, attemptNumber: 1 })
+  })
   writeFileSync(path.join(worktreePath, 'fixture.mjs'), 'export const x = 2\n')
   git(worktreePath, ['add', '.'])
-  git(worktreePath, ['commit', '-q', '-m', 'a real worker commit, then the verifier itself crashes'])
+  git(worktreePath, [
+    'commit',
+    '-q',
+    '-m',
+    'a real worker commit, then the verifier itself crashes'
+  ])
 
-  const fakeDispatch = async () => ({ workerId: 'w1', providerId: 'openai', agentId: 'codex', exitCode: 0, timedOut: false })
-  const throwingVerifier = async () => { throw new Error('verifier process crashed') }
+  const fakeDispatch = async () => ({
+    workerId: 'w1',
+    providerId: 'openai',
+    agentId: 'codex',
+    exitCode: 0,
+    timedOut: false
+  })
+  const throwingVerifier = async () => {
+    throw new Error('verifier process crashed')
+  }
 
   await assert.rejects(
     runRepairAttempt({
@@ -105,11 +162,19 @@ test('scenario 3: verifier crashes (throws) -- finding never silently transition
       missionId,
       canonicalRepoPath,
       clock: () => new Date(),
-      deps: { dispatchWorker: fakeDispatch, runIndependentVerification: throwingVerifier, lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory } }
+      deps: {
+        dispatchWorker: fakeDispatch,
+        runIndependentVerification: throwingVerifier,
+        lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory }
+      }
     }),
     /verifier process crashed/
   )
-  assert.equal(readFinding(finding.findingId).status, 'FIX_IN_PROGRESS', 'a crashed verifier must never advance the finding past FIX_IN_PROGRESS')
+  assert.equal(
+    readFinding(finding.findingId).status,
+    'FIX_IN_PROGRESS',
+    'a crashed verifier must never advance the finding past FIX_IN_PROGRESS'
+  )
 })
 
 // TSF Post-Protocol Objective Closure V1, Finding 2 fix: this scenario
@@ -131,7 +196,10 @@ test('scenario 5: resource pressure turns CRITICAL between origination and dispa
     missionId,
     canonicalRepoPath,
     clock: () => new Date(),
-    deps: { lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory }, workerDeps: { collectHostMemoryEvidence: fakeCriticalMemory } }
+    deps: {
+      lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory },
+      workerDeps: { collectHostMemoryEvidence: fakeCriticalMemory }
+    }
   })
   assert.equal(result.outcome, 'BLOCKED_BY_RESOURCE_PRESSURE')
   // Blocked so early that dispatch never even starts -- the finding must
@@ -141,7 +209,11 @@ test('scenario 5: resource pressure turns CRITICAL between origination and dispa
 
 test('scenario 8: worker self-reports success but the real reproduction still fails -- REPRODUCTION_STILL_FAILS, never a false READY_FOR_ADOPTION', async () => {
   const { canonicalRepoPath, finding, missionId } = await setUp('repo-repro-still-fails')
-  const worktreePath = deriveRepairAttemptWorktreePath({ canonicalRepoPath, missionId, attemptNumber: 1 })
+  const worktreePath = deriveRepairAttemptWorktreePath({
+    canonicalRepoPath,
+    missionId,
+    attemptNumber: 1
+  })
   const branch = deriveRepairAttemptBranch({ missionId, attemptNumber: 1 })
   await createIsolatedRepairWorktree({ canonicalRepoPath, worktreePath, branch })
   // A commit that changes something irrelevant, NOT the real defect --
@@ -150,13 +222,22 @@ test('scenario 8: worker self-reports success but the real reproduction still fa
   git(worktreePath, ['add', '.'])
   git(worktreePath, ['commit', '-q', '-m', 'a no-op commit that does not fix the real defect'])
 
-  const fakeDispatch = async () => ({ workerId: 'over-confident-worker', providerId: 'openai', agentId: 'codex', exitCode: 0, timedOut: false })
+  const fakeDispatch = async () => ({
+    workerId: 'over-confident-worker',
+    providerId: 'openai',
+    agentId: 'codex',
+    exitCode: 0,
+    timedOut: false
+  })
   const result = await runRepairAttempt({
     finding,
     missionId,
     canonicalRepoPath,
     clock: () => new Date(),
-    deps: { dispatchWorker: fakeDispatch, lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory } }
+    deps: {
+      dispatchWorker: fakeDispatch,
+      lifecycleDeps: { collectHostMemoryEvidence: fakeHealthyMemory }
+    }
   })
   assert.equal(result.outcome, 'VERIFIED_FAIL_WILL_RETRY_OR_ESCALATE_NEXT_TICK')
   assert.equal(result.verification.verdict, 'VERIFIED_FAIL')

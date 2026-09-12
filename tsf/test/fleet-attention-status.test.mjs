@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ATTENTION_CATEGORIES, buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
-import { createProjectExecutionHold, releaseProjectExecutionHold } from '../domain/project-execution-hold.mjs'
+import {
+  ATTENTION_CATEGORIES,
+  buildFleetAttentionItems,
+  trimAttentionItem
+} from '../domain/fleet-attention-status.mjs'
+import {
+  createProjectExecutionHold,
+  releaseProjectExecutionHold
+} from '../domain/project-execution-hold.mjs'
 import {
   createOvernightRun,
   markStalled,
@@ -19,7 +26,10 @@ import {
 import { recordDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
 import { createFinding, transitionFinding } from '../domain/self-improvement-finding.mjs'
 import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
-import { createPlannerMissionCheckpoint, recordResourceState } from '../domain/planner-mission-checkpoint.mjs'
+import {
+  createPlannerMissionCheckpoint,
+  recordResourceState
+} from '../domain/planner-mission-checkpoint.mjs'
 import { computeRepairMissionId } from '../server/self-improvement-mission-origination.mjs'
 
 const clock = () => new Date('2026-09-07T12:00:00.000Z')
@@ -36,7 +46,10 @@ function project(id, overrides = {}) {
 }
 
 function newRun(id, projectId) {
-  return createOvernightRun({ id, projectId, originalGoal: 'Fix it.', acceptanceCriteria: ['X'] }, clock)
+  return createOvernightRun(
+    { id, projectId, originalGoal: 'Fix it.', acceptanceCriteria: ['X'] },
+    clock
+  )
 }
 
 function baseMissionSpec() {
@@ -67,7 +80,12 @@ function baseMission(id, overrides = {}) {
       id,
       projectId: 'test',
       specification: baseMissionSpec(),
-      expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] },
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 1,
+        expectedEntities: []
+      },
       ...overrides
     },
     clock
@@ -100,10 +118,17 @@ function repairFinding(affectedSurface, status = 'FIX_MISSION_CREATED') {
 function plannerRecordForRepair(finding, resourceState = null) {
   const missionId = computeRepairMissionId(finding.findingId)
   let checkpoint = createPlannerMissionCheckpoint(
-    { missionId, missionGoal: 'repair', phase: 'REPAIR_DISPATCH', repoState: { branch: 'main', sha: 'a'.repeat(40) } },
+    {
+      missionId,
+      missionGoal: 'repair',
+      phase: 'REPAIR_DISPATCH',
+      repoState: { branch: 'main', sha: 'a'.repeat(40) }
+    },
     clock
   )
-  if (resourceState) { checkpoint = recordResourceState(checkpoint, resourceState, clock) }
+  if (resourceState) {
+    checkpoint = recordResourceState(checkpoint, resourceState, clock)
+  }
   return [missionId, { lease: null, checkpoint }]
 }
 
@@ -131,7 +156,12 @@ test('NEEDS_OWNER: a PROJECT needsYou item is categorized correctly with a real 
 
 test('NEEDS_OWNER: a RESEARCH needsYou item resolves a real missionId deepLink via origin lookup', () => {
   let mission = baseMission('mission:needs')
-  mission = raiseResearchNeedsYou(mission, { question: 'approve paid access?' }, clock, mission.revision)
+  mission = raiseResearchNeedsYou(
+    mission,
+    { question: 'approve paid access?' },
+    clock,
+    mission.revision
+  )
   const items = buildFleetAttentionItems({
     projects: [],
     researchMissions: { [mission.id]: mission },
@@ -144,9 +174,15 @@ test('NEEDS_OWNER: a RESEARCH needsYou item resolves a real missionId deepLink v
 })
 
 test('NEEDS_OWNER: a PLANNER needsYou item never fabricates a project', async () => {
-  const { createPlannerMissionCheckpoint, raisePlannerNeedsYou } = await import('../domain/planner-mission-checkpoint.mjs')
+  const { createPlannerMissionCheckpoint, raisePlannerNeedsYou } =
+    await import('../domain/planner-mission-checkpoint.mjs')
   let checkpoint = createPlannerMissionCheckpoint(
-    { missionId: 'planner-x', missionGoal: 'ship it', phase: 'BUILD', repoState: { branch: 'main', sha: 'a'.repeat(40) } },
+    {
+      missionId: 'planner-x',
+      missionGoal: 'ship it',
+      phase: 'BUILD',
+      repoState: { branch: 'main', sha: 'a'.repeat(40) }
+    },
     clock
   )
   checkpoint = raisePlannerNeedsYou(checkpoint, { question: 'auth needed' }, clock)
@@ -200,7 +236,13 @@ test('finding #11: a COMPLETE run with a matching real ADVANCED canonical-base e
   const projectCanonicalBases = {
     p1: {
       history: [
-        { action: 'ADVANCED', ref: 'refs/heads/main', resultingSha: 'deadbeef', missionId: run.id, at: '2026-09-07T10:00:00.000Z' }
+        {
+          action: 'ADVANCED',
+          ref: 'refs/heads/main',
+          resultingSha: 'deadbeef',
+          missionId: run.id,
+          at: '2026-09-07T10:00:00.000Z'
+        }
       ]
     }
   }
@@ -233,7 +275,9 @@ test('finding #11: omitting projectCanonicalBases entirely preserves the pre-fix
 })
 
 test('BLOCKED_EXTERNAL: a legacy blocked project appears with an honest null changedAt (no real per-item timestamp exists)', () => {
-  const p = project('p1', { mission: { state: 'BLOCKED_SOMETHING', id: null, blockedReason: 'waiting on legal review' } })
+  const p = project('p1', {
+    mission: { state: 'BLOCKED_SOMETHING', id: null, blockedReason: 'waiting on legal review' }
+  })
   const items = buildFleetAttentionItems({ projects: [p], clock })
   assert.equal(items.length, 1)
   assert.equal(items[0].category, 'BLOCKED_EXTERNAL')
@@ -243,8 +287,17 @@ test('BLOCKED_EXTERNAL: a legacy blocked project appears with an honest null cha
 
 test('BLOCKED_EXTERNAL: a BLOCKED research mission appears with a real changedAt and reason from its own transitions', () => {
   let mission = baseMission('mission:blocked')
-  mission = transitionResearchMission(mission, 'BLOCKED', { reason: 'no legal source found', expectedRevision: mission.revision }, clock)
-  const items = buildFleetAttentionItems({ projects: [], researchMissions: { [mission.id]: mission }, clock })
+  mission = transitionResearchMission(
+    mission,
+    'BLOCKED',
+    { reason: 'no legal source found', expectedRevision: mission.revision },
+    clock
+  )
+  const items = buildFleetAttentionItems({
+    projects: [],
+    researchMissions: { [mission.id]: mission },
+    clock
+  })
   assert.equal(items.length, 1)
   assert.equal(items[0].category, 'BLOCKED_EXTERNAL')
   assert.equal(items[0].reason, 'no legal source found')
@@ -260,10 +313,19 @@ test('BLOCKED_EXTERNAL: a BLOCKED research mission appears with a real changedAt
 test('BLOCKED_EXTERNAL: an active project execution hold appears, sourced from the real hold record', () => {
   const p = project('niners-war-room', { displayName: 'NWR' })
   const hold = createProjectExecutionHold(
-    { projectId: 'niners-war-room', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'OPERATOR_CHAT', note: 'another AI is actively working this repo' },
+    {
+      projectId: 'niners-war-room',
+      reason: 'EXTERNAL_WORK_ACTIVE',
+      setBy: 'OPERATOR_CHAT',
+      note: 'another AI is actively working this repo'
+    },
     clock
   )
-  const items = buildFleetAttentionItems({ projects: [p], projectExecutionHolds: { [hold.projectId]: hold }, clock })
+  const items = buildFleetAttentionItems({
+    projects: [p],
+    projectExecutionHolds: { [hold.projectId]: hold },
+    clock
+  })
   assert.equal(items.length, 1)
   assert.equal(items[0].category, 'BLOCKED_EXTERNAL')
   assert.equal(items[0].reason, 'another AI is actively working this repo')
@@ -273,16 +335,30 @@ test('BLOCKED_EXTERNAL: an active project execution hold appears, sourced from t
 
 test('BLOCKED_EXTERNAL: a RELEASED hold produces no item -- it is no longer a real, live attention fact', () => {
   const p = project('niners-war-room')
-  const hold = createProjectExecutionHold({ projectId: 'niners-war-room', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'x' }, clock)
+  const hold = createProjectExecutionHold(
+    { projectId: 'niners-war-room', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'x' },
+    clock
+  )
   const released = releaseProjectExecutionHold(hold, { releasedBy: 'x' }, clock)
-  const items = buildFleetAttentionItems({ projects: [p], projectExecutionHolds: { [released.projectId]: released }, clock })
+  const items = buildFleetAttentionItems({
+    projects: [p],
+    projectExecutionHolds: { [released.projectId]: released },
+    clock
+  })
   assert.deepEqual(items, [])
 })
 
 test('trimAttentionItem: keeps only the bounded referent-resolution fields, honestly null project when absent', () => {
   const p = project('p1', { displayName: 'P One' })
-  const hold = createProjectExecutionHold({ projectId: 'p1', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'x', note: 'held' }, clock)
-  const [item] = buildFleetAttentionItems({ projects: [p], projectExecutionHolds: { p1: hold }, clock })
+  const hold = createProjectExecutionHold(
+    { projectId: 'p1', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'x', note: 'held' },
+    clock
+  )
+  const [item] = buildFleetAttentionItems({
+    projects: [p],
+    projectExecutionHolds: { p1: hold },
+    clock
+  })
   const trimmed = trimAttentionItem(item)
   assert.deepEqual(trimmed, {
     id: item.id,
@@ -311,9 +387,22 @@ test('COMPLETED_RECENTLY: excludes legacy ADOPTED projects (Tim already knows --
 
 test('COMPLETED_RECENTLY: includes a real research mission that reached COMPLETE', () => {
   let mission = baseMission('mission:complete')
-  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
-  mission = transitionResearchMission(mission, 'COMPLETE', { reason: 'done', expectedRevision: mission.revision }, clock)
-  const items = buildFleetAttentionItems({ projects: [], researchMissions: { [mission.id]: mission }, clock })
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = transitionResearchMission(
+    mission,
+    'COMPLETE',
+    { reason: 'done', expectedRevision: mission.revision },
+    clock
+  )
+  const items = buildFleetAttentionItems({
+    projects: [],
+    researchMissions: { [mission.id]: mission },
+    clock
+  })
   assert.equal(items.length, 1)
   assert.equal(items[0].category, 'COMPLETED_RECENTLY')
   assert.equal(items[0].severity, 'P3')
@@ -322,23 +411,68 @@ test('COMPLETED_RECENTLY: includes a real research mission that reached COMPLETE
 
 test('COMPLETED_RECENTLY: an EXECUTING (not yet complete) research mission does not appear', () => {
   let mission = baseMission('mission:executing')
-  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, clock)
-  mission = recordDispatchAttempt(mission, 'node:a', { taskFingerprint: 'a'.repeat(64) }, clock, mission.revision)
-  const items = buildFleetAttentionItems({ projects: [], researchMissions: { [mission.id]: mission }, clock })
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    clock
+  )
+  mission = recordDispatchAttempt(
+    mission,
+    'node:a',
+    { taskFingerprint: 'a'.repeat(64) },
+    clock,
+    mission.revision
+  )
+  const items = buildFleetAttentionItems({
+    projects: [],
+    researchMissions: { [mission.id]: mission },
+    clock
+  })
   assert.deepEqual(items, [])
 })
 
 test('self-improvement: NEEDS_OWNER via AUTOFIX_ELIGIBILITY_CLASSIFIED vs FAILED_REQUIRES_ATTENTION via REPAIR_RETRY_BUDGET_EXCEEDED split correctly', () => {
-  let eligibilityFinding = createFinding(rawFinding({ affectedSurface: 'eligibility-surface' }), clock)
+  let eligibilityFinding = createFinding(
+    rawFinding({ affectedSurface: 'eligibility-surface' }),
+    clock
+  )
   eligibilityFinding = transitionFinding(eligibilityFinding, 'VERIFIED', { reason: 'x' }, clock)
-  eligibilityFinding = transitionFinding(eligibilityFinding, 'NEEDS_OWNER', { reason: 'AUTOFIX_ELIGIBILITY_CLASSIFIED' }, clock)
+  eligibilityFinding = transitionFinding(
+    eligibilityFinding,
+    'NEEDS_OWNER',
+    { reason: 'AUTOFIX_ELIGIBILITY_CLASSIFIED' },
+    clock
+  )
 
-  let repairFailedFinding = createFinding(rawFinding({ affectedSurface: 'repair-failed-surface' }), clock)
+  let repairFailedFinding = createFinding(
+    rawFinding({ affectedSurface: 'repair-failed-surface' }),
+    clock
+  )
   repairFailedFinding = transitionFinding(repairFailedFinding, 'VERIFIED', { reason: 'x' }, clock)
-  repairFailedFinding = transitionFinding(repairFailedFinding, 'ELIGIBLE_FOR_AUTOFIX', { reason: 'x' }, clock)
-  repairFailedFinding = transitionFinding(repairFailedFinding, 'FIX_MISSION_CREATED', { reason: 'x' }, clock)
-  repairFailedFinding = transitionFinding(repairFailedFinding, 'FIX_IN_PROGRESS', { reason: 'x' }, clock)
-  repairFailedFinding = transitionFinding(repairFailedFinding, 'NEEDS_OWNER', { reason: 'REPAIR_RETRY_BUDGET_EXCEEDED' }, clock)
+  repairFailedFinding = transitionFinding(
+    repairFailedFinding,
+    'ELIGIBLE_FOR_AUTOFIX',
+    { reason: 'x' },
+    clock
+  )
+  repairFailedFinding = transitionFinding(
+    repairFailedFinding,
+    'FIX_MISSION_CREATED',
+    { reason: 'x' },
+    clock
+  )
+  repairFailedFinding = transitionFinding(
+    repairFailedFinding,
+    'FIX_IN_PROGRESS',
+    { reason: 'x' },
+    clock
+  )
+  repairFailedFinding = transitionFinding(
+    repairFailedFinding,
+    'NEEDS_OWNER',
+    { reason: 'REPAIR_RETRY_BUDGET_EXCEEDED' },
+    clock
+  )
 
   const items = buildFleetAttentionItems({
     projects: [],
@@ -355,21 +489,36 @@ test('self-improvement: NEEDS_OWNER via AUTOFIX_ELIGIBILITY_CLASSIFIED vs FAILED
 })
 
 test('self-improvement: READY_FOR_ADOPTION status maps correctly, and a finding severity field wins over the default mapping', () => {
-  let finding = createFinding(rawFinding({ severity: 'P0', affectedSurface: 'ready-surface' }), clock)
+  let finding = createFinding(
+    rawFinding({ severity: 'P0', affectedSurface: 'ready-surface' }),
+    clock
+  )
   finding = transitionFinding(finding, 'VERIFIED', { reason: 'x' }, clock)
   finding = transitionFinding(finding, 'ELIGIBLE_FOR_AUTOFIX', { reason: 'x' }, clock)
   finding = transitionFinding(finding, 'FIX_MISSION_CREATED', { reason: 'x' }, clock)
   finding = transitionFinding(finding, 'FIX_IN_PROGRESS', { reason: 'x' }, clock)
   finding = transitionFinding(finding, 'READY_FOR_ADOPTION', { reason: 'x' }, clock)
-  const items = buildFleetAttentionItems({ projects: [], selfImprovementFindings: { [finding.findingId]: finding }, clock })
+  const items = buildFleetAttentionItems({
+    projects: [],
+    selfImprovementFindings: { [finding.findingId]: finding },
+    clock
+  })
   assert.equal(items.length, 1)
   assert.equal(items[0].category, 'READY_FOR_ADOPTION')
-  assert.equal(items[0].severity, 'P0', 'the finding\'s own severity must win over the default P2 mapping')
+  assert.equal(
+    items[0].severity,
+    'P0',
+    "the finding's own severity must win over the default P2 mapping"
+  )
 })
 
 test('self-improvement: a finding in a status not on the notify-worthy list (e.g. DETECTED) produces no item', () => {
   const finding = createFinding(rawFinding(), clock)
-  const items = buildFleetAttentionItems({ projects: [], selfImprovementFindings: { [finding.findingId]: finding }, clock })
+  const items = buildFleetAttentionItems({
+    projects: [],
+    selfImprovementFindings: { [finding.findingId]: finding },
+    clock
+  })
   assert.deepEqual(items, [])
 })
 
@@ -378,13 +527,19 @@ test('self-improvement resource wait: FIX_MISSION_CREATED and FIX_IN_PROGRESS fi
     repairFinding('resource-wait-created'),
     repairFinding('resource-wait-progress', 'FIX_IN_PROGRESS')
   ]
-  const resourceState = { tier: 'CRITICAL', reason: 'host memory critical', observedAt: clock().toISOString() }
+  const resourceState = {
+    tier: 'CRITICAL',
+    reason: 'host memory critical',
+    observedAt: clock().toISOString()
+  }
   const plannerMissionRecords = Object.fromEntries(
     findings.map((finding) => plannerRecordForRepair(finding, resourceState))
   )
   const items = buildFleetAttentionItems({
     projects: [],
-    selfImprovementFindings: Object.fromEntries(findings.map((finding) => [finding.findingId, finding])),
+    selfImprovementFindings: Object.fromEntries(
+      findings.map((finding) => [finding.findingId, finding])
+    ),
     plannerMissionRecords,
     clock
   })
@@ -411,7 +566,43 @@ test('self-improvement resource wait: a repair finding with an unmarked checkpoi
     clock
   })
 
-  assert.equal(items.find((item) => item.category === 'WAITING_FOR_RESOURCES'), undefined)
+  assert.equal(
+    items.find((item) => item.category === 'WAITING_FOR_RESOURCES'),
+    undefined
+  )
+})
+
+// Independent-adversarial-review finding (P2, real, reproduced): a truthy
+// but malformed resourceState (e.g. `{}`) used to pass the old bare
+// truthiness check and produce a garbled "at tier undefined: undefined"
+// item with no usable changedAt. resourceState is only ever written by
+// this program's own recordResourceState call with a real
+// {tier, reason, observedAt} shape (or null) -- a malformed shape means
+// something else wrote to it unexpectedly, and it must be honestly
+// ignored rather than rendered as a broken card.
+test('self-improvement resource wait: a malformed resourceState (missing tier/reason/observedAt) is honestly ignored, never rendered as a broken item', () => {
+  const finding = repairFinding('malformed-resource-state')
+  const missionId = computeRepairMissionId(finding.findingId)
+  const malformedCases = [
+    {},
+    { tier: 'CRITICAL' },
+    { tier: 'CRITICAL', reason: 'x' },
+    { reason: 'x', observedAt: clock().toISOString() }
+  ]
+
+  for (const resourceState of malformedCases) {
+    const items = buildFleetAttentionItems({
+      projects: [],
+      selfImprovementFindings: { [finding.findingId]: finding },
+      plannerMissionRecords: { [missionId]: { lease: null, checkpoint: { resourceState } } },
+      clock
+    })
+    assert.equal(
+      items.find((item) => item.category === 'WAITING_FOR_RESOURCES'),
+      undefined,
+      `malformed resourceState must be ignored: ${JSON.stringify(resourceState)}`
+    )
+  }
 })
 
 test('self-improvement resource wait: finding-specific and host-wide WAITING_FOR_RESOURCES items remain distinct without duplication', () => {
@@ -442,29 +633,65 @@ test('self-improvement resource wait: finding-specific and host-wide WAITING_FOR
 })
 
 test('resource pressure: appears only at CRITICAL/EMERGENCY, never fabricates a per-mission entry', () => {
-  const healthy = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 8e9, availableBytes: 8e9 } }, clock)
-  const pressured = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 3e9, availableBytes: 3e9 } }, clock)
-  const critical = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 2e9, availableBytes: 2e9 } }, clock)
-  const emergency = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 1e9, availableBytes: 1e9 } }, clock)
+  const healthy = buildResourcePressureState(
+    { hostMemory: { totalBytes: 16e9, freeBytes: 8e9, availableBytes: 8e9 } },
+    clock
+  )
+  const pressured = buildResourcePressureState(
+    { hostMemory: { totalBytes: 16e9, freeBytes: 3e9, availableBytes: 3e9 } },
+    clock
+  )
+  const critical = buildResourcePressureState(
+    { hostMemory: { totalBytes: 16e9, freeBytes: 2e9, availableBytes: 2e9 } },
+    clock
+  )
+  const emergency = buildResourcePressureState(
+    { hostMemory: { totalBytes: 16e9, freeBytes: 1e9, availableBytes: 1e9 } },
+    clock
+  )
 
-  assert.deepEqual(buildFleetAttentionItems({ projects: [], resourcePressureState: healthy, clock }), [])
-  assert.deepEqual(buildFleetAttentionItems({ projects: [], resourcePressureState: pressured, clock }), [])
+  assert.deepEqual(
+    buildFleetAttentionItems({ projects: [], resourcePressureState: healthy, clock }),
+    []
+  )
+  assert.deepEqual(
+    buildFleetAttentionItems({ projects: [], resourcePressureState: pressured, clock }),
+    []
+  )
 
-  const criticalItems = buildFleetAttentionItems({ projects: [], resourcePressureState: critical, clock })
+  const criticalItems = buildFleetAttentionItems({
+    projects: [],
+    resourcePressureState: critical,
+    clock
+  })
   assert.equal(criticalItems.length, 1)
   assert.equal(criticalItems[0].category, 'WAITING_FOR_RESOURCES')
   assert.equal(criticalItems[0].project, null)
   assert.equal(criticalItems[0].id, 'resource-pressure:CRITICAL')
 
-  const emergencyItems = buildFleetAttentionItems({ projects: [], resourcePressureState: emergency, clock })
+  const emergencyItems = buildFleetAttentionItems({
+    projects: [],
+    resourcePressureState: emergency,
+    clock
+  })
   assert.equal(emergencyItems.length, 1)
   assert.equal(emergencyItems[0].id, 'resource-pressure:EMERGENCY')
 })
 
 test('Resource-Wait Auto-Resume V1: a per-project resource-blocked run appears WITHOUT needing resourcePressureState, and honestly distinguishes will-auto-resume from will-not', () => {
   let waiting = newRun('r1', 'p1')
-  waiting = recordPendingDispatch(waiting, [{ id: 't1', scope: ['**/*'], worktree: '/wt' }], clock, waiting.revision)
-  waiting = checkpointRun(waiting, { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' }, clock, waiting.revision)
+  waiting = recordPendingDispatch(
+    waiting,
+    [{ id: 't1', scope: ['**/*'], worktree: '/wt' }],
+    clock,
+    waiting.revision
+  )
+  waiting = checkpointRun(
+    waiting,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    waiting.revision
+  )
 
   const items = buildFleetAttentionItems({
     projects: [project('p1', { displayName: 'Project One' })],
@@ -482,7 +709,12 @@ test('Resource-Wait Auto-Resume V1: a per-project resource-blocked run appears W
   // any reason other than a genuine dispatch attempt) has no pendingDispatch
   // -- must be reported honestly as NOT auto-resuming, never claim it will.
   let stuck = newRun('r2', 'p2')
-  stuck = checkpointRun(stuck, { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' }, clock, stuck.revision)
+  stuck = checkpointRun(
+    stuck,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    stuck.revision
+  )
   const stuckItems = buildFleetAttentionItems({
     projects: [project('p2', { displayName: 'Project Two' })],
     keepGoingRuns: { p2: stuck },
@@ -501,7 +733,10 @@ test('Resource-Wait Auto-Resume V1: a per-project resource-blocked run appears W
     resourcePressureState: null,
     clock
   })
-  assert.equal(noItems.find((i) => i.id === 'run:p3:waitingForResources'), undefined)
+  assert.equal(
+    noItems.find((i) => i.id === 'run:p3:waitingForResources'),
+    undefined
+  )
 })
 
 test('determinism: calling with the same input twice produces byte-identical output, including ids', () => {
@@ -526,7 +761,11 @@ test('determinism: calling with the same input twice produces byte-identical out
 
 test('every emitted category is a real member of ATTENTION_CATEGORIES', () => {
   const run = markStalled(newRun('r1', 'p1'), [], clock)
-  const items = buildFleetAttentionItems({ projects: [project('p1')], keepGoingRuns: { p1: run }, clock })
+  const items = buildFleetAttentionItems({
+    projects: [project('p1')],
+    keepGoingRuns: { p1: run },
+    clock
+  })
   for (const item of items) {
     assert.ok(ATTENTION_CATEGORIES.includes(item.category))
   }

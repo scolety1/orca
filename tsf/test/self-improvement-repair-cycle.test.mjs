@@ -271,7 +271,8 @@ test('resource-pressure refusal returns BLOCKED_BY_RESOURCE_PRESSURE, preserves 
   const missionId = await originate(finding)
   const findingBefore = readFinding(finding.findingId)
   const checkpointBefore = readPlannerMissionRecord(missionId).checkpoint
-  const governorReason = 'host memory critical -- no new heavyweight dispatch; let active work checkpoint and replan'
+  const governorReason =
+    'host memory critical -- no new heavyweight dispatch; let active work checkpoint and replan'
 
   const result = await runRepairAttempt({
     finding: findingBefore,
@@ -312,10 +313,18 @@ test('resource-pressure refusal returns BLOCKED_BY_RESOURCE_PRESSURE, preserves 
   // UNKNOWN, then resolveDispatchAttempt's real FAILED_CLEAN resolution --
   // see planner-session-lifecycle.mjs). That real entry must survive.
   const taskFingerprint = `${missionId}:attempt-1`
-  const dispatchAttempt = checkpointAfter.dispatchAttempts.find((a) => a.taskFingerprint === taskFingerprint)
-  assert.ok(dispatchAttempt, 'the real dispatch-attempt bookkeeping entry must survive, never silently reverted')
+  const dispatchAttempt = checkpointAfter.dispatchAttempts.find(
+    (a) => a.taskFingerprint === taskFingerprint
+  )
+  assert.ok(
+    dispatchAttempt,
+    'the real dispatch-attempt bookkeeping entry must survive, never silently reverted'
+  )
   assert.equal(dispatchAttempt.outcome, 'FAILED_CLEAN')
-  assert.ok(dispatchAttempt.resolvedAt, 'a cleanly-refused attempt must be resolved, never left UNKNOWN')
+  assert.ok(
+    dispatchAttempt.resolvedAt,
+    'a cleanly-refused attempt must be resolved, never left UNKNOWN'
+  )
   assert.ok(
     checkpointAfter.revision > checkpointBefore.revision,
     'the checkpoint must have genuinely advanced, not reverted to a stale snapshot'
@@ -344,12 +353,20 @@ test('a stale resource-pressure marker from an earlier blocked attempt is cleare
     deps: {
       ...LIFECYCLE_DEPS,
       workerDeps: {
-        collectHostMemoryEvidence: () => ({ totalBytes: 16 * GB, freeBytes: 2 * GB, availableBytes: 2 * GB, usedPercent: 87.5 })
+        collectHostMemoryEvidence: () => ({
+          totalBytes: 16 * GB,
+          freeBytes: 2 * GB,
+          availableBytes: 2 * GB,
+          usedPercent: 87.5
+        })
       }
     }
   })
   assert.equal(blocked.outcome, 'BLOCKED_BY_RESOURCE_PRESSURE')
-  assert.ok(readPlannerMissionRecord(missionId).checkpoint.resourceState, 'sanity: the marker really is set after the blocked attempt')
+  assert.ok(
+    readPlannerMissionRecord(missionId).checkpoint.resourceState,
+    'sanity: the marker really is set after the blocked attempt'
+  )
 
   // Resources recover; the SAME attempt slot proceeds for real, but
   // verification fails for a reason that has nothing to do with resources.
@@ -358,13 +375,22 @@ test('a stale resource-pressure marker from an earlier blocked attempt is cleare
     missionId,
     canonicalRepoPath: CANONICAL_REPO_PATH,
     clock,
-    deps: { dispatchWorker: fakeWorker(), runIndependentVerification: fakeVerifier('VERIFIED_FAIL', ['REPRODUCTION_STILL_FAILS']), ...LIFECYCLE_DEPS, ...FAKE_BASE_SHA_DEPS }
+    deps: {
+      dispatchWorker: fakeWorker(),
+      runIndependentVerification: fakeVerifier('VERIFIED_FAIL', ['REPRODUCTION_STILL_FAILS']),
+      ...LIFECYCLE_DEPS,
+      ...FAKE_BASE_SHA_DEPS
+    }
   })
   assert.equal(failed.outcome, 'VERIFIED_FAIL_WILL_RETRY_OR_ESCALATE_NEXT_TICK')
   assert.equal(failed.finding.status, 'FIX_IN_PROGRESS')
 
   const checkpointAfter = readPlannerMissionRecord(missionId).checkpoint
-  assert.equal(checkpointAfter.resourceState, null, 'the stale resource-wait marker must be cleared once a real dispatch proceeds')
+  assert.equal(
+    checkpointAfter.resourceState,
+    null,
+    'the stale resource-wait marker must be cleared once a real dispatch proceeds'
+  )
 
   const items = buildFleetAttentionItems({
     projects: [],
@@ -376,6 +402,64 @@ test('a stale resource-pressure marker from an earlier blocked attempt is cleare
     items.find((item) => item.category === 'WAITING_FOR_RESOURCES'),
     undefined,
     'a finding that is genuinely progressing (dispatched, verified, failed for an unrelated reason) must never show a false "waiting for resources" attention item'
+  )
+})
+
+// Independent-adversarial-review finding (P1, real, reproduced): the
+// first version of the stale-marker clear only ran on the SUCCESS path
+// (after dispatchWorkerForTask resolves without throwing) -- any OTHER
+// real dispatch error (provider resolution failure, worktree creation
+// failure, etc.) still left the old resource-pressure marker in place,
+// even though reaching a genuinely different error proves resource
+// pressure is no longer the current blocker. The marker must be cleared
+// on this path too, even though the attempt itself still fails.
+test('a stale resource-pressure marker is cleared even when the NEXT attempt fails for a completely different, unrelated reason', async () => {
+  const finding = eligibleFinding('tsf/domain/stale-marker-other-error-fixture.mjs')
+  const missionId = await originate(finding)
+
+  const blocked = await runRepairAttempt({
+    finding,
+    missionId,
+    canonicalRepoPath: CANONICAL_REPO_PATH,
+    clock,
+    deps: {
+      ...LIFECYCLE_DEPS,
+      workerDeps: {
+        collectHostMemoryEvidence: () => ({
+          totalBytes: 16 * GB,
+          freeBytes: 2 * GB,
+          availableBytes: 2 * GB,
+          usedPercent: 87.5
+        })
+      }
+    }
+  })
+  assert.equal(blocked.outcome, 'BLOCKED_BY_RESOURCE_PRESSURE')
+  assert.ok(
+    readPlannerMissionRecord(missionId).checkpoint.resourceState,
+    'sanity: the marker really is set after the blocked attempt'
+  )
+
+  const unrelatedError = new Error('provider configuration unavailable')
+  await assert.rejects(
+    runRepairAttempt({
+      finding: blocked.finding,
+      missionId,
+      canonicalRepoPath: CANONICAL_REPO_PATH,
+      clock,
+      deps: {
+        ...LIFECYCLE_DEPS,
+        dispatchWorker: async () => {
+          throw unrelatedError
+        }
+      }
+    }),
+    (error) => error === unrelatedError
+  )
+  assert.equal(
+    readPlannerMissionRecord(missionId).checkpoint.resourceState,
+    null,
+    'the stale marker must be cleared even though this attempt failed for an unrelated reason'
   )
 })
 

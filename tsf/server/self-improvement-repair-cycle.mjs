@@ -130,6 +130,42 @@ export async function runRepairAttempt({
     return earlyHoldBlock
   }
 
+  // Independent-adversarial-review finding (P1, real, reproduced with the
+  // real planner store + lifecycle under a deliberately adversarial
+  // interleaving): clearing a stale resourceState marker via a SEPARATE
+  // "read current, check truthy, then write" pair -- rather than deciding
+  // INSIDE the single lock-protected mutator callback -- left a real
+  // window where a genuinely newer, real dispatch/verification write
+  // could land, and THEN an older, slower in-flight resource-refusal
+  // write (from a separate, concurrent runRepairAttempt call for the SAME
+  // mission) could still land afterward, re-introducing a false marker
+  // the newer progress had already superseded. A single atomic
+  // read-decide-write, all inside one `withPlannerMissionRecord`
+  // callback, closes that specific outer-read/inner-write gap. This does
+  // NOT by itself make two genuinely concurrent runRepairAttempt calls
+  // for the same mission perfectly race-free in every interleaving (an
+  // older refusal's own write could still, in principle, commit AFTER a
+  // newer real one under sufficiently adversarial timing) -- but the one
+  // real production caller (self-improvement-fleet-driver.mjs's `fire()`)
+  // already guards against exactly that with its own `inProgress` flag,
+  // so two overlapping ticks for the same mission are not reachable
+  // through the real, current production path today. Documented here,
+  // not chased further, matching this mission's own established
+  // "architectural finding for a future cycle, not fixed given broader
+  // blast radius" precedent (see dispatchWorkerForTask's own hold-
+  // awareness finding) -- a generation-counter or similar mechanism would
+  // be needed to close it completely, and that's a bigger, riskier change
+  // to the shared checkpoint schema than this bounded fix's own scope.
+  async function clearStaleResourceMarker() {
+    const writeRecord = deps.withPlannerMissionRecord ?? withPlannerMissionRecord
+    await writeRecord(missionId, (current) => {
+      if (!current.checkpoint?.resourceState) {
+        return current
+      }
+      return { ...current, checkpoint: recordResourceState(current.checkpoint, null, clock) }
+    })
+  }
+
   const attemptsSoFar = checkpointBefore.verifierResults.filter(
     (r) => r.verdict === 'VERIFIED_FAIL'
   ).length
@@ -280,6 +316,18 @@ export async function runRepairAttempt({
         finding
       }
     }
+    // Independent-adversarial-review finding (P1, real, reproduced): a
+    // stale resourceState marker from an earlier BLOCKED_BY_RESOURCE_
+    // PRESSURE attempt was previously only cleared on the SUCCESS path
+    // below -- any OTHER real dispatch error (provider resolution
+    // failure, worktree creation failure, etc.) reaching THIS re-throw
+    // still left the old marker in place, so a finding that had genuinely
+    // moved past resource pressure (proven by reaching a completely
+    // different error) kept showing a stale, false WAITING_FOR_RESOURCES
+    // item. Clearing here too, right before the passthrough re-throw,
+    // covers every real "we got past the resource check" path, not just
+    // the success path.
+    await clearStaleResourceMarker()
     throw error
   }
   const worker = dispatch.worker
@@ -294,17 +342,8 @@ export async function runRepairAttempt({
   // item. Reaching this point means resource pressure is NOT currently
   // blocking this mission (dispatch just succeeded, whether freshly or as
   // an already-registered resume) -- clear any stale marker so the
-  // projection stays honest. Cheap, conditional: only writes if a marker
-  // was actually present, so a mission that was never resource-blocked
-  // never gets a needless extra checkpoint revision.
-  const readRecordForClear = deps.readPlannerMissionRecord ?? readPlannerMissionRecord
-  if (readRecordForClear(missionId)?.checkpoint?.resourceState) {
-    const writeRecordForClear = deps.withPlannerMissionRecord ?? withPlannerMissionRecord
-    await writeRecordForClear(missionId, (current) => ({
-      ...current,
-      checkpoint: recordResourceState(current.checkpoint, null, clock)
-    }))
-  }
+  // projection stays honest.
+  await clearStaleResourceMarker()
   // Re-derived, not read off `worker` -- see the real-bug comment above.
   const worktreePath = deriveRepairAttemptWorktreePath({
     canonicalRepoPath,

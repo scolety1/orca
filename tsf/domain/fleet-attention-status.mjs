@@ -27,7 +27,9 @@ const DEFAULT_SEVERITY_BY_CATEGORY = Object.freeze({
 })
 
 function projectRef(displayNameById, projectId) {
-  if (!projectId) { return null }
+  if (!projectId) {
+    return null
+  }
   return { id: projectId, displayName: displayNameById.get(projectId) ?? projectId }
 }
 
@@ -40,7 +42,9 @@ function projectRef(displayNameById, projectId) {
 function indexNeedsYouOrigins(keepGoingRuns, researchMissions, plannerMissionRecords) {
   const project = new Map() // entryId -> raisedAt
   for (const run of Object.values(keepGoingRuns)) {
-    for (const entry of run.needsYou ?? []) { project.set(entry.id, entry.raisedAt) }
+    for (const entry of run.needsYou ?? []) {
+      project.set(entry.id, entry.raisedAt)
+    }
   }
   const research = new Map() // entryId -> { raisedAt, missionId }
   for (const mission of Object.values(researchMissions)) {
@@ -216,7 +220,9 @@ function completedRecentlyItems(recentlyCompleted, displayNameById) {
       })
       continue
     }
-    if (entry.sourceKind === 'LEGACY_CANDIDATE_DECISION') { continue }
+    if (entry.sourceKind === 'LEGACY_CANDIDATE_DECISION') {
+      continue
+    }
     items.push({
       id: `run:${entry.id}:completed`,
       category: 'COMPLETED_RECENTLY',
@@ -247,12 +253,15 @@ function selfImprovementItems(selfImprovementFindings, displayNameById) {
       reason = `Not eligible for autofix${finding.authorityRequired ? ` (${finding.authorityRequired})` : ''} -- needs your call.`
     } else if (finding.status === 'NEEDS_OWNER' && lastReason === 'REPAIR_RETRY_BUDGET_EXCEEDED') {
       category = 'FAILED_REQUIRES_ATTENTION'
-      reason = 'Automated repair attempts failed and exhausted the retry budget -- needs your review.'
+      reason =
+        'Automated repair attempts failed and exhausted the retry budget -- needs your review.'
     } else if (finding.status === 'READY_FOR_ADOPTION') {
       category = 'READY_FOR_ADOPTION'
       reason = 'A fix is ready for your review and adoption.'
     }
-    if (!category) { continue }
+    if (!category) {
+      continue
+    }
     items.push({
       id: `finding:${finding.findingId}`,
       category,
@@ -292,15 +301,21 @@ function holdItems(projectExecutionHolds, displayNameById) {
 }
 
 function resourcePressureItem(resourcePressureState) {
-  if (!resourcePressureState) { return null }
-  if (!['CRITICAL', 'EMERGENCY'].includes(resourcePressureState.tier)) { return null }
+  if (!resourcePressureState) {
+    return null
+  }
+  if (!['CRITICAL', 'EMERGENCY'].includes(resourcePressureState.tier)) {
+    return null
+  }
   return {
     id: `resource-pressure:${resourcePressureState.tier}`,
     category: 'WAITING_FOR_RESOURCES',
     severity: DEFAULT_SEVERITY_BY_CATEGORY.WAITING_FOR_RESOURCES,
     project: null,
     label: 'Host resource pressure',
-    reason: resourcePressureState.admission?.reason ?? `host memory tier is ${resourcePressureState.tier}`,
+    reason:
+      resourcePressureState.admission?.reason ??
+      `host memory tier is ${resourcePressureState.tier}`,
     changedAt: resourcePressureState.observedAt,
     deepLink: { kind: 'RESOURCE_PRESSURE', id: null },
     source: { kind: 'RESOURCE_PRESSURE_TIER', id: resourcePressureState.tier }
@@ -319,7 +334,10 @@ function resourcePressureItem(resourcePressureState) {
 // available answer.
 function resourceBlockedRunItems(keepGoingRuns, displayNameById) {
   return Object.entries(keepGoingRuns)
-    .filter(([, run]) => run.state === 'ACTIVE' && run.checkpoints.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES')
+    .filter(
+      ([, run]) =>
+        run.state === 'ACTIVE' && run.checkpoints.at(-1)?.phase === 'DISPATCH_WAITING_FOR_RESOURCES'
+    )
     .map(([projectId, run]) => {
       const lastCheckpoint = run.checkpoints.at(-1)
       const willAutoResume = !!run.pendingDispatch
@@ -342,23 +360,42 @@ function resourceBlockedRunItems(keepGoingRuns, displayNameById) {
 // A refused repair dispatch records its governor observation on the repair
 // mission's own durable checkpoint, so this is finding-specific evidence
 // rather than an inference from the current host-wide pressure tier.
-function resourceBlockedSelfImprovementItems(selfImprovementFindings, plannerMissionRecords, displayNameById) {
+function resourceBlockedSelfImprovementItems(
+  selfImprovementFindings,
+  plannerMissionRecords,
+  displayNameById
+) {
   return Object.values(selfImprovementFindings)
     .filter((finding) => ['FIX_MISSION_CREATED', 'FIX_IN_PROGRESS'].includes(finding.status))
     .flatMap((finding) => {
-      const resourceState = plannerMissionRecords[computeRepairMissionId(finding.findingId)]?.checkpoint?.resourceState
-      if (!resourceState) { return [] }
-      return [{
-        id: `finding:${finding.findingId}:waitingForResources`,
-        category: 'WAITING_FOR_RESOURCES',
-        severity: finding.severity ?? DEFAULT_SEVERITY_BY_CATEGORY.WAITING_FOR_RESOURCES,
-        project: projectRef(displayNameById, finding.projectId),
-        label: finding.affectedSurface,
-        reason: `repair is waiting for resources at tier ${resourceState.tier}: ${resourceState.reason}`,
-        changedAt: resourceState.observedAt,
-        deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId },
-        source: { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId }
-      }]
+      const resourceState =
+        plannerMissionRecords[computeRepairMissionId(finding.findingId)]?.checkpoint?.resourceState
+      // Independent-adversarial-review finding (P2, real, reproduced): a
+      // truthy but malformed resourceState (e.g. `{}`) passed the old
+      // bare truthiness check and produced a garbled "at tier undefined:
+      // undefined" attention item with no usable changedAt. resourceState
+      // is only ever written by this program's own recordResourceState
+      // call with a real {tier, reason, observedAt} shape or null (never
+      // any other value) -- a malformed shape here would mean something
+      // else wrote to this field unexpectedly, and honestly ignoring it
+      // (never fabricating a broken card) is safer than rendering
+      // incomplete evidence.
+      if (!resourceState?.tier || !resourceState?.reason || !resourceState?.observedAt) {
+        return []
+      }
+      return [
+        {
+          id: `finding:${finding.findingId}:waitingForResources`,
+          category: 'WAITING_FOR_RESOURCES',
+          severity: finding.severity ?? DEFAULT_SEVERITY_BY_CATEGORY.WAITING_FOR_RESOURCES,
+          project: projectRef(displayNameById, finding.projectId),
+          label: finding.affectedSurface,
+          reason: `repair is waiting for resources at tier ${resourceState.tier}: ${resourceState.reason}`,
+          changedAt: resourceState.observedAt,
+          deepLink: { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId },
+          source: { kind: 'SELF_IMPROVEMENT_FINDING', id: finding.findingId }
+        }
+      ]
     })
 }
 
@@ -380,8 +417,19 @@ export function buildFleetAttentionItems({
 }) {
   const displayNameById = new Map(projects.map((p) => [p.id, p.displayName]))
   const origins = indexNeedsYouOrigins(keepGoingRuns, researchMissions, plannerMissionRecords)
-  const needsYou = fleetNeedsYouStatus(projects, keepGoingRuns, researchMissions, plannerMissionRecords)
-  const workSummary = summarizeWorkFromRuns(projects, keepGoingRuns, clock, researchMissions, projectCanonicalBases)
+  const needsYou = fleetNeedsYouStatus(
+    projects,
+    keepGoingRuns,
+    researchMissions,
+    plannerMissionRecords
+  )
+  const workSummary = summarizeWorkFromRuns(
+    projects,
+    keepGoingRuns,
+    clock,
+    researchMissions,
+    projectCanonicalBases
+  )
 
   const items = [
     ...needsYouItems(needsYou, origins, displayNameById),
@@ -392,10 +440,16 @@ export function buildFleetAttentionItems({
     ...selfImprovementItems(selfImprovementFindings, displayNameById),
     ...holdItems(projectExecutionHolds, displayNameById),
     ...resourceBlockedRunItems(keepGoingRuns, displayNameById),
-    ...resourceBlockedSelfImprovementItems(selfImprovementFindings, plannerMissionRecords, displayNameById)
+    ...resourceBlockedSelfImprovementItems(
+      selfImprovementFindings,
+      plannerMissionRecords,
+      displayNameById
+    )
   ]
   const resourceItem = resourcePressureItem(resourcePressureState)
-  if (resourceItem) { items.push(resourceItem) }
+  if (resourceItem) {
+    items.push(resourceItem)
+  }
   return items
 }
 
