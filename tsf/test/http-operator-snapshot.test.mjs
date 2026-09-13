@@ -124,6 +124,39 @@ test('PARITY: a real Keep Going run appears with the SAME owner-facing state in 
   })
 })
 
+// HQ Snapshot Migration (finish item A): the new `attention` field must be
+// a real, exact substitute for a second GET /api/attention round-trip --
+// both come from the identical buildFleetAttentionItems call with the
+// identical real inputs (see operator-snapshot.mjs's own comment), so this
+// proves they never disagree, not merely that both exist.
+test('PARITY: /api/operator-snapshot.attention and legacy GET /api/attention agree exactly on the same real durable state', async () => {
+  await withServer(async (base) => {
+    const holdRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/pause`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'PARITY_TEST' })
+    })
+    // Pausing with no run yet is a real 422 -- fine, this test only needs
+    // SOME real, non-empty attention state, which the always-present
+    // fixture project's own degraded/onboarding facts already provide
+    // regardless of whether this pause attempt itself succeeded.
+    void holdRes
+
+    const [snapshotRes, attentionRes] = await Promise.all([
+      fetch(`${base}/api/operator-snapshot`),
+      fetch(`${base}/api/attention`)
+    ])
+    const snapshot = await snapshotRes.json()
+    const attention = await attentionRes.json()
+    assert.ok(Array.isArray(snapshot.attention))
+    assert.deepEqual(
+      snapshot.attention,
+      attention.items,
+      'the coherent snapshot must never describe fleet attention differently than the legacy endpoint it is replacing'
+    )
+  })
+})
+
 // GET /api/operator-events itself (the real long-lived SSE stream: headers,
 // the immediate-emit-on-connect behavior, revision-change dedup, and timer
 // cleanup on disconnect) is covered in operator-snapshot-http-routes.test.mjs

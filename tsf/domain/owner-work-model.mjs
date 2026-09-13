@@ -166,6 +166,112 @@ function researchAvailableActions(missionState) {
   return ['COMPLETE', 'BLOCKED'].includes(missionState) ? [] : ['CANCEL_RESEARCH']
 }
 
+// Overnight Completion, finish item A: work-feed-summary.mjs's own
+// legacyActive/legacyReadyForAdoption/legacyRecentlyCompleted -- the
+// classification for a project with NO real Keep Going run at all,
+// unchanged from the original pre-Keep-Going summarizeWork (see that
+// module's own header). Without this, a run-less onboarding-time project
+// (freshly onboarded and ACTIVE, or already ADOPTED through the legacy
+// candidate flow, with no run ever created) silently disappeared from
+// buildOwnerWorkItems entirely -- a real, disclosed gap this mission's own
+// Stage 5/operator-snapshot work would otherwise have quietly regressed
+// once HQ stopped also independently fetching /api/work. Reuses the SAME
+// two real fields (`project.mission.state`, `project.candidate?.state`)
+// work-feed-summary.mjs checks, never a new classification.
+const LEGACY_MISSION_STATE_TO_OWNER_STATE = Object.freeze({
+  ACTIVE: 'WORKING',
+  PLANNING: 'PLANNING',
+  REVIEW: 'VERIFYING'
+})
+
+function legacyMissionStateWorkItem(project) {
+  const state = LEGACY_MISSION_STATE_TO_OWNER_STATE[project.mission.state]
+  if (state) {
+    return {
+      id: `legacy-mission:${project.id}`,
+      projectId: project.id,
+      goalId: null,
+      kind: 'PROJECT',
+      parentId: null,
+      state,
+      reason: `legacy mission state is ${project.mission.state} (no Keep Going run exists yet)`,
+      progress: null,
+      startedAt: null,
+      updatedAt: null,
+      availableActions: []
+    }
+  }
+  if (project.mission.state === 'ADOPTED') {
+    return {
+      id: `legacy-mission:${project.id}`,
+      projectId: project.id,
+      goalId: null,
+      kind: 'PROJECT',
+      parentId: null,
+      state: 'DONE',
+      reason: 'adopted (legacy candidate flow)',
+      progress: null,
+      startedAt: null,
+      updatedAt: project.receipts?.chain?.at(-1)?.timestamp ?? null,
+      availableActions: []
+    }
+  }
+  return null
+}
+
+// Independent of the mission-state check above (a real, disclosed
+// possibility work-feed-summary.mjs's own loop already allows: a run-less
+// project can be simultaneously legacyActive AND legacyReadyForAdoption --
+// `mission.state` and `candidate.state` are different fields) -- a
+// distinct id so both can coexist for the same project, exactly like
+// work-feed-summary.mjs's own project appearing in two buckets at once.
+function legacyCandidateReadinessWorkItem(project) {
+  if (project.candidate?.state !== 'READY_FOR_ADOPTION') {
+    return null
+  }
+  return {
+    id: `legacy-candidate:${project.id}`,
+    projectId: project.id,
+    goalId: null,
+    kind: 'PROJECT',
+    parentId: null,
+    state: 'READY',
+    reason: 'candidate is ready for your adoption decision (no Keep Going run exists yet)',
+    progress: null,
+    startedAt: null,
+    updatedAt: null,
+    availableActions: ['ADOPT']
+  }
+}
+
+// work-feed-summary.mjs's own `blocked` bucket -- the one legacy
+// classification that is NOT gated on "no run exists" (a project can be
+// legacy-BLOCKED and have an active Keep Going run at the same time; see
+// that module's own header and BUG-14's real, independently-confirmed
+// overlap finding). Mapped to NEEDS_YOU, the same treatment HQPage.tsx's
+// own buildHomeNeedsYouItems already gives it today (folded into the same
+// "needs you" list as needsYou/stalled/readyForAdoption) -- re-labeled,
+// never re-derived: the underlying check is the identical real
+// `mission.state.startsWith('BLOCKED')` test work-feed-summary.mjs uses.
+function legacyBlockedWorkItem(project) {
+  if (!(project.mission.state ?? '').startsWith('BLOCKED')) {
+    return null
+  }
+  return {
+    id: `legacy-blocked:${project.id}`,
+    projectId: project.id,
+    goalId: null,
+    kind: 'PROJECT',
+    parentId: null,
+    state: 'NEEDS_YOU',
+    reason: project.mission.blockedReason ?? `legacy mission state is ${project.mission.state}`,
+    progress: null,
+    startedAt: null,
+    updatedAt: null,
+    availableActions: []
+  }
+}
+
 // The one real aggregation entry point -- mirrors work-feed-summary.mjs's
 // own iteration shape (fleetWorkStatus's per-project loop +
 // Object.values(researchMissions)) exactly, so a future caller (Stage 5's
@@ -185,15 +291,27 @@ export function buildOwnerWorkItems(
   const items = []
   for (const project of projects) {
     const run = keepGoingRuns[project.id]
-    if (!run) {
-      continue
+    if (run) {
+      const gap =
+        run.state === 'ACTIVE' ? compareStateToGoal(run, { verifiedSatisfied: [] }, clock) : null
+      const advancedEntry = (canonicalBases[project.id]?.history ?? []).find(
+        (h) => h.action === 'ADVANCED' && h.missionId === run.id
+      )
+      items.push(keepGoingRunWorkItem(run, { gap, advancedEntry }))
+    } else {
+      const legacyMission = legacyMissionStateWorkItem(project)
+      if (legacyMission) {
+        items.push(legacyMission)
+      }
+      const legacyCandidate = legacyCandidateReadinessWorkItem(project)
+      if (legacyCandidate) {
+        items.push(legacyCandidate)
+      }
     }
-    const gap =
-      run.state === 'ACTIVE' ? compareStateToGoal(run, { verifiedSatisfied: [] }, clock) : null
-    const advancedEntry = (canonicalBases[project.id]?.history ?? []).find(
-      (h) => h.action === 'ADVANCED' && h.missionId === run.id
-    )
-    items.push(keepGoingRunWorkItem(run, { gap, advancedEntry }))
+    const legacyBlocked = legacyBlockedWorkItem(project)
+    if (legacyBlocked) {
+      items.push(legacyBlocked)
+    }
   }
   for (const mission of Object.values(researchMissions)) {
     items.push(researchMissionWorkItem(mission))

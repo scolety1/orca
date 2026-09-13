@@ -107,6 +107,16 @@ export function buildOperatorSnapshot(clock = () => new Date(), deps = {}) {
     waiting: attentionItems.filter((item) => item.category === 'WAITING_FOR_RESOURCES'),
     needsYou,
     recentlyDone: workItems.filter((item) => item.state === 'DONE'),
-    capacity
+    capacity,
+    // HQ Snapshot Migration (finish item A): the SAME attentionItems array
+    // already computed above for `waiting` -- exposed in full (every
+    // category, not just WAITING_FOR_RESOURCES) so a caller that needs
+    // GET /api/attention's own real self-improvement-finding/planner-
+    // needs-you/execution-hold items (fleetNeedsYouStatus's `needsYou`
+    // above only covers the 3 needsYou-raising sources, not these) can get
+    // them from this ONE snapshot fetch instead of a second, independent
+    // GET /api/attention round-trip -- zero new reads, identical real
+    // function/inputs GET /api/attention itself uses.
+    attention: attentionItems
   }
 }

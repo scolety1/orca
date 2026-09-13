@@ -237,8 +237,14 @@ test('ResearchMission: CANCEL_RESEARCH is offered from every non-terminal state'
   assert.deepEqual(researchMissionWorkItem(needsYou).availableActions, ['CANCEL_RESEARCH'])
 })
 
-test('buildOwnerWorkItems: assembles Keep Going runs and research missions into ONE list, a project with no run contributes nothing (never fabricated)', () => {
-  const projects = [{ id: 'p1' }, { id: 'p2' }]
+test('buildOwnerWorkItems: assembles Keep Going runs and research missions into ONE list, a project with no run and no real legacy classification contributes nothing (never fabricated)', () => {
+  // DRAFT: a real mission.state that is neither a legacy-active value nor
+  // ADOPTED nor BLOCKED -- the genuinely honest "no classification applies"
+  // case, not an artificially incomplete fixture.
+  const projects = [
+    { id: 'p1', mission: { state: 'DRAFT' } },
+    { id: 'p2', mission: { state: 'DRAFT' } }
+  ]
   const run = newRun('r1', 'p1')
   const mission = baseMission('m9')
   const items = buildOwnerWorkItems(projects, { p1: run }, { [mission.id]: mission })
@@ -250,6 +256,96 @@ test('buildOwnerWorkItems: threads real canonicalBases ADVANCED evidence into DO
   const canonicalBases = {
     p1: { history: [{ action: 'ADVANCED', missionId: run.id, at: '2026-09-13T02:00:00.000Z' }] }
   }
-  const items = buildOwnerWorkItems([{ id: 'p1' }], { p1: run }, {}, canonicalBases)
+  const items = buildOwnerWorkItems(
+    [{ id: 'p1', mission: { state: 'DRAFT' } }],
+    { p1: run },
+    {},
+    canonicalBases
+  )
   assert.equal(items[0].state, 'DONE')
+})
+
+// Overnight Completion, finish item A: a run-less project's legacy
+// mission.state/candidate.state classification -- the exact real fields
+// work-feed-summary.mjs's own legacyActive/legacyReadyForAdoption/
+// legacyRecentlyCompleted checks use, re-labeled onto the owner
+// vocabulary, never re-derived.
+for (const [missionState, ownerState] of [
+  ['ACTIVE', 'WORKING'],
+  ['PLANNING', 'PLANNING'],
+  ['REVIEW', 'VERIFYING']
+]) {
+  test(`buildOwnerWorkItems: a run-less project with legacy mission.state ${missionState} projects as owner state ${ownerState}`, () => {
+    const items = buildOwnerWorkItems([{ id: 'p1', mission: { state: missionState } }], {})
+    assert.deepEqual(items, [
+      {
+        id: 'legacy-mission:p1',
+        projectId: 'p1',
+        goalId: null,
+        kind: 'PROJECT',
+        parentId: null,
+        state: ownerState,
+        reason: `legacy mission state is ${missionState} (no Keep Going run exists yet)`,
+        progress: null,
+        startedAt: null,
+        updatedAt: null,
+        availableActions: []
+      }
+    ])
+  })
+}
+
+test('buildOwnerWorkItems: a run-less ADOPTED project (legacy candidate flow) projects as DONE', () => {
+  const items = buildOwnerWorkItems([
+    {
+      id: 'p1',
+      mission: { id: 'mission:legacy-1', state: 'ADOPTED' },
+      receipts: { chain: [{ timestamp: '2026-09-01T00:00:00.000Z' }] }
+    }
+  ])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].id, 'legacy-mission:p1')
+  assert.equal(items[0].state, 'DONE')
+  assert.equal(items[0].reason, 'adopted (legacy candidate flow)')
+  assert.equal(items[0].updatedAt, '2026-09-01T00:00:00.000Z')
+})
+
+test('buildOwnerWorkItems: a run-less project with candidate.state READY_FOR_ADOPTION projects as READY, independent of mission.state', () => {
+  const items = buildOwnerWorkItems([
+    { id: 'p1', mission: { state: 'DRAFT' }, candidate: { state: 'READY_FOR_ADOPTION' } }
+  ])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].id, 'legacy-candidate:p1')
+  assert.equal(items[0].state, 'READY')
+  assert.deepEqual(items[0].availableActions, ['ADOPT'])
+})
+
+test('buildOwnerWorkItems: a run-less project can be BOTH legacy-active AND legacy-ready-for-adoption at once (two independent real fields), exactly like work-feed-summary.mjs allows', () => {
+  const items = buildOwnerWorkItems([
+    { id: 'p1', mission: { state: 'ACTIVE' }, candidate: { state: 'READY_FOR_ADOPTION' } }
+  ])
+  assert.deepEqual(
+    new Set(items.map((i) => i.id)),
+    new Set(['legacy-mission:p1', 'legacy-candidate:p1'])
+  )
+})
+
+test('buildOwnerWorkItems: a legacy BLOCKED mission.state projects as NEEDS_YOU, using the real blockedReason verbatim', () => {
+  const items = buildOwnerWorkItems([
+    { id: 'p1', mission: { state: 'BLOCKED_ON_HEALTH', blockedReason: 'real degraded finding' } }
+  ])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].id, 'legacy-blocked:p1')
+  assert.equal(items[0].state, 'NEEDS_YOU')
+  assert.equal(items[0].reason, 'real degraded finding')
+})
+
+test('buildOwnerWorkItems: legacy BLOCKED is independent of run existence -- a project can be run-based WORKING and legacy-blocked at the same time (real, confirmed BUG-14 overlap)', () => {
+  const run = newRun('r1', 'p1')
+  const items = buildOwnerWorkItems(
+    [{ id: 'p1', mission: { state: 'BLOCKED_ON_HEALTH', blockedReason: 'real degraded finding' } }],
+    { p1: run }
+  )
+  assert.deepEqual(new Set(items.map((i) => i.id)), new Set(['run:r1', 'legacy-blocked:p1']))
+  assert.equal(items.find((i) => i.id === 'legacy-blocked:p1').state, 'NEEDS_YOU')
 })
