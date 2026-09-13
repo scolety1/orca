@@ -9,10 +9,11 @@ import {
   releaseProjectExecutionHold
 } from '../domain/project-execution-hold.mjs'
 import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
+import { cancelResearchMissionDurable } from './research-mission-driver.mjs'
 
 /**
- * @typedef {{ ok: true, action: 'PAUSE' | 'RESUME' | 'DISPATCH' | 'HOLD' | 'RELEASE_HOLD', hold?: object, releasedSomething?: boolean }} ActionSuccess
- * @typedef {{ ok: false, reason: 'PAUSE_FAILED' | 'RESUME_FAILED' | 'ADOPT_FAILED' | 'HOLD_FAILED' | 'RELEASE_HOLD_FAILED' | 'UNSUPPORTED_ACTION', detail: string }} ActionFailure
+ * @typedef {{ ok: true, action: 'PAUSE' | 'RESUME' | 'DISPATCH' | 'HOLD' | 'RELEASE_HOLD' | 'CANCEL_RESEARCH', hold?: object, releasedSomething?: boolean, mission?: object }} ActionSuccess
+ * @typedef {{ ok: false, reason: 'PAUSE_FAILED' | 'RESUME_FAILED' | 'ADOPT_FAILED' | 'HOLD_FAILED' | 'RELEASE_HOLD_FAILED' | 'CANCEL_RESEARCH_FAILED' | 'UNSUPPORTED_ACTION', detail: string }} ActionFailure
  */
 
 const FAILURE_REASON_BY_TYPE = Object.freeze({
@@ -20,7 +21,8 @@ const FAILURE_REASON_BY_TYPE = Object.freeze({
   RESUME: 'RESUME_FAILED',
   ADOPT: 'ADOPT_FAILED',
   HOLD: 'HOLD_FAILED',
-  RELEASE_HOLD: 'RELEASE_HOLD_FAILED'
+  RELEASE_HOLD: 'RELEASE_HOLD_FAILED',
+  CANCEL_RESEARCH: 'CANCEL_RESEARCH_FAILED'
 })
 
 function errorDetail(error) {
@@ -112,6 +114,19 @@ export async function executeAction({ type, target, parameters = {}, clock, deps
         )
       })
       return { ok: true, action: 'RELEASE_HOLD', releasedSomething }
+    }
+
+    if (type === 'CANCEL_RESEARCH') {
+      // Named CANCEL_RESEARCH, not a generic CANCEL -- reconciliation found
+      // no generic cancel capability anywhere else (Keep Going runs have
+      // no cancel primitive at all, only pause/complete/stall; the legacy
+      // candidate ADOPT/REJECT route is fixture-only, dead for real
+      // projects). This is the one real, wired cancel capability that
+      // exists today. `target` is the mission id (a bare string, like
+      // PAUSE/RESUME/HOLD/RELEASE_HOLD).
+      const cancel = deps.cancelResearchMissionDurable ?? cancelResearchMissionDurable
+      const mission = await cancel(target, parameters.reason ?? 'OPERATOR_CANCEL', clock)
+      return { ok: true, action: 'CANCEL_RESEARCH', mission }
     }
 
     return {

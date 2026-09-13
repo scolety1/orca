@@ -23,7 +23,6 @@ import { EXA_PROVIDER_ID } from '../adapters/exa-research-worker.mjs'
 import { PARALLEL_PROVIDER_ID } from '../adapters/parallel-research-worker.mjs'
 import {
   attemptFreeResearchProgressDurable,
-  cancelResearchMissionDurable,
   createResearchMissionDurable,
   grantResearchPaidApprovalDurable,
   readResearchMissionArtifacts,
@@ -32,6 +31,7 @@ import {
   readResearchMissionStatus,
   requestResearchPaidApprovalDurable
 } from './research-mission-driver.mjs'
+import { executeAction } from './action-executor.mjs'
 import { synthesizeResearchSpecification } from './command-research-spec-synthesis.mjs'
 import { registerResearchCompletionWatch } from './command-research-completion-watch.mjs'
 import { shouldSuppressResearchCreation } from '../domain/parent-mission-intent-classification.mjs'
@@ -48,7 +48,13 @@ const RESEARCH_INTENT_PATTERNS = [
   // above; checked next so it's never swallowed by the broad
   // RESEARCH_CREATE_OR_CONTINUE catch-all just because it says "help"
   // near a provider name.
-  { id: 'RESEARCH_PAID_ADVISORY', test: (msg) => /\b(could|can|would)\s+(exa|parallel)\s+help\b|\bshould (i|we) use (exa|parallel)\b/i.test(msg) },
+  {
+    id: 'RESEARCH_PAID_ADVISORY',
+    test: (msg) =>
+      /\b(could|can|would)\s+(exa|parallel)\s+help\b|\bshould (i|we) use (exa|parallel)\b/i.test(
+        msg
+      )
+  },
   // Hands-on pilot round 3, Bug 2/3: natural research follow-ups ("paste
   // it here", "paste the salary cap you found", "show me what it found",
   // "where's the CSV", "what did it find", "what sources did it use")
@@ -80,7 +86,13 @@ const RESEARCH_INTENT_PATTERNS = [
   // is common, unrelated chat vocabulary in this codebase's own domain
   // (a real Git merge conflict on some other project) and must never
   // hijack an ordinary fleet-dispatch message away from real dispatch.
-  { id: 'RESEARCH_CONFLICTS', test: (msg) => /\bwhat conflicts\b|\bresearch conflicts\b|\bconflicts?\s+(remain|left|open|outstanding)\b/i.test(msg) },
+  {
+    id: 'RESEARCH_CONFLICTS',
+    test: (msg) =>
+      /\bwhat conflicts\b|\bresearch conflicts\b|\bconflicts?\s+(remain|left|open|outstanding)\b/i.test(
+        msg
+      )
+  },
   // Round 3, Bug 2/4: "is it done", "is the research still running", "how
   // do I know when it's done" (incl. the exact real-pilot typo "donw"),
   // "why isn't it done" -- all genuine completion-status questions that
@@ -88,11 +100,15 @@ const RESEARCH_INTENT_PATTERNS = [
   {
     id: 'RESEARCH_COMPLETENESS',
     test: (msg) =>
-      /\bhow complete\b|\bcompleteness\b|\bhow far along\b|\bwhat'?s missing\b|\bwhat is missing\b/i.test(msg) ||
+      /\bhow complete\b|\bcompleteness\b|\bhow far along\b|\bwhat'?s missing\b|\bwhat is missing\b/i.test(
+        msg
+      ) ||
       // (?:\S+\s+){0,4} tolerates a named topic between "the" and
       // "research" (e.g. "is the NFL salary cap research done") without
       // loosening the "it/this/that/the research" anchor itself.
-      /\bis (?:it|this|that|the (?:\S+\s+){0,4}research) (still )?(running|done|finished|complete)\b/i.test(msg) ||
+      /\bis (?:it|this|that|the (?:\S+\s+){0,4}research) (still )?(running|done|finished|complete)\b/i.test(
+        msg
+      ) ||
       /\bhow do i know (when|if)( it'?s| the .+ is)?\s*don[ew]\b/i.test(msg) ||
       /\bwhy isn'?t it done\b/i.test(msg)
   },
@@ -122,7 +138,10 @@ const RESEARCH_INTENT_PATTERNS = [
   // something else in a future, unrelated Command feature. Checked only
   // after the research-specific artifact/status/conflict patterns above so
   // none of those get shadowed.
-  { id: 'RESEARCH_CANCEL', test: (msg) => /\bcancel\s+(it|that|this|the research|this mission|the mission)\b/i.test(msg) },
+  {
+    id: 'RESEARCH_CANCEL',
+    test: (msg) => /\bcancel\s+(it|that|this|the research|this mission|the mission)\b/i.test(msg)
+  },
   // FIXED (TSF Software Mission Routing / Project Planner Hotfix V1): a
   // bare "research" anywhere in the message used to catch ANY message that
   // mentions research only in passing, including inside a long software/
@@ -139,7 +158,8 @@ const RESEARCH_INTENT_PATTERNS = [
   // already narrow/mission-context-scoped and was never implicated.
   {
     id: 'RESEARCH_CREATE_OR_CONTINUE',
-    test: (msg) => /\bresearch\b|\bbuild (?:me )?(?:a )?dataset\b|\bdataset\s+(?:of|for)\b/i.test(msg)
+    test: (msg) =>
+      /\bresearch\b|\bbuild (?:me )?(?:a )?dataset\b|\bdataset\s+(?:of|for)\b/i.test(msg)
   }
 ]
 
@@ -178,7 +198,10 @@ export function shouldRouteToResearchBridge(message, opState) {
   if (!intent) {
     return false
   }
-  if (MISSION_CONTEXT_DEPENDENT_INTENTS.has(intent) && Object.keys(opState.researchMissions ?? {}).length === 0) {
+  if (
+    MISSION_CONTEXT_DEPENDENT_INTENTS.has(intent) &&
+    Object.keys(opState.researchMissions ?? {}).length === 0
+  ) {
     return false
   }
   // PARENT MISSION INTENT MUST WIN: a message that only matched via the
@@ -268,7 +291,11 @@ function lastReferencedMissionId(opState) {
   const known = new Set(Object.keys(opState.researchMissions ?? {}))
   for (let i = thread.length - 1; i >= 0; i -= 1) {
     const entry = thread[i]
-    if (entry.role === 'assistant' && entry.researchMissionId && known.has(entry.researchMissionId)) {
+    if (
+      entry.role === 'assistant' &&
+      entry.researchMissionId &&
+      known.has(entry.researchMissionId)
+    ) {
       return entry.researchMissionId
     }
   }
@@ -296,7 +323,7 @@ function resolveMissionContext(message, opState) {
 }
 
 function noMissionYetText() {
-  return "There's no research mission yet to talk about -- say what to research (e.g. \"research 2019 NFL rookie WRs\" or \"build me a dataset of X\") and I'll start a real, durable one."
+  return 'There\'s no research mission yet to talk about -- say what to research (e.g. "research 2019 NFL rookie WRs" or "build me a dataset of X") and I\'ll start a real, durable one.'
 }
 
 function ambiguousMissionText(opState) {
@@ -387,12 +414,18 @@ function describeMissionCompletion(missionId, status, completeness) {
     `Right now it's ${status.phase} (mission state ${status.state}${progressNote}).`
   ]
   if (completeness.unresolvedConflictCount > 0) {
-    sentences.push(`${completeness.unresolvedConflictCount} unresolved conflict(s) need your decision before it can finish.`)
+    sentences.push(
+      `${completeness.unresolvedConflictCount} unresolved conflict(s) need your decision before it can finish.`
+    )
   }
   if (status.openNeedsYouCount > 0) {
-    sentences.push(`${status.openNeedsYouCount} open item(s) need your input -- I've flagged those separately.`)
+    sentences.push(
+      `${status.openNeedsYouCount} open item(s) need your input -- I've flagged those separately.`
+    )
   } else {
-    sentences.push("You don't need to keep checking manually; TSF will continue it in the background.")
+    sentences.push(
+      "You don't need to keep checking manually; TSF will continue it in the background."
+    )
   }
   return sentences.join(' ')
 }
@@ -424,7 +457,9 @@ function describeArtifacts(missionId, artifacts, status) {
     }
     byEntity.get(fact.entityLabel).push(`${fact.fieldName}: ${JSON.stringify(fact.value)}`)
   }
-  const lines = [...byEntity.entries()].map(([entity, fields]) => `- **${entity}** — ${fields.join(', ')}`)
+  const lines = [...byEntity.entries()].map(
+    ([entity, fields]) => `- **${entity}** — ${fields.join(', ')}`
+  )
   if (status.state === 'COMPLETE') {
     return `Here's the completed dataset for **${missionId}**:\n${lines.join('\n')}`
   }
@@ -460,11 +495,23 @@ function result({ intent, decisionClass, text, live, researchMissionId = null })
 // null when the message isn't research-shaped at all, so that route falls
 // through to its normal dispatch/live-planner handling unchanged -- same
 // contract as shouldRouteToResearchBridge itself.
-export async function respondResearchCommandForProject({ project, message, opState, clock = () => new Date() }) {
-  return shouldRouteToResearchBridge(message, opState) ? respondResearchCommand({ message, opState, clock, contextProjectId: project.id }) : null
+export async function respondResearchCommandForProject({
+  project,
+  message,
+  opState,
+  clock = () => new Date()
+}) {
+  return shouldRouteToResearchBridge(message, opState)
+    ? respondResearchCommand({ message, opState, clock, contextProjectId: project.id })
+    : null
 }
 
-export async function respondResearchCommand({ message, opState, clock = () => new Date(), contextProjectId = null }) {
+export async function respondResearchCommand({
+  message,
+  opState,
+  clock = () => new Date(),
+  contextProjectId = null
+}) {
   const intent = classifyResearchIntent(message)
   if (!intent) return null // not a research-bridge message -- caller falls through
 
@@ -472,7 +519,12 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     const grant = parsePaidGrant(message)
     const missionContext = resolveMissionContext(message, opState)
     if (missionContext.ambiguous) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: ambiguousMissionText(opState),
+        live: false
+      })
     }
     const missionId = missionContext.missionId
     if (!missionId) {
@@ -480,7 +532,12 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     }
     await grantResearchPaidApprovalDurable(
       missionId,
-      { providerId: grant.providerId, maxSpendUsd: grant.maxSpendUsd, scope: message, grantedBy: 'OPERATOR_CHAT' },
+      {
+        providerId: grant.providerId,
+        maxSpendUsd: grant.maxSpendUsd,
+        scope: message,
+        grantedBy: 'OPERATOR_CHAT'
+      },
       clock
     )
     return result({
@@ -500,7 +557,12 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     // mutates mission state at all.
     const missionContext = resolveMissionContext(message, opState)
     if (missionContext.ambiguous) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: ambiguousMissionText(opState),
+        live: false
+      })
     }
     const missionId = missionContext.missionId
     if (!missionId) {
@@ -511,20 +573,36 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     const text = openPaidRequest
       ? `Possibly -- there's already an open paid-research request on **${missionId}**: "${openPaidRequest.question}". Say something like "use Exa up to $N" to approve it, scoped to this mission and this provider only. I won't spend anything without that.`
       : `**${missionId}** has no open gap I've flagged as needing paid research right now. Paid providers (Exa/Parallel) stay off by default -- if you want me to check whether one would help, ask me to continue the research and I'll raise a scoped request if a real gap remains.`
-    return result({ intent, decisionClass: 'AUTO_DECIDE', text, live: false, researchMissionId: missionId })
+    return result({
+      intent,
+      decisionClass: 'AUTO_DECIDE',
+      text,
+      live: false,
+      researchMissionId: missionId
+    })
   }
 
   if (intent === 'RESEARCH_CANCEL') {
     const missionContext = resolveMissionContext(message, opState)
     if (missionContext.ambiguous) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: ambiguousMissionText(opState),
+        live: false
+      })
     }
     const missionId = missionContext.missionId
     if (!missionId) {
       return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
     }
-    try {
-      await cancelResearchMissionDurable(missionId, 'OPERATOR_CHAT_CANCEL', clock)
+    const actionResult = await executeAction({
+      type: 'CANCEL_RESEARCH',
+      target: missionId,
+      parameters: { reason: 'OPERATOR_CHAT_CANCEL' },
+      clock
+    })
+    if (actionResult.ok) {
       return result({
         intent,
         decisionClass: 'RECOMMEND_AND_PROCEED',
@@ -532,34 +610,54 @@ export async function respondResearchCommand({ message, opState, clock = () => n
         live: true,
         researchMissionId: missionId
       })
-    } catch (error) {
-      return result({
-        intent,
-        decisionClass: 'AUTO_DECIDE',
-        text: `Couldn't cancel **${missionId}**: ${error.message}.`,
-        live: false,
-        researchMissionId: missionId
-      })
     }
+    return result({
+      intent,
+      decisionClass: 'AUTO_DECIDE',
+      text: `Couldn't cancel **${missionId}**: ${actionResult.detail}.`,
+      live: false,
+      researchMissionId: missionId
+    })
   }
 
   if (intent === 'RESEARCH_COMPLETION_WATCH_REQUEST') {
     const missionContext = resolveMissionContext(message, opState)
     if (missionContext.ambiguous) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: ambiguousMissionText(opState),
+        live: false
+      })
     }
     const missionId = missionContext.missionId
     if (!missionId) {
       return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
     }
     const text = await registerResearchCompletionWatch(missionId, message, clock)
-    return result({ intent, decisionClass: 'AUTO_DECIDE', text, live: false, researchMissionId: missionId })
+    return result({
+      intent,
+      decisionClass: 'AUTO_DECIDE',
+      text,
+      live: false,
+      researchMissionId: missionId
+    })
   }
 
-  if (intent === 'RESEARCH_ARTIFACTS' || intent === 'RESEARCH_STATUS' || intent === 'RESEARCH_COMPLETENESS' || intent === 'RESEARCH_CONFLICTS') {
+  if (
+    intent === 'RESEARCH_ARTIFACTS' ||
+    intent === 'RESEARCH_STATUS' ||
+    intent === 'RESEARCH_COMPLETENESS' ||
+    intent === 'RESEARCH_CONFLICTS'
+  ) {
     const missionContext = resolveMissionContext(message, opState)
     if (missionContext.ambiguous) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: ambiguousMissionText(opState), live: false })
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: ambiguousMissionText(opState),
+        live: false
+      })
     }
     const missionId = missionContext.missionId
     if (!missionId) {
@@ -567,8 +665,17 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     }
     if (intent === 'RESEARCH_STATUS') {
       const status = readResearchMissionStatus(missionId)
-      if (!status) return result({ intent, decisionClass: 'AUTO_DECIDE', text: `I don't have a research mission called ${missionId}.`, live: false })
-      const byStatus = Object.entries(status.nodesByStatus).map(([k, v]) => `${v} ${k}`).join(', ') || 'no nodes yet'
+      if (!status)
+        return result({
+          intent,
+          decisionClass: 'AUTO_DECIDE',
+          text: `I don't have a research mission called ${missionId}.`,
+          live: false
+        })
+      const byStatus =
+        Object.entries(status.nodesByStatus)
+          .map(([k, v]) => `${v} ${k}`)
+          .join(', ') || 'no nodes yet'
       return result({
         intent,
         decisionClass: 'AUTO_DECIDE',
@@ -580,7 +687,13 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     if (intent === 'RESEARCH_COMPLETENESS') {
       const completeness = readResearchMissionCompleteness(missionId, clock)
       const status = readResearchMissionStatus(missionId)
-      if (!completeness || !status) return result({ intent, decisionClass: 'AUTO_DECIDE', text: `I don't have a research mission called ${missionId}.`, live: false })
+      if (!completeness || !status)
+        return result({
+          intent,
+          decisionClass: 'AUTO_DECIDE',
+          text: `I don't have a research mission called ${missionId}.`,
+          live: false
+        })
       return result({
         intent,
         decisionClass: 'AUTO_DECIDE',
@@ -591,13 +704,25 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     }
     if (intent === 'RESEARCH_CONFLICTS') {
       const items = readResearchMissionReviewItems(missionId)
-      if (items == null) return result({ intent, decisionClass: 'AUTO_DECIDE', text: `I don't have a research mission called ${missionId}.`, live: false })
+      if (items == null)
+        return result({
+          intent,
+          decisionClass: 'AUTO_DECIDE',
+          text: `I don't have a research mission called ${missionId}.`,
+          live: false
+        })
       const conflicts = items.filter((n) => n.category === 'UNRESOLVED_CONFLICT')
       const text =
         conflicts.length === 0
           ? `No open conflicts on **${missionId}** right now (${items.length} other open Needs You item(s), if any).`
           : `${conflicts.length} open conflict(s) on **${missionId}**:\n${conflicts.map((c) => `- ${c.question}`).join('\n')}`
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text, live: false, researchMissionId: missionId })
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text,
+        live: false,
+        researchMissionId: missionId
+      })
     }
     // RESEARCH_ARTIFACTS. Bug 3 fix: this previously read
     // artifacts.canonicalFacts (a top-level field that never exists --
@@ -609,7 +734,13 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     // facts and grounds the response in real mission state instead.
     const artifacts = readResearchMissionArtifacts(missionId, clock)
     const artifactStatus = readResearchMissionStatus(missionId)
-    if (!artifacts || !artifactStatus) return result({ intent, decisionClass: 'AUTO_DECIDE', text: `I don't have a research mission called ${missionId}.`, live: false })
+    if (!artifacts || !artifactStatus)
+      return result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: `I don't have a research mission called ${missionId}.`,
+        live: false
+      })
     return result({
       intent,
       decisionClass: 'AUTO_DECIDE',
@@ -627,7 +758,9 @@ export async function respondResearchCommand({ message, opState, clock = () => n
   // prefer THIS conversation's own history over blind system-wide
   // recency, same reasoning as resolveMissionContext above -- a second
   // mission progressing elsewhere must never silently steal "it".
-  let missionId = explicitId ?? (topic ? slugify(topic) : (lastReferencedMissionId(opState) ?? mostRecentMissionId(opState)))
+  let missionId =
+    explicitId ??
+    (topic ? slugify(topic) : (lastReferencedMissionId(opState) ?? mostRecentMissionId(opState)))
 
   if (!missionId) {
     return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
@@ -649,7 +782,16 @@ export async function respondResearchCommand({ message, opState, clock = () => n
     const synthesis = await synthesizeResearchSpecification({ message, missionId, freeOnly, clock })
 
     if (synthesis.ok) {
-      await createResearchMissionDurable(missionId, { projectId: contextProjectId ?? 'COMMAND_CHAT', specification: synthesis.specification, expectedUniverse: synthesis.expectedUniverse, nodes: synthesis.nodes }, clock)
+      await createResearchMissionDurable(
+        missionId,
+        {
+          projectId: contextProjectId ?? 'COMMAND_CHAT',
+          specification: synthesis.specification,
+          expectedUniverse: synthesis.expectedUniverse,
+          nodes: synthesis.nodes
+        },
+        clock
+      )
       // "Started" must mean something real (Finding 3): real nodes with a
       // real requested-fields shape now exist, so this mission's phase is
       // CREATED, not DRAFT -- "Created", never "Started".
@@ -662,7 +804,10 @@ export async function respondResearchCommand({ message, opState, clock = () => n
       // explicit "continue" already gets, immediately, means Tim sees the
       // truth about what's already happening instead of a manual-action
       // prompt for work that's already autonomous.
-      const { remainingGap, paidRequestRaised } = await attemptProgressAndRaisePaidRequestIfNeeded(missionId, { freeOnly, clock })
+      const { remainingGap, paidRequestRaised } = await attemptProgressAndRaisePaidRequestIfNeeded(
+        missionId,
+        { freeOnly, clock }
+      )
       const strategyNote = synthesis.sourceStrategy ? ` Strategy: ${synthesis.sourceStrategy}.` : ''
       const gapNote = remainingGapNote({ remainingGap, paidRequestRaised, freeOnly })
       // Adversarial-review finding: a real gap blocked on Tim's owner
@@ -675,7 +820,7 @@ export async function respondResearchCommand({ message, opState, clock = () => n
       const blockedOnPaidDecision = remainingGap > 0 && !freeOnly
       const queuedNote = blockedOnPaidDecision
         ? ''
-        : ' Queued for autonomous progression -- I\'ll only interrupt you if it needs owner input or paid access.'
+        : " Queued for autonomous progression -- I'll only interrupt you if it needs owner input or paid access."
       return result({
         intent,
         decisionClass: 'RECOMMEND_AND_PROCEED',
@@ -725,8 +870,15 @@ export async function respondResearchCommand({ message, opState, clock = () => n
           // Same real schema requirement fixed above -- both fields are
           // required non-empty strings even on this zero-node draft
           // scaffold, for consistency should a node ever be added to it later.
-          temporalRequirements: { asOfDate: clock().toISOString().slice(0, 10), periodScope: 'UNSPECIFIED' },
-          budget: { maxCostUsd: freeOnly ? 0 : null, maxLatencyMs: null, maxToolCallsPerNode: null },
+          temporalRequirements: {
+            asOfDate: clock().toISOString().slice(0, 10),
+            periodScope: 'UNSPECIFIED'
+          },
+          budget: {
+            maxCostUsd: freeOnly ? 0 : null,
+            maxLatencyMs: null,
+            maxToolCallsPerNode: null
+          },
           toolPermissions: []
         },
         expectedUniverse: {
@@ -734,7 +886,8 @@ export async function respondResearchCommand({ message, opState, clock = () => n
           entityType: 'UNSPECIFIED_CHAT_TOPIC',
           expectedCount: 0,
           expectedEntities: [],
-          source: 'DRAFT_SCAFFOLD -- live specification synthesis was unavailable; no real oracle yet'
+          source:
+            'DRAFT_SCAFFOLD -- live specification synthesis was unavailable; no real oracle yet'
         }
       },
       clock
@@ -755,7 +908,8 @@ export async function respondResearchCommand({ message, opState, clock = () => n
   // make on its own (see the module header) -- a real mission script or a
   // future, more specific command drives that, gated by
   // dispatchResearchNodeWithApprovalDurable.
-  const { progress, remainingGap, paidRequestRaised } = await attemptProgressAndRaisePaidRequestIfNeeded(missionId, { freeOnly, clock })
+  const { progress, remainingGap, paidRequestRaised } =
+    await attemptProgressAndRaisePaidRequestIfNeeded(missionId, { freeOnly, clock })
   const freeNote = freeOnly ? ' (free-path only, as requested)' : ''
   const gapNote = remainingGapNote({ remainingGap, paidRequestRaised, freeOnly })
   const text =

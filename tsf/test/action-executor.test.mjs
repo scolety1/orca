@@ -6,7 +6,10 @@
 // (command-adoption-execution.mjs, Phase 2), and
 // createProjectExecutionHold/releaseProjectExecutionHold/
 // withProjectExecutionHold (domain/project-execution-hold.mjs +
-// project-execution-hold-store.mjs, Phase 3).
+// project-execution-hold-store.mjs, Phase 3), and cancelResearchMissionDurable
+// (research-mission-driver.mjs, Phase 4 -- the one real, wired cancel
+// capability found on reconciliation; there is no generic project-level
+// CANCEL anywhere in this codebase).
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { executeAction } from '../server/action-executor.mjs'
@@ -229,4 +232,41 @@ test('RELEASE_HOLD: no active hold -> honest no-op, releasedSomething false, nev
   })
   assert.deepEqual(result, { ok: true, action: 'RELEASE_HOLD', releasedSomething: false })
   assert.equal(releaseCalled, false)
+})
+
+test('CANCEL_RESEARCH: success calls the real cancelResearchMissionDurable(missionId, reason, clock) and returns the mutated mission', async () => {
+  const calls = []
+  const cancelledMission = { id: 'mission:1', state: 'BLOCKED' }
+  const result = await executeAction({
+    type: 'CANCEL_RESEARCH',
+    target: 'mission:1',
+    parameters: { reason: 'OPERATOR_CHAT_CANCEL' },
+    clock,
+    deps: {
+      cancelResearchMissionDurable: async (missionId, reason, c) => {
+        calls.push([missionId, reason, c])
+        return cancelledMission
+      }
+    }
+  })
+  assert.deepEqual(result, { ok: true, action: 'CANCEL_RESEARCH', mission: cancelledMission })
+  assert.deepEqual(calls, [['mission:1', 'OPERATOR_CHAT_CANCEL', clock]])
+})
+
+test('CANCEL_RESEARCH: a thrown error (e.g. already-terminal mission) is caught into a typed CANCEL_RESEARCH_FAILED result', async () => {
+  const result = await executeAction({
+    type: 'CANCEL_RESEARCH',
+    target: 'mission:1',
+    clock,
+    deps: {
+      cancelResearchMissionDurable: async () => {
+        throw new Error('illegal transition: COMPLETE -> BLOCKED')
+      }
+    }
+  })
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'CANCEL_RESEARCH_FAILED',
+    detail: 'illegal transition: COMPLETE -> BLOCKED'
+  })
 })
