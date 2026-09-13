@@ -7,9 +7,27 @@ import { createPortfolio } from '../domain/portfolio.mjs'
 
 const HERE = import.meta.dirname
 const STATE_DIR = path.join(HERE, '.local-state')
+const REAL_DEFAULT_STATE_FILE = path.join(STATE_DIR, 'operator-state.json')
 // Overridable so tests can point at an isolated temp file instead of the
 // real local operator state (which a running dev server may hold open).
-const STATE_FILE = process.env.TSF_UI_STATE_FILE || path.join(STATE_DIR, 'operator-state.json')
+const STATE_FILE = process.env.TSF_UI_STATE_FILE || REAL_DEFAULT_STATE_FILE
+
+// TSF-SAFE-UI-001 (real, previously-encountered risk, not hypothetical): a
+// disposable/test dogfood runtime sets BOTH TSF_UI_STATE_FILE (its own
+// isolated path) and TSF_DISPOSABLE_RUNTIME=1 to declare its intent -- if
+// TSF_UI_STATE_FILE fails to actually propagate to this process (a real
+// PowerShell/Bash env-var-to-child-process quirk already hit once this
+// program), STATE_FILE silently falls back to the REAL owner's own default
+// path above, and a disposable server would read/write real owner data
+// without anyone noticing. Fails closed at import time -- every real
+// caller of loadState/saveState/getStateFilePath transitively imports this
+// module, so a misconfigured disposable runtime can never reach any of
+// them.
+if (process.env.TSF_DISPOSABLE_RUNTIME === '1' && STATE_FILE === REAL_DEFAULT_STATE_FILE) {
+  throw new Error(
+    'TSF-SAFE-UI-001: this process is marked TSF_DISPOSABLE_RUNTIME=1 but TSF_UI_STATE_FILE resolved to the real default owner state file -- refusing to start rather than risk mutating real owner data. TSF_UI_STATE_FILE likely failed to propagate to this process.'
+  )
+}
 
 const DEFAULTS = {
   schemaVersion: 'TSF_UI_OPERATOR_LOCAL_STATE_V1',
