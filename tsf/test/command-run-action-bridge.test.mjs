@@ -27,11 +27,16 @@ process.env.TSF_UI_STATE_FILE = STATE_FILE
 process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 process.env.TSF_PLANNER_CODEX_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 
-const { classifyRunActionVerb, classifyContinueAction, pauseProjectRun, resumeProjectRun } =
-  await import('../server/command-run-action-bridge.mjs')
+const {
+  classifyRunActionVerb,
+  classifyContinueAction,
+  pauseProjectRun,
+  resolveProjectNeedsYou,
+  resumeProjectRun
+} = await import('../server/command-run-action-bridge.mjs')
 const { respondCommand } = await import('../server/command-responder.mjs')
 const { withKeepGoingRun, readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
-const { createOvernightRun } = await import('../domain/keep-going.mjs')
+const { createOvernightRun, raiseNeedsYou } = await import('../domain/keep-going.mjs')
 const { readProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
 
 function cleanupStateFile() {
@@ -306,7 +311,11 @@ test('integration: "rerun it" on a STALLED run reaches the SAME real dispatch at
   assert.doesNotMatch(result.text, /^Resumed/)
   assert.equal(result.dispatchResults?.length, 1, 'a real dispatch attempt for the STALLED run')
   assert.equal(result.dispatchResults[0].projectId, 'integration-rerun-stalled')
-  assert.equal(readKeepGoingRun('integration-rerun-stalled').state, 'STALLED', 'the dispatch fallback must never itself corrupt/change the run\'s real state')
+  assert.equal(
+    readKeepGoingRun('integration-rerun-stalled').state,
+    'STALLED',
+    "the dispatch fallback must never itself corrupt/change the run's real state"
+  )
 })
 
 test('integration: "pause it" with no back-reference context at all is refused honestly, never guesses a project to pause', async () => {
@@ -765,4 +774,42 @@ test('Lane A: state x action(HOLD) matrix -- "X is being handled by another agen
       `state ${state}: setting a hold must never itself corrupt/change the run's real state`
     )
   }
+})
+
+test('resolveProjectNeedsYou: really resolves a real open question through the real durable store, real restart-durable', async () => {
+  const projectId = 'resolve-needs-you-target'
+  const run = await withKeepGoingRun(projectId, (current) => {
+    const base =
+      current ??
+      createOvernightRun(
+        {
+          id: `run-${projectId}`,
+          projectId,
+          originalGoal: 'Test goal.',
+          acceptanceCriteria: ['X']
+        },
+        clock
+      )
+    return raiseNeedsYou(base, { question: 'which provider?' }, clock, base.revision)
+  })
+  const needsYouId = run.needsYou[0].id
+  const resolved = await resolveProjectNeedsYou(projectId, needsYouId, 'use Exa', clock)
+  assert.equal(resolved.state, 'ACTIVE')
+  assert.equal(resolved.needsYou[0].resolution, 'use Exa')
+  // Restart-durable: a fresh, independent read sees the same real resolution.
+  assert.equal(readKeepGoingRun(projectId).needsYou[0].resolution, 'use Exa')
+})
+
+test('resolveProjectNeedsYou: an unknown question id fails honestly, never silently succeeds', async () => {
+  const projectId = 'resolve-needs-you-unknown'
+  await withKeepGoingRun(projectId, () =>
+    createOvernightRun(
+      { id: `run-${projectId}`, projectId, originalGoal: 'Test goal.', acceptanceCriteria: ['X'] },
+      clock
+    )
+  )
+  await assert.rejects(
+    () => resolveProjectNeedsYou(projectId, 'no-such-id', 'x', clock),
+    /unknown Needs You question/
+  )
 })

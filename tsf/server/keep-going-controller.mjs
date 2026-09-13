@@ -15,6 +15,7 @@ import {
   createOvernightRun,
   isTickLockActive,
   pauseRun,
+  resolveNeedsYou,
   resumeRun
 } from '../domain/keep-going.mjs'
 import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
@@ -79,6 +80,32 @@ export function pauseKeepGoingRun(opState, projectId, reason, clock, expectedRev
   paused = checkpointRun(paused, { phase: 'OPERATOR_PAUSED', note: reason ?? null }, clock)
   const next = { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: paused } }
   return { opState: next, run: paused }
+}
+
+// TSF_PRE_UI_PLATFORM_COHERENCE_V1, Stage 4: the first real, wired
+// resolution path for a project-scoped Needs You question -- domain.
+// resolveNeedsYou itself already existed but had no real caller anywhere
+// (a disclosed, pre-existing gap; see Stage 2 Phase 4/5's own
+// reconciliation). Mirrors pauseKeepGoingRun's own shape exactly (real
+// run lookup, real domain mutation, real opState write) -- no new
+// persistence mechanism.
+export function resolveKeepGoingNeedsYou(
+  opState,
+  projectId,
+  needsYouId,
+  resolution,
+  clock,
+  expectedRevision
+) {
+  const run = keepGoingRunFor(opState, projectId)
+  if (!run) {
+    const error = new Error('no Keep Going run exists for this project')
+    error.code = 'TSF_RUN_NOT_FOUND'
+    throw error
+  }
+  const resolved = resolveNeedsYou(run, needsYouId, resolution, clock, expectedRevision)
+  const next = { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: resolved } }
+  return { opState: next, run: resolved }
 }
 
 export function resumeKeepGoingRun(opState, projectId, clock, expectedRevision) {

@@ -9,7 +9,10 @@
 // project-execution-hold-store.mjs, Phase 3), and cancelResearchMissionDurable
 // (research-mission-driver.mjs, Phase 4 -- the one real, wired cancel
 // capability found on reconciliation; there is no generic project-level
-// CANCEL anywhere in this codebase).
+// CANCEL anywhere in this codebase), and resolveProjectNeedsYou
+// (command-run-action-bridge.mjs, Stage 4 -- the first real, wired
+// resolution path for a Needs You question; keep-going.mjs's own
+// resolveNeedsYou had zero real callers before this).
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { executeAction } from '../server/action-executor.mjs'
@@ -268,5 +271,43 @@ test('CANCEL_RESEARCH: a thrown error (e.g. already-terminal mission) is caught 
     ok: false,
     reason: 'CANCEL_RESEARCH_FAILED',
     detail: 'illegal transition: COMPLETE -> BLOCKED'
+  })
+})
+
+test('RESOLVE_NEEDS_YOU: success calls the real resolveProjectNeedsYou(projectId, needsYouId, resolution, clock) and returns the real run', async () => {
+  const calls = []
+  const resolvedRun = { id: 'run:1', state: 'ACTIVE' }
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'p1',
+    parameters: { needsYouId: 'nq:1', resolution: 'use Exa' },
+    clock,
+    deps: {
+      resolveProjectNeedsYou: async (projectId, needsYouId, resolution, c) => {
+        calls.push([projectId, needsYouId, resolution, c])
+        return resolvedRun
+      }
+    }
+  })
+  assert.deepEqual(result, { ok: true, action: 'RESOLVE_NEEDS_YOU', run: resolvedRun })
+  assert.deepEqual(calls, [['p1', 'nq:1', 'use Exa', clock]])
+})
+
+test('RESOLVE_NEEDS_YOU: a thrown error (e.g. unknown question id) is caught into a typed RESOLVE_NEEDS_YOU_FAILED result', async () => {
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'p1',
+    parameters: { needsYouId: 'no-such-id' },
+    clock,
+    deps: {
+      resolveProjectNeedsYou: async () => {
+        throw new Error('unknown Needs You question: no-such-id')
+      }
+    }
+  })
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'RESOLVE_NEEDS_YOU_FAILED',
+    detail: 'unknown Needs You question: no-such-id'
   })
 })

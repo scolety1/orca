@@ -142,6 +142,47 @@ test('POST start / GET / POST pause / POST resume drive a real Keep Going run en
   })
 })
 
+test('POST resolve-needs-you drives the first real, wired Needs You resolution end to end over real HTTP -- TSF_PRE_UI_PLATFORM_COHERENCE_V1, Stage 4', async () => {
+  const { raiseNeedsYou } = await import('../domain/keep-going.mjs')
+  await withServer(async (base) => {
+    const startRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ originalGoal: 'Ship it.', acceptanceCriteria: ['X'] })
+    })
+    assert.equal(startRes.status, 200)
+    const run = await withKeepGoingRun(PROJECT_ID, (current) =>
+      raiseNeedsYou(current, { question: 'which provider?' }, () => new Date(), current.revision)
+    )
+    assert.equal(run.state, 'NEEDS_YOU')
+    const needsYouId = run.needsYou[0].id
+
+    const resolveRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/resolve-needs-you`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ needsYouId, resolution: 'use Exa' })
+    })
+    assert.equal(resolveRes.status, 200)
+    const resolved = await resolveRes.json()
+    assert.equal(resolved.state, 'ACTIVE')
+
+    // real, restart-durable: a fresh independent read agrees.
+    const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
+    assert.equal((await getRes.json()).state, 'ACTIVE')
+
+    // an unknown question id fails honestly, never a fabricated success.
+    const failRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/resolve-needs-you`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ needsYouId: 'no-such-id', resolution: 'x' })
+    })
+    assert.equal(failRes.status, 422)
+    const failed = await failRes.json()
+    assert.equal(failed.ok, false)
+    assert.match(failed.error, /unknown Needs You question/)
+  })
+})
+
 test('POST start rejects usageMode: HIGH_ASSURANCE over the real HTTP layer -- the reserved mode can no longer be silently accepted into a real run', async () => {
   await withServer(async (base) => {
     const startRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
@@ -300,7 +341,10 @@ test('POST tick under CRITICAL host memory returns DISPATCH_WAITING_FOR_RESOURCE
     await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ originalGoal: 'Resource pressure tick proof.', acceptanceCriteria: ['X'] })
+      body: JSON.stringify({
+        originalGoal: 'Resource pressure tick proof.',
+        acceptanceCriteria: ['X']
+      })
     })
     process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
     process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(1 * 1024 ** 3) // EMERGENCY
@@ -319,7 +363,11 @@ test('POST tick under CRITICAL host memory returns DISPATCH_WAITING_FOR_RESOURCE
       assert.equal(tickRes.status, 200, 'a resource wait is never a server error')
       const body = await tickRes.json()
       assert.equal(body.action, 'DISPATCH_WAITING_FOR_RESOURCES')
-      assert.notEqual(body.action, 'DISPATCH_FAILED', 'a resource wait must never look like a real dispatch failure')
+      assert.notEqual(
+        body.action,
+        'DISPATCH_FAILED',
+        'a resource wait must never look like a real dispatch failure'
+      )
 
       const getRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}`)
       const got = await getRes.json()

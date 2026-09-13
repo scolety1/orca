@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { completeRun } from '../domain/keep-going.mjs'
+import { completeRun, raiseNeedsYou } from '../domain/keep-going.mjs'
 import {
   keepGoingRunFor,
   pauseKeepGoingRun,
   projectKeepGoingRun,
+  resolveKeepGoingNeedsYou,
   resumeKeepGoingRun,
   startKeepGoingRun
 } from '../server/keep-going-controller.mjs'
@@ -53,6 +54,53 @@ test('pauseKeepGoingRun and resumeKeepGoingRun transition the real run and persi
   // matching pause -- otherwise the UI's "Last checkpoint" stays stuck on
   // OPERATOR_PAUSED after a resume.
   assert.equal(resumed.run.checkpoints.at(-1).phase, 'RUN_RESUMED')
+})
+
+test('resolveKeepGoingNeedsYou resolves the real question, persists it, and returns the run to ACTIVE once the last open question is answered', () => {
+  const started = startKeepGoingRun(
+    {},
+    'proj-needs-you',
+    { originalGoal: 'Ship it.', acceptanceCriteria: ['A_DONE'] },
+    clock
+  )
+  const run = raiseNeedsYou(
+    started.run,
+    { question: 'which provider?' },
+    clock,
+    started.run.revision
+  )
+  const opState = { keepGoingRuns: { 'proj-needs-you': run } }
+  const resolved = resolveKeepGoingNeedsYou(
+    opState,
+    'proj-needs-you',
+    run.needsYou[0].id,
+    'use Exa',
+    clock
+  )
+  assert.equal(resolved.run.state, 'ACTIVE')
+  assert.equal(resolved.run.needsYou[0].resolution, 'use Exa')
+  assert.ok(resolved.run.needsYou[0].resolvedAt)
+  assert.equal(
+    keepGoingRunFor(resolved.opState, 'proj-needs-you').needsYou[0].resolution,
+    'use Exa'
+  )
+})
+
+test('resolveKeepGoingNeedsYou fails honestly (never fabricates success) for an unknown question id or a project with no run', () => {
+  const started = startKeepGoingRun(
+    {},
+    'proj-needs-you-2',
+    { originalGoal: 'Ship it.', acceptanceCriteria: ['A_DONE'] },
+    clock
+  )
+  assert.throws(
+    () => resolveKeepGoingNeedsYou(started.opState, 'proj-needs-you-2', 'no-such-id', 'x', clock),
+    /unknown Needs You question/
+  )
+  assert.throws(
+    () => resolveKeepGoingNeedsYou({}, 'no-such-project', 'no-such-id', 'x', clock),
+    /no Keep Going run exists/
+  )
 })
 
 test('startKeepGoingRun rejects a stale expectedRevision when starting a new run after a prior one finished', () => {
@@ -212,7 +260,14 @@ test('projectKeepGoingRun exposes inFlightWaveStalled -- true only when a wave i
     ...inFlightNotStalled,
     checkpoints: [
       ...run.checkpoints,
-      { phase: 'WAVE_STALLED', note: null, evidence: [], waveCount: 0, state: 'ACTIVE', at: clock().toISOString() }
+      {
+        phase: 'WAVE_STALLED',
+        note: null,
+        evidence: [],
+        waveCount: 0,
+        state: 'ACTIVE',
+        at: clock().toISOString()
+      }
     ]
   }
   assert.equal(projectKeepGoingRun(inFlightStalled, clock).inFlightWaveStalled, true)

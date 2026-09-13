@@ -8,7 +8,11 @@
 // to use chat-dispatch-bridge.mjs's planAndDispatchFromCommand directly
 // (command-responder.mjs's own existing path) -- this module is only the
 // PAUSE/RESUME half that had no Command-facing path at all before this.
-import { pauseKeepGoingRun, resumeKeepGoingRun } from './keep-going-controller.mjs'
+import {
+  pauseKeepGoingRun,
+  resolveKeepGoingNeedsYou,
+  resumeKeepGoingRun
+} from './keep-going-controller.mjs'
 import { withKeepGoingRun, readKeepGoingRun } from './keep-going-run-store.mjs'
 
 // Mirrors keep-going-http-routes.mjs's own mutateThroughStore exactly (not
@@ -24,11 +28,25 @@ async function mutateThroughStore(projectId, controllerFn) {
 }
 
 export async function pauseProjectRun(projectId, reason, clock) {
-  return mutateThroughStore(projectId, (fakeOpState) => pauseKeepGoingRun(fakeOpState, projectId, reason, clock))
+  return mutateThroughStore(projectId, (fakeOpState) =>
+    pauseKeepGoingRun(fakeOpState, projectId, reason, clock)
+  )
 }
 
 export async function resumeProjectRun(projectId, clock) {
-  return mutateThroughStore(projectId, (fakeOpState) => resumeKeepGoingRun(fakeOpState, projectId, clock))
+  return mutateThroughStore(projectId, (fakeOpState) =>
+    resumeKeepGoingRun(fakeOpState, projectId, clock)
+  )
+}
+
+// TSF_PRE_UI_PLATFORM_COHERENCE_V1, Stage 4: the first real, wired
+// resolution path for a project-scoped Needs You question -- through the
+// SAME real compare-and-swap store primitive every other real mutation
+// here already uses.
+export async function resolveProjectNeedsYou(projectId, needsYouId, resolution, clock) {
+  return mutateThroughStore(projectId, (fakeOpState) =>
+    resolveKeepGoingNeedsYou(fakeOpState, projectId, needsYouId, resolution, clock)
+  )
 }
 
 // "continue"/"resume" is genuinely ambiguous in isolation -- for a PAUSED
@@ -63,7 +81,10 @@ export function classifyContinueAction(projectId) {
 // the wave" -- neither opens its clause with the verb nor has a pronoun
 // immediately after it).
 function splitIntoClauses(message) {
-  return message.split(/[.!?;,]|\band\b|\bbut\b/i).map((c) => c.trim()).filter(Boolean)
+  return message
+    .split(/[.!?;,]|\band\b|\bbut\b/i)
+    .map((c) => c.trim())
+    .filter(Boolean)
 }
 
 const NEGATION_OPENER = /^(?:please\s+)?(?:don'?t|do not|never|shouldn'?t|won'?t)\b/i
@@ -79,9 +100,11 @@ const NEGATION_OPENER = /^(?:please\s+)?(?:don'?t|do not|never|shouldn'?t|won'?t
 // clause that opens with an unambiguous WH-word or auxiliary-inversion
 // question form is excluded; "pause NWR, why?" (the question in a LATER,
 // separate clause) still correctly pauses NWR in its own first clause.
-const QUESTION_OPENER = /^(?:why|what|how|when|where|who|which)\b|^(?:did|do|does|is|are|was|were|would|could|should|can|will)\s+(?:you|it|that|this|he|she|they|i|we)\b/i
+const QUESTION_OPENER =
+  /^(?:why|what|how|when|where|who|which)\b|^(?:did|do|does|is|are|was|were|would|could|should|can|will)\s+(?:you|it|that|this|he|she|they|i|we)\b/i
 const CLAUSE_OPENS_WITH = (verbs) => new RegExp(`^(?:please\\s+)?(?:${verbs})\\b`, 'i')
-const VERB_PLUS_PRONOUN = (verbs) => new RegExp(`\\b(?:${verbs})\\s+(it|that|this|everything)\\b`, 'i')
+const VERB_PLUS_PRONOUN = (verbs) =>
+  new RegExp(`\\b(?:${verbs})\\s+(it|that|this|everything)\\b`, 'i')
 
 const PAUSE_OPENER = CLAUSE_OPENS_WITH('pause')
 const PAUSE_PRONOUN = VERB_PLUS_PRONOUN('pause')
@@ -97,8 +120,12 @@ const RESUME_OPENER = CLAUSE_OPENS_WITH('resume|continue|rerun|retry')
 const RESUME_PRONOUN = VERB_PLUS_PRONOUN('resume|continue|rerun|retry')
 
 function clauseMatchesAction(clause, opener, pronoun) {
-  if (NEGATION_OPENER.test(clause)) {return false}
-  if (opener.test(clause)) {return true}
+  if (NEGATION_OPENER.test(clause)) {
+    return false
+  }
+  if (opener.test(clause)) {
+    return true
+  }
   // A bare object/pronoun match ("pause it") only counts as a directive
   // when the clause isn't itself an obvious question -- "pause NWR" (the
   // OPENER check above) is unaffected either way.
@@ -111,8 +138,12 @@ function clauseMatchesAction(clause, opener, pronoun) {
 // actually means resuming a paused run or dispatching fresh work.
 export function classifyRunActionVerb(message) {
   for (const clause of splitIntoClauses(message)) {
-    if (clauseMatchesAction(clause, PAUSE_OPENER, PAUSE_PRONOUN)) {return 'PAUSE'}
-    if (clauseMatchesAction(clause, RESUME_OPENER, RESUME_PRONOUN)) {return 'RESUME'}
+    if (clauseMatchesAction(clause, PAUSE_OPENER, PAUSE_PRONOUN)) {
+      return 'PAUSE'
+    }
+    if (clauseMatchesAction(clause, RESUME_OPENER, RESUME_PRONOUN)) {
+      return 'RESUME'
+    }
   }
   return null
 }

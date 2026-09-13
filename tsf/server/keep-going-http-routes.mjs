@@ -30,6 +30,7 @@ import {
   tickKeepGoingRun
 } from './keep-going-dispatch-loop.mjs'
 import { withKeepGoingRun } from './keep-going-run-store.mjs'
+import { executeAction } from './action-executor.mjs'
 
 // TSF_STATE_LOCK_TIMEOUT (cross-process-file-lock.mjs, via
 // keep-going-run-store.mjs) is a transient contention failure, not a
@@ -174,6 +175,36 @@ export async function handleKeepGoingRoute(
         res,
         200,
         projectKeepGoingRun(run, () => new Date())
+      )
+    } catch (error) {
+      respondError(res, json, error)
+    }
+    return true
+  }
+
+  // TSF_PRE_UI_PLATFORM_COHERENCE_V1, Stage 4: the first real, wired route
+  // for resolving a project-scoped Needs You question -- POST body:
+  // { needsYouId, resolution }. Goes through the canonical action-
+  // executor from day one (no legacy direct-mutation path to migrate away
+  // from here, unlike pause/resume above -- this route never existed
+  // before this stage).
+  if (parts[3] === 'resolve-needs-you') {
+    const body = await readBody(req)
+    try {
+      const result = await executeAction({
+        type: 'RESOLVE_NEEDS_YOU',
+        target: projectId,
+        parameters: { needsYouId: body.needsYouId, resolution: body.resolution },
+        clock: () => new Date()
+      })
+      if (!result.ok) {
+        json(res, 422, { ok: false, error: result.detail, code: result.reason })
+        return true
+      }
+      json(
+        res,
+        200,
+        projectKeepGoingRun(result.run, () => new Date())
       )
     } catch (error) {
       respondError(res, json, error)

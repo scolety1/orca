@@ -1,6 +1,7 @@
 import {
   classifyContinueAction,
   pauseProjectRun,
+  resolveProjectNeedsYou,
   resumeProjectRun
 } from './command-run-action-bridge.mjs'
 import { executeCommandAdoption } from './command-adoption-execution.mjs'
@@ -12,8 +13,8 @@ import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { cancelResearchMissionDurable } from './research-mission-driver.mjs'
 
 /**
- * @typedef {{ ok: true, action: 'PAUSE' | 'RESUME' | 'DISPATCH' | 'HOLD' | 'RELEASE_HOLD' | 'CANCEL_RESEARCH', hold?: object, releasedSomething?: boolean, mission?: object }} ActionSuccess
- * @typedef {{ ok: false, reason: 'PAUSE_FAILED' | 'RESUME_FAILED' | 'ADOPT_FAILED' | 'HOLD_FAILED' | 'RELEASE_HOLD_FAILED' | 'CANCEL_RESEARCH_FAILED' | 'UNSUPPORTED_ACTION', detail: string }} ActionFailure
+ * @typedef {{ ok: true, action: 'PAUSE' | 'RESUME' | 'DISPATCH' | 'HOLD' | 'RELEASE_HOLD' | 'CANCEL_RESEARCH' | 'RESOLVE_NEEDS_YOU', hold?: object, releasedSomething?: boolean, mission?: object, run?: object }} ActionSuccess
+ * @typedef {{ ok: false, reason: 'PAUSE_FAILED' | 'RESUME_FAILED' | 'ADOPT_FAILED' | 'HOLD_FAILED' | 'RELEASE_HOLD_FAILED' | 'CANCEL_RESEARCH_FAILED' | 'RESOLVE_NEEDS_YOU_FAILED' | 'UNSUPPORTED_ACTION', detail: string }} ActionFailure
  */
 
 const FAILURE_REASON_BY_TYPE = Object.freeze({
@@ -22,7 +23,8 @@ const FAILURE_REASON_BY_TYPE = Object.freeze({
   ADOPT: 'ADOPT_FAILED',
   HOLD: 'HOLD_FAILED',
   RELEASE_HOLD: 'RELEASE_HOLD_FAILED',
-  CANCEL_RESEARCH: 'CANCEL_RESEARCH_FAILED'
+  CANCEL_RESEARCH: 'CANCEL_RESEARCH_FAILED',
+  RESOLVE_NEEDS_YOU: 'RESOLVE_NEEDS_YOU_FAILED'
 })
 
 function errorDetail(error) {
@@ -114,6 +116,23 @@ export async function executeAction({ type, target, parameters = {}, clock, deps
         )
       })
       return { ok: true, action: 'RELEASE_HOLD', releasedSomething }
+    }
+
+    if (type === 'RESOLVE_NEEDS_YOU') {
+      // Stage 4 v1: PROJECT-sourced (Keep Going) Needs You only --
+      // fleetNeedsYouStatus (fleet-work-status.mjs) already aggregates
+      // three real sources (PROJECT/RESEARCH/PLANNER), but only
+      // keep-going.mjs's resolveNeedsYou had zero real callers stay
+      // findable and closable in one bounded slice tonight;
+      // research-mission.mjs's resolveResearchNeedsYou and
+      // planner-session-lifecycle.mjs's own resolveNeedsYou method are
+      // real, equally uncalled, and are the natural next phases -- not
+      // done here, not invented as a fake "done." `target` is the
+      // project id (bare string, matching PAUSE/RESUME/HOLD's
+      // convention); `parameters` carries `{needsYouId, resolution}`.
+      const resolve = deps.resolveProjectNeedsYou ?? resolveProjectNeedsYou
+      const run = await resolve(target, parameters.needsYouId, parameters.resolution, clock)
+      return { ok: true, action: 'RESOLVE_NEEDS_YOU', run }
     }
 
     if (type === 'CANCEL_RESEARCH') {
