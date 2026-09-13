@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -15,13 +15,20 @@ import {
 } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
+import { buildOtherNeedsYouItems } from '@/lib/home-needs-you-items'
 import {
-  buildHomeNeedsYouItems,
-  buildOtherNeedsYouItems,
-  countDistinctNeedsYouProjects,
-  homeNeedsYouItemKey
-} from '@/lib/home-needs-you-items'
-import { isResearchMissionWorkItem, type RecentlyCompletedItem, type WorkItem } from '@/lib/types'
+  activeCards,
+  activeResearchItems,
+  isResearchWorkItem,
+  needsYouCards,
+  needsYouResearchItems,
+  projectWorkCards,
+  readyForAdoptionCards,
+  recentlyCompletedCards,
+  recentlyCompletedResearchItems,
+  verifyingCards,
+  waitingCards
+} from '@/lib/operator-work-cards'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatusChip } from '@/components/StatusChip'
@@ -33,8 +40,10 @@ import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
 import { ResearchMissionCard } from '@/components/research/ResearchMissionCard'
 import { PlannerNeedsYouCard } from '@/components/PlannerNeedsYouCard'
 import { SelfImprovementFindingCard } from '@/components/SelfImprovementFindingCard'
+import { OtherNeedsYouCard } from '@/components/OtherNeedsYouCard'
 import { useCommandDock, useReloadOnDockActivity } from '@/lib/command-dock-context'
 import { useForegroundPolling } from '@/lib/use-foreground-polling'
+import { useOperatorEvents } from '@/lib/use-operator-events'
 
 function SectionTitle({
   icon: Icon,
@@ -55,85 +64,76 @@ function SectionTitle({
 // Home/Command split -- Command itself now lives in the persistent dock
 // (AppShell.tsx), reachable from here via "Ask Command" rather than an
 // embedded second composer. Attention-first sections widened to include
-// ResearchMissions (tsf/domain/work-feed-summary.mjs already buckets them
-// into the SAME active/needsYou/blocked/recentlyCompleted arrays -- no
-// second aggregation here). /command, /agents, /evaluation, /fleet, and
-// /health-repair remain real, reachable routes (deep links, More page) --
-// this page only changes what's in PRIMARY navigation.
+// ResearchMissions (tsf/domain/owner-work-model.mjs already buckets them
+// into the SAME real work list -- no second aggregation here). /command,
+// /agents, /evaluation, /fleet, and /health-repair remain real, reachable
+// routes (deep links, More page) -- this page only changes what's in
+// PRIMARY navigation.
+//
+// HQ Snapshot Migration (finish item A): sourced from ONE coherent
+// GET /api/operator-snapshot read instead of three independent requests
+// (portfolio/work/attention) -- see tsf/server/operator-snapshot.mjs for
+// why that combination could legitimately disagree with itself under a
+// concurrent mutation (Stage 0's own Claim F). Legacy /portfolio /work
+// /attention endpoints remain available for other callers; parity between
+// them and this snapshot is proven in test/http-operator-snapshot.test.mjs.
+// A live revision (useOperatorEvents, SSE) triggers an immediate refetch
+// on any real backend mutation; useForegroundPolling stays as the
+// existing, independent correctness backstop if that connection is ever
+// unavailable (proxy strips SSE, offline, dev-server quirk) -- an honest
+// degrade to the pre-existing behavior, never a blank page.
 export function HQPage() {
-  const {
-    data: portfolio,
-    loading: pLoading,
-    error: pError,
-    reload: reloadPortfolio
-  } = useApi(() => api.portfolio(), [])
-  const {
-    data: work,
-    loading: wLoading,
-    error: wError,
-    reload: reloadWork
-  } = useApi(() => api.work(), [])
-  // Operator Attention V1, Wave 2 + Operator Polish V1, Wave A: a real,
-  // currently-invisible gap -- a self-improvement finding the eligibility
-  // classifier declined to autofix, or a planner mission's own needsYou
-  // checkpoint (NEEDS_OWNER, no project of its own) never reached Home
-  // before. Deliberately non-blocking (no loading/error gate below) --
-  // this tile's existing project-based data is never held up by this
-  // additional real source.
-  const { data: attention, reload: reloadAttention } = useApi(() => api.attention(), [])
+  const { data: snapshot, loading, error, reload } = useApi(() => api.operatorSnapshot(), [])
   const [preparing, setPreparing] = useState(false)
   const [prepareResult, setPrepareResult] = useState<string | null>(null)
   const { open: openCommandDock } = useCommandDock()
 
-  const reloadAll = useCallback(() => {
-    reloadPortfolio()
-    reloadWork()
-    reloadAttention()
-  }, [reloadPortfolio, reloadWork, reloadAttention])
-  // Real, live-discovered staleness bug: a Command-driven mutation (e.g.
-  // creating a ResearchMission) only refreshed once, immediately, while
-  // the mission was still invisible-by-design (phase CREATED) -- nothing
-  // ever re-checked once the fleet driver's own next tick actually moved
-  // it to EXECUTING. useReloadOnDockActivity covers the immediate case;
-  // useForegroundPolling is the bounded backstop for everything after.
-  useReloadOnDockActivity(reloadAll)
-  useForegroundPolling(reloadAll)
+  // Real, live-discovered staleness bug (pre-migration): a Command-driven
+  // mutation (e.g. creating a ResearchMission) only refreshed once,
+  // immediately, while the mission was still invisible-by-design (phase
+  // CREATED) -- nothing ever re-checked once the fleet driver's own next
+  // tick actually moved it to EXECUTING. useReloadOnDockActivity covers
+  // the immediate case; useOperatorEvents covers every OTHER real
+  // durable mutation (not just dock activity) the instant it lands,
+  // without waiting for useForegroundPolling's own bounded interval.
+  useReloadOnDockActivity(reload)
+  useOperatorEvents(reload)
+  useForegroundPolling(reload)
 
-  if ((pLoading && !portfolio) || (wLoading && !work)) {
+  if (loading && !snapshot) {
     return <LoadingState label="Loading HQ…" />
   }
-  if (pError && !portfolio) {
-    return <ErrorState message={pError} onRetry={reloadPortfolio} />
+  if (error && !snapshot) {
+    return <ErrorState message={error} onRetry={reload} />
   }
-  if (wError && !work) {
-    return <ErrorState message={wError} onRetry={reloadWork} />
-  }
-  if (!portfolio || !work) {
+  if (!snapshot) {
     return null
   }
 
-  const needsYou = buildHomeNeedsYouItems(work)
-  const researchNeedsYou = work.needsYou.filter(isResearchMissionWorkItem)
-  const otherNeedsYou = attention ? buildOtherNeedsYouItems(attention.items) : []
-  const degradedProjects = portfolio.knownProjects.filter(
+  const projectCards = projectWorkCards(snapshot)
+  const researchItems = snapshot.work.filter(isResearchWorkItem)
+  const needsYou = needsYouCards(projectCards)
+  const researchNeedsYou = needsYouResearchItems(researchItems)
+  const otherNeedsYou = buildOtherNeedsYouItems(snapshot.attention)
+  const degradedProjects = snapshot.projects.filter(
     (p) => p.healthStatus === 'DEGRADED' || p.healthStatus === 'BLOCKED'
   )
-  const activeProjects = work.active.filter((p): p is WorkItem => !isResearchMissionWorkItem(p))
-  const activeResearch = work.active.filter(isResearchMissionWorkItem)
+  const activeProjects = activeCards(projectCards)
+  const activeResearch = activeResearchItems(researchItems)
   // A Keep Going run genuinely WAITING (e.g. for provider capacity/resource
   // pressure) is real, durable state (live-work-feed.mjs) already carried
   // on each active item -- surfaced as its own section rather than buried
   // inside "Active Work". Disclosed limitation: a research node waiting on
   // the Resource Pressure Governor has no equivalent DURABLE signal yet
   // (research-mission-fleet-driver.mjs decides fresh each cycle, never
-  // persists it) -- it stays visible under Active Research as "Researching"
-  // until that's fixed, rather than fabricating a state here.
-  const waitingForResources = activeProjects.filter((p) => p.liveWorkFeed?.state === 'WAITING')
-  const recentlyCompletedResearch = work.recentlyCompleted.filter(isResearchMissionWorkItem)
-  const recentlyCompletedProjects = work.recentlyCompleted.filter(
-    (p): p is Exclude<RecentlyCompletedItem, { kind: 'RESEARCH_MISSION' }> =>
-      !isResearchMissionWorkItem(p)
-  )
+  // persists it) -- it stays visible under Active Research until that's
+  // fixed, rather than fabricating a state here.
+  const waitingForResources = waitingCards(projectCards)
+  const verifying = verifyingCards(projectCards)
+  const readyForAdoption = readyForAdoptionCards(projectCards)
+  const recentlyCompletedProjects = recentlyCompletedCards(projectCards)
+  const recentlyCompletedResearch = recentlyCompletedResearchItems(researchItems)
+  const needsYouProjectCount = new Set(needsYou.map((c) => c.projectId)).size
 
   async function prepareDegraded() {
     setPreparing(true)
@@ -142,7 +142,7 @@ export function HQPage() {
       const result = await api.prepareForWork(degradedProjects.map((p) => p.id))
       const ready = result.results.filter((r) => r.readyForWork).length
       setPrepareResult(`${ready}/${result.results.length} now ready for work.`)
-      reloadPortfolio()
+      reload()
     } catch (err) {
       setPrepareResult(err instanceof Error ? err.message : 'Prepare for Work failed.')
     } finally {
@@ -152,8 +152,7 @@ export function HQPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
-      {pError && <RefreshFailedBanner message={pError} onRetry={reloadPortfolio} />}
-      {wError && <RefreshFailedBanner message={wError} onRetry={reloadWork} />}
+      {error && <RefreshFailedBanner message={error} onRetry={reload} />}
       <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">HQ</h1>
@@ -174,13 +173,14 @@ export function HQPage() {
         <Card>
           <CardContent className="p-4">
             <div className="text-[11px] text-muted-foreground">Needs you</div>
-            {/* countDistinctNeedsYouProjects stays project-only (its own
-                well-tested contract); self-improvement findings and planner
-                needsYou items are real but not projects, so their count is
-                added honestly rather than folded into that function's
-                meaning. */}
+            {/* needsYouProjectCount stays project-only (dedupes by
+                projectId, same real contract the legacy
+                countDistinctNeedsYouProjects had); self-improvement
+                findings and planner needsYou items are real but not
+                projects, so their count is added honestly rather than
+                folded into that meaning. */}
             <div className="text-2xl font-semibold">
-              {countDistinctNeedsYouProjects(needsYou) + otherNeedsYou.length}
+              {needsYouProjectCount + otherNeedsYou.length}
             </div>
           </CardContent>
         </Card>
@@ -199,7 +199,7 @@ export function HQPage() {
         <Card>
           <CardContent className="p-4">
             <div className="text-[11px] text-muted-foreground">Ready for adoption</div>
-            <div className="text-2xl font-semibold">{work.readyForAdoption.length}</div>
+            <div className="text-2xl font-semibold">{readyForAdoption.length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -243,31 +243,21 @@ export function HQPage() {
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {needsYou.map((p) => (
+            {needsYou.map((c) => (
               <Link
-                key={homeNeedsYouItemKey(p)}
-                to={projectDeepLinkTo(p.id, {
-                  tab: p.liveWorkFeed
-                    ? p.liveWorkFeed.state === 'READY_FOR_ADOPTION'
-                      ? 'adoption'
-                      : 'keep-going'
-                    : undefined,
-                  runId: p.runId
+                key={c.id}
+                to={projectDeepLinkTo(c.projectId, {
+                  tab: c.state === 'READY' ? 'adoption' : c.runId ? 'keep-going' : undefined,
+                  runId: c.runId
                 })}
               >
                 <Card className="border-status-degraded/40 bg-status-degraded/5 transition-colors hover:border-status-degraded/70">
                   <CardContent className="flex items-center justify-between gap-2 p-3">
                     <div>
-                      <div className="text-sm font-medium">{p.displayName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {p.liveWorkFeed?.reason ??
-                          p.mission.blockedReason ??
-                          (p.candidate?.state === 'READY_FOR_ADOPTION'
-                            ? 'Candidate is ready for your adoption decision.'
-                            : p.mission.state)}
-                      </div>
+                      <div className="text-sm font-medium">{c.displayName}</div>
+                      <div className="text-xs text-muted-foreground">{c.reason}</div>
                     </div>
-                    <StatusChip status={p.health.status} />
+                    <StatusChip status={c.healthStatus} />
                   </CardContent>
                 </Card>
               </Link>
@@ -284,51 +274,16 @@ export function HQPage() {
                 item.plannerMissionId &&
                 item.plannerNeedsYouId
               ) {
-                return (
-                  <PlannerNeedsYouCard key={item.id} item={item} onResolved={reloadAttention} />
-                )
+                return <PlannerNeedsYouCard key={item.id} item={item} onResolved={reload} />
               }
               // Manual Self-Improvement Finding Disposition V1: a
               // self-improvement finding is now inline-resolvable too
               // (Apply verified fix / Start fix / Dismiss) -- no standalone
               // page needed, no more permanent dead end.
               if (item.kind === 'SELF_IMPROVEMENT_FINDING' && item.findingId) {
-                return (
-                  <SelfImprovementFindingCard
-                    key={item.id}
-                    item={item}
-                    onChanged={reloadAttention}
-                  />
-                )
+                return <SelfImprovementFindingCard key={item.id} item={item} onChanged={reload} />
               }
-              // TSF Reconcile & Upgrade Protocol V1, Lane 4 self-dogfood
-              // fix: PROJECT_EXECUTION_HOLD falls through to this generic
-              // card -- read-only by design (releasing a hold is already a
-              // real Command chat action, not a disposition action a card
-              // button should duplicate).
-              const otherNeedsYouKindLabel: Record<typeof item.kind, string> = {
-                PLANNER_MISSION_NEEDS_YOU: 'Planner',
-                SELF_IMPROVEMENT_FINDING: 'Self-improvement',
-                PROJECT_EXECUTION_HOLD: 'Execution hold'
-              }
-              const cardBody = (
-                <Card className="border-status-degraded/40 bg-status-degraded/5 transition-colors hover:border-status-degraded/70">
-                  <CardContent className="flex items-center justify-between gap-2 p-3">
-                    <div>
-                      <div className="text-sm font-medium">{item.label}</div>
-                      <div className="text-xs text-muted-foreground">{item.reason}</div>
-                    </div>
-                    <Badge variant="degraded">{otherNeedsYouKindLabel[item.kind]}</Badge>
-                  </CardContent>
-                </Card>
-              )
-              return item.projectId ? (
-                <Link key={item.id} to={projectDeepLinkTo(item.projectId)}>
-                  {cardBody}
-                </Link>
-              ) : (
-                <div key={item.id}>{cardBody}</div>
-              )
+              return <OtherNeedsYouCard key={item.id} item={item} />
             })}
           </div>
         )}
@@ -344,16 +299,16 @@ export function HQPage() {
             />
           ) : (
             <div className="flex flex-col gap-2">
-              {activeProjects.map((p) => (
+              {activeProjects.map((c) => (
                 <Link
-                  key={p.id}
-                  to={projectDeepLinkTo(p.id, {
-                    tab: p.liveWorkFeed ? 'keep-going' : undefined,
-                    runId: p.runId
+                  key={c.id}
+                  to={projectDeepLinkTo(c.projectId, {
+                    tab: c.runId ? 'keep-going' : undefined,
+                    runId: c.runId
                   })}
                   className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
                 >
-                  {p.displayName} — {p.liveWorkFeed?.reason ?? p.mission.state}
+                  {c.displayName} — {c.reason}
                 </Link>
               ))}
             </div>
@@ -386,13 +341,13 @@ export function HQPage() {
             />
           ) : (
             <div className="flex flex-col gap-2">
-              {waitingForResources.map((p) => (
+              {waitingForResources.map((c) => (
                 <Link
-                  key={p.id}
-                  to={projectDeepLinkTo(p.id, { tab: 'keep-going', runId: p.runId })}
+                  key={c.id}
+                  to={projectDeepLinkTo(c.projectId, { tab: 'keep-going', runId: c.runId })}
                   className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
                 >
-                  {p.displayName} — {p.liveWorkFeed?.reason ?? 'Waiting for resources'}
+                  {c.displayName} — {c.reason}
                 </Link>
               ))}
             </div>
@@ -400,29 +355,29 @@ export function HQPage() {
         </section>
         <section>
           <SectionTitle icon={ShieldCheck}>Verification / adoption</SectionTitle>
-          {work.verifying.length === 0 && work.readyForAdoption.length === 0 ? (
+          {verifying.length === 0 && readyForAdoption.length === 0 ? (
             <EmptyState
               title="Nothing to verify"
               description="No work is currently being verified or waiting on an adoption decision."
             />
           ) : (
             <div className="flex flex-col gap-2">
-              {work.verifying.map((p) => (
+              {verifying.map((c) => (
                 <Link
-                  key={`verifying-${p.id}`}
-                  to={projectDeepLinkTo(p.id, { tab: 'keep-going', runId: p.runId })}
+                  key={c.id}
+                  to={projectDeepLinkTo(c.projectId, { tab: 'keep-going', runId: c.runId })}
                   className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
                 >
-                  {p.displayName} — Verifying
+                  {c.displayName} — Verifying
                 </Link>
               ))}
-              {work.readyForAdoption.map((p) => (
+              {readyForAdoption.map((c) => (
                 <Link
-                  key={`adopt-${p.id}`}
-                  to={projectDeepLinkTo(p.id, { tab: 'adoption', runId: p.runId })}
+                  key={c.id}
+                  to={projectDeepLinkTo(c.projectId, { tab: 'adoption', runId: c.runId })}
                   className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
                 >
-                  {p.displayName} — Ready for adoption
+                  {c.displayName} — Ready for adoption
                 </Link>
               ))}
             </div>
@@ -436,13 +391,13 @@ export function HQPage() {
           <EmptyState title="Nothing completed yet" />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {recentlyCompletedProjects.map((p) => (
+            {recentlyCompletedProjects.map((c) => (
               <Link
-                key={p.id}
-                to={`/projects/${p.id}`}
+                key={c.id}
+                to={`/projects/${c.projectId}`}
                 className="flex items-center justify-between rounded-md border border-border p-3 text-sm hover:border-primary/50"
               >
-                <span>{p.displayName}</span>
+                <span>{c.displayName}</span>
                 <Badge variant="healthy">Adopted</Badge>
               </Link>
             ))}

@@ -52,6 +52,7 @@ import type {
   RoutingInfo,
   WorkSummary
 } from './types'
+import type { OperatorSnapshot } from './operator-snapshot-types'
 import type {
   DirectoryBrowseResult,
   DirectionRetryResult,
@@ -117,6 +118,11 @@ export const api = {
   project: (id: string) => request<ProjectDetail>(`/projects/${encodeURIComponent(id)}`),
   work: () => request<WorkSummary>('/work').then(normalizeWorkSummary),
   attention: () => request<AttentionResponse>('/attention'),
+  // HQ Snapshot Migration (finish item A): ONE coherent read for HQ's own
+  // primary surface, replacing its separate portfolio()/work()/attention()
+  // calls -- see tsf/server/operator-snapshot.mjs for why this can never
+  // disagree with them the way three separate requests legitimately could.
+  operatorSnapshot: () => request<OperatorSnapshot>('/operator-snapshot'),
   routing: () => request<RoutingInfo>('/routing'),
   setUsageMode: (mode: string) =>
     request<{ ok: true; mode: string }>('/usage-mode', {

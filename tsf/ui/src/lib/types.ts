@@ -202,7 +202,9 @@ export type ResearchMissionWorkItem = {
 }
 
 export function isResearchMissionWorkItem(item: unknown): item is ResearchMissionWorkItem {
-  return !!item && typeof item === 'object' && (item as { kind?: unknown }).kind === 'RESEARCH_MISSION'
+  return (
+    !!item && typeof item === 'object' && (item as { kind?: unknown }).kind === 'RESEARCH_MISSION'
+  )
 }
 
 // GET /api/research[?projectId=] -- one real object per mission (HQ's
@@ -274,6 +276,11 @@ export type AttentionItem = {
 }
 
 export type AttentionResponse = { ok: true; items: AttentionItem[] }
+
+// HQ Snapshot Migration (finish item A): OwnerWorkState/OwnerWorkItem/
+// OperatorSnapshot (GET /api/operator-snapshot's real shape) live in their
+// own file, operator-snapshot-types.ts, to keep this file under the
+// repo's max-lines cap.
 
 export type UsageModeConfig = {
   plannerTier: string
