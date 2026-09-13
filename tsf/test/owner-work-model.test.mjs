@@ -83,6 +83,7 @@ test('Keep Going: PLANNING (fresh run, no wave)', () => {
   assert.equal(item.state, 'PLANNING')
   assert.equal(item.kind, 'KEEP_GOING_RUN')
   assert.equal(item.id, 'run:r1')
+  assert.equal(item.runId, 'r1')
 })
 
 test('Keep Going: WORKING (in-flight wave)', () => {
@@ -348,4 +349,20 @@ test('buildOwnerWorkItems: legacy BLOCKED is independent of run existence -- a p
   )
   assert.deepEqual(new Set(items.map((i) => i.id)), new Set(['run:r1', 'legacy-blocked:p1']))
   assert.equal(items.find((i) => i.id === 'legacy-blocked:p1').state, 'NEEDS_YOU')
+})
+
+// HQ Snapshot Migration (finish item A): researchMissionWorkItem carries
+// the SAME real passthrough fields work-feed-summary.mjs's own
+// researchMissionWorkItem already exposes -- ResearchMissionCard.tsx (one
+// real, already-shared renderer) reads these directly regardless of which
+// backend aggregation produced the item.
+test('researchMissionWorkItem: carries the real missionId/phase/researchQuestion/entityType/expectedCount/freePathOnly ResearchMissionCard.tsx needs, alongside the owner state', () => {
+  const item = researchMissionWorkItem(baseMission('m1'))
+  assert.equal(item.missionId, 'm1')
+  assert.equal(item.phase, 'DRAFT')
+  assert.equal(item.state, 'PLANNING')
+  assert.equal(item.researchQuestion, 'q')
+  assert.equal(item.entityType, 'FIXTURE')
+  assert.equal(item.expectedCount, 1)
+  assert.equal(item.freePathOnly, true)
 })

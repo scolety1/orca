@@ -90,7 +90,14 @@ export function keepGoingRunWorkItem(run, { gap = null, advancedEntry = null } =
     progress: { wavesCompleted: run.waves.length },
     startedAt: run.createdAt,
     updatedAt: advancedEntry?.at ?? run.updatedAt,
-    availableActions: keepGoingAvailableActions(run, state)
+    availableActions: keepGoingAvailableActions(run, state),
+    // HQ Snapshot Migration (finish item A): `run.id` verbatim -- a real
+    // field a caller building a deep link needs (e.g. the existing
+    // projectDeepLinkTo(id, {tab, runId})), not something a caller should
+    // ever parse back out of `id` above (that string's exact prefix shape
+    // is this module's own internal id-uniqueness convention, not a public
+    // contract).
+    runId: run.id
   }
 }
 
@@ -143,7 +150,22 @@ export function researchMissionWorkItem(mission) {
     progress: { nodeCount: mission.nodes.length },
     startedAt: mission.createdAt,
     updatedAt: mission.updatedAt,
-    availableActions: researchAvailableActions(mission.state)
+    availableActions: researchAvailableActions(mission.state),
+    // HQ Snapshot Migration (finish item A): the SAME real passthrough
+    // fields work-feed-summary.mjs's own researchMissionWorkItem already
+    // carries -- ResearchMissionCard.tsx (the one real, already-shared
+    // renderer for a research item on HQ/Work/Project-detail) reads these
+    // directly; `phase` alongside the owner `state` above rather than
+    // instead of it, since ResearchMissionCard's badge vocabulary is the
+    // subsystem phase, not the owner-reconciled word, and duplicating that
+    // renderer's own contract here would be a real second implementation,
+    // not a reuse.
+    missionId: mission.id,
+    phase,
+    researchQuestion: mission.specification?.researchQuestion ?? null,
+    entityType: mission.specification?.entityType ?? null,
+    expectedCount: mission.expectedUniverse?.expectedCount ?? null,
+    freePathOnly: (mission.specification?.budget?.maxCostUsd ?? 0) === 0
   }
 }
 
