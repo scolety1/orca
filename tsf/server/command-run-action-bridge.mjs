@@ -42,10 +42,28 @@ export async function resumeProjectRun(projectId, clock) {
 // TSF_PRE_UI_PLATFORM_COHERENCE_V1, Stage 4: the first real, wired
 // resolution path for a project-scoped Needs You question -- through the
 // SAME real compare-and-swap store primitive every other real mutation
-// here already uses.
-export async function resolveProjectNeedsYou(projectId, needsYouId, resolution, clock) {
+// here already uses. `expectedRevision` forwards straight through to
+// domain.resolveNeedsYou's own real assertExpectedRevision check (Stage 4
+// Completion, finish item C) -- optional, so a caller that omits it keeps
+// today's default semantics (a later answer freely replaces an earlier
+// one); a caller that read a specific run revision before answering gets a
+// real TSF_STALE_REVISION rejection if the run changed underneath it.
+export async function resolveProjectNeedsYou(
+  projectId,
+  needsYouId,
+  resolution,
+  clock,
+  expectedRevision
+) {
   return mutateThroughStore(projectId, (fakeOpState) =>
-    resolveKeepGoingNeedsYou(fakeOpState, projectId, needsYouId, resolution, clock)
+    resolveKeepGoingNeedsYou(
+      fakeOpState,
+      projectId,
+      needsYouId,
+      resolution,
+      clock,
+      expectedRevision
+    )
   )
 }
 

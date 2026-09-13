@@ -194,11 +194,24 @@ export async function handleKeepGoingRoute(
       const result = await executeAction({
         type: 'RESOLVE_NEEDS_YOU',
         target: projectId,
-        parameters: { needsYouId: body.needsYouId, resolution: body.resolution },
+        parameters: {
+          needsYouId: body.needsYouId,
+          resolution: body.resolution,
+          expectedRevision: body.expectedRevision
+        },
         clock: () => new Date()
       })
       if (!result.ok) {
-        json(res, 422, { ok: false, error: result.detail, code: result.reason })
+        // Needs You Completion (finish item C): a stale-revision race
+        // (caller answered against a run that already changed underneath
+        // it) is a real 409 conflict, same as pause/resume's own
+        // CONFLICT_CODES precedent below -- every other executeAction
+        // failure stays 422, unchanged.
+        json(res, result.code === 'TSF_STALE_REVISION' ? 409 : 422, {
+          ok: false,
+          error: result.detail,
+          code: result.reason
+        })
         return true
       }
       json(

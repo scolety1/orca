@@ -183,6 +183,57 @@ test('POST resolve-needs-you drives the first real, wired Needs You resolution e
   })
 })
 
+// Needs You Completion (finish item C): real, end-to-end proof over real
+// HTTP that a caller who supplies a stale expectedRevision gets a real 409
+// conflict (mirrors pause/resume's own CONFLICT_CODES precedent), never a
+// silent overwrite -- while a caller who omits it (every existing route
+// consumer today, see the test above) keeps the default free-overwrite
+// semantics unchanged.
+test('POST resolve-needs-you: a stale expectedRevision is a real 409, never a silent overwrite -- TSF_PRE_UI_PLATFORM_COHERENCE_V1 completion, finish item C', async () => {
+  const { raiseNeedsYou } = await import('../domain/keep-going.mjs')
+  const { readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
+  await withServer(async (base) => {
+    await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ originalGoal: 'Ship it.', acceptanceCriteria: ['X'] })
+    })
+    const run = await withKeepGoingRun(PROJECT_ID, (current) =>
+      raiseNeedsYou(current, { question: 'which provider?' }, () => new Date(), current.revision)
+    )
+    const needsYouId = run.needsYou[0].id
+    const staleRevision = run.revision
+
+    // A concurrent real answer lands first over real HTTP.
+    const firstRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/resolve-needs-you`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ needsYouId, resolution: 'concurrent answer' })
+    })
+    assert.equal(firstRes.status, 200)
+
+    // A late caller, still holding the pre-answer revision, is refused.
+    const staleRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/resolve-needs-you`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        needsYouId,
+        resolution: 'late answer',
+        expectedRevision: staleRevision
+      })
+    })
+    assert.equal(staleRes.status, 409)
+    const staleBody = await staleRes.json()
+    assert.equal(staleBody.ok, false)
+    assert.match(staleBody.error, /stale revision/)
+
+    // The real, durable state is still the concurrent (first) answer,
+    // reading the store directly since the HTTP projection only exposes
+    // open (unresolved) needsYou entries, not resolutions.
+    assert.equal(readKeepGoingRun(PROJECT_ID).needsYou[0].resolution, 'concurrent answer')
+  })
+})
+
 test('POST start rejects usageMode: HIGH_ASSURANCE over the real HTTP layer -- the reserved mode can no longer be silently accepted into a real run', async () => {
   await withServer(async (base) => {
     const startRes = await fetch(`${base}/api/keep-going/${PROJECT_ID}/start`, {

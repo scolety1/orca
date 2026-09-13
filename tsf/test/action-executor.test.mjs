@@ -50,7 +50,8 @@ test('PAUSE: a thrown error is caught and reported as a typed PAUSE_FAILED resul
   assert.deepEqual(result, {
     ok: false,
     reason: 'PAUSE_FAILED',
-    detail: 'no Keep Going run exists for this project'
+    detail: 'no Keep Going run exists for this project',
+    code: null
   })
 })
 
@@ -104,7 +105,12 @@ test('RESUME: a thrown resumeProjectRun error is caught and reported as a typed 
       }
     }
   })
-  assert.deepEqual(result, { ok: false, reason: 'RESUME_FAILED', detail: 'resume refused' })
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'RESUME_FAILED',
+    detail: 'resume refused',
+    code: null
+  })
 })
 
 test('an unsupported action type is honestly refused, never silently ignored or guessed at', async () => {
@@ -163,7 +169,12 @@ test('ADOPT: a genuinely UNEXPECTED thrown error (not an expected {ok:false} ref
       }
     }
   })
-  assert.deepEqual(result, { ok: false, reason: 'ADOPT_FAILED', detail: 'git subprocess crashed' })
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'ADOPT_FAILED',
+    detail: 'git subprocess crashed',
+    code: null
+  })
 })
 
 test('HOLD: creates a real hold via withProjectExecutionHold/createProjectExecutionHold when none is active', async () => {
@@ -270,7 +281,8 @@ test('CANCEL_RESEARCH: a thrown error (e.g. already-terminal mission) is caught 
   assert.deepEqual(result, {
     ok: false,
     reason: 'CANCEL_RESEARCH_FAILED',
-    detail: 'illegal transition: COMPLETE -> BLOCKED'
+    detail: 'illegal transition: COMPLETE -> BLOCKED',
+    code: null
   })
 })
 
@@ -308,6 +320,55 @@ test('RESOLVE_NEEDS_YOU: a thrown error (e.g. unknown question id) is caught int
   assert.deepEqual(result, {
     ok: false,
     reason: 'RESOLVE_NEEDS_YOU_FAILED',
-    detail: 'unknown Needs You question: no-such-id'
+    detail: 'unknown Needs You question: no-such-id',
+    code: null
+  })
+})
+
+// Needs You Completion (finish item C): `parameters.expectedRevision` is
+// optional, additive plumbing onto the already-real domain-level
+// assertExpectedRevision check (domain/canonical.mjs) -- resolveNeedsYou
+// (domain/keep-going.mjs) and resolveKeepGoingNeedsYou (keep-going-
+// controller.mjs) already accepted and enforced it; only this executor
+// boundary (and the HTTP route above it) never forwarded it. Default
+// semantics (omit it, a later answer freely replaces an earlier one) stay
+// unchanged -- this only makes protection available to a caller that
+// wants it, it does not change what happens when a caller doesn't ask.
+test('RESOLVE_NEEDS_YOU: forwards parameters.expectedRevision through to resolveProjectNeedsYou unchanged', async () => {
+  const calls = []
+  await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'p1',
+    parameters: { needsYouId: 'nq:1', resolution: 'use Exa', expectedRevision: 7 },
+    clock,
+    deps: {
+      resolveProjectNeedsYou: async (projectId, needsYouId, resolution, c, expectedRevision) => {
+        calls.push(expectedRevision)
+        return { id: 'run:1' }
+      }
+    }
+  })
+  assert.deepEqual(calls, [7])
+})
+
+test('RESOLVE_NEEDS_YOU: a real TSF_STALE_REVISION throw preserves its code onto the failure result', async () => {
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'p1',
+    parameters: { needsYouId: 'nq:1', resolution: 'use Exa', expectedRevision: 3 },
+    clock,
+    deps: {
+      resolveProjectNeedsYou: async () => {
+        const error = new Error('stale revision: expected 3, observed 4')
+        error.code = 'TSF_STALE_REVISION'
+        throw error
+      }
+    }
+  })
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'RESOLVE_NEEDS_YOU_FAILED',
+    detail: 'stale revision: expected 3, observed 4',
+    code: 'TSF_STALE_REVISION'
   })
 })

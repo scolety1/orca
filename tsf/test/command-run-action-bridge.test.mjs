@@ -813,3 +813,8 @@ test('resolveProjectNeedsYou: an unknown question id fails honestly, never silen
     /unknown Needs You question/
   )
 })
+
+// Needs You Completion (finish item C)'s own expectedRevision coverage
+// lives in command-run-action-bridge-needs-you-revision.test.mjs, split
+// out to keep this file under the repo's max-lines cap (same convention
+// command-quantified-run-action.test.mjs already established).

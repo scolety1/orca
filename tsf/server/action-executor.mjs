@@ -14,7 +14,7 @@ import { cancelResearchMissionDurable } from './research-mission-driver.mjs'
 
 /**
  * @typedef {{ ok: true, action: 'PAUSE' | 'RESUME' | 'DISPATCH' | 'HOLD' | 'RELEASE_HOLD' | 'CANCEL_RESEARCH' | 'RESOLVE_NEEDS_YOU', hold?: object, releasedSomething?: boolean, mission?: object, run?: object }} ActionSuccess
- * @typedef {{ ok: false, reason: 'PAUSE_FAILED' | 'RESUME_FAILED' | 'ADOPT_FAILED' | 'HOLD_FAILED' | 'RELEASE_HOLD_FAILED' | 'CANCEL_RESEARCH_FAILED' | 'RESOLVE_NEEDS_YOU_FAILED' | 'UNSUPPORTED_ACTION', detail: string }} ActionFailure
+ * @typedef {{ ok: false, reason: 'PAUSE_FAILED' | 'RESUME_FAILED' | 'ADOPT_FAILED' | 'HOLD_FAILED' | 'RELEASE_HOLD_FAILED' | 'CANCEL_RESEARCH_FAILED' | 'RESOLVE_NEEDS_YOU_FAILED' | 'UNSUPPORTED_ACTION', detail: string, code?: string | null }} ActionFailure
  */
 
 const FAILURE_REASON_BY_TYPE = Object.freeze({
@@ -130,8 +130,21 @@ export async function executeAction({ type, target, parameters = {}, clock, deps
       // done here, not invented as a fake "done." `target` is the
       // project id (bare string, matching PAUSE/RESUME/HOLD's
       // convention); `parameters` carries `{needsYouId, resolution}`.
+      // Needs You Completion (finish item C): `parameters.expectedRevision`
+      // is optional -- omitted, this keeps the existing default semantics
+      // (a later answer freely replaces an earlier one, deliberately
+      // preserved, not a bug); supplied, a stale-revision race throws
+      // TSF_STALE_REVISION (caught below, `.code` preserved onto the
+      // failure result) instead of silently overwriting a concurrently-
+      // changed run.
       const resolve = deps.resolveProjectNeedsYou ?? resolveProjectNeedsYou
-      const run = await resolve(target, parameters.needsYouId, parameters.resolution, clock)
+      const run = await resolve(
+        target,
+        parameters.needsYouId,
+        parameters.resolution,
+        clock,
+        parameters.expectedRevision
+      )
       return { ok: true, action: 'RESOLVE_NEEDS_YOU', run }
     }
 
@@ -154,10 +167,15 @@ export async function executeAction({ type, target, parameters = {}, clock, deps
       detail: `unsupported action type: ${type}`
     }
   } catch (error) {
+    // `code` (e.g. TSF_STALE_REVISION) is additive -- preserved so a caller
+    // that cares can distinguish a concurrency conflict from any other
+    // failure, without changing the existing {ok, reason, detail} shape
+    // every current caller already reads.
     return {
       ok: false,
       reason: FAILURE_REASON_BY_TYPE[type] ?? 'UNSUPPORTED_ACTION',
-      detail: errorDetail(error)
+      detail: errorDetail(error),
+      code: error?.code ?? null
     }
   }
 }
