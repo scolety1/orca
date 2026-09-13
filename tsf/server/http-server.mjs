@@ -60,6 +60,7 @@ import { handleSafeUpdateRoute } from './safe-update-http-routes.mjs'
 import { handleResourcePressureGovernorRoute } from './resource-pressure-governor-http-routes.mjs'
 import { handleAttentionRoute } from './attention-http-routes.mjs'
 import { handlePlannerNeedsYouRoute } from './planner-needs-you-http-routes.mjs'
+import { handleOperatorSnapshotRoute } from './operator-snapshot-http-routes.mjs'
 import { handleSelfImprovementFindingRoute } from './self-improvement-finding-http-routes.mjs'
 import { handleChatRoute } from './chat-http-routes.mjs'
 
@@ -166,7 +167,13 @@ export function createRequestHandler(options = {}) {
         return json(
           res,
           200,
-          summarizeWork(projects, opState.keepGoingRuns, () => new Date(), opState.researchMissions, opState.projectCanonicalBases)
+          summarizeWork(
+            projects,
+            opState.keepGoingRuns,
+            () => new Date(),
+            opState.researchMissions,
+            opState.projectCanonicalBases
+          )
         )
       }
 
@@ -184,7 +191,15 @@ export function createRequestHandler(options = {}) {
       }
 
       // GET /api/runtime-identity, POST /api/ui-setup, GET /api/update-safety -- see safe-update-http-routes.mjs
-      if (await handleSafeUpdateRoute(parts, req, res, { projects, opState, distDir, uiDir }, { json })) {
+      if (
+        await handleSafeUpdateRoute(
+          parts,
+          req,
+          res,
+          { projects, opState, distDir, uiDir },
+          { json }
+        )
+      ) {
         return
       }
 
@@ -311,7 +326,15 @@ export function createRequestHandler(options = {}) {
 
       // POST /api/chat, GET /api/chat/:projectId (history) -- see
       // chat-http-routes.mjs for real-time chat dispatch orchestration.
-      if (await handleChatRoute(parts, req, res, { map, opState, projects }, { json, notFound, readBody, saveState })) {
+      if (
+        await handleChatRoute(
+          parts,
+          req,
+          res,
+          { map, opState, projects },
+          { json, notFound, readBody, saveState }
+        )
+      ) {
         return
       }
 
@@ -335,7 +358,9 @@ export function createRequestHandler(options = {}) {
       }
 
       // GET/POST /api/resource-auditor/* -- see resource-auditor-http-routes.mjs
-      if (await handleResourceAuditorRoute(parts, req, res, { opState }, { json, notFound, readBody })) {
+      if (
+        await handleResourceAuditorRoute(parts, req, res, { opState }, { json, notFound, readBody })
+      ) {
         return
       }
 
@@ -375,7 +400,10 @@ export function createRequestHandler(options = {}) {
 
       // GET/POST /api/eval[/:packId/*] -- see eval-http-routes.mjs;
       // GET /api/projects/:id/flight-recorder -- see flight-recorder-http-routes.mjs
-      if ((await handleEvalRoute(parts, req, res, url, { opState }, { json, notFound, saveState })) || handleFlightRecorderRoute(parts, req, res, url, { map, opState }, { json, notFound })) {
+      if (
+        (await handleEvalRoute(parts, req, res, url, { opState }, { json, notFound, saveState })) ||
+        handleFlightRecorderRoute(parts, req, res, url, { map, opState }, { json, notFound })
+      ) {
         return
       }
 
@@ -421,15 +449,29 @@ export function createRequestHandler(options = {}) {
         return
       }
 
-      if (await handleAttentionRoute(parts, req, res, {}, { json, notFound, readBody })) { // GET /api/attention
+      if (await handleAttentionRoute(parts, req, res, {}, { json, notFound, readBody })) {
+        // GET /api/attention
         return
       }
 
-      if (await handlePlannerNeedsYouRoute(parts, req, res, {}, { json, notFound, readBody })) { // POST /api/planner-missions/:id/needs-you/:id/resolve
+      // GET /api/operator-snapshot, GET /api/operator-events -- Stage 5.
+      // Migrates HQ's own multi-fetch pattern onto one coherent read; legacy
+      // /portfolio, /work, /attention routes above stay as-is during the
+      // migration period (this mission's own "do not delete legacy routes
+      // yet" instruction).
+      if (await handleOperatorSnapshotRoute(parts, req, res, {}, { json, notFound })) {
         return
       }
 
-      if (await handleSelfImprovementFindingRoute(parts, req, res, {}, { json, notFound, readBody })) { // GET/POST /api/self-improvement/findings/:id[/start-fix|/apply-fix|/dismiss]
+      if (await handlePlannerNeedsYouRoute(parts, req, res, {}, { json, notFound, readBody })) {
+        // POST /api/planner-missions/:id/needs-you/:id/resolve
+        return
+      }
+
+      if (
+        await handleSelfImprovementFindingRoute(parts, req, res, {}, { json, notFound, readBody })
+      ) {
+        // GET/POST /api/self-improvement/findings/:id[/start-fix|/apply-fix|/dismiss]
         return
       }
 
