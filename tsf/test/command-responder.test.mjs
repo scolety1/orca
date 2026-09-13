@@ -650,50 +650,9 @@ test('multi-project: "run everything except TSF" dispatches to every project exc
   )
 })
 
-test('multi-project: "pause everything" (no exclusions) really pauses every real project with a run', async () => {
-  const result = await respondCommand({
-    message: 'pause everything',
-    projects: [
-      project('alpha-widgets', 'Alpha Widgets'),
-      project('alpha-gadgets', 'Alpha Gadgets')
-    ],
-    opState,
-    clock
-  })
-  // No single project resolved -- classifyRunActionVerb's PAUSE branch only
-  // ever targets ONE project (named or referenced); "everything" is a
-  // dispatch-only quantifier today (disclosed scope: bulk pause is real,
-  // valuable follow-up work, not built this round). Proves this stays an
-  // honest non-match rather than silently pausing an arbitrary one project.
-  assert.match(result.text, /couldn't tell which project/i)
-})
-
-// Phase 7 dogfood finding: real, reproduced via respondCommand against a
-// live fixture fleet with genuine prior conversational context (the
-// no-prior-context test above only proves the coincidental case where the
-// back-reference lookup already returns null). With a real prior turn on
-// record, "pause everything except X" used to silently fall through to
-// classifyRunActionVerb's back-reference resolver, which resolved to
-// whatever project that EARLIER, unrelated turn happened to reference --
-// pausing only that one project (ignoring the quantifier and the exclusion
-// entirely) while still claiming success ("Paused **Alpha Widgets**").
-// A quantifier must win over a stale back-reference here exactly like it
-// already does for dispatch (dispatchAndRespond's own documented ordering).
-test('Phase 7 fix: "pause everything except X" with a stale prior back-reference honestly declines instead of pausing the wrong (back-referenced) project', async () => {
-  const result = await respondCommand({
-    message: 'pause everything except alpha-gadgets',
-    projects,
-    opState: opStateWithLastTurn(['alpha-widgets']), // a real, unrelated prior turn referenced alpha-widgets
-    clock
-  })
-  assert.match(result.text, /couldn't tell which project/i)
-  assert.deepEqual(result.resolvedProjectIds, [])
-  assert.doesNotMatch(
-    result.text,
-    /^Paused/,
-    'must never claim a pause happened against the wrong (back-referenced) target'
-  )
-})
+// Real bulk pause/resume ("pause everything except X") is now a built
+// capability -- see test/command-quantified-run-action.test.mjs (split out
+// to keep this file under the repo's max-lines lint cap).
 
 test('multi-project: "everything" quantified with EVERY project excluded dispatches to nothing, honestly', async () => {
   const result = await respondCommand({

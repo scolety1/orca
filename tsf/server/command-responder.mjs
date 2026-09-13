@@ -61,6 +61,7 @@ import {
 import { classifyRunActionVerb } from './command-run-action-bridge.mjs'
 import { executeAction } from './action-executor.mjs'
 import { explainPriorAnswer } from './command-followup-context.mjs'
+import { respondQuantifiedRunAction } from './command-quantified-run-action.mjs'
 
 const STATUS_LIKE_INTENTS = new Set(['STATUS', 'NEXT_ACTION', 'FINISHED', 'HEALTH'])
 export const DISPATCH_WORTHY_INTENTS = new Set(['DISPATCH_REQUEST', 'FIX_REQUEST'])
@@ -469,21 +470,11 @@ export async function respondCommand({
   const runActionVerb = classifyRunActionVerb(message)
   if (runActionVerb) {
     const namedExact = exactMatches.length === 1 ? exactMatches[0].project : null
-    // Real dogfood finding (Phase 7): bulk pause/resume ("pause everything
-    // except X") was never built (see command-responder.test.mjs's own
-    // pinned "not built this round" test) -- but without this check, a
-    // quantified message with NO named exact match fell straight through to
-    // the back-reference resolver below, which happily resolved to whatever
-    // project a PRIOR, unrelated turn happened to reference and silently
-    // paused/resumed only that ONE project while claiming success -- a real
-    // "acted on the wrong target and said so was correct" bug, not merely an
-    // unbuilt feature (the existing pinned test only covers the
-    // no-prior-context case, where the back-reference lookup already
-    // returns null and the honest fallback was reached by coincidence).
-    // Matches dispatchAndRespond's own documented ordering below
-    // ("a quantifier is a stronger, more explicit signal than conversational
-    // history") -- a quantifier here must win over a stale back-reference
-    // too, never silently be dropped in favor of it.
+    // A quantifier ("pause everything except X") must win over a stale
+    // back-reference -- without this check, a quantified message with no
+    // named exact match fell through to the resolver below, silently
+    // acting on whatever project a prior, unrelated turn referenced.
+    // Matches dispatchAndRespond's own ordering below.
     const quantified = !namedExact && isAllProjectsQuantified(message)
     const backReferenceProjectId =
       !namedExact && !quantified && resolution.matches.length === 0
@@ -605,6 +596,25 @@ export async function respondCommand({
       // was actually about, and dispatchAndRespond's own response shape
       // would need its own merge path to do honestly.
       return dispatchAndRespond([targetProject])
+    }
+    // Real bulk pause/resume ("pause everything except X") -- previously
+    // disclosed as unbuilt (see the comment above). See
+    // command-quantified-run-action.mjs for why this is a separate file.
+    if (quantified) {
+      const allProjects = resolveAllProjectsQuantifier(message, projects, aliases)
+      if (allProjects) {
+        return respondQuantifiedRunAction({
+          message,
+          runActionVerb,
+          allProjects,
+          opState,
+          clock,
+          deps,
+          intent,
+          decisionClass,
+          respondMultiActionCommand
+        })
+      }
     }
     // No target resolved (no name, no usable back-reference) -- falls
     // through to the normal read-only/dispatch-worthy branches below,
