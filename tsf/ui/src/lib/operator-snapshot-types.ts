@@ -47,17 +47,34 @@ export type OwnerWorkItem = {
   openNeedsYou?: { id: string; question: string }[]
 }
 
+// TSF Final Pre-UI P1 Closure V1, P1 #2 -- mirrors tsf/domain/owner-goal-
+// model.mjs's real output field-for-field. `sourceId` is the real, durable
+// Keep Going run id / ResearchMission id this goal was derived from
+// (never itself the goal's identity -- see that file's own header for
+// why). A real Goal type now exists for a future UI to consume; the
+// visual presentation of Goals is deliberately NOT built here (subjective
+// UI/IA decision, out of this bounded backend-completion task's scope).
+export type OwnerGoal = {
+  id: string
+  projectId: string | null
+  kind: 'KEEP_GOING_RUN' | 'RESEARCH_MISSION'
+  title: string | null
+  description: string | null
+  criteria: string[] | null
+  sourceId: string
+  updatedAt: string
+}
+
 // GET /api/operator-snapshot -- mirrors tsf/server/operator-snapshot.mjs's
-// real buildOperatorSnapshot output field-for-field. `goals`/`needsYou`/
-// `capacity` are typed loosely (Stage 6 and the capacity/needs-you panels
-// have their own dedicated fetches today, unrelated to this migration) --
-// widen these only when a real consumer needs a precise shape, never
-// speculatively.
+// real buildOperatorSnapshot output field-for-field. `needsYou`/`capacity`
+// are typed loosely (the capacity/needs-you panels have their own
+// dedicated fetches today, unrelated to this migration) -- widen these
+// only when a real consumer needs a precise shape, never speculatively.
 export type OperatorSnapshot = {
   revision: number
   generatedAt: string
   projects: ProjectCard[]
-  goals: unknown[]
+  goals: OwnerGoal[]
   work: OwnerWorkItem[]
   waiting: AttentionItem[]
   needsYou: unknown[]
