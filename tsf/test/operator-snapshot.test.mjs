@@ -79,7 +79,11 @@ test('buildOperatorSnapshot assembles a coherent snapshot: projects, work, capac
   assert.equal(snapshot.work.length, 1)
   assert.equal(snapshot.work[0].state, 'PLANNING')
   assert.equal(snapshot.capacity.tier, 'HEALTHY')
-  assert.deepEqual(snapshot.goals, [], 'Stage 6 territory -- honestly empty, never fabricated')
+  // P1 #2: goals is populated from the SAME real run -- restart-stable
+  // identity derived from run.id, never from the goal's own mutable text.
+  assert.equal(snapshot.goals.length, 1)
+  assert.equal(snapshot.goals[0].id, 'goal:run:r1')
+  assert.equal(snapshot.goals[0].title, 'ship it')
   assert.equal(typeof snapshot.revision, 'number')
 })
 

@@ -17,6 +17,7 @@ import { statSync } from 'node:fs'
 import { projectsById, summarizeCard } from './project-catalog.mjs'
 import { getStateFilePath } from './data-store.mjs'
 import { buildOwnerWorkItems } from '../domain/owner-work-model.mjs'
+import { buildOwnerGoals } from '../domain/owner-goal-model.mjs'
 import { buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
 import { fleetNeedsYouStatus } from '../domain/fleet-work-status.mjs'
 import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
@@ -90,15 +91,19 @@ export function buildOperatorSnapshot(clock = () => new Date(), deps = {}) {
     plannerMissionRecords
   )
 
+  // TSF Final Pre-UI P1 Closure V1, P1 #2: derived from the SAME
+  // keepGoingRuns/researchMissions already read above -- zero new reads,
+  // one atomic snapshot. Every Work item's own goalId (owner-work-model.mjs)
+  // references a real entry here for the same real run/mission; a run-less
+  // legacy project's goalId stays null (no matching goal, by design).
+  const buildGoals = deps.buildOwnerGoals ?? buildOwnerGoals
+  const goals = buildGoals(keepGoingRuns, researchMissions)
+
   return {
     revision: currentOperatorRevision(deps),
     generatedAt: clock().toISOString(),
     projects: projects.map(summarizeCard),
-    // Stage 6 (Goal -> Work hierarchy) territory -- no real, stable goal ID
-    // exists yet anywhere in this codebase; honestly empty rather than a
-    // fabricated placeholder, per this mission's own "a partial projection
-    // with honest limitations is better than another storage system."
-    goals: [],
+    goals,
     work: workItems,
     // The complete, already-built 3-source resource-wait aggregation
     // (Keep Going / ResearchMission / self-improvement -- Stage 1B/this

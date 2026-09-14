@@ -82,7 +82,12 @@ export function keepGoingRunWorkItem(run, { gap = null, advancedEntry = null } =
   return {
     id: `run:${run.id}`,
     projectId: run.projectId,
-    goalId: null, // reserved for Stage 6 (Goal -> Work hierarchy) -- not fabricated
+    // TSF Final Pre-UI P1 Closure V1, P1 #2: the real, restart-stable
+    // Goal identity owner-goal-model.mjs's own keepGoingRunGoal derives
+    // for this exact run -- never fabricated, never re-derived here (see
+    // that file's own header for why identity comes from run.id, not
+    // goal text).
+    goalId: `goal:run:${run.id}`,
     kind: 'KEEP_GOING_RUN',
     parentId: null,
     state,
@@ -142,7 +147,10 @@ export function researchMissionWorkItem(mission) {
   return {
     id: `research:${mission.id}`,
     projectId: mission.projectId ?? null,
-    goalId: null,
+    // TSF Final Pre-UI P1 Closure V1, P1 #2: the real, restart-stable
+    // Goal identity owner-goal-model.mjs's own researchMissionGoal
+    // derives for this exact mission.
+    goalId: `goal:research:${mission.id}`,
     kind: 'RESEARCH_MISSION',
     parentId: null,
     state,
@@ -222,6 +230,10 @@ function legacyMissionStateWorkItem(project) {
     return {
       id: `legacy-mission:${project.id}`,
       projectId: project.id,
+      // P1 #2: a run-less legacy project has no real Keep Going run or
+      // ResearchMission -- no real goal authority exists for it, so this
+      // (and every other legacy-* item below) honestly stays unscoped,
+      // never a fabricated "General work" placeholder goal.
       goalId: null,
       kind: 'PROJECT',
       parentId: null,
