@@ -1,5 +1,6 @@
 import { createKeepGoingApi } from './keep-going-api'
 import { createPlannerNeedsYouApi } from './planner-needs-you-api'
+import { createResearchNeedsYouApi } from './research-needs-you-api'
 import { createEvalApi } from './eval-api'
 import { createSelfImprovementFindingApi } from './self-improvement-finding-api'
 import type { ChatPlacement } from './chat-dispatch-types'
@@ -227,6 +228,7 @@ export const api = {
     }),
   ...createKeepGoingApi(request),
   ...createPlannerNeedsYouApi(request),
+  ...createResearchNeedsYouApi(request),
   ...createEvalApi(request, requestTolerant),
   ...createSelfImprovementFindingApi(request),
   estimate: (projectId: string) =>

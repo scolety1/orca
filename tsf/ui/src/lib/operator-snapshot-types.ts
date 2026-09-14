@@ -40,6 +40,11 @@ export type OwnerWorkItem = {
   entityType?: string | null
   expectedCount?: number | null
   freePathOnly?: boolean
+  // TSF Final Pre-UI P1 Closure V1, P1 #1: the real, unresolved question(s)
+  // -- same real filter server/research-mission-driver.mjs's own
+  // readResearchMissionReviewItems already applies. Lets ResearchNeedsYouCard
+  // render/answer the real question directly off this item.
+  openNeedsYou?: { id: string; question: string }[]
 }
 
 // GET /api/operator-snapshot -- mirrors tsf/server/operator-snapshot.mjs's

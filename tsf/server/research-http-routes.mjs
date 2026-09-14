@@ -127,7 +127,22 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
     return true
   }
 
-  const missionId = parts[2]
+  // TSF Final Pre-UI P1 Closure V1, P1 #1 -- real, live-discovered bug
+  // (caught via real browser validation, not guessed): a real missionId
+  // can genuinely contain a literal colon (e.g. this session's own
+  // `mission:p1-validation` fixture, or a self-improvement repair
+  // mission's `mission:selfimprove:<findingId>` shape) -- a real browser
+  // client that correctly encodeURIComponent()s the mission id before
+  // building the URL (as ui/src/lib/research-needs-you-api.ts now does)
+  // sends it percent-encoded (`mission%3Ap1-validation`), but
+  // http-server.mjs's own `parts` array is built from
+  // url.pathname.split('/') with NO decoding, so it never matched the
+  // real, decoded missionId every reader/mutator here needs. The SAME
+  // real bug planner-needs-you-http-routes.mjs's own comment already
+  // documented and fixed for that route -- fixed here identically, once,
+  // for every route in this file (all of them read `missionId` from this
+  // one place).
+  const missionId = parts[2] ? decodeURIComponent(parts[2]) : parts[2]
   if (!missionId) {
     return false
   }

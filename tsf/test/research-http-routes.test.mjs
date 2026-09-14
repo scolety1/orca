@@ -456,3 +456,66 @@ test('POST /api/research/:missionId/needs-you/:needsYouId/resolve resolves a rea
     cleanupStateFile()
   }
 })
+
+// TSF Final Pre-UI P1 Closure V1, P1 #1 -- real, live-discovered bug
+// (caught via real browser validation of ResearchNeedsYouCard.tsx, not
+// guessed): a real browser client that correctly encodeURIComponent()s a
+// colon-bearing missionId before requesting it (ui/src/lib/research-needs-
+// you-api.ts) sent a 404 for every real mission id containing a colon --
+// http-server.mjs's own `parts` array is never decoded. Mirrors planner-
+// needs-you-http-routes.test.mjs's own identical real regression test.
+test('POST .../needs-you/:id/resolve: a real percent-encoded missionId (the real shape a colon-bearing id takes in an actual URL) is decoded correctly, not looked up literally', async () => {
+  const distDir = mkdtempSync(path.join(tmpdir(), 'tsf-research-needs-you-encoding-'))
+  const { startStandaloneServer } = await import('../server/http-server.mjs')
+  const server = startStandaloneServer(0, { uiDistDir: distDir })
+  try {
+    await new Promise((resolve) => server.once('listening', resolve))
+    const { port } = server.address()
+    const base = `http://127.0.0.1:${port}`
+    const specification = buildNflQb2001Specification()
+    const missionId = 'mission:selfimprove:percent-encoded-fixture'
+    const realUrlPart = encodeURIComponent(missionId)
+    assert.notEqual(
+      realUrlPart,
+      missionId,
+      'sanity: encodeURIComponent must actually change a colon-bearing id'
+    )
+
+    await fetch(`${base}/api/research/${realUrlPart}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: 'fixture:proj',
+        specification,
+        expectedUniverse: specification.expectedUniverse,
+        nodes: []
+      })
+    })
+
+    const { raiseResearchNeedsYou } = await import('../domain/research-mission.mjs')
+    const { withResearchMission } = await import('../server/research-mission-store.mjs')
+    const raised = await withResearchMission(missionId, (m) =>
+      raiseResearchNeedsYou(m, { question: 'x?' }, () => new Date(), m.revision)
+    )
+    const needsYouId = raised.needsYou[0].id
+
+    const resolveRes = await fetch(
+      `${base}/api/research/${realUrlPart}/needs-you/${needsYouId}/resolve`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resolution: 'Yes.' })
+      }
+    )
+    assert.equal(
+      resolveRes.status,
+      200,
+      'the real, decoded missionId must be found, never a false 422/404'
+    )
+    assert.equal((await resolveRes.json()).state, 'ACTIVE')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+    rmSync(distDir, { recursive: true, force: true })
+    cleanupStateFile()
+  }
+})

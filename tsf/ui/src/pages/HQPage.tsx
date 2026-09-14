@@ -38,6 +38,7 @@ import { CapacityIndicator } from '@/components/CapacityIndicator'
 import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
 import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
 import { ResearchMissionCard } from '@/components/research/ResearchMissionCard'
+import { ResearchNeedsYouCard } from '@/components/research/ResearchNeedsYouCard'
 import { PlannerNeedsYouCard } from '@/components/PlannerNeedsYouCard'
 import { SelfImprovementFindingCard } from '@/components/SelfImprovementFindingCard'
 import { OtherNeedsYouCard } from '@/components/OtherNeedsYouCard'
@@ -263,7 +264,7 @@ export function HQPage() {
               </Link>
             ))}
             {researchNeedsYou.map((item) => (
-              <ResearchMissionCard key={item.missionId} item={item} />
+              <ResearchNeedsYouCard key={item.missionId} item={item} onResolved={reload} />
             ))}
             {otherNeedsYou.map((item) => {
               // Pre-UI Productization V1, Priority 5: a planner Needs-You
