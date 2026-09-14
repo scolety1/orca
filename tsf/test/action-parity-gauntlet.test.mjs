@@ -56,7 +56,8 @@ const { withProjectExecutionHold, readProjectExecutionHold } =
 const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 const { withResearchMission, readResearchMission } =
   await import('../server/research-mission-store.mjs')
-const { createResearchMission } = await import('../domain/research-mission.mjs')
+const { createResearchMission, raiseResearchNeedsYou } =
+  await import('../domain/research-mission.mjs')
 
 function cleanupStateFile() {
   for (const suffix of [
@@ -227,3 +228,125 @@ test('RESOLVE_NEEDS_YOU: N genuinely concurrent resolutions for the SAME questio
     'the final persisted resolution must be exactly one real, well-formed value, never a torn/corrupted write'
   )
 })
+
+// TSF Final Pre-UI P1 Closure V1, P1 #1: cross-source RESOLVE_NEEDS_YOU
+// coverage -- RESEARCH and PLANNER now route through the SAME canonical
+// executeAction (source-aware), so they get the SAME concurrency
+// guarantee proof as PROJECT above (no once-only guard by design for
+// either domain.resolveResearchNeedsYou or resolvePlannerNeedsYou --
+// mirrors PROJECT's own real, disclosed characteristic exactly).
+test('RESOLVE_NEEDS_YOU (source RESEARCH): N genuinely concurrent resolutions for the SAME question resolve safely -- exactly one real answer persisted, restart-durable, mission reaches ACTIVE', async () => {
+  const missionId = 'gauntlet-resolve-needs-you-research'
+  const raised = await withResearchMission(missionId, () => {
+    const mission = createResearchMission(
+      {
+        id: missionId,
+        projectId: 'p1',
+        specification: baseMissionSpec(),
+        expectedUniverse: {
+          schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+          entityType: 'FIXTURE',
+          expectedCount: 1,
+          expectedEntities: []
+        }
+      },
+      clock
+    )
+    return raiseResearchNeedsYou(mission, { question: 'which provider?' }, clock, mission.revision)
+  })
+  const needsYouId = raised.needsYou[0].id
+  const N = 8
+  const results = await Promise.allSettled(
+    Array.from({ length: N }, (_, i) =>
+      executeAction({
+        type: 'RESOLVE_NEEDS_YOU',
+        target: missionId,
+        parameters: { source: 'RESEARCH', needsYouId, resolution: `answer-${i}` },
+        clock
+      })
+    )
+  )
+  assert.ok(
+    results.every((r) => r.status === 'fulfilled'),
+    'executeAction must never throw past its own boundary'
+  )
+  const values = results.map((r) => r.value)
+  assert.equal(
+    values.filter((v) => v.ok).length,
+    N,
+    'resolveResearchNeedsYou has no once-only guard by design (matches PROJECT) -- every concurrent call honestly succeeds'
+  )
+  const finalMission = readResearchMission(missionId)
+  assert.equal(finalMission.state, 'ACTIVE', 'the only open question was resolved -- resumable')
+  assert.ok(finalMission.needsYou[0].resolvedAt)
+  assert.match(
+    finalMission.needsYou[0].resolution,
+    /^answer-\d$/,
+    'the final persisted resolution must be exactly one real, well-formed value, never a torn/corrupted write'
+  )
+})
+
+test('RESOLVE_NEEDS_YOU (source PLANNER): N genuinely concurrent resolutions for the SAME question resolve safely, real durable checkpoint write, restart-durable', async () => {
+  const { createPlannerMissionCheckpoint, raisePlannerNeedsYou } =
+    await import('../domain/planner-mission-checkpoint.mjs')
+  const { withPlannerMissionRecord, readPlannerMissionRecord } =
+    await import('../server/planner-mission-store.mjs')
+  const missionId = 'gauntlet-resolve-needs-you-planner'
+  await withPlannerMissionRecord(missionId, () => {
+    const checkpoint = createPlannerMissionCheckpoint(
+      {
+        missionId,
+        missionGoal: 'test goal',
+        phase: 'PLANNING',
+        repoState: { branch: 'main', sha: 'a'.repeat(40) }
+      },
+      clock
+    )
+    return { lease: null, checkpoint: raisePlannerNeedsYou(checkpoint, { question: 'x?' }, clock) }
+  })
+  const needsYouId = readPlannerMissionRecord(missionId).checkpoint.needsYou[0].id
+  const N = 8
+  const results = await Promise.allSettled(
+    Array.from({ length: N }, (_, i) =>
+      executeAction({
+        type: 'RESOLVE_NEEDS_YOU',
+        target: missionId,
+        parameters: { source: 'PLANNER', needsYouId, resolution: `answer-${i}` },
+        clock
+      })
+    )
+  )
+  assert.ok(
+    results.every((r) => r.status === 'fulfilled'),
+    'executeAction must never throw past its own boundary'
+  )
+  const values = results.map((r) => r.value)
+  assert.equal(
+    values.filter((v) => v.ok).length,
+    N,
+    'resolvePlannerNeedsYou has no once-only guard by design (matches PROJECT/RESEARCH) -- every concurrent call honestly succeeds'
+  )
+  const finalCheckpoint = readPlannerMissionRecord(missionId).checkpoint
+  assert.ok(finalCheckpoint.needsYou[0].resolvedAt)
+  assert.match(
+    finalCheckpoint.needsYou[0].resolution,
+    /^answer-\d$/,
+    'the final persisted resolution must be exactly one real, well-formed value, never a torn/corrupted write'
+  )
+})
+
+// Reconciled, not duplicated: PROJECT resolution's own full behavior
+// (stale expectedRevision, unknown needsYouId, single-vs-multi-question
+// independence, HTTP-level 409/422) is proven in command-run-action-
+// bridge-needs-you-revision.test.mjs + http-keep-going.test.mjs. RESEARCH's
+// own equivalents are proven in research-mission-needs-you-resolution.test.mjs
+// (7 tests: restart-durability, unknown mission/question, default-overwrite,
+// stale-revision rejection, duplicate-answer-by-design, multi-question
+// independence) + research-http-routes.test.mjs's real end-to-end HTTP
+// test (4 embedded scenarios) + its own colon-encoding regression test.
+// PLANNER's own pre-existing 7-test suite (planner-needs-you-http-routes.
+// test.mjs) is unchanged and still green after routing through the
+// executor -- proving PROJECT/PLANNER both still work is exactly what
+// those files' own continued green status already demonstrates; this
+// file's job is specifically the concurrency proof above, matching every
+// other action type's own precedent in this file.
