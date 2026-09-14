@@ -10,10 +10,15 @@ import {
   releaseProjectExecutionHold
 } from '../domain/project-execution-hold.mjs'
 import { withProjectExecutionHold } from './project-execution-hold-store.mjs'
-import { cancelResearchMissionDurable } from './research-mission-driver.mjs'
+import {
+  cancelResearchMissionDurable,
+  resolveResearchNeedsYouDurable
+} from './research-mission-driver.mjs'
+import { resolvePlannerNeedsYou } from '../domain/planner-mission-checkpoint.mjs'
+import { mutateCheckpoint } from './planner-mission-store.mjs'
 
 /**
- * @typedef {{ ok: true, action: 'PAUSE' | 'RESUME' | 'DISPATCH' | 'HOLD' | 'RELEASE_HOLD' | 'CANCEL_RESEARCH' | 'RESOLVE_NEEDS_YOU', hold?: object, releasedSomething?: boolean, mission?: object, run?: object }} ActionSuccess
+ * @typedef {{ ok: true, action: 'PAUSE' | 'RESUME' | 'DISPATCH' | 'HOLD' | 'RELEASE_HOLD' | 'CANCEL_RESEARCH' | 'RESOLVE_NEEDS_YOU', hold?: object, releasedSomething?: boolean, mission?: object, run?: object, checkpoint?: object, source?: 'PROJECT' | 'RESEARCH' | 'PLANNER' }} ActionSuccess
  * @typedef {{ ok: false, reason: 'PAUSE_FAILED' | 'RESUME_FAILED' | 'ADOPT_FAILED' | 'HOLD_FAILED' | 'RELEASE_HOLD_FAILED' | 'CANCEL_RESEARCH_FAILED' | 'RESOLVE_NEEDS_YOU_FAILED' | 'UNSUPPORTED_ACTION', detail: string, code?: string | null }} ActionFailure
  */
 
@@ -119,33 +124,70 @@ export async function executeAction({ type, target, parameters = {}, clock, deps
     }
 
     if (type === 'RESOLVE_NEEDS_YOU') {
-      // Stage 4 v1: PROJECT-sourced (Keep Going) Needs You only --
-      // fleetNeedsYouStatus (fleet-work-status.mjs) already aggregates
-      // three real sources (PROJECT/RESEARCH/PLANNER), but only
-      // keep-going.mjs's resolveNeedsYou had zero real callers stay
-      // findable and closable in one bounded slice tonight;
-      // research-mission.mjs's resolveResearchNeedsYou and
-      // planner-session-lifecycle.mjs's own resolveNeedsYou method are
-      // real, equally uncalled, and are the natural next phases -- not
-      // done here, not invented as a fake "done." `target` is the
-      // project id (bare string, matching PAUSE/RESUME/HOLD's
-      // convention); `parameters` carries `{needsYouId, resolution}`.
-      // Needs You Completion (finish item C): `parameters.expectedRevision`
-      // is optional -- omitted, this keeps the existing default semantics
-      // (a later answer freely replaces an earlier one, deliberately
-      // preserved, not a bug); supplied, a stale-revision race throws
+      // TSF Final Pre-UI P1 Closure V1, P1 #1: source-aware -- fleetNeedsYouStatus
+      // (fleet-work-status.mjs) already aggregates three real sources
+      // (PROJECT/RESEARCH/PLANNER); this is the one canonical mutation
+      // authority for resolving any of them, closing the "CONNECTION, not
+      // a new interruption system" gap the mission brief named. `source`
+      // defaults to 'PROJECT' -- every real caller before this stage
+      // (keep-going-http-routes.mjs's resolve-needs-you route) never set
+      // it, so an unspecified source keeps that exact prior behavior.
+      // `target` is the project id for PROJECT, the mission id for
+      // RESEARCH and PLANNER (matching CANCEL_RESEARCH's own mission-id-
+      // as-target convention). `parameters.expectedRevision` is optional
+      // for PROJECT/RESEARCH (their real domain primitives already
+      // support it via assertExpectedRevision) -- omitted, a later answer
+      // freely replaces an earlier one (deliberately preserved default,
+      // not a bug); supplied, a stale-revision race throws
       // TSF_STALE_REVISION (caught below, `.code` preserved onto the
-      // failure result) instead of silently overwriting a concurrently-
-      // changed run.
-      const resolve = deps.resolveProjectNeedsYou ?? resolveProjectNeedsYou
-      const run = await resolve(
-        target,
-        parameters.needsYouId,
-        parameters.resolution,
-        clock,
-        parameters.expectedRevision
-      )
-      return { ok: true, action: 'RESOLVE_NEEDS_YOU', run }
+      // failure result). PLANNER's own real checkpoint mutator
+      // (resolvePlannerNeedsYou) has no revision concept at all -- not
+      // added here ("do not rewrite the planner interruption store");
+      // parameters.expectedRevision is silently ignored for that source,
+      // matching its pre-existing, unchanged real behavior exactly.
+      const source = parameters.source ?? 'PROJECT'
+
+      if (source === 'PROJECT') {
+        const resolve = deps.resolveProjectNeedsYou ?? resolveProjectNeedsYou
+        const run = await resolve(
+          target,
+          parameters.needsYouId,
+          parameters.resolution,
+          clock,
+          parameters.expectedRevision
+        )
+        return { ok: true, action: 'RESOLVE_NEEDS_YOU', source: 'PROJECT', run }
+      }
+
+      if (source === 'RESEARCH') {
+        const resolve = deps.resolveResearchNeedsYouDurable ?? resolveResearchNeedsYouDurable
+        const mission = await resolve(
+          target,
+          parameters.needsYouId,
+          parameters.resolution,
+          clock,
+          parameters.expectedRevision
+        )
+        return { ok: true, action: 'RESOLVE_NEEDS_YOU', source: 'RESEARCH', mission }
+      }
+
+      if (source === 'PLANNER') {
+        const mutate = deps.mutateCheckpoint ?? mutateCheckpoint
+        const resolve = deps.resolvePlannerNeedsYou ?? resolvePlannerNeedsYou
+        const checkpoint = await mutate(
+          target,
+          (current, c) => {
+            if (!current) {
+              throw new Error(`unknown planner mission: ${target}`)
+            }
+            return resolve(current, parameters.needsYouId, parameters.resolution, c)
+          },
+          clock
+        )
+        return { ok: true, action: 'RESOLVE_NEEDS_YOU', source: 'PLANNER', checkpoint }
+      }
+
+      throw new Error(`unknown Needs You source: ${source}`)
     }
 
     if (type === 'CANCEL_RESEARCH') {

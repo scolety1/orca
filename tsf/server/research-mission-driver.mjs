@@ -20,18 +20,59 @@
 // AMBIGUOUS_REQUIRES_RECONCILIATION) -- calling the SAME driver function
 // again is the resume action, and it checks that classification FIRST,
 // before ever risking a second real call.
-import { addResearchNode, assertNodeTransition, blockResearchMission, computeResearchMissionPhase, createResearchMission, escalateResearchNodeToNeedsYou, findResearchNode, raiseResearchNeedsYou, readyResearchNodes, withResearchNode } from '../domain/research-mission.mjs'
-import { buildBoundedResearchRequest, markResearchNodeDispatchFailed, markResearchNodeReady, recordResearchNodeDispatch, recordResearchNodeResult } from '../domain/research-node.mjs'
-import { classifyDispatchDeliveryGuarantee, recordDispatchAttempt, resolveDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
+import {
+  addResearchNode,
+  assertNodeTransition,
+  blockResearchMission,
+  computeResearchMissionPhase,
+  createResearchMission,
+  escalateResearchNodeToNeedsYou,
+  findResearchNode,
+  raiseResearchNeedsYou,
+  readyResearchNodes,
+  resolveResearchNeedsYou,
+  withResearchNode
+} from '../domain/research-mission.mjs'
+import {
+  buildBoundedResearchRequest,
+  markResearchNodeDispatchFailed,
+  markResearchNodeReady,
+  recordResearchNodeDispatch,
+  recordResearchNodeResult
+} from '../domain/research-node.mjs'
+import {
+  classifyDispatchDeliveryGuarantee,
+  recordDispatchAttempt,
+  resolveDispatchAttempt
+} from '../domain/research-dispatch-bookkeeping.mjs'
 import { admitBoundedResearchResult } from '../domain/research-admission.mjs'
 import { detectResearchConflicts, verifyResearchClaim } from '../domain/research-verification.mjs'
-import { admitReconciliationDecision, decideReconciliation } from '../domain/research-reconciliation.mjs'
+import {
+  admitReconciliationDecision,
+  decideReconciliation
+} from '../domain/research-reconciliation.mjs'
 import { authorizeMeteredExecution } from '../domain/research-cost-governance.mjs'
 import { computeCompletenessMetrics } from '../domain/research-completeness.mjs'
-import { createResearchLibrary, decideLibraryReferenceReconciliation, evaluateResearchLibraryReuse, evaluateSourceLibraryReuse, markResearchNodeAdmittedViaLibraryReuse, reuseSourceSnapshotIntoNode } from '../domain/research-library.mjs'
-import { activeResearchPaidApproval, grantResearchPaidApproval, requestResearchPaidApproval } from '../domain/research-paid-approval.mjs'
+import {
+  createResearchLibrary,
+  decideLibraryReferenceReconciliation,
+  evaluateResearchLibraryReuse,
+  evaluateSourceLibraryReuse,
+  markResearchNodeAdmittedViaLibraryReuse,
+  reuseSourceSnapshotIntoNode
+} from '../domain/research-library.mjs'
+import {
+  activeResearchPaidApproval,
+  grantResearchPaidApproval,
+  requestResearchPaidApproval
+} from '../domain/research-paid-approval.mjs'
 import { buildResearchProvenancePackage } from '../domain/research-provenance.mjs'
-import { readAllResearchMissions, readResearchMission, readResearchMissionIntegrityChecked, withResearchMission } from './research-mission-store.mjs'
+import {
+  readAllResearchMissions,
+  readResearchMission,
+  readResearchMissionIntegrityChecked,
+  withResearchMission
+} from './research-mission-store.mjs'
 import { readResearchLibrary } from './research-library-store.mjs'
 
 // ---------------------------------------------------------------------
@@ -40,10 +81,17 @@ import { readResearchLibrary } from './research-library-store.mjs'
 // Idempotent by missionId -- a replayed create (e.g. a retried HTTP POST)
 // is a safe no-op, matching addResearchNode's own idempotent-by-id
 // convention one level up.
-export async function createResearchMissionDurable(missionId, { projectId, specification, expectedUniverse, nodes = [] }, clock) {
+export async function createResearchMissionDurable(
+  missionId,
+  { projectId, specification, expectedUniverse, nodes = [] },
+  clock
+) {
   return withResearchMission(missionId, (current) => {
     if (current) return current
-    let mission = createResearchMission({ id: missionId, projectId, specification, expectedUniverse }, clock)
+    let mission = createResearchMission(
+      { id: missionId, projectId, specification, expectedUniverse },
+      clock
+    )
     for (const nodeInput of nodes) mission = addResearchNode(mission, nodeInput, clock)
     return mission
   })
@@ -183,7 +231,38 @@ export function readResearchMissionProviderUsage(missionId) {
 export async function cancelResearchMissionDurable(missionId, reason, clock) {
   return withResearchMission(missionId, (mission) => {
     if (!mission) throw new Error(`unknown research mission: ${missionId}`)
-    return blockResearchMission(mission, reason ?? 'OPERATOR_CANCELLED', [], clock, mission.revision)
+    return blockResearchMission(
+      mission,
+      reason ?? 'OPERATOR_CANCELLED',
+      [],
+      clock,
+      mission.revision
+    )
+  })
+}
+
+// TSF Final Pre-UI P1 Closure V1, P1 #1: the durable wrapper around the
+// EXISTING domain.resolveResearchNeedsYou (domain/research-mission.mjs) --
+// that primitive already has real expected-revision enforcement
+// (assertExpectedRevision, domain/canonical.mjs) and already transitions
+// the mission back to ACTIVE once every open Needs You is resolved
+// (unlike cancelResearchMissionDurable above, `expectedRevision` here is
+// the CALLER's own value, forwarded verbatim -- never re-derived from the
+// freshly-read mission -- so a genuinely stale caller gets a real
+// TSF_STALE_REVISION rejection, mirroring resolveProjectNeedsYou's own
+// exact contract for the PROJECT source). No new mission, no second
+// Research inbox/store -- the same real durable mission record, the same
+// real compare-and-swap store every other research mutation here uses.
+export async function resolveResearchNeedsYouDurable(
+  missionId,
+  needsYouId,
+  resolution,
+  clock,
+  expectedRevision
+) {
+  return withResearchMission(missionId, (mission) => {
+    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    return resolveResearchNeedsYou(mission, needsYouId, resolution, clock, expectedRevision)
   })
 }
 
@@ -214,7 +293,14 @@ export async function cancelResearchNodeDurable(missionId, nodeId, clock) {
 // when supplied, gated with the REAL durable cumulative spend BEFORE the
 // dispatch attempt is even recorded (never after; a refused call must
 // never touch the network).
-export async function dispatchResearchNodeDurable(missionId, nodeId, providerId, worker, clock, { costGovernance = null } = {}) {
+export async function dispatchResearchNodeDurable(
+  missionId,
+  nodeId,
+  providerId,
+  worker,
+  clock,
+  { costGovernance = null } = {}
+) {
   const mission = readResearchMission(missionId)
   if (!mission) throw new Error(`unknown research mission: ${missionId}`)
   const node = findResearchNode(mission, nodeId)
@@ -247,8 +333,18 @@ export async function dispatchResearchNodeDurable(missionId, nodeId, providerId,
     }
   }
 
-  let next = await withResearchMission(missionId, (m) => markResearchNodeReady(m, nodeId, clock, m.revision))
-  next = await withResearchMission(missionId, (m) => recordDispatchAttempt(m, nodeId, { taskFingerprint: request.taskFingerprint }, clock, m.revision))
+  let next = await withResearchMission(missionId, (m) =>
+    markResearchNodeReady(m, nodeId, clock, m.revision)
+  )
+  next = await withResearchMission(missionId, (m) =>
+    recordDispatchAttempt(
+      m,
+      nodeId,
+      { taskFingerprint: request.taskFingerprint },
+      clock,
+      m.revision
+    )
+  )
 
   // THE real network call. If the process dies here, the attempt above is
   // already durable and UNKNOWN -- the next call to this function sees
@@ -260,7 +356,11 @@ export async function dispatchResearchNodeDurable(missionId, nodeId, providerId,
     resolveDispatchAttempt(
       m,
       nodeId,
-      { taskFingerprint: request.taskFingerprint, outcome: dispatched.ok ? 'CONFIRMED' : 'FAILED_CLEAN', workerRunRef: dispatched.ok ? dispatched.workerRunRef : null },
+      {
+        taskFingerprint: request.taskFingerprint,
+        outcome: dispatched.ok ? 'CONFIRMED' : 'FAILED_CLEAN',
+        workerRunRef: dispatched.ok ? dispatched.workerRunRef : null
+      },
       clock,
       m.revision
     )
@@ -270,11 +370,26 @@ export async function dispatchResearchNodeDurable(missionId, nodeId, providerId,
     // (research-autonomy-policy.mjs's decideNextNodeAction FAILED branch)
     // sees this node next tick instead of it being silently re-issued as a
     // fresh DISPATCH forever.
-    next = await withResearchMission(missionId, (m) => markResearchNodeDispatchFailed(m, nodeId, clock, m.revision))
+    next = await withResearchMission(missionId, (m) =>
+      markResearchNodeDispatchFailed(m, nodeId, clock, m.revision)
+    )
     return { ok: false, reason: dispatched.reason, detail: dispatched.detail, mission: next }
   }
-  next = await withResearchMission(missionId, (m) => recordResearchNodeDispatch(m, nodeId, { taskFingerprint: request.taskFingerprint, workerRunRef: dispatched.workerRunRef }, clock, m.revision))
-  return { ok: true, mission: next, taskFingerprint: request.taskFingerprint, workerRunRef: dispatched.workerRunRef }
+  next = await withResearchMission(missionId, (m) =>
+    recordResearchNodeDispatch(
+      m,
+      nodeId,
+      { taskFingerprint: request.taskFingerprint, workerRunRef: dispatched.workerRunRef },
+      clock,
+      m.revision
+    )
+  )
+  return {
+    ok: true,
+    mission: next,
+    taskFingerprint: request.taskFingerprint,
+    workerRunRef: dispatched.workerRunRef
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -311,9 +426,13 @@ export async function pollAndAdmitResearchNodeDurable(missionId, nodeId, worker,
   if (!fetched.ok) return { ok: false, reason: fetched.reason, detail: fetched.detail }
   if (fetched.status !== 'READY') return { ok: true, ready: false, status: fetched.status }
 
-  let next = await withResearchMission(missionId, (m) => recordResearchNodeResult(m, nodeId, fetched.result, clock, m.revision))
+  let next = await withResearchMission(missionId, (m) =>
+    recordResearchNodeResult(m, nodeId, fetched.result, clock, m.revision)
+  )
   const digest = findResearchNode(next, nodeId).rawResults.at(-1).digest
-  next = await withResearchMission(missionId, (m) => admitBoundedResearchResult(m, nodeId, digest, clock, m.revision))
+  next = await withResearchMission(missionId, (m) =>
+    admitBoundedResearchResult(m, nodeId, digest, clock, m.revision)
+  )
 
   if (fetched.result.status === 'NEEDS_INPUT') {
     const hasProposedFollowUp = fetched.result.newGapProposals.length > 0
@@ -324,7 +443,10 @@ export async function pollAndAdmitResearchNodeDurable(missionId, nodeId, worker,
         escalateResearchNodeToNeedsYou(
           m,
           nodeId,
-          { question: `Provider reported NEEDS_INPUT with no proposed follow-up research: ${unresolvedQuestions.join('; ')}`, category: 'SCHEMA_AMBIGUITY' },
+          {
+            question: `Provider reported NEEDS_INPUT with no proposed follow-up research: ${unresolvedQuestions.join('; ')}`,
+            category: 'SCHEMA_AMBIGUITY'
+          },
           clock,
           m.revision
         )
@@ -343,17 +465,29 @@ export async function pollAndAdmitResearchNodeDurable(missionId, nodeId, worker,
 // call the manual bake-off scripts made by hand, made durable and
 // resumable here.
 // ---------------------------------------------------------------------
-export async function verifyAndReconcileResearchNodeFieldDurable(missionId, nodeId, fieldName, decidedBy, clock) {
+export async function verifyAndReconcileResearchNodeFieldDurable(
+  missionId,
+  nodeId,
+  fieldName,
+  decidedBy,
+  clock
+) {
   const mission = readResearchMission(missionId)
   if (!mission) throw new Error(`unknown research mission: ${missionId}`)
   let node = findResearchNode(mission, nodeId)
   if (!node) throw new Error(`unknown research node: ${nodeId}`)
 
   let next = mission
-  for (const claim of node.claims.filter((c) => c.fieldName === fieldName && c.status === 'UNVERIFIED')) {
-    next = await withResearchMission(missionId, (m) => verifyResearchClaim(m, nodeId, claim.id, clock, m.revision)) // eslint-disable-line no-await-in-loop
+  for (const claim of node.claims.filter(
+    (c) => c.fieldName === fieldName && c.status === 'UNVERIFIED'
+  )) {
+    next = await withResearchMission(missionId, (m) =>
+      verifyResearchClaim(m, nodeId, claim.id, clock, m.revision)
+    ) // eslint-disable-line no-await-in-loop
   }
-  next = await withResearchMission(missionId, (m) => detectResearchConflicts(m, nodeId, clock, m.revision))
+  next = await withResearchMission(missionId, (m) =>
+    detectResearchConflicts(m, nodeId, clock, m.revision)
+  )
   node = findResearchNode(next, nodeId)
 
   // Phase 9 research-autonomy soak test (real generic gap): admitReconciliationDecision
@@ -366,10 +500,22 @@ export async function verifyAndReconcileResearchNodeFieldDurable(missionId, node
   // category the reconciliation guard's own error message already names -- mirroring the
   // openConflict escalation immediately below (same dedup-guard shape).
   if (node.identityResolutionState && node.identityResolutionState.status !== 'RESOLVED') {
-    const alreadyEscalatedIdentity = next.needsYou.some((entry) => entry.nodeId === nodeId && entry.category === 'AMBIGUOUS_IDENTITY' && !entry.resolvedAt)
+    const alreadyEscalatedIdentity = next.needsYou.some(
+      (entry) =>
+        entry.nodeId === nodeId && entry.category === 'AMBIGUOUS_IDENTITY' && !entry.resolvedAt
+    )
     if (!alreadyEscalatedIdentity) {
       next = await withResearchMission(missionId, (m) =>
-        raiseResearchNeedsYou(m, { question: `Cannot canonicalize ${nodeId}.${fieldName} -- the node's target-entity identity is recorded ${node.identityResolutionState.status}, not RESOLVED.`, nodeId, category: 'AMBIGUOUS_IDENTITY' }, clock, m.revision)
+        raiseResearchNeedsYou(
+          m,
+          {
+            question: `Cannot canonicalize ${nodeId}.${fieldName} -- the node's target-entity identity is recorded ${node.identityResolutionState.status}, not RESOLVED.`,
+            nodeId,
+            category: 'AMBIGUOUS_IDENTITY'
+          },
+          clock,
+          m.revision
+        )
       )
     }
     return { ok: true, escalated: true, mission: next }
@@ -385,16 +531,30 @@ export async function verifyAndReconcileResearchNodeFieldDurable(missionId, node
     // entry every time. Guard here, mirroring the same
     // already-open-for-this-node check pollAndAdmitResearchNodeDurable's
     // NEEDS_INPUT branch already uses.
-    const alreadyEscalated = next.needsYou.some((entry) => entry.nodeId === nodeId && entry.category === 'UNRESOLVED_CONFLICT' && !entry.resolvedAt)
+    const alreadyEscalated = next.needsYou.some(
+      (entry) =>
+        entry.nodeId === nodeId && entry.category === 'UNRESOLVED_CONFLICT' && !entry.resolvedAt
+    )
     if (!alreadyEscalated) {
       next = await withResearchMission(missionId, (m) =>
-        raiseResearchNeedsYou(m, { question: `Unresolved conflict on ${nodeId}.${fieldName} -- multiple disagreeing claims, no automatic winner.`, nodeId, category: 'UNRESOLVED_CONFLICT' }, clock, m.revision)
+        raiseResearchNeedsYou(
+          m,
+          {
+            question: `Unresolved conflict on ${nodeId}.${fieldName} -- multiple disagreeing claims, no automatic winner.`,
+            nodeId,
+            category: 'UNRESOLVED_CONFLICT'
+          },
+          clock,
+          m.revision
+        )
       )
     }
     return { ok: true, escalated: true, mission: next }
   }
 
-  const verifiedClaims = node.claims.filter((c) => c.fieldName === fieldName && c.status === 'VERIFIED')
+  const verifiedClaims = node.claims.filter(
+    (c) => c.fieldName === fieldName && c.status === 'VERIFIED'
+  )
   if (verifiedClaims.length !== 1) {
     return { ok: true, canonicalized: false, mission: next }
   }
@@ -420,7 +580,9 @@ export async function verifyAndReconcileResearchNodeFieldDurable(missionId, node
     )
   )
   const decisionId = findResearchNode(next, nodeId).reconciliationDecisions.at(-1).id
-  next = await withResearchMission(missionId, (m) => admitReconciliationDecision(m, nodeId, decisionId, clock, m.revision))
+  next = await withResearchMission(missionId, (m) =>
+    admitReconciliationDecision(m, nodeId, decisionId, clock, m.revision)
+  )
   return { ok: true, canonicalized: true, mission: next }
 }
 
@@ -433,26 +595,59 @@ export async function verifyAndReconcileResearchNodeFieldDurable(missionId, node
 // This driver function is now the sanctioned, complete path: evaluate,
 // decide, admit, and mark the node ADMITTED, each its own durable commit.
 // ---------------------------------------------------------------------
-export async function adoptResearchLibraryReuseDurable(missionId, nodeId, fieldName, library, { requiredTemporalScope = undefined, valueType = undefined, decidedBy, rationale }, clock) {
+export async function adoptResearchLibraryReuseDurable(
+  missionId,
+  nodeId,
+  fieldName,
+  library,
+  { requiredTemporalScope = undefined, valueType = undefined, decidedBy, rationale },
+  clock
+) {
   const mission = readResearchMission(missionId)
   if (!mission) throw new Error(`unknown research mission: ${missionId}`)
   const node = findResearchNode(mission, nodeId)
   if (!node) throw new Error(`unknown research node: ${nodeId}`)
-  const evaluation = evaluateResearchLibraryReuse(library, { sourcePolicy: mission.specification.sourcePolicy, entityId: node.targetEntity?.entityId, fieldName, requiredTemporalScope, valueType })
+  const evaluation = evaluateResearchLibraryReuse(library, {
+    sourcePolicy: mission.specification.sourcePolicy,
+    entityId: node.targetEntity?.entityId,
+    fieldName,
+    requiredTemporalScope,
+    valueType
+  })
   if (evaluation.decision !== 'CACHE_HIT') {
     return { ok: true, adopted: false, evaluation, mission }
   }
   let next = await withResearchMission(missionId, (m) =>
-    decideLibraryReferenceReconciliation(m, nodeId, { fieldName, libraryEntry: evaluation.hit, decidedBy, rationale: rationale ?? `CACHE_HIT: reused from ${evaluation.hit.missionId}, same required temporalScope, HISTORICAL_STATIC source.` }, clock, m.revision)
+    decideLibraryReferenceReconciliation(
+      m,
+      nodeId,
+      {
+        fieldName,
+        libraryEntry: evaluation.hit,
+        decidedBy,
+        rationale:
+          rationale ??
+          `CACHE_HIT: reused from ${evaluation.hit.missionId}, same required temporalScope, HISTORICAL_STATIC source.`
+      },
+      clock,
+      m.revision
+    )
   )
   const decisionId = findResearchNode(next, nodeId).reconciliationDecisions.at(-1).id
-  next = await withResearchMission(missionId, (m) => admitReconciliationDecision(m, nodeId, decisionId, clock, m.revision))
+  next = await withResearchMission(missionId, (m) =>
+    admitReconciliationDecision(m, nodeId, decisionId, clock, m.revision)
+  )
   // Only ever moves a node with ZERO real dispatch history -- a node that
   // has already been through a real dispatch cycle keeps its real
   // execution status untouched (markResearchNodeAdmittedViaLibraryReuse
   // itself refuses that case defensively).
-  if (findResearchNode(next, nodeId).status !== 'ADMITTED' && (findResearchNode(next, nodeId).dispatchRecords ?? []).length === 0) {
-    next = await withResearchMission(missionId, (m) => markResearchNodeAdmittedViaLibraryReuse(m, nodeId, clock, m.revision))
+  if (
+    findResearchNode(next, nodeId).status !== 'ADMITTED' &&
+    (findResearchNode(next, nodeId).dispatchRecords ?? []).length === 0
+  ) {
+    next = await withResearchMission(missionId, (m) =>
+      markResearchNodeAdmittedViaLibraryReuse(m, nodeId, clock, m.revision)
+    )
   }
   return { ok: true, adopted: true, evaluation, mission: next }
 }
@@ -467,16 +662,28 @@ export async function adoptResearchLibraryReuseDurable(missionId, nodeId, fieldN
 // epistemic-ladder path afterward (normal admitBoundedResearchResult /
 // verifyAndReconcileResearchNodeFieldDurable etc.), same as always.
 // ---------------------------------------------------------------------
-export async function reuseSourceSnapshotDurable(missionId, nodeId, library, { canonicalLocator, requiredTemporalClass = undefined }, clock) {
+export async function reuseSourceSnapshotDurable(
+  missionId,
+  nodeId,
+  library,
+  { canonicalLocator, requiredTemporalClass = undefined },
+  clock
+) {
   const mission = readResearchMission(missionId)
   if (!mission) throw new Error(`unknown research mission: ${missionId}`)
   const node = findResearchNode(mission, nodeId)
   if (!node) throw new Error(`unknown research node: ${nodeId}`)
-  const evaluation = evaluateSourceLibraryReuse(library, { sourcePolicy: mission.specification.sourcePolicy, canonicalLocator, requiredTemporalClass })
+  const evaluation = evaluateSourceLibraryReuse(library, {
+    sourcePolicy: mission.specification.sourcePolicy,
+    canonicalLocator,
+    requiredTemporalClass
+  })
   if (evaluation.decision !== 'SOURCE_CACHE_HIT') {
     return { ok: true, reused: false, evaluation, mission }
   }
-  const next = await withResearchMission(missionId, (m) => reuseSourceSnapshotIntoNode(m, nodeId, evaluation.hit, clock, m.revision))
+  const next = await withResearchMission(missionId, (m) =>
+    reuseSourceSnapshotIntoNode(m, nodeId, evaluation.hit, clock, m.revision)
+  )
   return { ok: true, reused: true, evaluation, mission: next }
 }
 
@@ -520,7 +727,14 @@ export function readActiveResearchPaidApproval(missionId, providerId, clock) {
 // anything else -- including before the existing delivery-guarantee resume
 // check -- whenever no active, unexpired grant names this exact provider on
 // this exact mission.
-export async function dispatchResearchNodeWithApprovalDurable(missionId, nodeId, providerId, worker, clock, { pricingPolicy } = {}) {
+export async function dispatchResearchNodeWithApprovalDurable(
+  missionId,
+  nodeId,
+  providerId,
+  worker,
+  clock,
+  { pricingPolicy } = {}
+) {
   const mission = readResearchMission(missionId)
   if (!mission) throw new Error(`unknown research mission: ${missionId}`)
   const approval = activeResearchPaidApproval(mission, providerId, clock)

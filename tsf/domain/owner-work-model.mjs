@@ -165,7 +165,17 @@ export function researchMissionWorkItem(mission) {
     researchQuestion: mission.specification?.researchQuestion ?? null,
     entityType: mission.specification?.entityType ?? null,
     expectedCount: mission.expectedUniverse?.expectedCount ?? null,
-    freePathOnly: (mission.specification?.budget?.maxCostUsd ?? 0) === 0
+    freePathOnly: (mission.specification?.budget?.maxCostUsd ?? 0) === 0,
+    // TSF Final Pre-UI P1 Closure V1, P1 #1: the SAME real filter
+    // server/research-mission-driver.mjs's own readResearchMissionReviewItems
+    // already applies (mission.needsYou.filter(n => !n.resolvedAt)) --
+    // never a second computation of "what's still open." Lets an owner
+    // surface render/answer the real question directly off this ONE
+    // aggregation, matching this function's own established "enough
+    // fields to render without a second fetch" precedent.
+    openNeedsYou: (mission.needsYou ?? [])
+      .filter((n) => !n.resolvedAt)
+      .map((n) => ({ id: n.id, question: n.question }))
   }
 }
 

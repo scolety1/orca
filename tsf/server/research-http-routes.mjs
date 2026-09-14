@@ -38,7 +38,10 @@
 import { createExaHttpTransport } from '../adapters/exa-http-transport.mjs'
 import { createExaResearchWorker, EXA_PROVIDER_ID } from '../adapters/exa-research-worker.mjs'
 import { createParallelHttpTransport } from '../adapters/parallel-http-transport.mjs'
-import { createParallelResearchWorker, PARALLEL_PROVIDER_ID } from '../adapters/parallel-research-worker.mjs'
+import {
+  createParallelResearchWorker,
+  PARALLEL_PROVIDER_ID
+} from '../adapters/parallel-research-worker.mjs'
 import {
   cancelResearchNodeDurable,
   createResearchMissionDurable,
@@ -51,6 +54,7 @@ import {
   readResearchMissionReviewItems,
   readResearchMissionStatus
 } from './research-mission-driver.mjs'
+import { executeAction } from './action-executor.mjs'
 
 const CONFLICT_CODES = new Set(['TSF_STALE_REVISION', 'TSF_STATE_LOCK_TIMEOUT'])
 
@@ -62,12 +66,20 @@ const PROVIDER_ALLOWLIST = Object.freeze({
   [PARALLEL_PROVIDER_ID]: {
     envVar: 'PARALLEL_API_KEY',
     pricingPolicy: { [PARALLEL_PROVIDER_ID]: { costPerRequestUsd: 0.025 } },
-    createWorker: (clock) => createParallelResearchWorker({ transport: createParallelHttpTransport({ apiKey: process.env.PARALLEL_API_KEY }), clock })
+    createWorker: (clock) =>
+      createParallelResearchWorker({
+        transport: createParallelHttpTransport({ apiKey: process.env.PARALLEL_API_KEY }),
+        clock
+      })
   },
   [EXA_PROVIDER_ID]: {
     envVar: 'EXA_API_KEY',
     pricingPolicy: { [EXA_PROVIDER_ID]: { costPerRequestUsd: 0.1 } },
-    createWorker: (clock) => createExaResearchWorker({ transport: createExaHttpTransport({ apiKey: process.env.EXA_API_KEY }), clock })
+    createWorker: (clock) =>
+      createExaResearchWorker({
+        transport: createExaHttpTransport({ apiKey: process.env.EXA_API_KEY }),
+        clock
+      })
   }
 })
 const DEFAULT_MAX_APPROVED_SPEND_USD = 5.0
@@ -109,7 +121,8 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
   // GET /api/research[?projectId=x] -- list summaries (HQ "Active Research",
   // Work's Research filter, a Project's "Research for this project" section).
   if (parts.length === 2 && req.method === 'GET') {
-    const projectId = new URL(req.url, 'http://localhost').searchParams.get('projectId') || undefined
+    const projectId =
+      new URL(req.url, 'http://localhost').searchParams.get('projectId') || undefined
     json(res, 200, { missions: readAllResearchMissionSummaries({ projectId }) })
     return true
   }
@@ -180,7 +193,49 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
     return true
   }
 
-  if (parts.length === 6 && req.method === 'POST' && parts[3] === 'nodes' && parts[5] === 'cancel') {
+  // TSF Final Pre-UI P1 Closure V1, P1 #1: the first real, wired
+  // resolution route for a research mission's own Needs You question --
+  // mirrors keep-going-http-routes.mjs's resolve-needs-you route exactly
+  // (goes through the canonical action-executor.mjs from day one, since
+  // this route never existed before this stage). URL shape mirrors
+  // planner-needs-you-http-routes.mjs's own real precedent.
+  if (
+    parts.length === 6 &&
+    req.method === 'POST' &&
+    parts[3] === 'needs-you' &&
+    parts[5] === 'resolve'
+  ) {
+    const needsYouId = parts[4]
+    const body = await readBody(req)
+    const result = await executeAction({
+      type: 'RESOLVE_NEEDS_YOU',
+      target: missionId,
+      parameters: {
+        source: 'RESEARCH',
+        needsYouId,
+        resolution: body?.resolution,
+        expectedRevision: body?.expectedRevision
+      },
+      clock: () => new Date()
+    })
+    if (!result.ok) {
+      json(res, result.code === 'TSF_STALE_REVISION' ? 409 : 422, {
+        ok: false,
+        error: result.detail,
+        code: result.reason
+      })
+      return true
+    }
+    json(res, 200, readResearchMissionStatus(missionId))
+    return true
+  }
+
+  if (
+    parts.length === 6 &&
+    req.method === 'POST' &&
+    parts[3] === 'nodes' &&
+    parts[5] === 'cancel'
+  ) {
     const nodeId = parts[4]
     try {
       const mission = await cancelResearchNodeDurable(missionId, nodeId, () => new Date())
@@ -191,13 +246,23 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
     return true
   }
 
-  if (parts.length === 6 && req.method === 'POST' && parts[3] === 'nodes' && parts[5] === 'dispatch') {
+  if (
+    parts.length === 6 &&
+    req.method === 'POST' &&
+    parts[3] === 'nodes' &&
+    parts[5] === 'dispatch'
+  ) {
     // Checked FIRST, before provider allowlist/credential checks, so a
     // disabled system reveals nothing about what providers/credentials
     // might otherwise be checked -- fails closed with a clear, machine-
     // readable reason, never a bare 404/silent no-op.
     if (!liveDispatchEnabled()) {
-      json(res, 403, { ok: false, error: 'live research dispatch is disabled by operator configuration (set TSF_RESEARCH_LIVE_DISPATCH_ENABLED=1 to enable) -- no billable request can be initiated while disabled', code: 'TSF_RESEARCH_LIVE_DISPATCH_DISABLED' })
+      json(res, 403, {
+        ok: false,
+        error:
+          'live research dispatch is disabled by operator configuration (set TSF_RESEARCH_LIVE_DISPATCH_ENABLED=1 to enable) -- no billable request can be initiated while disabled',
+        code: 'TSF_RESEARCH_LIVE_DISPATCH_DISABLED'
+      })
       return true
     }
     const nodeId = parts[4]
@@ -205,30 +270,63 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
     const providerId = body?.providerId
     const provider = PROVIDER_ALLOWLIST[providerId]
     if (!provider) {
-      json(res, 422, { ok: false, error: `unknown or disallowed providerId: ${providerId ?? '(missing)'} -- must be one of ${Object.keys(PROVIDER_ALLOWLIST).join(', ')}`, code: 'TSF_UNKNOWN_PROVIDER' })
+      json(res, 422, {
+        ok: false,
+        error: `unknown or disallowed providerId: ${providerId ?? '(missing)'} -- must be one of ${Object.keys(PROVIDER_ALLOWLIST).join(', ')}`,
+        code: 'TSF_UNKNOWN_PROVIDER'
+      })
       return true
     }
     if (!process.env[provider.envVar]) {
       // Never reveals whether/what value might be set -- only that the
       // request cannot proceed. No network call, no worker construction,
       // happens before this check.
-      json(res, 422, { ok: false, error: `provider credentials are not configured for ${providerId} -- request refused before any network call`, code: 'TSF_MISSING_PROVIDER_CREDENTIALS' })
+      json(res, 422, {
+        ok: false,
+        error: `provider credentials are not configured for ${providerId} -- request refused before any network call`,
+        code: 'TSF_MISSING_PROVIDER_CREDENTIALS'
+      })
       return true
     }
     try {
       const clock = () => new Date()
       const worker = provider.createWorker(clock)
-      const maxApprovedSpendUsd = typeof body?.maxApprovedSpendUsd === 'number' ? body.maxApprovedSpendUsd : DEFAULT_MAX_APPROVED_SPEND_USD
-      const result = await dispatchResearchNodeDurable(missionId, nodeId, providerId, worker, clock, { costGovernance: { pricingPolicy: provider.pricingPolicy, maxApprovedSpendUsd } })
+      const maxApprovedSpendUsd =
+        typeof body?.maxApprovedSpendUsd === 'number'
+          ? body.maxApprovedSpendUsd
+          : DEFAULT_MAX_APPROVED_SPEND_USD
+      const result = await dispatchResearchNodeDurable(
+        missionId,
+        nodeId,
+        providerId,
+        worker,
+        clock,
+        { costGovernance: { pricingPolicy: provider.pricingPolicy, maxApprovedSpendUsd } }
+      )
       if (!result.ok && result.costRefused) {
-        json(res, 422, { ok: false, error: 'dispatch refused by the cost governance gate before any network call', code: 'TSF_COST_GATE_REFUSED', decision: result.decision })
+        json(res, 422, {
+          ok: false,
+          error: 'dispatch refused by the cost governance gate before any network call',
+          code: 'TSF_COST_GATE_REFUSED',
+          decision: result.decision
+        })
         return true
       }
       if (!result.ok && result.ambiguous) {
-        json(res, 409, { ok: false, error: 'a prior dispatch attempt is ambiguous and requires reconciliation before redispatching', code: 'TSF_DISPATCH_AMBIGUOUS', classification: result.classification })
+        json(res, 409, {
+          ok: false,
+          error:
+            'a prior dispatch attempt is ambiguous and requires reconciliation before redispatching',
+          code: 'TSF_DISPATCH_AMBIGUOUS',
+          classification: result.classification
+        })
         return true
       }
-      json(res, 200, { ok: result.ok, alreadyDispatched: result.alreadyDispatched ?? false, status: readResearchMissionStatus(missionId) })
+      json(res, 200, {
+        ok: result.ok,
+        alreadyDispatched: result.alreadyDispatched ?? false,
+        status: readResearchMissionStatus(missionId)
+      })
     } catch (error) {
       respondError(res, json, error)
     }
@@ -247,18 +345,30 @@ export async function handleResearchRoute(parts, req, res, {}, { json, notFound,
     const providerId = body?.providerId
     const provider = PROVIDER_ALLOWLIST[providerId]
     if (!provider) {
-      json(res, 422, { ok: false, error: `unknown or disallowed providerId: ${providerId ?? '(missing)'} -- must be one of ${Object.keys(PROVIDER_ALLOWLIST).join(', ')}`, code: 'TSF_UNKNOWN_PROVIDER' })
+      json(res, 422, {
+        ok: false,
+        error: `unknown or disallowed providerId: ${providerId ?? '(missing)'} -- must be one of ${Object.keys(PROVIDER_ALLOWLIST).join(', ')}`,
+        code: 'TSF_UNKNOWN_PROVIDER'
+      })
       return true
     }
     if (!process.env[provider.envVar]) {
-      json(res, 422, { ok: false, error: `provider credentials are not configured for ${providerId} -- request refused before any network call`, code: 'TSF_MISSING_PROVIDER_CREDENTIALS' })
+      json(res, 422, {
+        ok: false,
+        error: `provider credentials are not configured for ${providerId} -- request refused before any network call`,
+        code: 'TSF_MISSING_PROVIDER_CREDENTIALS'
+      })
       return true
     }
     try {
       const clock = () => new Date()
       const worker = provider.createWorker(clock)
       const result = await pollAndAdmitResearchNodeDurable(missionId, nodeId, worker, clock)
-      json(res, 200, { ok: result.ok, ready: result.ready ?? false, status: readResearchMissionStatus(missionId) })
+      json(res, 200, {
+        ok: result.ok,
+        ready: result.ready ?? false,
+        status: readResearchMissionStatus(missionId)
+      })
     } catch (error) {
       respondError(res, json, error)
     }

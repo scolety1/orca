@@ -301,7 +301,12 @@ test('RESOLVE_NEEDS_YOU: success calls the real resolveProjectNeedsYou(projectId
       }
     }
   })
-  assert.deepEqual(result, { ok: true, action: 'RESOLVE_NEEDS_YOU', run: resolvedRun })
+  assert.deepEqual(result, {
+    ok: true,
+    action: 'RESOLVE_NEEDS_YOU',
+    source: 'PROJECT',
+    run: resolvedRun
+  })
   assert.deepEqual(calls, [['p1', 'nq:1', 'use Exa', clock]])
 })
 
@@ -370,5 +375,126 @@ test('RESOLVE_NEEDS_YOU: a real TSF_STALE_REVISION throw preserves its code onto
     reason: 'RESOLVE_NEEDS_YOU_FAILED',
     detail: 'stale revision: expected 3, observed 4',
     code: 'TSF_STALE_REVISION'
+  })
+})
+
+// TSF Final Pre-UI P1 Closure V1, P1 #1: source-aware RESOLVE_NEEDS_YOU.
+test('RESOLVE_NEEDS_YOU: source RESEARCH calls the real resolveResearchNeedsYouDurable(missionId, needsYouId, resolution, clock, expectedRevision) and returns the real mission', async () => {
+  const calls = []
+  const resolvedMission = { id: 'mission:1', state: 'ACTIVE' }
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'mission:1',
+    parameters: {
+      source: 'RESEARCH',
+      needsYouId: 'nq:1',
+      resolution: 'use Exa',
+      expectedRevision: 5
+    },
+    clock,
+    deps: {
+      resolveResearchNeedsYouDurable: async (
+        missionId,
+        needsYouId,
+        resolution,
+        c,
+        expectedRevision
+      ) => {
+        calls.push([missionId, needsYouId, resolution, c, expectedRevision])
+        return resolvedMission
+      }
+    }
+  })
+  assert.deepEqual(result, {
+    ok: true,
+    action: 'RESOLVE_NEEDS_YOU',
+    source: 'RESEARCH',
+    mission: resolvedMission
+  })
+  assert.deepEqual(calls, [['mission:1', 'nq:1', 'use Exa', clock, 5]])
+})
+
+test('RESOLVE_NEEDS_YOU: source RESEARCH -- a thrown error (e.g. unknown research mission) is caught into a typed RESOLVE_NEEDS_YOU_FAILED result', async () => {
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'mission:does-not-exist',
+    parameters: { source: 'RESEARCH', needsYouId: 'nq:1', resolution: 'x' },
+    clock,
+    deps: {
+      resolveResearchNeedsYouDurable: async () => {
+        throw new Error('unknown research mission: mission:does-not-exist')
+      }
+    }
+  })
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'RESOLVE_NEEDS_YOU_FAILED',
+    detail: 'unknown research mission: mission:does-not-exist',
+    code: null
+  })
+})
+
+test('RESOLVE_NEEDS_YOU: source PLANNER calls the real mutateCheckpoint/resolvePlannerNeedsYou and returns the real checkpoint', async () => {
+  const calls = []
+  const currentCheckpoint = { needsYou: [{ id: 'nq:1' }] }
+  const resolvedCheckpoint = { needsYou: [{ id: 'nq:1', resolution: 'approve it' }] }
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'planner-mission:1',
+    parameters: { source: 'PLANNER', needsYouId: 'nq:1', resolution: 'approve it' },
+    clock,
+    deps: {
+      mutateCheckpoint: async (missionId, mutator, c) => {
+        const next = mutator(currentCheckpoint, c)
+        calls.push([missionId, next])
+        return next
+      },
+      resolvePlannerNeedsYou: (checkpoint, needsYouId, resolution) => {
+        assert.equal(checkpoint, currentCheckpoint)
+        assert.equal(needsYouId, 'nq:1')
+        assert.equal(resolution, 'approve it')
+        return resolvedCheckpoint
+      }
+    }
+  })
+  assert.deepEqual(result, {
+    ok: true,
+    action: 'RESOLVE_NEEDS_YOU',
+    source: 'PLANNER',
+    checkpoint: resolvedCheckpoint
+  })
+  assert.equal(calls[0][0], 'planner-mission:1')
+})
+
+test('RESOLVE_NEEDS_YOU: source PLANNER -- an unknown planner mission (no checkpoint record) fails honestly, never crashes on a null checkpoint', async () => {
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'planner-mission:does-not-exist',
+    parameters: { source: 'PLANNER', needsYouId: 'nq:1', resolution: 'x' },
+    clock,
+    deps: {
+      mutateCheckpoint: async (missionId, mutator, c) => mutator(null, c)
+    }
+  })
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'RESOLVE_NEEDS_YOU_FAILED',
+    detail: 'unknown planner mission: planner-mission:does-not-exist',
+    code: null
+  })
+})
+
+test('RESOLVE_NEEDS_YOU: an unknown source is honestly refused, never silently defaulted', async () => {
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: 'x',
+    parameters: { source: 'BOGUS', needsYouId: 'nq:1', resolution: 'x' },
+    clock
+  })
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'RESOLVE_NEEDS_YOU_FAILED',
+    detail: 'unknown Needs You source: BOGUS',
+    code: null
   })
 })

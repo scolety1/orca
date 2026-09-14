@@ -6,6 +6,14 @@
 // own recoveryHintFor comment disclosed that no route called either. This
 // wires the existing primitives; it invents no new domain logic.
 //
+// TSF Final Pre-UI P1 Closure V1, P1 #1: the actual mutation now goes
+// through the canonical action-executor.mjs (source: 'PLANNER') instead of
+// calling mutateCheckpoint/resolvePlannerNeedsYou directly -- one owner
+// consequence, one canonical mutation authority, matching PROJECT/RESEARCH.
+// The pre-flight 404/422 checks below are UNCHANGED (still real, still
+// informative before any mutation attempt) -- this does not rewrite the
+// planner interruption store itself, only which layer performs the write.
+//
 // Deliberately NOT gated behind an active planner-session lease
 // (mutateCheckpoint's optional requireLeaseHolder is left unset): an owner
 // answering a durable, already-raised question is a fresh, independent
@@ -13,10 +21,16 @@
 // Keep Going blocker doesn't need to "hold a lease" on the run -- the
 // checkpoint itself is the durable source of truth a future planner
 // session rehydrates from.
-import { resolvePlannerNeedsYou } from '../domain/planner-mission-checkpoint.mjs'
-import { mutateCheckpoint, readPlannerMissionRecord } from './planner-mission-store.mjs'
+import { readPlannerMissionRecord } from './planner-mission-store.mjs'
+import { executeAction } from './action-executor.mjs'
 
-export async function handlePlannerNeedsYouRoute(parts, req, res, _ctx, { json, notFound, readBody }) {
+export async function handlePlannerNeedsYouRoute(
+  parts,
+  req,
+  res,
+  _ctx,
+  { json, notFound, readBody }
+) {
   if (parts[1] !== 'planner-missions') {
     return false
   }
@@ -57,11 +71,16 @@ export async function handlePlannerNeedsYouRoute(parts, req, res, _ctx, { json, 
     return true
   }
 
-  const checkpoint = await mutateCheckpoint(
-    missionId,
-    (current, clock) => resolvePlannerNeedsYou(current, needsYouId, resolution, clock),
-    () => new Date()
-  )
-  json(res, 200, { ok: true, checkpoint })
+  const result = await executeAction({
+    type: 'RESOLVE_NEEDS_YOU',
+    target: missionId,
+    parameters: { source: 'PLANNER', needsYouId, resolution },
+    clock: () => new Date()
+  })
+  if (!result.ok) {
+    json(res, 422, { ok: false, error: result.detail, code: result.reason })
+    return true
+  }
+  json(res, 200, { ok: true, checkpoint: result.checkpoint })
   return true
 }

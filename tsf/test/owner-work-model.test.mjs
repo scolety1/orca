@@ -366,3 +366,18 @@ test('researchMissionWorkItem: carries the real missionId/phase/researchQuestion
   assert.equal(item.expectedCount, 1)
   assert.equal(item.freePathOnly, true)
 })
+
+// TSF Final Pre-UI P1 Closure V1, P1 #1: openNeedsYou lets an owner
+// surface render/answer the real research question directly off this ONE
+// item, without a second fetch -- the SAME real filter
+// readResearchMissionReviewItems already applies.
+test('researchMissionWorkItem: openNeedsYou carries the real, unresolved question(s), honestly empty when none are open', () => {
+  const noQuestions = researchMissionWorkItem(baseMission('m1'))
+  assert.deepEqual(noQuestions.openNeedsYou, [])
+
+  const raised = raiseResearchNeedsYou(baseMission('m2'), { question: 'which provider?' }, clock, 0)
+  const withQuestion = researchMissionWorkItem(raised)
+  assert.equal(withQuestion.openNeedsYou.length, 1)
+  assert.equal(withQuestion.openNeedsYou[0].question, 'which provider?')
+  assert.equal(withQuestion.openNeedsYou[0].id, raised.needsYou[0].id)
+})
