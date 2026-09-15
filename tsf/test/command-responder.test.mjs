@@ -683,6 +683,10 @@ test('NEEDS_YOU_QUERY: a real self-improvement NEEDS_OWNER finding is now discov
   assert.deepEqual(result.resolvedProjectIds, [])
 })
 
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 3B: see test/command-global-scope-
+// bridge.test.mjs for the dedicated regression test (kept out of this file
+// to stay under its own max-lines budget).
+
 // Multi-project actions round 3: the "everything"/"all projects" quantifier.
 test('multi-project: "run everything except TSF" dispatches to every project except the explicitly excluded one', async () => {
   const result = await respondCommand({

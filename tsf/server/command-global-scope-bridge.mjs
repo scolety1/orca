@@ -20,8 +20,55 @@ import {
 } from './command-scope-classifier.mjs'
 import { fleetResearchStatus, fleetWorkStatus } from '../domain/fleet-work-status.mjs'
 import { buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
+import { buildOwnerWorkItems } from '../domain/owner-work-model.mjs'
 import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { respondResearchCommand } from './command-research-bridge.mjs'
+
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 3B: buildFleetAttentionItems' own
+// NEEDS_OWNER category (fleetNeedsYouStatus-sourced: a real open needsYou
+// QUESTION only) never included a run-less READY_FOR_ADOPTION candidate
+// (its own real category there is READY_FOR_ADOPTION) or a legacy-BLOCKED
+// mission state (BLOCKED_EXTERNAL) -- both real, decision-needed
+// conditions HQ's own needsYouCards already correctly treat as NEEDS_YOU
+// (primaryState, via legacyCandidateReadinessWorkItem/legacyBlockedWorkItem,
+// owner-work-model.mjs). Real, live-observed divergence this closure pass
+// caught: Command's "What needs me?" answered "nothing" while HQ's own
+// tile read 2 for the SAME real fleet state. Reuses buildOwnerWorkItems --
+// the SAME canonical source HQ itself reads -- never a second,
+// independently-derived "needs you" definition.
+//
+// Deliberately scoped to THIS one call site rather than added inside
+// buildFleetAttentionItems itself: that function feeds the real
+// notification reconciler (attention-status-reconciler.mjs), whose own
+// NOTIFY_WORTHY_CATEGORIES includes NEEDS_OWNER -- adding a second,
+// separately-id'd NEEDS_OWNER item for a project that ALREADY produces a
+// real READY_FOR_ADOPTION/BLOCKED_EXTERNAL notification would double-
+// notify the owner for the same real transition, a genuine regression
+// this fix must not cause. Command's own read-only "what needs me?"
+// answer has no such constraint.
+function legacyNeedsYouGapItems(projects, opState) {
+  const workItems = buildOwnerWorkItems(
+    projects,
+    opState.keepGoingRuns ?? {},
+    opState.researchMissions ?? {},
+    {},
+    opState.projectExecutionHolds ?? {}
+  )
+  const displayNameById = new Map(projects.map((p) => [p.id, p.displayName]))
+  return workItems
+    .filter(
+      (i) =>
+        i.primaryState === 'NEEDS_YOU' &&
+        (i.id.startsWith('legacy-candidate:') || i.id.startsWith('legacy-blocked:'))
+    )
+    .map((i) => ({
+      id: `needsyou:${i.id}`,
+      category: 'NEEDS_OWNER',
+      project: { id: i.projectId, displayName: displayNameById.get(i.projectId) ?? i.projectId },
+      label: displayNameById.get(i.projectId) ?? i.projectId,
+      reason: i.reason
+    }))
+}
 
 // Moved from command-responder.mjs verbatim (line-budget maintenance, no
 // behavior change) -- also used there by respondNoProjectResolved and the
@@ -157,14 +204,17 @@ export async function respondUnroutedGlobalScope({
     // is explicitly null: NEEDS_OWNER can structurally never include the
     // resource-pressure item (only WAITING_FOR_RESOURCES does), so there is
     // no real host-memory evidence to bother collecting for this query.
-    const items = buildFleetAttentionItems({
-      projects,
-      keepGoingRuns: opState.keepGoingRuns,
-      researchMissions: opState.researchMissions,
-      plannerMissionRecords: opState.plannerMissions,
-      selfImprovementFindings: readAllFindings(),
-      resourcePressureState: null
-    }).filter((i) => i.category === 'NEEDS_OWNER')
+    const items = [
+      ...buildFleetAttentionItems({
+        projects,
+        keepGoingRuns: opState.keepGoingRuns,
+        researchMissions: opState.researchMissions,
+        plannerMissionRecords: opState.plannerMissions,
+        selfImprovementFindings: readAllFindings(),
+        resourcePressureState: null
+      }).filter((i) => i.category === 'NEEDS_OWNER'),
+      ...legacyNeedsYouGapItems(projects, opState)
+    ]
     const text =
       items.length === 0
         ? 'Nothing needs you right now -- no open decisions across any project or research mission.'
