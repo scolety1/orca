@@ -391,3 +391,65 @@ test('accept/approve object-recognition allowlist does not regress a genuine acc
   const forEasyLife = entries.filter((e) => e.target === 'easylifehq-github-io')
   assert.ok(forEasyLife.some((e) => e.intent === 'ADOPT_CANDIDATE_REPORT'))
 })
+
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 2: DISCUSSING an action must never
+// be treated as AUTHORIZING it. Real Codex adversarial-review finding
+// (session 01a0a6f4-5f41-7730-a1dc-7cf378f6b0c7): "Should I put X on
+// hold?" and its siblings previously fired the real, durable-write-
+// triggering intent from a bare deliberative question. Mutating intents
+// here are exactly the ones handleEntry (command-multi-action-bridge.mjs)
+// executes with no independent re-derivation of its own.
+const MUTATING_INTENTS = new Set([
+  'EXTERNAL_WORK_HOLD',
+  'RELEASE_HOLD',
+  'PAUSE',
+  'RESUME',
+  'START_KEEP_GOING',
+  'ASSESS_AND_UPGRADE'
+])
+function mutatingIntentsFor(message) {
+  return decomposeMultiAction(message, PROJECTS, aliases)
+    .filter((e) => e.target === 'niners-war-room')
+    .map((e) => e.intent)
+    .filter((i) => MUTATING_INTENTS.has(i))
+}
+
+for (const message of [
+  'Can you put niners-war-room on hold?',
+  'Please put niners-war-room on hold.',
+  'Put niners-war-room on hold.',
+  'Can you pause niners-war-room?',
+  'Please resume niners-war-room.',
+  'Keep niners-war-room going overnight.',
+  'niners-war-room is being handled by another agent right now, leave it alone -- do not touch it.'
+]) {
+  test(`Gate 2 DIRECT REQUEST: a real directive still executes -- "${message}"`, () => {
+    assert.ok(
+      mutatingIntentsFor(message).length > 0,
+      `expected a real mutating intent for "${message}"`
+    )
+  })
+}
+
+for (const message of [
+  'Should I put niners-war-room on hold?',
+  'Would putting niners-war-room on hold help?',
+  'What happens if I pause niners-war-room?',
+  'Do you think niners-war-room should be held?',
+  'Is niners-war-room already on hold?',
+  'Should I leave niners-war-room alone?',
+  'Should I hold off on niners-war-room?',
+  'Should I pause niners-war-room?',
+  'Should I resume niners-war-room?',
+  'Should I keep niners-war-room going overnight?',
+  'Should we assess niners-war-room?',
+  'Why is niners-war-room held?'
+]) {
+  test(`Gate 2 DELIBERATIVE QUESTION: never mutates -- "${message}"`, () => {
+    assert.deepEqual(
+      mutatingIntentsFor(message),
+      [],
+      `expected no real mutating intent for "${message}"`
+    )
+  })
+}

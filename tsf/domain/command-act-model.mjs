@@ -25,6 +25,13 @@
 // parser, no external library, no LLM call. One deterministic tokenizer +
 // one linear associate-pass, in the same style/order-of-complexity as the
 // splitClauses/segmentByProject machinery it replaces.
+//
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 2: reuses chat-responder.mjs's own
+// isGenuineDirectiveAt (a domain module importing one pure function from
+// server/ -- the same precedent domain/fleet-attention-status.mjs already
+// set) rather than building a second question/negation judgment here. See
+// finalIntentFor's own call site for exactly where and why.
+import { isGenuineDirectiveAt } from '../server/chat-responder.mjs'
 
 /**
  * @typedef {Object} CommandAct
@@ -1123,6 +1130,35 @@ export function buildCommandActs(message, projects, aliases) {
 // B." is two DIFFERENT targets, no conflict; a same-target cross-segment
 // correction is rare but this dedup makes it safe either way).
 // ============================================================================
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 2: DISCUSSING an action must never be
+// treated as AUTHORIZING it. Scoped to the generic VERB_REGISTRY-sourced
+// acts only (existingMultiActionIntent !== 'ADOPT_CANDIDATE_REPORT') --
+// adoption already has its own, independent, execution-time re-derivation
+// from rawClause (command-multi-action-bridge.mjs's executeAdoptionCandidate
+// -> classifyAdoptionCommandIntent, which already applies its own
+// HEDGE_PATTERN/TRAILING_QUESTION_PATTERN check) as a second, redundant
+// safety net; PAUSE/RESUME/EXTERNAL_WORK_HOLD/RELEASE_HOLD/KEEP_GOING/
+// ASSESS have no such second layer -- handleEntry (command-multi-action-
+// bridge.mjs) executes the decomposed intent directly, so this IS the one
+// place that gates them. A deliberative/advisory question ("Should I put X
+// on hold?", "Would pausing X help?") reuses isGenuineDirectiveAt's own
+// judgment, anchored at the verb's own real position in `message` (never
+// a second parser -- see that function's own header for why this module's
+// own rawClause/segment boundaries are the wrong input) and falls back to
+// GENERAL -- the same safe, non-mutating outcome an unrecognized verb
+// already gets -- instead of the real action intent. Never touches
+// NEGATIVE-polarity acts (already non-mutating via negatedMultiActionIntent).
+function finalIntentFor(act, message) {
+  if (
+    act.polarity === 'POSITIVE' &&
+    act.existingMultiActionIntent !== 'ADOPT_CANDIDATE_REPORT' &&
+    !isGenuineDirectiveAt(message, act.span[0])
+  ) {
+    return 'GENERAL'
+  }
+  return act.polarity === 'POSITIVE' ? act.existingMultiActionIntent : act.negatedMultiActionIntent
+}
+
 export function decomposeMultiActionFromActs(message, projects, aliases) {
   const { acts, allMentionedIds, mentionedSegmentText } = buildCommandActs(
     message,
@@ -1161,9 +1197,11 @@ export function decomposeMultiActionFromActs(message, projects, aliases) {
       continue
     }
     for (const act of verbActs.values()) {
-      const intent =
-        act.polarity === 'POSITIVE' ? act.existingMultiActionIntent : act.negatedMultiActionIntent
-      entries.push({ target: targetId, intent, rawClause: act.rawClause })
+      entries.push({
+        target: targetId,
+        intent: finalIntentFor(act, String(message ?? '')),
+        rawClause: act.rawClause
+      })
     }
   }
   return entries

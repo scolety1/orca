@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { classifyDecision, classifyIntent, respond } from '../server/chat-responder.mjs'
+import {
+  classifyDecision,
+  classifyIntent,
+  respond,
+  isGenuineDirectiveAt
+} from '../server/chat-responder.mjs'
 import { loadRealPilotProjects } from '../server/portfolio-projection.mjs'
 import {
   checkpointRun,
@@ -56,7 +61,11 @@ test('bug feedback names the project and gives a real next step, never a false "
   const project = loadRealPilotProjects()[0]
   const result = respond(project, 'The save button is broken.')
   assert.equal(result.intent, 'FEEDBACK_BUG')
-  assert.doesNotMatch(result.text, /\brecorded\b/i, 'no durable feedback store exists anywhere in this codebase -- must never claim one persisted this')
+  assert.doesNotMatch(
+    result.text,
+    /\brecorded\b/i,
+    'no durable feedback store exists anywhere in this codebase -- must never claim one persisted this'
+  )
   assert.match(result.text, new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   assert.match(result.text, /ask me to fix it/i, 'still gives the real, working next step')
   assert.doesNotMatch(result.text, /hand (it|this) (to|off)/i)
@@ -184,9 +193,21 @@ test('a negation and a chained "go ahead and X" directive joined by "and" is sti
 // decomposition.mjs's own negation checks. Lower severity here -- a missed
 // negator here only biases toward the SAFE direction (TIM_REQUIRED, never
 // a false auto-execute) -- fixed anyway for defense-in-depth.
-test("the \"-n't\" contraction family is recognized as a genuine prohibition, not just the hand-picked subset", () => {
-  assert.equal(classifyDecision("This doesn't push to production.", classifyIntent("This doesn't push to production.")), 'AUTO_DECIDE')
-  assert.equal(classifyDecision('We haven\'t deployed this yet.', classifyIntent('We haven\'t deployed this yet.')), 'AUTO_DECIDE')
+test('the "-n\'t" contraction family is recognized as a genuine prohibition, not just the hand-picked subset', () => {
+  assert.equal(
+    classifyDecision(
+      "This doesn't push to production.",
+      classifyIntent("This doesn't push to production.")
+    ),
+    'AUTO_DECIDE'
+  )
+  assert.equal(
+    classifyDecision(
+      "We haven't deployed this yet.",
+      classifyIntent("We haven't deployed this yet.")
+    ),
+    'AUTO_DECIDE'
+  )
 })
 
 test('the "-n\'t" contraction generalization does not regress a genuine, unnegated directive', () => {
@@ -213,7 +234,10 @@ test('"and" splitting does not regress a already-negated, single consequential c
 // contain a real "?" (TELL_ME_WHETHER's explicit "tell me...whether" shape
 // stays unconditional, since it's unambiguous regardless of punctuation).
 test('an "and"-joined future-tense directive fragment starting with a bare opener word is not misread as a question', () => {
-  assert.equal(classifyDecision('run the tests and will deploy after that', 'GENERAL'), 'TIM_REQUIRED')
+  assert.equal(
+    classifyDecision('run the tests and will deploy after that', 'GENERAL'),
+    'TIM_REQUIRED'
+  )
   assert.equal(classifyDecision('looks good and will push this to prod', 'GENERAL'), 'TIM_REQUIRED')
   assert.equal(classifyDecision('tests pass and will deploy it now', 'GENERAL'), 'TIM_REQUIRED')
   assert.equal(classifyDecision('wrap this up and should merge soon', 'GENERAL'), 'TIM_REQUIRED')
@@ -245,7 +269,10 @@ test('a "whether ... or not" / "no matter" idiom does not launder a genuine dire
 test('a real negation alongside an unrelated "or not"/"no matter" idiom in the same message still reads as a negation where it belongs', () => {
   // The strip is scoped to matching substrings only -- a genuine "do not"
   // elsewhere in the same clause must still count.
-  assert.equal(classifyDecision('do not deploy this, no matter what anyone says', 'GENERAL'), 'AUTO_DECIDE')
+  assert.equal(
+    classifyDecision('do not deploy this, no matter what anyone says', 'GENERAL'),
+    'AUTO_DECIDE'
+  )
 })
 
 test('a bare imperative consequential request with no hedging is still TIM_REQUIRED', () => {
@@ -497,10 +524,23 @@ test('FINISHED on a non-terminal live run honestly answers "not yet", grounded i
 // codebase's own inquiry/negation handling (isConsequentialDirective's
 // BARE_OPENER/TELL_ME_WHETHER logic) already gets this right.
 test('a genuine deploy/adopt/update QUESTION is never treated as TIM_REQUIRED authorization -- only a bare directive is', () => {
-  for (const question of ['should I deploy WorldForge?', 'is TSF safe to update?', 'can I adopt this candidate?', 'should I push this?']) {
-    assert.notEqual(classifyDecision(question, classifyIntent(question)), 'TIM_REQUIRED', `"${question}" must not be treated as authorization`)
+  for (const question of [
+    'should I deploy WorldForge?',
+    'is TSF safe to update?',
+    'can I adopt this candidate?',
+    'should I push this?'
+  ]) {
+    assert.notEqual(
+      classifyDecision(question, classifyIntent(question)),
+      'TIM_REQUIRED',
+      `"${question}" must not be treated as authorization`
+    )
   }
-  assert.equal(classifyDecision('deploy WorldForge', classifyIntent('deploy WorldForge')), 'TIM_REQUIRED', 'a genuine bare directive must still require Tim')
+  assert.equal(
+    classifyDecision('deploy WorldForge', classifyIntent('deploy WorldForge')),
+    'TIM_REQUIRED',
+    'a genuine bare directive must still require Tim'
+  )
 })
 
 // FIXED (real, live-reproduced -- Full Conversational Control Plane
@@ -511,14 +551,42 @@ test('a genuine deploy/adopt/update QUESTION is never treated as TIM_REQUIRED au
 // must supply the verb before any action is implied.
 test('Phase 4 acknowledgement gauntlet: bare praise/acknowledgement classifies ACKNOWLEDGEMENT, never a consequential intent', () => {
   const cases = [
-    'awesome', 'awesome!', 'awesome!!!', 'this is great', 'this is so great', 'great',
-    'looks great', 'looks good', 'nice', 'perfect', 'sweet', 'cool', 'love it', 'hell yeah',
-    'sick', 'exactly', "that's exactly what I wanted", 'thank you', 'thanks', 'cool thanks',
-    '👍', '🔥', 'Landing Page looks awesome', 'Nytheria looks good'
+    'awesome',
+    'awesome!',
+    'awesome!!!',
+    'this is great',
+    'this is so great',
+    'great',
+    'looks great',
+    'looks good',
+    'nice',
+    'perfect',
+    'sweet',
+    'cool',
+    'love it',
+    'hell yeah',
+    'sick',
+    'exactly',
+    "that's exactly what I wanted",
+    'thank you',
+    'thanks',
+    'cool thanks',
+    '👍',
+    '🔥',
+    'Landing Page looks awesome',
+    'Nytheria looks good'
   ]
   for (const message of cases) {
-    assert.equal(classifyIntent(message), 'ACKNOWLEDGEMENT', `expected ACKNOWLEDGEMENT for: "${message}"`)
-    assert.notEqual(classifyDecision(message, classifyIntent(message)), 'TIM_REQUIRED', `must never require Tim for pure acknowledgement: "${message}"`)
+    assert.equal(
+      classifyIntent(message),
+      'ACKNOWLEDGEMENT',
+      `expected ACKNOWLEDGEMENT for: "${message}"`
+    )
+    assert.notEqual(
+      classifyDecision(message, classifyIntent(message)),
+      'TIM_REQUIRED',
+      `must never require Tim for pure acknowledgement: "${message}"`
+    )
   }
 })
 
@@ -531,20 +599,39 @@ test('Phase 4 acknowledgement gauntlet: bare praise/acknowledgement classifies A
 test('Phase 4 acknowledgement gauntlet: emoji-adjacent-to-word, bare "amazing", and colon-delimited segments all classify ACKNOWLEDGEMENT', () => {
   const cases = ['👍 thanks!', 'thanks 👍', '🔥🔥 awesome', 'amazing', 'great: thanks']
   for (const message of cases) {
-    assert.equal(classifyIntent(message), 'ACKNOWLEDGEMENT', `expected ACKNOWLEDGEMENT for: "${message}"`)
+    assert.equal(
+      classifyIntent(message),
+      'ACKNOWLEDGEMENT',
+      `expected ACKNOWLEDGEMENT for: "${message}"`
+    )
   }
 })
 
 test('Phase 4 acknowledgement gauntlet: explicit-action counterparts are NOT swallowed by acknowledgement -- they still gate correctly', () => {
-  const messages = ['awesome, adopt it', 'looks good — merge it', 'perfect, keep going', 'great, deploy it']
+  const messages = [
+    'awesome, adopt it',
+    'looks good — merge it',
+    'perfect, keep going',
+    'great, deploy it'
+  ]
   for (const message of messages) {
-    assert.notEqual(classifyIntent(message), 'ACKNOWLEDGEMENT', `must not classify as bare acknowledgement: "${message}"`)
+    assert.notEqual(
+      classifyIntent(message),
+      'ACKNOWLEDGEMENT',
+      `must not classify as bare acknowledgement: "${message}"`
+    )
   }
   assert.equal(classifyIntent('awesome, adopt it'), 'ADOPTION')
   // The consequential ones must still require Tim regardless of intent id --
   // decisionClass is computed independently via isConsequentialDirective.
-  assert.equal(classifyDecision('looks good — merge it', classifyIntent('looks good — merge it')), 'TIM_REQUIRED')
-  assert.equal(classifyDecision('great, deploy it', classifyIntent('great, deploy it')), 'TIM_REQUIRED')
+  assert.equal(
+    classifyDecision('looks good — merge it', classifyIntent('looks good — merge it')),
+    'TIM_REQUIRED'
+  )
+  assert.equal(
+    classifyDecision('great, deploy it', classifyIntent('great, deploy it')),
+    'TIM_REQUIRED'
+  )
 })
 
 test('respondAcknowledgement: the response text NEVER claims an action was taken, and grounds in real candidate/mission state', () => {
@@ -555,7 +642,10 @@ test('respondAcknowledgement: the response text NEVER claims an action was taken
   // Truthfully DESCRIBING pre-existing state (this real fixture project
   // genuinely is ADOPTED) is correct and desired -- what must never appear
   // is a first-person CLAIM that the current turn caused an action.
-  assert.doesNotMatch(result.text, /\bI(?:'ve| have)?\s+(?:just\s+)?(?:adopted|merged|pushed|deployed|published)\b/i)
+  assert.doesNotMatch(
+    result.text,
+    /\bI(?:'ve| have)?\s+(?:just\s+)?(?:adopted|merged|pushed|deployed|published)\b/i
+  )
 })
 
 // The EXACT reported scenario: "Landing Page / candidate / adoption
@@ -564,7 +654,11 @@ test('respondAcknowledgement: the response text NEVER claims an action was taken
 // was taken and name the real, pending decision, never imply it was made.
 test('respondAcknowledgement on a READY_FOR_ADOPTION project: explicitly names the pending decision, never implies it was made', () => {
   const base = loadRealPilotProjects()[0]
-  const project = { ...base, displayName: 'Landing Page', candidate: { ...base.candidate, state: 'READY_FOR_ADOPTION' } }
+  const project = {
+    ...base,
+    displayName: 'Landing Page',
+    candidate: { ...base.candidate, state: 'READY_FOR_ADOPTION' }
+  }
   const result = respond(project, 'awesome! this is so great!')
   assert.equal(result.intent, 'ACKNOWLEDGEMENT')
   assert.match(result.text, /no action was taken/i)
@@ -588,8 +682,11 @@ test('respondAcknowledgement is a real, zero-LLM-call grounded answer (determini
 // missing the archaic forms found in the same review pass as the curly-
 // apostrophe gap in the other two negation checks -- fixed there for
 // consistency.
-test("the archaic \"shan't\" form is recognized as a genuine prohibition", () => {
-  assert.equal(classifyDecision("You shan't push this.", classifyIntent("You shan't push this.")), 'AUTO_DECIDE')
+test('the archaic "shan\'t" form is recognized as a genuine prohibition', () => {
+  assert.equal(
+    classifyDecision("You shan't push this.", classifyIntent("You shan't push this.")),
+    'AUTO_DECIDE'
+  )
 })
 
 // Full Control Plane Exhaustive Gauntlet V1, Batch 10 (real response-
@@ -601,9 +698,20 @@ test('CRITIQUE and FIX_REQUEST responses never claim a durable log/record that d
   const project = loadRealPilotProjects()[0]
   for (const message of ['This looks like garbage honestly.', 'Fix this.']) {
     const result = respond(project, message)
-    assert.doesNotMatch(result.text, /\blogged\b/i, `no feedback-store module exists anywhere in this codebase -- must never claim one logged this ("${message}")`)
-    assert.doesNotMatch(result.text, /\brecorded\b/i, `must never claim a record exists ("${message}")`)
-    assert.match(result.text, new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    assert.doesNotMatch(
+      result.text,
+      /\blogged\b/i,
+      `no feedback-store module exists anywhere in this codebase -- must never claim one logged this ("${message}")`
+    )
+    assert.doesNotMatch(
+      result.text,
+      /\brecorded\b/i,
+      `must never claim a record exists ("${message}")`
+    )
+    assert.match(
+      result.text,
+      new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    )
   }
 })
 
@@ -620,7 +728,33 @@ test('CRITIQUE and FIX_REQUEST responses never claim a durable log/record that d
 test('DISPATCH_REQUEST fallback response never claims a durable log/record that does not exist', () => {
   const project = loadRealPilotProjects()[0]
   const result = respond(project, 'Please run the migration script.')
-  assert.doesNotMatch(result.text, /\blogged\b/i, 'no dispatch-request store module exists anywhere in this codebase -- must never claim one logged this')
+  assert.doesNotMatch(
+    result.text,
+    /\blogged\b/i,
+    'no dispatch-request store module exists anywhere in this codebase -- must never claim one logged this'
+  )
   assert.doesNotMatch(result.text, /\brecorded\b/i, 'must never claim a record exists')
   assert.match(result.text, new RegExp(project.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
+
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 2: isGenuineDirectiveAt is a
+// position-anchored variant domain/command-act-model.mjs reuses -- see its
+// own header for why command-act-model.mjs's own segment/clause boundaries
+// (which strip the delimiter character, including a trailing "?") are the
+// wrong input. Real Codex adversarial-review finding, reproduced here at
+// the unit level: "Should I put X on hold?" previously read as genuine.
+for (const [message, anchorWord, expected] of [
+  ['Should I put niners-war-room on hold?', 'put', false],
+  ['Put niners-war-room on hold.', 'Put', true],
+  ['Can you put niners-war-room on hold?', 'put', true],
+  [
+    'niners-war-room is being handled by another agent, leave it alone -- do not touch it.',
+    'is being',
+    true
+  ],
+  ['Why is niners-war-room held?', 'held', false]
+]) {
+  test(`isGenuineDirectiveAt anchored at the real verb position -- "${message}"`, () => {
+    assert.equal(isGenuineDirectiveAt(message, message.indexOf(anchorWord)), expected)
+  })
+}

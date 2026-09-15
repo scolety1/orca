@@ -145,7 +145,12 @@ function splitIntoClauses(sentence) {
 // commas interrupt it — while sentence-level (not whole-message) scope
 // keeps an unrelated later sentence's own prohibition ("Also, don't push to
 // production.") from being swept up by an earlier sentence's polite marker.
-function isGenuineDirective(clause, sentence) {
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 2: exported so domain/command-act-
+// model.mjs's multi-action decomposer can reuse this SAME judgment for its
+// own generic-verb acts (hold/pause/resume/keep-going/assess) -- see that
+// file's own call site for why. Unchanged behavior for every existing
+// caller in this file.
+export function isGenuineDirective(clause, sentence) {
   if (POLITE_REQUEST_MARKER.test(sentence)) {
     return true
   }
@@ -169,6 +174,48 @@ function isGenuineDirective(clause, sentence) {
     return false
   }
   return true
+}
+
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 2: position-anchored variant for
+// domain/command-act-model.mjs's own reuse. That module's own segment/
+// clause boundaries (hardSegments) are the wrong input here for two real
+// reasons, live-confirmed: (1) hardSegments STRIPS its own delimiter
+// characters when forming a segment (a trailing "?" is structurally
+// absent from segment.text), defeating this function's own "?" check --
+// "Should I put X on hold?" produced a segment reading "Should I put X on
+// hold" with no "?" at all; (2) hardSegments' own boundaries are coarser
+// than a genuine clause break (comma/em-dash/"but"/"and" are NOT hard-
+// segment breaks there), so "X ... leave it alone -- do not touch it."
+// stayed one segment, wrongly letting trailing reinforcing text look like
+// it negates an earlier, real directive. Re-splits on this file's own
+// clause-boundary delimiter set instead, but WITHOUT splitIntoClauses' own
+// comma/dash-to-period content substitution (which shrinks the string and
+// would break position alignment) -- a pure lookbehind split, so every
+// piece stays a genuine, unmutated substring of the original message.
+function splitIntoClausesPreservingOffsets(sentence) {
+  return sentence.split(/(?<=,|--|—|\bbut\b|\band\b|[.!?;\n])/gi)
+}
+
+export function isGenuineDirectiveAt(message, position) {
+  let offset = 0
+  for (const sentence of splitIntoSentences(message)) {
+    const sentenceEnd = offset + sentence.length
+    if (position >= offset && position < sentenceEnd) {
+      let clauseOffset = offset
+      for (const clause of splitIntoClausesPreservingOffsets(sentence)) {
+        const clauseEnd = clauseOffset + clause.length
+        if (position >= clauseOffset && position < clauseEnd) {
+          return isGenuineDirective(clause, sentence)
+        }
+        clauseOffset = clauseEnd
+      }
+    }
+    offset = sentenceEnd
+  }
+  // position outside every real sentence span (should not happen for a
+  // real in-bounds verb-anchor position) -- default to the whole message
+  // as both clause and sentence rather than silently skipping the check.
+  return isGenuineDirective(message, message)
 }
 
 // TSF UI FINDINGS #2-#16, Finding #4: generalized out of isConsequentialDirective
