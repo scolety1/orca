@@ -752,7 +752,14 @@ for (const [message, anchorWord, expected] of [
     'is being',
     true
   ],
-  ['Why is niners-war-room held?', 'held', false]
+  ['Why is niners-war-room held?', 'held', false],
+  // Gate 1 (real Codex adversarial-review finding): TELL_ME_WHETHER must
+  // win over POLITE_REQUEST_MARKER -- "could/can you TELL ME WHETHER ..."
+  // is an information request, never a directive, regardless of its
+  // polite modal verb.
+  ['Could you tell me whether I should pause niners-war-room?', 'pause', false],
+  ['Can you tell me whether I should pause niners-war-room?', 'pause', false],
+  ['Can you, if you have a moment, put niners-war-room on hold?', 'put', true]
 ]) {
   test(`isGenuineDirectiveAt anchored at the real verb position -- "${message}"`, () => {
     assert.equal(isGenuineDirectiveAt(message, message.indexOf(anchorWord)), expected)

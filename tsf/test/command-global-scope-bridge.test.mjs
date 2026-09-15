@@ -86,3 +86,33 @@ test('NEEDS_YOU_QUERY: a project with a real, run-sourced needsYou question is c
   const matches = result.text.match(/Has Run/g) ?? []
   assert.equal(matches.length, 1, `expected exactly one mention, got ${matches.length}`)
 })
+
+// Real Codex adversarial-review finding, independently reproduced: a
+// project can genuinely be BOTH run-based (with a real, open needsYou
+// question) AND legacy-BLOCKED at the same time (owner-work-model.mjs's
+// own "BUG-14" comment: "legacy BLOCKED is independent of run existence").
+// Without the existingProjectIds exclusion, this project would appear
+// TWICE in Command's own answer -- once via buildFleetAttentionItems' own
+// needsYouItems, once via legacyNeedsYouGapItems' legacy-blocked: entry.
+test('NEEDS_YOU_QUERY: a project that is BOTH run-based-needsYou AND legacy-BLOCKED is counted exactly once', async () => {
+  const opStateWithBoth = {
+    keepGoingRuns: {
+      'both-conditions': {
+        needsYou: [{ id: 'q1', question: 'A real decision is pending', resolvedAt: null }],
+        checkpoints: [],
+        waves: []
+      }
+    }
+  }
+  const bothProject = project('both-conditions', 'Both Conditions', {
+    mission: { state: 'BLOCKED_TIM_REQUIRED', id: null, blockedReason: 'also legacy-blocked' }
+  })
+  const result = await respondCommand({
+    message: 'what needs me?',
+    projects: [bothProject],
+    opState: opStateWithBoth,
+    clock
+  })
+  const matches = result.text.match(/Both Conditions/g) ?? []
+  assert.equal(matches.length, 1, `expected exactly one mention, got ${matches.length}`)
+})

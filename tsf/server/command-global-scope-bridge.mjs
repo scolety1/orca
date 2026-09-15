@@ -46,7 +46,18 @@ import { respondResearchCommand } from './command-research-bridge.mjs'
 // notify the owner for the same real transition, a genuine regression
 // this fix must not cause. Command's own read-only "what needs me?"
 // answer has no such constraint.
-function legacyNeedsYouGapItems(projects, opState) {
+// `existingProjectIds`: real Codex adversarial-review finding, independently
+// reproduced -- a project can genuinely carry BOTH a real run-sourced
+// needsYou question (already represented via buildFleetAttentionItems' own
+// needsYouItems) AND a legacy-BLOCKED mission state at the same time (a
+// real, confirmed overlap -- see owner-work-model.mjs's own "BUG-14"
+// comment: "legacy BLOCKED is independent of run existence"). Without this
+// exclusion the SAME project would appear twice in Command's own answer/
+// resultItems for two different reasons, inflating the count. Never
+// excludes based on READY_FOR_ADOPTION/BLOCKED_EXTERNAL category items
+// (those never carry a real needsYou question of their own to duplicate)
+// -- only the caller's own already-built NEEDS_OWNER project id set.
+function legacyNeedsYouGapItems(projects, opState, existingProjectIds) {
   const workItems = buildOwnerWorkItems(
     projects,
     opState.keepGoingRuns ?? {},
@@ -59,7 +70,8 @@ function legacyNeedsYouGapItems(projects, opState) {
     .filter(
       (i) =>
         i.primaryState === 'NEEDS_YOU' &&
-        (i.id.startsWith('legacy-candidate:') || i.id.startsWith('legacy-blocked:'))
+        (i.id.startsWith('legacy-candidate:') || i.id.startsWith('legacy-blocked:')) &&
+        !existingProjectIds.has(i.projectId)
     )
     .map((i) => ({
       id: `needsyou:${i.id}`,
@@ -204,16 +216,18 @@ export async function respondUnroutedGlobalScope({
     // is explicitly null: NEEDS_OWNER can structurally never include the
     // resource-pressure item (only WAITING_FOR_RESOURCES does), so there is
     // no real host-memory evidence to bother collecting for this query.
+    const needsOwnerItems = buildFleetAttentionItems({
+      projects,
+      keepGoingRuns: opState.keepGoingRuns,
+      researchMissions: opState.researchMissions,
+      plannerMissionRecords: opState.plannerMissions,
+      selfImprovementFindings: readAllFindings(),
+      resourcePressureState: null
+    }).filter((i) => i.category === 'NEEDS_OWNER')
+    const existingProjectIds = new Set(needsOwnerItems.map((i) => i.project?.id).filter(Boolean))
     const items = [
-      ...buildFleetAttentionItems({
-        projects,
-        keepGoingRuns: opState.keepGoingRuns,
-        researchMissions: opState.researchMissions,
-        plannerMissionRecords: opState.plannerMissions,
-        selfImprovementFindings: readAllFindings(),
-        resourcePressureState: null
-      }).filter((i) => i.category === 'NEEDS_OWNER'),
-      ...legacyNeedsYouGapItems(projects, opState)
+      ...needsOwnerItems,
+      ...legacyNeedsYouGapItems(projects, opState, existingProjectIds)
     ]
     const text =
       items.length === 0

@@ -151,13 +151,27 @@ function splitIntoClauses(sentence) {
 // file's own call site for why. Unchanged behavior for every existing
 // caller in this file.
 export function isGenuineDirective(clause, sentence) {
+  // TSF UI FINDINGS #2-#16 CLOSURE, Gate 1 (real Codex adversarial-review
+  // finding, independently reproduced): TELL_ME_WHETHER must be checked
+  // BEFORE POLITE_REQUEST_MARKER, not after -- "Could you tell me whether
+  // I should pause X?" previously matched POLITE_REQUEST_MARKER's own
+  // "could you" first and returned true immediately, never reaching the
+  // TELL_ME_WHETHER check below at all. "Can/could/would/will you TELL ME
+  // WHETHER ..." is unambiguously an information request regardless of its
+  // polite modal verb -- pre-existing in this file (affected
+  // isConsequentialDirective's own TIM_REQUIRED gating too, harmlessly
+  // there since a wrongly-TIM_REQUIRED inquiry still only asks for
+  // confirmation), but newly reachable as a REAL mutation trigger via
+  // command-act-model.mjs's own reuse of this function (finalIntentFor),
+  // where the same false positive would have actually executed PAUSE/
+  // EXTERNAL_WORK_HOLD/etc. from a bare question.
+  if (TELL_ME_WHETHER.test(clause)) {
+    return false
+  }
   if (POLITE_REQUEST_MARKER.test(sentence)) {
     return true
   }
   if (/\?/.test(clause)) {
-    return false
-  }
-  if (TELL_ME_WHETHER.test(clause)) {
     return false
   }
   // BUG-08 independent-verification finding (real, reproduced): a bare

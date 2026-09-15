@@ -193,6 +193,31 @@ test('Finding #6: a TIM_REQUIRED onboarding classification reads NEEDS_YOU', () 
   assert.equal(project.primaryState, 'NEEDS_YOU')
 })
 
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 1 (real Codex adversarial-review
+// finding, independently reproduced): a run-less DIRTY_PRESERVE/SENSITIVE/
+// READ_ONLY_ONBOARDING_ONLY project previously collapsed to the bare DONE
+// default, losing real information ui/src/lib/project-lifecycle.ts's own
+// classifyProjectLifecycle already correctly distinguished.
+for (const [classification, expectedState, expectedLabel] of [
+  ['DIRTY_PRESERVE', 'NEEDS_YOU', null],
+  ['SENSITIVE', 'WAITING', 'Paused'],
+  ['READ_ONLY_ONBOARDING_ONLY', 'WAITING', 'Paused']
+]) {
+  test(`Gate 1: migrationClassification ${classification} reads primaryState ${expectedState}, not DONE`, () => {
+    const record = {
+      acceptedAt: '2026-08-23T00:00:00.000Z',
+      receipts: [],
+      lastAnalysis: baseAnalysis({
+        health: { status: 'HEALTHY', findings: [], observedAt: '2026-08-23T00:00:00.000Z' },
+        migrationClassification: { classification, reasons: [] }
+      })
+    }
+    const project = projectOnboardedProject(record, { activeFleet: false, workSet: false })
+    assert.equal(project.primaryState, expectedState)
+    assert.equal(project.primaryReasonLabel, expectedLabel)
+  })
+}
+
 test('Finding #6: a genuinely WORKING run reports primaryState WORKING, and a hold on that same project overrides it', () => {
   const clock = () => new Date('2026-09-15T00:00:00.000Z')
   const plan = { workItems: [{ id: 'w1', scope: ['x'] }] }

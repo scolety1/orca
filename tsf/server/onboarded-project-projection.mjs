@@ -59,6 +59,20 @@ function missionStateFor(classification) {
 // genuinely finished (see its header), never for "no run has started yet";
 // a project a hold is actively protecting must read WAITING regardless of
 // whether this system has ever dispatched a run for it.
+//
+// TSF UI FINDINGS #2-#16 CLOSURE, Gate 1 (real Codex adversarial-review
+// finding, independently reproduced): a run-less DIRTY_PRESERVE/
+// SENSITIVE_READ_ONLY/READ_ONLY project previously fell through to the
+// bare "else DONE" default, losing real information ui/src/lib/project-
+// lifecycle.ts's own, earlier-established classifyProjectLifecycle already
+// correctly distinguished (DIRTY_PRESERVE -> "needs a human to look at
+// what's there before anything touches it"; SENSITIVE/READ_ONLY -> paused
+// BY DESIGN, not neglected -- that file's own PAUSED_BY_DESIGN_
+// CLASSIFICATIONS). Reuses that same, already-settled product distinction,
+// mapped onto the 4-word model: DIRTY_PRESERVE is real, uncommitted work
+// needing owner review (NEEDS_YOU); SENSITIVE/READ_ONLY is intentionally
+// read-only (WAITING/Paused, matching the settled PAUSED->WAITING/Paused
+// mapping owner-primary-state.mjs's own table already uses).
 function projectPrimaryState(run, hold, missionState, clock) {
   if (run) {
     const gap =
@@ -69,9 +83,13 @@ function projectPrimaryState(run, hold, missionState, clock) {
   if (isProjectExecutionHoldActive(hold)) {
     return { primaryState: 'WAITING', primaryReasonLabel: 'Execution hold' }
   }
-  return missionState === 'BLOCKED'
-    ? { primaryState: 'NEEDS_YOU', primaryReasonLabel: null }
-    : { primaryState: 'DONE', primaryReasonLabel: null }
+  if (missionState === 'BLOCKED' || missionState === 'DIRTY_PRESERVE') {
+    return { primaryState: 'NEEDS_YOU', primaryReasonLabel: null }
+  }
+  if (missionState === 'SENSITIVE_READ_ONLY' || missionState === 'READ_ONLY') {
+    return { primaryState: 'WAITING', primaryReasonLabel: 'Paused' }
+  }
+  return { primaryState: 'DONE', primaryReasonLabel: null }
 }
 
 // `run` (the project's real Keep Going run, or null) is optional so every
