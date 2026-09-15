@@ -38,6 +38,9 @@ const PRIMARY_STATE_BADGE_VARIANT: Record<string, 'healthy' | 'neutral' | 'degra
   DONE: 'neutral'
 }
 
+const orcaRegistrationLabel = (o: { checked: boolean; registered: boolean }) =>
+  o.checked ? (o.registered ? 'registered' : 'not registered') : 'unknown'
+
 function ProjectPrimaryStateBanner({ project }: { project: ProjectDetail }) {
   const detail = project.primaryReasonLabel ?? project.mission.blockedReason
   const variant = PRIMARY_STATE_BADGE_VARIANT[project.primaryState] ?? 'neutral'
@@ -328,15 +331,17 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
                         ))}
                       </div>
                     )}
-                    <div className="text-[10px] text-muted-foreground">
-                      Orca:{' '}
-                      {project.evidence.onboarding.orcaRegistration.checked
-                        ? project.evidence.onboarding.orcaRegistration.registered
-                          ? 'registered'
-                          : 'not registered'
-                        : 'unknown'}{' '}
-                      · Analyzed {new Date(project.evidence.onboarding.analyzedAt).toLocaleString()}
-                    </div>
+                    {/* Finding #9: onboarding mechanics (Orca registration,
+                        the exact analysis timestamp) are real engineering
+                        detail, not what an owner needs to read this card at
+                        a glance -- moved behind Advanced, never deleted. */}
+                    <AdvancedDisclosure label="Advanced: onboarding mechanics">
+                      <div className="text-[10px] text-muted-foreground">
+                        Orca: {orcaRegistrationLabel(project.evidence.onboarding.orcaRegistration)}{' '}
+                        · Analyzed{' '}
+                        {new Date(project.evidence.onboarding.analyzedAt).toLocaleString()}
+                      </div>
+                    </AdvancedDisclosure>
                   </CardContent>
                 </Card>
               )}
