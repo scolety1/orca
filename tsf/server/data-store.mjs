@@ -8,26 +8,52 @@ import { createPortfolio } from '../domain/portfolio.mjs'
 const HERE = import.meta.dirname
 const STATE_DIR = path.join(HERE, '.local-state')
 const REAL_DEFAULT_STATE_FILE = path.join(STATE_DIR, 'operator-state.json')
-// Overridable so tests can point at an isolated temp file instead of the
-// real local operator state (which a running dev server may hold open).
-const STATE_FILE = process.env.TSF_UI_STATE_FILE || REAL_DEFAULT_STATE_FILE
 
-// TSF-SAFE-UI-001 (real, previously-encountered risk, not hypothetical): a
-// disposable/test dogfood runtime sets BOTH TSF_UI_STATE_FILE (its own
-// isolated path) and TSF_DISPOSABLE_RUNTIME=1 to declare its intent -- if
-// TSF_UI_STATE_FILE fails to actually propagate to this process (a real
-// PowerShell/Bash env-var-to-child-process quirk already hit once this
-// program), STATE_FILE silently falls back to the REAL owner's own default
-// path above, and a disposable server would read/write real owner data
-// without anyone noticing. Fails closed at import time -- every real
-// caller of loadState/saveState/getStateFilePath transitively imports this
-// module, so a misconfigured disposable runtime can never reach any of
-// them.
-if (process.env.TSF_DISPOSABLE_RUNTIME === '1' && STATE_FILE === REAL_DEFAULT_STATE_FILE) {
-  throw new Error(
-    'TSF-SAFE-UI-001: this process is marked TSF_DISPOSABLE_RUNTIME=1 but TSF_UI_STATE_FILE resolved to the real default owner state file -- refusing to start rather than risk mutating real owner data. TSF_UI_STATE_FILE likely failed to propagate to this process.'
-  )
+// TSF-SAFE-UI-001-ROOT-CAUSE (fixture-pollution incident, 2026-09-14):
+// this used to be a module-level `const STATE_FILE = process.env.TSF_UI_STATE_FILE
+// || REAL_DEFAULT_STATE_FILE`, resolved ONCE at first import. A caller that sets
+// TSF_UI_STATE_FILE only AFTER something else in the same process already
+// imported this module (any process that loads more than one file/module
+// graph sharing this module registry -- e.g. a batched/aggregated test run)
+// got permanently stuck on whatever STATE_FILE resolved to first, silently
+// ignoring its own later override. That is exactly how
+// tsf-command-operator-integration-nytheria-* test fixtures ended up written
+// into the REAL owner state file even though the test itself does set
+// TSF_UI_STATE_FILE before importing the server -- see
+// docs/tsf/TSF_FIXTURE_POLLUTION_RECONCILIATION_V1.md. Resolving live, on
+// every call, makes the override authoritative regardless of import order or
+// process-sharing, and makes the fail-closed disposable-runtime check
+// (TSF-SAFE-UI-001) re-evaluate every time instead of only once.
+function resolveStateFile() {
+  const override = process.env.TSF_UI_STATE_FILE
+  const resolved = override || REAL_DEFAULT_STATE_FILE
+  // TSF-SAFE-UI-001: a disposable/test dogfood runtime sets BOTH
+  // TSF_UI_STATE_FILE (its own isolated path) and TSF_DISPOSABLE_RUNTIME=1
+  // to declare its intent -- if TSF_UI_STATE_FILE fails to actually
+  // propagate (a real PowerShell/Bash env-var-to-child-process quirk
+  // already hit once this program), resolved silently falls back to the
+  // REAL owner's own default path, and a disposable server would read/write
+  // real owner data without anyone noticing. Fails closed on every
+  // resolution -- every real caller of loadState/saveState/getStateFilePath
+  // transitively imports this module, so a misconfigured disposable
+  // runtime can never reach any of them.
+  if (process.env.TSF_DISPOSABLE_RUNTIME === '1' && resolved === REAL_DEFAULT_STATE_FILE) {
+    throw new Error(
+      'TSF-SAFE-UI-001: this process is marked TSF_DISPOSABLE_RUNTIME=1 but TSF_UI_STATE_FILE resolved to the real default owner state file -- refusing to start rather than risk mutating real owner data. TSF_UI_STATE_FILE likely failed to propagate to this process.'
+    )
+  }
+  return resolved
 }
+
+// Also fail closed at MODULE LOAD time (not only on first loadState/
+// saveState/getStateFilePath call): a misconfigured disposable runtime
+// must never get to run ANY of its own code first, even code that never
+// touches state I/O. resolveStateFile() re-checks on every call for the
+// process-sharing/import-order hazard above; this one extra call preserves
+// the original "refuses to even start" guarantee for the ordinary case
+// where TSF_DISPOSABLE_RUNTIME is wrong from the process's very first
+// instant.
+resolveStateFile()
 
 const DEFAULTS = {
   schemaVersion: 'TSF_UI_OPERATOR_LOCAL_STATE_V1',
@@ -74,15 +100,16 @@ const DEFAULTS = {
 // store.mjs's cross-process lock -- can derive a sibling lock path
 // without duplicating the override logic.
 export function getStateFilePath() {
-  return STATE_FILE
+  return resolveStateFile()
 }
 
 export function loadState() {
-  if (!existsSync(STATE_FILE)) {
+  const stateFile = resolveStateFile()
+  if (!existsSync(stateFile)) {
     return structuredClone(DEFAULTS)
   }
   try {
-    return { ...structuredClone(DEFAULTS), ...JSON.parse(readFileSync(STATE_FILE, 'utf8')) }
+    return { ...structuredClone(DEFAULTS), ...JSON.parse(readFileSync(stateFile, 'utf8')) }
   } catch {
     return structuredClone(DEFAULTS)
   }
@@ -135,8 +162,9 @@ function withWindowsRenameRetry(fn) {
 // deterministically simulate a transient Windows rename failure without
 // needing to reproduce real OS-level file-handle contention.
 export function saveState(state, { rename = renameSync } = {}) {
-  mkdirSync(STATE_DIR, { recursive: true })
-  const tmp = `${STATE_FILE}.tmp`
+  const stateFile = resolveStateFile()
+  mkdirSync(path.dirname(stateFile), { recursive: true })
+  const tmp = `${stateFile}.tmp`
   writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8')
-  withWindowsRenameRetry(() => rename(tmp, STATE_FILE))
+  withWindowsRenameRetry(() => rename(tmp, stateFile))
 }
