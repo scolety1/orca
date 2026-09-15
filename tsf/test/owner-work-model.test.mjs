@@ -8,7 +8,8 @@ import {
   OWNER_WORK_STATES,
   buildOwnerWorkItems,
   keepGoingRunWorkItem,
-  researchMissionWorkItem
+  researchMissionWorkItem,
+  legacyProjectPrimaryState
 } from '../domain/owner-work-model.mjs'
 import { ownerPrimaryState } from '../domain/owner-primary-state.mjs'
 import {
@@ -457,4 +458,42 @@ test('researchMissionWorkItem: openNeedsYou carries the real, unresolved questio
   assert.equal(withQuestion.openNeedsYou.length, 1)
   assert.equal(withQuestion.openNeedsYou[0].question, 'which provider?')
   assert.equal(withQuestion.openNeedsYou[0].id, raised.needsYou[0].id)
+})
+
+// TSF UI FINDINGS #2-#16, Finding #6: legacyProjectPrimaryState composes
+// the same legacy-* classifiers buildOwnerWorkItems' fleet-wide list uses,
+// collapsed to the ONE primaryState a project detail page needs.
+test('legacyProjectPrimaryState: a project with no real classification at all defaults to DONE', () => {
+  const primary = legacyProjectPrimaryState({ id: 'p1', mission: { state: 'DRAFT' } }, null)
+  assert.deepEqual(primary, { primaryState: 'DONE', primaryReasonLabel: null })
+})
+
+test('legacyProjectPrimaryState: an active hold wins WAITING/Execution hold even with no real classification -- DONE is never immune here (no run has actually finished)', () => {
+  const hold = createProjectExecutionHold(
+    { projectId: 'p1', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'tim' },
+    clock
+  )
+  const primary = legacyProjectPrimaryState({ id: 'p1', mission: { state: 'DRAFT' } }, hold)
+  assert.deepEqual(primary, { primaryState: 'WAITING', primaryReasonLabel: 'Execution hold' })
+})
+
+test('legacyProjectPrimaryState: legacy-blocked outranks a ready-for-adoption candidate', () => {
+  const primary = legacyProjectPrimaryState(
+    {
+      id: 'p1',
+      mission: { state: 'BLOCKED_TIM_REQUIRED', blockedReason: 'needs a decision' },
+      candidate: { state: 'READY_FOR_ADOPTION' }
+    },
+    null
+  )
+  assert.equal(primary.primaryState, 'NEEDS_YOU')
+})
+
+test('legacyProjectPrimaryState: an ADOPTED project is DONE, immune to a hold (a genuinely finished item)', () => {
+  const hold = createProjectExecutionHold(
+    { projectId: 'p1', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'tim' },
+    clock
+  )
+  const primary = legacyProjectPrimaryState({ id: 'p1', mission: { state: 'ADOPTED' } }, hold)
+  assert.deepEqual(primary, { primaryState: 'DONE', primaryReasonLabel: null })
 })

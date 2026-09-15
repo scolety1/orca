@@ -5,6 +5,9 @@
 // without any UI-side special-casing.
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { resultCapsulesFromRun } from '../domain/keep-going-result-capsules.mjs'
+import { keepGoingRunWorkItem } from '../domain/owner-work-model.mjs'
+import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
+import { compareStateToGoal } from '../domain/keep-going.mjs'
 
 // OnboardingHealth (HEALTHY/HEALTHY_WITH_CAVEATS/NEEDS_ATTENTION/BLOCKED/
 // UNKNOWN) maps onto the existing shared HealthStatus vocabulary
@@ -47,10 +50,42 @@ function missionStateFor(classification) {
   }
 }
 
+// TSF UI FINDINGS #2-#16, Finding #6: the ONE canonical WORKING/WAITING/
+// NEEDS_YOU/DONE collapse for a project detail page -- reuses
+// keepGoingRunWorkItem (the same hold-aware projection HQ/Work/Command
+// already read) when a real run exists. A run-less project checks the hold
+// directly rather than routing through ownerPrimaryState's DONE state --
+// that function's own DONE-immune-to-hold rule exists for a work item that
+// genuinely finished (see its header), never for "no run has started yet";
+// a project a hold is actively protecting must read WAITING regardless of
+// whether this system has ever dispatched a run for it.
+function projectPrimaryState(run, hold, missionState, clock) {
+  if (run) {
+    const gap =
+      run.state === 'ACTIVE' ? compareStateToGoal(run, { verifiedSatisfied: [] }, clock) : null
+    const item = keepGoingRunWorkItem(run, { gap, hold })
+    return { primaryState: item.primaryState, primaryReasonLabel: item.primaryReasonLabel }
+  }
+  if (isProjectExecutionHoldActive(hold)) {
+    return { primaryState: 'WAITING', primaryReasonLabel: 'Execution hold' }
+  }
+  return missionState === 'BLOCKED'
+    ? { primaryState: 'NEEDS_YOU', primaryReasonLabel: null }
+    : { primaryState: 'DONE', primaryReasonLabel: null }
+}
+
 // `run` (the project's real Keep Going run, or null) is optional so every
 // existing caller that doesn't have one yet keeps the prior, unchanged
 // behavior -- see project-catalog.mjs's call site for the real wiring.
-export function projectOnboardedProject(record, membership, run = null) {
+// `hold` (the project's real execution-hold record, or null) is likewise
+// optional and defaults to no hold.
+export function projectOnboardedProject(
+  record,
+  membership,
+  run = null,
+  hold = null,
+  clock = () => new Date()
+) {
   const analysis = record.lastAnalysis
   const health = {
     schemaVersion: 'TSF_HEALTH_REPORT_V1',
@@ -65,6 +100,7 @@ export function projectOnboardedProject(record, membership, run = null) {
     observedAt: analysis.health.observedAt,
     authority: 'ADVISORY_ONLY'
   }
+  const missionState = missionStateFor(analysis.migrationClassification.classification)
   return {
     id: analysis.projectId,
     displayName: analysis.displayName,
@@ -83,13 +119,14 @@ export function projectOnboardedProject(record, membership, run = null) {
     workSet: !!membership?.workSet,
     mission: {
       id: null,
-      state: missionStateFor(analysis.migrationClassification.classification),
+      state: missionState,
       blockedReason: ['TIM_REQUIRED', 'NOT_READY'].includes(
         analysis.migrationClassification.classification
       )
         ? analysis.migrationClassification.reasons.join(' ')
         : null
     },
+    ...projectPrimaryState(run, hold, missionState, clock),
     release: {
       stable: {
         head: analysis.identity.head,

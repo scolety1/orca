@@ -9,6 +9,33 @@ import { loadState } from './data-store.mjs'
 import { projectOnboardedProject } from './onboarded-project-projection.mjs'
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { summarizeWorkFromRuns } from '../domain/work-feed-summary.mjs'
+import { keepGoingRunWorkItem, legacyProjectPrimaryState } from '../domain/owner-work-model.mjs'
+import { compareStateToGoal } from '../domain/keep-going.mjs'
+
+// TSF UI FINDINGS #2-#16, Finding #6: pilot and fixture projects (onboarded
+// projects already carry their own primaryState, computed at their own
+// projection site) still need the same canonical WORKING/WAITING/NEEDS_YOU/
+// DONE collapse for their own detail-page status banner -- reuses a real
+// run's own keepGoingRunWorkItem when one exists, otherwise the composed
+// legacy-* classification every other run-less project already uses.
+function withPrimaryState(project, opState) {
+  const hold = opState.projectExecutionHolds?.[project.id] ?? null
+  const run = opState.keepGoingRuns?.[project.id] ?? null
+  if (run) {
+    const gap =
+      run.state === 'ACTIVE'
+        ? compareStateToGoal(run, { verifiedSatisfied: [] }, () => new Date())
+        : null
+    const item = keepGoingRunWorkItem(run, { gap, hold })
+    return {
+      ...project,
+      primaryState: item.primaryState,
+      primaryReasonLabel: item.primaryReasonLabel
+    }
+  }
+  const primary = legacyProjectPrimaryState(project, hold)
+  return { ...project, ...primary }
+}
 
 function fixtureCandidateView(fixture) {
   const c = fixture.candidateObject
@@ -76,10 +103,18 @@ export function projectsById() {
         // BUG-16: the same real Keep Going run Work/Flight Recorder/Command
         // already read, so Evidence's resultCapsules can no longer drift
         // from what actually happened.
-        opState.keepGoingRuns?.[record.lastAnalysis.projectId] ?? null
+        opState.keepGoingRuns?.[record.lastAnalysis.projectId] ?? null,
+        // TSF UI FINDINGS #2-#16, Finding #6: the same real execution-hold
+        // record HQ/Work/Command already read, so Overview's own status
+        // banner can never disagree with the rest of the app.
+        opState.projectExecutionHolds?.[record.lastAnalysis.projectId] ?? null
       )
     )
-  const all = [...real, fixture, ...onboarded]
+  const all = [
+    ...real.map((p) => withPrimaryState(p, opState)),
+    withPrimaryState(fixture, opState),
+    ...onboarded
+  ]
   const map = new Map(all.map((p) => [p.id, p]))
   return { map, opState }
 }
@@ -89,7 +124,13 @@ export function projectsById() {
 // mission.state-only classification was the root cause of a durable,
 // ACTIVE run staying invisible to Work). keepGoingRuns/clock are optional so
 // existing callers that only care about the legacy fields keep working.
-export function summarizeWork(projects, keepGoingRuns = {}, clock = () => new Date(), researchMissions = {}, canonicalBases = {}) {
+export function summarizeWork(
+  projects,
+  keepGoingRuns = {},
+  clock = () => new Date(),
+  researchMissions = {},
+  canonicalBases = {}
+) {
   return summarizeWorkFromRuns(projects, keepGoingRuns, clock, researchMissions, canonicalBases)
 }
 

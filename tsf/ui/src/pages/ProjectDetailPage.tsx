@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import type { ProjectDetail } from '@/lib/types'
 import { Copy } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
@@ -24,6 +25,27 @@ import { writeLastViewedProject } from '@/lib/last-viewed-project'
 
 function copy(text: string) {
   navigator.clipboard?.writeText(text).catch(() => undefined)
+}
+
+// Finding #6: reads project.primaryState/primaryReasonLabel directly (the
+// same canonical WORKING/WAITING/NEEDS_YOU/DONE collapse HQ/Work/Command
+// already render), never re-derived here.
+const PRIMARY_STATE_BADGE_VARIANT: Record<string, 'healthy' | 'neutral' | 'degraded'> = {
+  WORKING: 'healthy',
+  WAITING: 'neutral',
+  NEEDS_YOU: 'degraded',
+  DONE: 'neutral'
+}
+
+function ProjectPrimaryStateBanner({ project }: { project: ProjectDetail }) {
+  const detail = project.primaryReasonLabel ?? project.mission.blockedReason
+  const variant = PRIMARY_STATE_BADGE_VARIANT[project.primaryState] ?? 'neutral'
+  return (
+    <div className="mb-4 flex items-center gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+      <Badge variant={variant}>{project.primaryState.replace('_', ' ')}</Badge>
+      {detail && <span className="text-muted-foreground">{detail}</span>}
+    </div>
+  )
 }
 
 function Ref({ label, head, tree }: { label: string; head?: string | null; tree?: string | null }) {
@@ -62,7 +84,9 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
   // Global Command Dock V1: "Context: <project>" shown in the dock while
   // open here -- a bounded hint only, never forced scope (see
   // chat-route-context-fallback.mjs). Cleared automatically on unmount.
-  useSetCommandDockRouteContext(project ? { projectId: project.id, displayName: project.displayName } : null)
+  useSetCommandDockRouteContext(
+    project ? { projectId: project.id, displayName: project.displayName } : null
+  )
   // BUG-12 (bug-ledger.json): a Work/Home card's deep link (?tab=keep-going
   // etc., see project-work-deep-link.ts) now lands directly on the exact
   // surface instead of always the Overview tab. resolveProjectDetailTab
@@ -148,19 +172,26 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
         </button>
       </header>
 
+      <ProjectPrimaryStateBanner project={project} />
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
         <div>
           <Tabs
             value={activeTab}
-            onValueChange={(tab) => setSearchParams((prev) => {
-              const next = new URLSearchParams(prev)
-              if (tab === 'overview') {
-                next.delete('tab')
-              } else {
-                next.set('tab', tab)
-              }
-              return next
-            }, { replace: true })}
+            onValueChange={(tab) =>
+              setSearchParams(
+                (prev) => {
+                  const next = new URLSearchParams(prev)
+                  if (tab === 'overview') {
+                    next.delete('tab')
+                  } else {
+                    next.set('tab', tab)
+                  }
+                  return next
+                },
+                { replace: true }
+              )
+            }
           >
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>

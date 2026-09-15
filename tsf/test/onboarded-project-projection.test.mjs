@@ -8,7 +8,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { projectOnboardedProject } from '../server/onboarded-project-projection.mjs'
-import { createOvernightRun, recordWave } from '../domain/keep-going.mjs'
+import { createOvernightRun, recordWave, dispatchWave } from '../domain/keep-going.mjs'
+import { createProjectExecutionHold } from '../domain/project-execution-hold.mjs'
 
 function baseAnalysis(overrides = {}) {
   return {
@@ -115,7 +116,12 @@ test('a real Keep Going run with a settled wave -> evidence.resultCapsules refle
   const clock = () => new Date('2026-09-03T00:00:00.000Z')
   const run = recordWave(
     createOvernightRun(
-      { id: 'run-1', projectId: 'test-project', originalGoal: 'Fix it.', acceptanceCriteria: ['X'] },
+      {
+        id: 'run-1',
+        projectId: 'test-project',
+        originalGoal: 'Fix it.',
+        acceptanceCriteria: ['X']
+      },
       clock
     ),
     { workItems: [{ id: 'w1', scope: ['x'] }] },
@@ -138,4 +144,84 @@ test('a real Keep Going run with a settled wave -> evidence.resultCapsules refle
   assert.equal(project.evidence.resultCapsules.length, 1)
   assert.equal(project.evidence.resultCapsules[0].id, 'w1')
   assert.equal(project.evidence.resultCapsules[0].status, 'COMPLETED')
+})
+
+// TSF UI FINDINGS #2-#16, Finding #6: Project Overview needs the same
+// canonical primary state HQ/Work/Command already read -- a run-less
+// onboarded project defaults to DONE (nothing currently executing), an
+// active hold always wins WAITING/Execution hold, and an onboarding
+// classification that requires an owner decision reads NEEDS_YOU.
+test('Finding #6: a run-less onboarded project defaults to DONE', () => {
+  const project = projectWithHealth('HEALTHY')
+  assert.equal(project.primaryState, 'DONE')
+  assert.equal(project.primaryReasonLabel, null)
+})
+
+test('Finding #6: an active execution hold wins WAITING/Execution hold, even with no run', () => {
+  const clock = () => new Date('2026-09-15T00:00:00.000Z')
+  const hold = createProjectExecutionHold(
+    { projectId: 'test-project', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'tim' },
+    clock
+  )
+  const record = {
+    acceptedAt: '2026-08-23T00:00:00.000Z',
+    receipts: [],
+    lastAnalysis: baseAnalysis({
+      health: { status: 'HEALTHY', findings: [], observedAt: '2026-08-23T00:00:00.000Z' }
+    })
+  }
+  const project = projectOnboardedProject(
+    record,
+    { activeFleet: false, workSet: false },
+    null,
+    hold
+  )
+  assert.equal(project.primaryState, 'WAITING')
+  assert.equal(project.primaryReasonLabel, 'Execution hold')
+})
+
+test('Finding #6: a TIM_REQUIRED onboarding classification reads NEEDS_YOU', () => {
+  const record = {
+    acceptedAt: '2026-08-23T00:00:00.000Z',
+    receipts: [],
+    lastAnalysis: baseAnalysis({
+      health: { status: 'HEALTHY', findings: [], observedAt: '2026-08-23T00:00:00.000Z' },
+      migrationClassification: { classification: 'TIM_REQUIRED', reasons: ['needs a decision'] }
+    })
+  }
+  const project = projectOnboardedProject(record, { activeFleet: false, workSet: false })
+  assert.equal(project.primaryState, 'NEEDS_YOU')
+})
+
+test('Finding #6: a genuinely WORKING run reports primaryState WORKING, and a hold on that same project overrides it', () => {
+  const clock = () => new Date('2026-09-15T00:00:00.000Z')
+  const plan = { workItems: [{ id: 'w1', scope: ['x'] }] }
+  let run = createOvernightRun(
+    { id: 'run-1', projectId: 'test-project', originalGoal: 'Fix it.', acceptanceCriteria: ['X'] },
+    clock
+  )
+  run = dispatchWave(
+    run,
+    plan,
+    [{ workItemId: 'w1', scope: ['x'], taskId: 'task-1', dispatchId: 'd1' }],
+    clock,
+    run.revision
+  )
+  const record = {
+    acceptedAt: '2026-08-23T00:00:00.000Z',
+    receipts: [],
+    lastAnalysis: baseAnalysis({
+      health: { status: 'HEALTHY', findings: [], observedAt: '2026-08-23T00:00:00.000Z' }
+    })
+  }
+  const working = projectOnboardedProject(record, { activeFleet: false, workSet: false }, run)
+  assert.equal(working.primaryState, 'WORKING')
+
+  const hold = createProjectExecutionHold(
+    { projectId: 'test-project', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'tim' },
+    clock
+  )
+  const held = projectOnboardedProject(record, { activeFleet: false, workSet: false }, run, hold)
+  assert.equal(held.primaryState, 'WAITING')
+  assert.equal(held.primaryReasonLabel, 'Execution hold')
 })

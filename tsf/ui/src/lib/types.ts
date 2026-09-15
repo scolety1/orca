@@ -4,6 +4,7 @@ import type {
   OrcaRegistrationStatus,
   UpgradeCandidate
 } from './onboarding-types'
+import type { OwnerPrimaryState } from './operator-snapshot-types'
 
 export type SourceClass = 'REAL' | 'FIXTURE' | 'SYSTEM' | 'INTERNAL'
 export type HealthStatus = 'HEALTHY' | 'UNKNOWN' | 'DEGRADED' | 'BLOCKED'
@@ -47,11 +48,7 @@ export type Release = {
   published: string
 }
 
-export type Mission = {
-  id: string | null
-  state: string
-  blockedReason: string | null
-}
+export type Mission = { id: string | null; state: string; blockedReason: string | null }
 
 export type ResultCapsuleView = {
   id: string | null
@@ -136,6 +133,8 @@ export type ProjectDetail = {
   activeFleet: boolean
   workSet: boolean
   mission: Mission
+  primaryState: OwnerPrimaryState
+  primaryReasonLabel: string | null
   release: Release
   health: Health
   baseline: { tests: string; lint: string; typecheck: string; build: string }

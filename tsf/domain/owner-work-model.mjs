@@ -16,6 +16,7 @@ import { compareStateToGoal } from './keep-going.mjs'
 import { projectLiveWorkFeedState } from './live-work-feed.mjs'
 import { computeResearchMissionPhase } from './research-mission.mjs'
 import { ownerPrimaryState } from './owner-primary-state.mjs'
+import { isProjectExecutionHoldActive } from './project-execution-hold.mjs'
 
 export const OWNER_WORK_STATES = Object.freeze([
   'PLANNING',
@@ -400,4 +401,40 @@ export function buildOwnerWorkItems(
     items.push(researchMissionWorkItem(mission, { hold }))
   }
   return items
+}
+
+// TSF UI FINDINGS #2-#16, Finding #6: a single-project caller (a project
+// detail page) needs exactly ONE primaryState/primaryReasonLabel, unlike
+// buildOwnerWorkItems' own fleet-wide list (which can legitimately return
+// several items for one run-less project -- see its own header). Composes
+// the SAME legacy-* functions with a priority order, never a re-derived
+// classification: legacy-blocked (an onboarding/portfolio decision is
+// required) outranks a ready-for-adoption candidate, which outranks the
+// bare legacy mission state (whose own ADOPTED branch is deliberately
+// DONE-immune-to-hold -- a genuinely finished item, see its own comment). A
+// project matching none of these has no real classification at all --
+// checked against the hold directly rather than through ownerPrimaryState's
+// DONE state, since that immunity means "this finished," never "nothing has
+// started" -- a hold actively protecting an unclassified project must still
+// read WAITING.
+export function legacyProjectPrimaryState(project, hold) {
+  const blocked = legacyBlockedWorkItem(project, hold)
+  if (blocked) {
+    return { primaryState: blocked.primaryState, primaryReasonLabel: blocked.primaryReasonLabel }
+  }
+  const candidate = legacyCandidateReadinessWorkItem(project, hold)
+  if (candidate) {
+    return {
+      primaryState: candidate.primaryState,
+      primaryReasonLabel: candidate.primaryReasonLabel
+    }
+  }
+  const mission = legacyMissionStateWorkItem(project, hold)
+  if (mission) {
+    return { primaryState: mission.primaryState, primaryReasonLabel: mission.primaryReasonLabel }
+  }
+  if (isProjectExecutionHoldActive(hold)) {
+    return { primaryState: 'WAITING', primaryReasonLabel: 'Execution hold' }
+  }
+  return { primaryState: 'DONE', primaryReasonLabel: null }
 }
