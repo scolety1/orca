@@ -6,6 +6,7 @@ import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
 import { LoadingState, ErrorState, EmptyState, RefreshFailedBanner } from '@/components/States'
 import { StatusChip } from '@/components/StatusChip'
+import { AdvancedDisclosure } from '@/components/AdvancedDisclosure'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -244,37 +245,35 @@ function ProjectDetailPageForId({ id }: { id?: string }) {
                   <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Release
                   </div>
-                  <Ref
-                    label="Stable"
-                    head={project.release.stable.head}
-                    tree={project.release.stable.tree}
-                  />
-                  {project.release.previousStable && (
-                    <Ref
-                      label="Previous Stable"
-                      head={project.release.previousStable.head}
-                      tree={project.release.previousStable.tree}
-                    />
-                  )}
-                  {project.release.upgrade && (
-                    <Ref
-                      label="Upgrade"
-                      head={project.release.upgrade.head}
-                      tree={project.release.upgrade.tree}
-                    />
-                  )}
-                  <div className="flex items-center justify-between text-[12px]">
-                    <span className="text-muted-foreground">Testing</span>
-                    <span>{project.release.testing}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[12px]">
-                    <span className="text-muted-foreground">Adoption</span>
-                    <span>{project.release.adoption}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[12px]">
-                    <span className="text-muted-foreground">Published</span>
-                    <span>{project.release.published}</span>
-                  </div>
+                  {/* Finding #8: plain-language release identity leads --
+                      the branch name, not a raw SHA. Exact commit/tree
+                      identity moves to the Advanced disclosure below. */}
+                  {(
+                    [
+                      ['Branch', project.release.stable.branch ?? 'unknown'],
+                      ['Testing', project.release.testing],
+                      ['Adoption', project.release.adoption],
+                      ['Published', project.release.published]
+                    ] as const
+                  ).map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between text-[12px]">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span>{value}</span>
+                    </div>
+                  ))}
+                  <AdvancedDisclosure label="Advanced: exact commit identity">
+                    {[
+                      { label: 'Stable', ref: project.release.stable },
+                      ...(project.release.previousStable
+                        ? [{ label: 'Previous Stable', ref: project.release.previousStable }]
+                        : []),
+                      ...(project.release.upgrade
+                        ? [{ label: 'Upgrade', ref: project.release.upgrade }]
+                        : [])
+                    ].map(({ label, ref }) => (
+                      <Ref key={label} label={label} head={ref.head} tree={ref.tree} />
+                    ))}
+                  </AdvancedDisclosure>
                 </CardContent>
               </Card>
 

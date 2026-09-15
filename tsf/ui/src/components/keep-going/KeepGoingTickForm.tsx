@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { AdvancedDisclosure } from '@/components/AdvancedDisclosure'
 
 function linesOf(value: string): string[] {
   return value
@@ -146,10 +147,14 @@ export function KeepGoingTickForm({
           />
         </div>
 
-        <div className="rounded-md border border-dashed border-border p-2">
-          <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Advanced
-          </div>
+        {/* Finding #10: worktree/agent moved into a genuinely collapsed
+            technical-intervention surface -- ordinary use of this form
+            (naming a work item, its scope, an optional spec) no longer
+            requires engaging with placement at all. Still required before
+            dispatch (no safe default -- see hasExplicitPlacement's own
+            comment on the real safety regression that fix closed), so
+            expert troubleshooting remains exactly as capable as before. */}
+        <AdvancedDisclosure label="Advanced: dispatch placement">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <label
@@ -185,7 +190,7 @@ export function KeepGoingTickForm({
               />
             </div>
           </div>
-        </div>
+        </AdvancedDisclosure>
       </div>
 
       {error && <p className="mt-2 text-status-blocked">{error}</p>}

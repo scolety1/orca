@@ -89,9 +89,12 @@ export function ProjectCard({
         {why && <p className="text-xs text-muted-foreground">{why}</p>}
         {next && <p className="text-[11px] text-primary/90">Next: {next}</p>}
         <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-          <span className="shrink-0 font-mono">
-            {project.release.stable.head?.slice(0, 10) ?? 'no stable head'}
-          </span>
+          {/* Finding #8: a raw git SHA reads as engineering noise on an
+              ordinary project card -- the branch name is the same real
+              release identity in plain language. Exact SHA/tree stays
+              available on the detail page's own Advanced disclosure,
+              never deleted. */}
+          <span className="shrink-0">{project.release.stable.branch ?? 'no stable release'}</span>
           <span className="shrink-0 truncate rounded-full border border-border px-2 py-0.5 text-[10px] font-medium tracking-wide">
             {shortTesting(project.release.testing)}
           </span>
