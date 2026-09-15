@@ -14,15 +14,25 @@ import {
   resumeKeepGoingRun
 } from './keep-going-controller.mjs'
 import { withKeepGoingRun, readKeepGoingRun } from './keep-going-run-store.mjs'
+import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 
 // Mirrors keep-going-http-routes.mjs's own mutateThroughStore exactly (not
 // exported there, so duplicated rather than reaching across a route file
 // -- same durable compare-and-swap primitive, same race-safety contract:
 // re-reads fresh at call time, never trusts a snapshot captured earlier in
-// the request).
+// the request). TSF_DOGFOOD_FINDING_1_EXECUTION_HOLD_SAFETY_V1: also mirrors
+// that file's own fix -- this is Command's own "continue it"/"resume that"
+// follow-up path (see header comment), exactly the shape a held project's
+// generic "continue" request takes, so it needs the same real
+// projectExecutionHolds entry for resumeKeepGoingRun's own hold gate to see
+// anything at all.
 async function mutateThroughStore(projectId, controllerFn) {
   return withKeepGoingRun(projectId, (current) => {
-    const { run } = controllerFn({ keepGoingRuns: { [projectId]: current } })
+    const hold = readProjectExecutionHold(projectId)
+    const { run } = controllerFn({
+      keepGoingRuns: { [projectId]: current },
+      projectExecutionHolds: { [projectId]: hold }
+    })
     return run
   })
 }

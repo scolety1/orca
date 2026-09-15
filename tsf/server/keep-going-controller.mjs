@@ -18,7 +18,33 @@ import {
   resolveNeedsYou,
   resumeRun
 } from '../domain/keep-going.mjs'
+import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 import { assertUsageModeAllowed } from '../domain/usage-mode-validation.mjs'
+
+// TSF_DOGFOOD_FINDING_1_EXECUTION_HOLD_SAFETY_V1: start/resume/abandon-
+// stalled-wave all make a run ACTIVE (tickable) again -- keep-going-
+// dispatch-loop.mjs's tickKeepGoingRun already refuses to actually dispatch
+// a wave into a held project, but that only stops the real work; it does
+// nothing to stop this layer from creating/reactivating a run record for a
+// held project in the first place, which is real, if administrative,
+// project-mutating state -- exactly what a hold means "must not begin or
+// resume." pauseKeepGoingRun is deliberately NOT gated here: pausing only
+// ever reduces activity, never begins or resumes it, so a hold must never
+// block it. Reads opState.projectExecutionHolds directly (same shape
+// data-store.mjs's DEFAULTS already provides) rather than doing its own
+// I/O, so every caller that passes a real opState is protected for free --
+// see keep-going-http-routes.mjs's mutateThroughStore for how the HTTP
+// route's own deliberately-minimal fake opState is threaded this field too.
+function assertProjectNotHeld(opState, projectId, verb) {
+  const hold = opState.projectExecutionHolds?.[projectId]
+  if (isProjectExecutionHoldActive(hold)) {
+    const error = new Error(
+      `this project is under an execution hold (${hold.reason}${hold.note ? `: ${hold.note}` : ''}, set by ${hold.setBy}) -- release the hold before ${verb}`
+    )
+    error.code = 'TSF_PROJECT_EXECUTION_HOLD_ACTIVE'
+    throw error
+  }
+}
 
 export function keepGoingRunFor(opState, projectId) {
   return opState.keepGoingRuns?.[projectId] ?? null
@@ -29,6 +55,7 @@ export function keepGoingRunFor(opState, projectId) {
 // run must not both succeed in silently overwriting each other, the same
 // read-modify-write race pauseKeepGoingRun/resumeKeepGoingRun guard against.
 export function startKeepGoingRun(opState, projectId, params, clock, expectedRevision) {
+  assertProjectNotHeld(opState, projectId, 'starting new work')
   // Closes a real silent-accept gap: this route never validated usageMode
   // at all, so a caller (e.g. Start Overnight Fleet's dialog, which -- until
   // fixed -- listed HIGH_ASSURANCE as a selectable option) could start a
@@ -115,6 +142,7 @@ export function resumeKeepGoingRun(opState, projectId, clock, expectedRevision) 
     error.code = 'TSF_RUN_NOT_FOUND'
     throw error
   }
+  assertProjectNotHeld(opState, projectId, 'resuming work')
   let resumed = resumeRun(run, clock, expectedRevision)
   // Matches pauseKeepGoingRun's own checkpoint -- without this, the UI's
   // "Last checkpoint" kept showing OPERATOR_PAUSED after a resume (real
@@ -153,6 +181,10 @@ export function abandonKeepGoingStalledWave(opState, projectId, reason, clock, e
     error.code = 'TSF_RUN_NOT_STALLED'
     throw error
   }
+  // Abandoning a stalled wave auto-resumes the run below (see the comment
+  // on that call) -- the exact same "makes it tickable again" risk as
+  // resumeKeepGoingRun, so it needs the same gate.
+  assertProjectNotHeld(opState, projectId, 'recovering work')
   let next = abandonStalledWave(
     run,
     reason ?? 'OPERATOR_ABANDONED_STALLED_WAVE',

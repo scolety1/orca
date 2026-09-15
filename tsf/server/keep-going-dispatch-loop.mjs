@@ -59,7 +59,11 @@ import {
 import { fetchCapacitySnapshot } from '../adapters/orca-capacity-bridge.mjs'
 import { isoNow } from '../domain/canonical.mjs'
 import { decideCapacityAction } from '../domain/capacity-policy.mjs'
-import { DEFAULT_RESOURCE_PRESSURE, classifyDispatchAdmission, recordResourceRefusal } from './keep-going-resource-pressure-gate.mjs'
+import {
+  DEFAULT_RESOURCE_PRESSURE,
+  classifyDispatchAdmission,
+  recordResourceRefusal
+} from './keep-going-resource-pressure-gate.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 import {
@@ -75,8 +79,8 @@ import {
   settleInFlightWave,
   TICK_LOCK_TIMEOUT_MS
 } from '../domain/keep-going.mjs'
-import { abandonKeepGoingStalledWave } from './keep-going-controller.mjs'
 import { readKeepGoingRun, withKeepGoingRun } from './keep-going-run-store.mjs'
+import { placementsCollide } from './keep-going-placement-collision.mjs'
 
 const DEFAULT_ORCHESTRATION = Object.freeze({
   abandonOrchestrationWorker,
@@ -205,41 +209,6 @@ function requireExplicitPlacement(candidateWorkItems) {
   return candidateWorkItems.find((item) => !hasExplicitPlacement(item))
 }
 
-// Orca's --worktree grammar mixes case-sensitive selector forms
-// (branch:<x>, name:<x>, id:<x>::<path>, issue:<n>) with plain filesystem
-// paths and the bare 'current'/'active' keywords -- folding everything to
-// lowercase (a real review finding) would falsely collide two distinct
-// branches/names differing only in case. Only bare paths are
-// slash/case-normalized; a recognized selector prefix is compared
-// verbatim. Canonicalizing a selector form against a differently-shaped
-// one naming the SAME place (e.g. id:repo::/path vs path:/path) would need
-// Orca-side resolution -- a known, disclosed, not-yet-closed gap.
-const SELECTOR_PREFIX_PATTERN = /^(branch|name|id|issue|path):/i
-function normalizePlacementPath(p) {
-  const raw = String(p)
-  if (SELECTOR_PREFIX_PATTERN.test(raw)) {
-    return raw
-  }
-  return raw.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
-}
-
-// Two placements collide if worker-start would run two agents in the same
-// place at once: both fresh in the same worktree, or both reusing the
-// identical existing terminal. Checked across the whole wave in
-// dispatchStep, not just one planWave batch (see the comment there).
-// Known, disclosed gap: a fresh placement and a terminal-reuse placement
-// are never cross-checked, since this module has no lookup from a
-// terminal handle to the worktree it is currently parked in.
-function placementsCollide(a, b) {
-  if (a.terminal && b.terminal) {
-    return normalizePlacementPath(a.terminal) === normalizePlacementPath(b.terminal)
-  }
-  if (!a.terminal && !b.terminal) {
-    return normalizePlacementPath(a.worktree) === normalizePlacementPath(b.worktree)
-  }
-  return false
-}
-
 function runNotFoundError() {
   const error = new Error('no Keep Going run for this project')
   error.code = 'TSF_RUN_NOT_FOUND'
@@ -324,7 +293,16 @@ function trimPlanToDispatched(wavePlan, dispatchedWorkItemIds) {
   return { ...wavePlan, batches }
 }
 
-async function dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity, resourcePressure, readHold) {
+async function dispatchStep(
+  projectId,
+  candidateWorkItems,
+  clock,
+  orchestration,
+  store,
+  capacity,
+  resourcePressure,
+  readHold
+) {
   if (!Array.isArray(candidateWorkItems) || candidateWorkItems.length === 0) {
     return { action: 'NOOP', reason: 'no candidate work items available to plan a wave' }
   }
@@ -483,7 +461,10 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
 
   const senderTerminal = await resolveSenderTerminal(orchestration)
   if (!senderTerminal.ok) {
-    return commitAbortedDispatch(projectId, store, claimed, clock, { reason: senderTerminal.reason ?? 'SENDER_TERMINAL_UNAVAILABLE', detail: senderTerminal.detail ?? 'could not resolve a sender-terminal identity for dispatch' })
+    return commitAbortedDispatch(projectId, store, claimed, clock, {
+      reason: senderTerminal.reason ?? 'SENDER_TERMINAL_UNAVAILABLE',
+      detail: senderTerminal.detail ?? 'could not resolve a sender-terminal identity for dispatch'
+    })
   }
   const from = senderTerminal.handle
 
@@ -499,7 +480,10 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
       from
     })
     if (!runResult.ok) {
-      return commitAbortedDispatch(projectId, store, claimed, clock, { reason: runResult.reason, detail: runResult.detail })
+      return commitAbortedDispatch(projectId, store, claimed, clock, {
+        reason: runResult.reason,
+        detail: runResult.detail
+      })
     }
     orchestrationRunId = runResult.result.run.id
   } else {
@@ -511,7 +495,10 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
     // no-op when already correctly bound.
     const bindResult = await orchestration.bindOrchestrationRun({ id: orchestrationRunId, from })
     if (!bindResult.ok) {
-      return commitAbortedDispatch(projectId, store, claimed, clock, { reason: bindResult.reason, detail: bindResult.detail })
+      return commitAbortedDispatch(projectId, store, claimed, clock, {
+        reason: bindResult.reason,
+        detail: bindResult.detail
+      })
     }
   }
 
@@ -618,7 +605,8 @@ async function dispatchStep(projectId, candidateWorkItems, clock, orchestration,
         workItemId: item.id,
         scope: item.scope,
         // Command Adoption V1 Part A: the candidate worktree, flows through settleStep's own `{...record}` spread into run.waves[] -- no second tracking store.
-        worktree: item.worktree, taskId,
+        worktree: item.worktree,
+        taskId,
         dispatchId: startResult.result.dispatchId
       })
     }
@@ -987,67 +975,22 @@ export async function tickKeepGoingRun(projectId, candidateWorkItems, clock, dep
     // below) consults either gate.
     return settleStep(projectId, clock, orchestration, store)
   }
-  return dispatchStep(projectId, candidateWorkItems, clock, orchestration, store, capacity, resourcePressure, readHold)
+  return dispatchStep(
+    projectId,
+    candidateWorkItems,
+    clock,
+    orchestration,
+    store,
+    capacity,
+    resourcePressure,
+    readHold
+  )
 }
 
-// Recovers a run whose in-flight wave stalled AND releases the real Orca
-// resource(s) that wave held. abandonKeepGoingStalledWave (keep-going-
-// controller.mjs) only fences TSF's own bookkeeping -- without also
-// telling Orca the dispatch is done, its worktree resource stays marked
-// owned there, which can silently block a later worker-start into the
-// same worktree (a real, live-confirmed gap: a manual UI acceptance
-// retest hit exactly this after using the abandon button -- the retry's
-// task was created but never dispatched, with zero trace in Orca's own
-// worker-list). Captures dispatchRecords from the SAME `current` value
-// the atomic mutate below observes, INSIDE the store.withRun closure --
-// not a separate, unlocked pre-read (an independent review finding: this
-// module's own expectedRevision check is a documented no-op when the
-// caller omits it, so a prior version's "nothing could have raced the
-// read" claim was only true for callers that always supply it, not as a
-// module-level guarantee; reading from the exact object the CAS itself
-// observes closes the gap unconditionally instead).
-// Best-effort past the commit: a failure reconciling one dispatch with
-// Orca does not undo or block the TSF-side fencing that already
-// succeeded -- TSF's own state consistency must not depend on Orca's
-// cooperation, matching this module's existing dispatch-failure handling.
-export async function abandonAndReconcileStalledWave(
-  projectId,
-  reason,
-  clock,
-  expectedRevision,
-  deps = {}
-) {
-  const orchestration = deps.orchestration ?? DEFAULT_ORCHESTRATION
-  const store = deps.store ?? DEFAULT_STORE
-
-  let abandonedDispatchIds = []
-  const next = await store.withRun(projectId, (current) => {
-    abandonedDispatchIds = (current?.inFlightWave?.dispatchRecords ?? [])
-      .map((record) => record.dispatchId)
-      .filter(Boolean)
-    const { run } = abandonKeepGoingStalledWave(
-      { keepGoingRuns: { [projectId]: current } },
-      projectId,
-      reason,
-      clock,
-      expectedRevision
-    )
-    return run
-  })
-
-  const orchestrationReconciliation = []
-  for (const dispatchId of abandonedDispatchIds) {
-    try {
-      const result = await orchestration.abandonOrchestrationWorker({ dispatch: dispatchId })
-      orchestrationReconciliation.push({
-        dispatchId,
-        ok: result.ok,
-        reason: result.ok ? null : (result.reason ?? null)
-      })
-    } catch (error) {
-      orchestrationReconciliation.push({ dispatchId, ok: false, reason: error.message })
-    }
-  }
-
-  return { run: next, orchestrationReconciliation }
-}
+// abandonAndReconcileStalledWave (recovers a run whose in-flight wave
+// stalled AND releases the real Orca resource(s) that wave held) moved to
+// keep-going-stalled-wave-abandon.mjs (TSF_DOGFOOD_FINDING_1_EXECUTION_
+// HOLD_SAFETY_V1) -- this file's own max-lines cap left no room to add its
+// execution-hold gate in place. Its own design-decision comments moved
+// with it.
+export { abandonAndReconcileStalledWave } from './keep-going-stalled-wave-abandon.mjs'

@@ -31,6 +31,7 @@ import {
 } from './keep-going-dispatch-loop.mjs'
 import { withKeepGoingRun } from './keep-going-run-store.mjs'
 import { executeAction } from './action-executor.mjs'
+import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 
 // TSF_STATE_LOCK_TIMEOUT (cross-process-file-lock.mjs, via
 // keep-going-run-store.mjs) is a transient contention failure, not a
@@ -58,9 +59,24 @@ function respondError(res, json, error) {
 // without needing to break their existing callers (the dogfood fixture,
 // keep-going-controller.test.mjs) while still committing through the real
 // atomic primitive.
+//
+// TSF_DOGFOOD_FINDING_1_EXECUTION_HOLD_SAFETY_V1: this "throwaway opState"
+// used to carry ONLY keepGoingRuns -- start/resume/abandon-stalled-wave's
+// own real execution-hold gate (keep-going-controller.mjs's
+// assertProjectNotHeld) reads opState.projectExecutionHolds, so without
+// this it would silently see `undefined` here and never fire for any
+// request arriving through this HTTP route. Read fresh, right next to the
+// run read, same timing precision -- same accepted-risk posture as every
+// other hold check in this codebase (chat-dispatch-bridge.mjs,
+// keep-going-dispatch-loop.mjs), none of which lock across the two
+// separate stores either.
 async function mutateThroughStore(projectId, controllerFn) {
   return withKeepGoingRun(projectId, (current) => {
-    const { run } = controllerFn({ keepGoingRuns: { [projectId]: current } })
+    const hold = readProjectExecutionHold(projectId)
+    const { run } = controllerFn({
+      keepGoingRuns: { [projectId]: current },
+      projectExecutionHolds: { [projectId]: hold }
+    })
     return run
   })
 }

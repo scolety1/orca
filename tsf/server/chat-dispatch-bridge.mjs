@@ -56,7 +56,10 @@ function buildAttachmentContext(attachments) {
   if (!Array.isArray(attachments) || attachments.length === 0) return ''
   const items = attachments.map((a) => {
     const label = `${a.name ?? 'attachment'}${a.type ? ` (${a.type})` : ''}`
-    const excerpt = typeof a.extractedText === 'string' && a.extractedText.trim() ? `\n${a.extractedText.slice(0, 4000)}` : ' (no extracted text available)'
+    const excerpt =
+      typeof a.extractedText === 'string' && a.extractedText.trim()
+        ? `\n${a.extractedText.slice(0, 4000)}`
+        : ' (no extracted text available)'
     return `- ${label}:${excerpt}`
   })
   return [
@@ -154,8 +157,16 @@ async function ensureActiveRun(projectId, capsule, clock, deps, missionContext =
   // existing run on the very first read above.
   try {
     const run = await withRun(projectId, (current) => {
+      // TSF_DOGFOOD_FINDING_1_EXECUTION_HOLD_SAFETY_V1: this call site is
+      // already unreachable for a held project in practice (the caller,
+      // planAndDispatchFromChat, checks the hold itself before ever
+      // reaching ensureActiveRun) -- given a fresh, real
+      // projectExecutionHolds entry anyway so startKeepGoingRun's own gate
+      // stays a real backstop here too, not a silent no-op that only
+      // happens to be redundant with today's single caller.
+      const hold = (deps.readProjectExecutionHold ?? readProjectExecutionHold)(projectId)
       const { run: started } = start(
-        { keepGoingRuns: { [projectId]: current } },
+        { keepGoingRuns: { [projectId]: current }, projectExecutionHolds: { [projectId]: hold } },
         projectId,
         {
           originalGoal: capsule.objective,
@@ -308,7 +319,13 @@ export async function planAndDispatchFromChat({
   // mission/run" apart from "this added a work item to the run already
   // active for this project," even though the distinction is exactly what
   // an operator needs to understand what "go ahead" just did.
-  const { run: activeRun, freshlyCreated } = await ensureActiveRun(project.id, capsule, clock, deps, { message, attachments })
+  const { run: activeRun, freshlyCreated } = await ensureActiveRun(
+    project.id,
+    capsule,
+    clock,
+    deps,
+    { message, attachments }
+  )
   if (activeRun.state !== 'ACTIVE') {
     // A COMPLETE/BLOCKED existing run cannot be ticked -- ensureActiveRun
     // only creates a NEW run when none exists at all; a finished one needs
@@ -353,7 +370,9 @@ export async function planAndDispatchFromChat({
   // them differently) makes overriding one seam actually cover both.
   const tickDeps = {
     ...deps.tickDeps,
-    resourcePressure: deps.tickDeps?.resourcePressure ?? { collectHostMemoryEvidence: readHostMemory }
+    resourcePressure: deps.tickDeps?.resourcePressure ?? {
+      collectHostMemoryEvidence: readHostMemory
+    }
   }
   const tickResult = await tick(project.id, [candidateWorkItem], clock, tickDeps)
   // Independent-review finding: this generic branch below turned the
@@ -450,7 +469,14 @@ export async function ensureWorktreeForDispatch(project, deps = {}, { fromBranch
   return { ok: true, worktree: created.worktreePath }
 }
 
-async function dispatchOneProject(project, message, clock, deps, selfRepairFromBranch, attachments = []) {
+async function dispatchOneProject(
+  project,
+  message,
+  clock,
+  deps,
+  selfRepairFromBranch,
+  attachments = []
+) {
   const resolveIdentity = deps.resolveRepositoryIdentity ?? resolveRepositoryIdentity
   const worktreeResult = await ensureWorktreeForDispatch(project, deps, {
     fromBranch: selfRepairFromBranch
