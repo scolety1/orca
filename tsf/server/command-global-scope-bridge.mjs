@@ -216,17 +216,32 @@ export async function respondUnroutedGlobalScope({
     // is explicitly null: NEEDS_OWNER can structurally never include the
     // resource-pressure item (only WAITING_FOR_RESOURCES does), so there is
     // no real host-memory evidence to bother collecting for this query.
-    const needsOwnerItems = buildFleetAttentionItems({
+    const attentionItems = buildFleetAttentionItems({
       projects,
       keepGoingRuns: opState.keepGoingRuns,
       researchMissions: opState.researchMissions,
       plannerMissionRecords: opState.plannerMissions,
       selfImprovementFindings: readAllFindings(),
+      // TSF UI FINDINGS #2-#16 CLOSURE, Gate 3B follow-up (live-observed
+      // during this closure pass' own browser dogfood): HQ's own
+      // buildOtherNeedsYouItems (ui/src/lib/home-needs-you-items.ts)
+      // already treats an active execution hold as its own Needs-You-
+      // adjacent item (source.kind === 'PROJECT_EXECUTION_HOLD') --
+      // reusing the SAME real holdItems output buildFleetAttentionItems
+      // already produces (never a second hold-reading path) so Command's
+      // own answer matches that already-established precedent instead of
+      // silently under-counting a held project HQ's own tile counts.
+      projectExecutionHolds: opState.projectExecutionHolds,
       resourcePressureState: null
-    }).filter((i) => i.category === 'NEEDS_OWNER')
-    const existingProjectIds = new Set(needsOwnerItems.map((i) => i.project?.id).filter(Boolean))
+    })
+    const needsOwnerItems = attentionItems.filter((i) => i.category === 'NEEDS_OWNER')
+    const heldItems = attentionItems.filter((i) => i.source.kind === 'PROJECT_EXECUTION_HOLD')
+    const existingProjectIds = new Set(
+      [...needsOwnerItems, ...heldItems].map((i) => i.project?.id).filter(Boolean)
+    )
     const items = [
       ...needsOwnerItems,
+      ...heldItems,
       ...legacyNeedsYouGapItems(projects, opState, existingProjectIds)
     ]
     const text =
