@@ -129,12 +129,21 @@ export function HQPage() {
   // (research-mission-fleet-driver.mjs decides fresh each cycle, never
   // persists it) -- it stays visible under Active Research until that's
   // fixed, rather than fabricating a state here.
-  const waitingForResources = waitingCards(projectCards)
+  const waiting = waitingCards(projectCards)
   const verifying = verifyingCards(projectCards)
   const readyForAdoption = readyForAdoptionCards(projectCards)
   const recentlyCompletedProjects = recentlyCompletedCards(projectCards)
   const recentlyCompletedResearch = recentlyCompletedResearchItems(researchItems)
+  // TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #2: the headline
+  // count must come from the EXACT SAME canonical set the cards below
+  // render from -- this used to omit researchNeedsYou.length entirely (a
+  // real, confirmed bug: the tile undercounted by exactly the number of
+  // open research Needs You items). project count still dedupes by
+  // projectId (same real contract the legacy countDistinctNeedsYouProjects
+  // had); research/self-improvement/planner items are each already unique
+  // by their own id, so simple addition is correct, not an approximation.
   const needsYouProjectCount = new Set(needsYou.map((c) => c.projectId)).size
+  const needsYouTotalCount = needsYouProjectCount + researchNeedsYou.length + otherNeedsYou.length
 
   async function prepareDegraded() {
     setPreparing(true)
@@ -174,15 +183,7 @@ export function HQPage() {
         <Card>
           <CardContent className="p-4">
             <div className="text-[11px] text-muted-foreground">Needs you</div>
-            {/* needsYouProjectCount stays project-only (dedupes by
-                projectId, same real contract the legacy
-                countDistinctNeedsYouProjects had); self-improvement
-                findings and planner needsYou items are real but not
-                projects, so their count is added honestly rather than
-                folded into that meaning. */}
-            <div className="text-2xl font-semibold">
-              {needsYouProjectCount + otherNeedsYou.length}
-            </div>
+            <div className="text-2xl font-semibold">{needsYouTotalCount}</div>
           </CardContent>
         </Card>
         <Card>
@@ -296,7 +297,7 @@ export function HQPage() {
           {activeProjects.length === 0 ? (
             <EmptyState
               title="No active work"
-              description="Nothing is currently in planning or execution."
+              description="Nothing is genuinely being worked on right now."
             />
           ) : (
             <div className="flex flex-col gap-2">
@@ -334,21 +335,37 @@ export function HQPage() {
 
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section>
-          <SectionTitle icon={Clock}>Waiting for resources</SectionTitle>
-          {waitingForResources.length === 0 ? (
+          {/* TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #5/#7:
+              renamed from "Waiting for resources" -- waitingCards
+              (operator-work-cards.ts) now also covers a paused run, a real
+              active execution hold, and a run that's only just been
+              started (PLANNING), not only a resource-pressure wait.
+              primaryReasonLabel is what tells these apart at a glance
+              (Paused / Execution hold / Resources / Preparing), per the
+              settled model's own explicit requirement -- never collapsed
+              into one undifferentiated word. */}
+          <SectionTitle icon={Clock}>Waiting</SectionTitle>
+          {waiting.length === 0 ? (
             <EmptyState
               title="Nothing waiting"
-              description="No run is currently paused for provider/resource capacity."
+              description="No project is currently waiting on anything."
             />
           ) : (
             <div className="flex flex-col gap-2">
-              {waitingForResources.map((c) => (
+              {waiting.map((c) => (
                 <Link
                   key={c.id}
                   to={projectDeepLinkTo(c.projectId, { tab: 'keep-going', runId: c.runId })}
-                  className="rounded-md border border-border p-3 text-sm hover:border-primary/50"
+                  className="flex items-center justify-between gap-2 rounded-md border border-border p-3 text-sm hover:border-primary/50"
                 >
-                  {c.displayName} — {c.reason}
+                  <span>
+                    {c.displayName} — {c.reason}
+                  </span>
+                  {c.primaryReasonLabel && (
+                    <Badge variant="neutral" className="shrink-0">
+                      {c.primaryReasonLabel}
+                    </Badge>
+                  )}
                 </Link>
               ))}
             </div>

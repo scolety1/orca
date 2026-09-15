@@ -32,6 +32,8 @@ test('fleetWorkStatus reports hasRun:false and feed:null for a project with no K
       displayName: 'a',
       hasRun: false,
       feed: null,
+      primaryState: null,
+      primaryReasonLabel: null,
       runId: null,
       executing: false,
       lastCheckpointAt: null

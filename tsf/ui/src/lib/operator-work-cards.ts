@@ -1,5 +1,5 @@
 import type { ProjectCard, ResearchMissionWorkItem } from './types'
-import type { OwnerWorkItem, OperatorSnapshot } from './operator-snapshot-types'
+import type { OwnerWorkItem, OwnerPrimaryState, OperatorSnapshot } from './operator-snapshot-types'
 
 // HQ Snapshot Migration (finish item A): the one real join this migration
 // needs -- OwnerWorkItem (tsf/domain/owner-work-model.mjs) carries the
@@ -26,6 +26,13 @@ export type OperatorWorkCard = {
   healthStatus: ProjectCard['healthStatus']
   state: OwnerWorkItem['state']
   reason: string
+  // TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #5/#6/#7: the
+  // settled 4-word model, straight off the canonical OwnerWorkItem -- the
+  // bucket helpers below (activeCards/waitingCards/needsYouCards) key off
+  // THIS, never `state`, so a paused or held project can never render
+  // under "Active work" again.
+  primaryState: OwnerPrimaryState
+  primaryReasonLabel: string | null
   runId: string | null
   availableActions: string[]
 }
@@ -41,6 +48,8 @@ function toOperatorWorkCard(
     healthStatus: project?.healthStatus ?? 'UNKNOWN',
     state: item.state,
     reason: item.reason,
+    primaryState: item.primaryState,
+    primaryReasonLabel: item.primaryReasonLabel,
     runId: item.runId ?? null,
     availableActions: item.availableActions
   }
@@ -67,24 +76,22 @@ export function researchWorkItems(snapshot: OperatorSnapshot): OwnerWorkItem[] {
   return snapshot.work.filter(isResearchWorkItem)
 }
 
-// The owner-facing "needs your attention" grouping -- NEEDS_YOU (includes
-// legacy-blocked, already reconciled to the same word by owner-work-
-// model.mjs) and FAILED (the real equivalent of the legacy `stalled`
-// bucket, per Stage 1C's own RUN_FEED_TO_OWNER_STATE mapping) and READY
-// (a real adoption decision is itself something that needs the owner) all
-// land in one combined list, exactly like HQPage's own legacy
-// buildHomeNeedsYouItems already folded needsYou+stalled+blocked+
-// readyForAdoption together.
-const NEEDS_YOU_STATES: ReadonlySet<OwnerWorkItem['state']> = new Set([
-  'NEEDS_YOU',
-  'FAILED',
-  'READY'
-])
-
+// TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #5/#6/#7: the
+// owner-facing "needs your attention" grouping now keys off primaryState,
+// not the richer `state` -- NEEDS_YOU/FAILED/READY all collapse to
+// primaryState NEEDS_YOU (owner-primary-state.mjs), exactly matching the
+// prior NEEDS_YOU_STATES set UNLESS the project is also under a real
+// execution hold, in which case the hold wins (primaryState WAITING) --
+// consistent with the settled model's own priority ("a hold always wins"),
+// and with Finding #6's own worked example (a held project reads WAITING,
+// never NEEDS_YOU, even if it would otherwise need a decision).
 export function needsYouCards(cards: OperatorWorkCard[]): OperatorWorkCard[] {
-  return cards.filter((c) => NEEDS_YOU_STATES.has(c.state))
+  return cards.filter((c) => c.primaryState === 'NEEDS_YOU')
 }
 
+// Unchanged: a real, MORE SPECIFIC sub-state than the primary model
+// collapses to -- HQ's own dedicated "Ready for adoption" tile needs the
+// literal READY state, not just "this is some flavor of NEEDS_YOU".
 export function readyForAdoptionCards(cards: OperatorWorkCard[]): OperatorWorkCard[] {
   return cards.filter((c) => c.state === 'READY')
 }
@@ -93,24 +100,28 @@ export function verifyingCards(cards: OperatorWorkCard[]): OperatorWorkCard[] {
   return cards.filter((c) => c.state === 'VERIFYING')
 }
 
-// PLANNING/WORKING/PAUSED render under "Active work" -- WAITING is
-// deliberately excluded here (its own "Waiting for resources" section,
-// see waitingCards below), matching legacy RUN_FEED_SECTION exactly
-// (PLANNING/WORKING/WAITING were all 'active' there, but HQPage's own
-// pre-migration JSX already separately re-filtered WAITING out into its
-// own section).
-const ACTIVE_STATES: ReadonlySet<OwnerWorkItem['state']> = new Set([
-  'PLANNING',
-  'WORKING',
-  'PAUSED'
-])
-
+// Finding #7's exact fix: "Active work" now means ONLY primaryState
+// WORKING -- TSF genuinely progressing the work right now. A PAUSED run
+// (or ANY run under a real execution hold, regardless of its own
+// mechanical state) no longer renders here; it moves to waitingCards below
+// instead, per the settled model's own explicit "Move it into WAITING and
+// show the reason."
 export function activeCards(cards: OperatorWorkCard[]): OperatorWorkCard[] {
-  return cards.filter((c) => ACTIVE_STATES.has(c.state))
+  return cards.filter((c) => c.primaryState === 'WORKING')
 }
 
+// Broadened from a literal `state === 'WAITING'` check to primaryState --
+// now also covers PAUSED, an active execution hold, and PLANNING (see
+// owner-primary-state.mjs's own mapping table for the full list and
+// reasoning for each). `primaryReasonLabel` on each card is what lets the
+// UI show WHY a given card is here (Paused / Execution hold / Resources /
+// Preparing), matching the settled model's own secondary-label
+// requirement. VERIFYING is deliberately excluded even though it also
+// collapses to primaryState WAITING -- HQ already has its own dedicated
+// "Verification / Adoption" section (verifyingCards above) for it; without
+// this exclusion a verifying item would double-render in both sections.
 export function waitingCards(cards: OperatorWorkCard[]): OperatorWorkCard[] {
-  return cards.filter((c) => c.state === 'WAITING')
+  return cards.filter((c) => c.primaryState === 'WAITING' && c.state !== 'VERIFYING')
 }
 
 export function recentlyCompletedCards(cards: OperatorWorkCard[]): OperatorWorkCard[] {

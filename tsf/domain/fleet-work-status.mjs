@@ -7,6 +7,7 @@
 import { compareStateToGoal } from './keep-going.mjs'
 import { projectLiveWorkFeedState, isRunExecuting } from './live-work-feed.mjs'
 import { computeResearchMissionPhase } from './research-mission.mjs'
+import { keepGoingRunWorkItem } from './owner-work-model.mjs'
 
 // "Command, Work/Home/global indicator and Research status must agree"
 // (hands-on pilot finding): a ResearchMission is not a project's Keep Going
@@ -114,15 +115,31 @@ export function fleetNeedsYouStatus(
 // keepGoingRuns is the opState.keepGoingRuns map (projectId -> real run),
 // never a legacy mission-state field -- a project absent here genuinely has
 // no Keep Going run, not "not active" by some other measure.
-export function fleetWorkStatus(projects, keepGoingRuns = {}, clock = () => new Date()) {
+//
+// TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #3/#5: primaryState/
+// primaryReasonLabel reuse owner-work-model.mjs's own keepGoingRunWorkItem
+// (the SAME canonical hold-aware collapse HQ/Work already read) rather
+// than re-deriving a second mapping here -- `feed` (the richer, unchanged
+// live-work-feed.mjs vocabulary) stays exactly as it was for every
+// existing consumer (update-safety.mjs's isRunExecuting, the WHAT'S
+// RUNNING panel's own prior rendering).
+export function fleetWorkStatus(
+  projects,
+  keepGoingRuns = {},
+  clock = () => new Date(),
+  projectExecutionHolds = {}
+) {
   return projects.map((project) => {
     const run = keepGoingRuns[project.id] ?? null
+    const hold = projectExecutionHolds[project.id]
     if (!run) {
       return {
         projectId: project.id,
         displayName: project.displayName,
         hasRun: false,
         feed: null,
+        primaryState: null,
+        primaryReasonLabel: null,
         runId: null,
         executing: false,
         lastCheckpointAt: null
@@ -134,11 +151,14 @@ export function fleetWorkStatus(projects, keepGoingRuns = {}, clock = () => new 
     // gap is only meaningful while the run is ACTIVE.
     const gap =
       run.state === 'ACTIVE' ? compareStateToGoal(run, { verifiedSatisfied: [] }, clock) : null
+    const workItem = keepGoingRunWorkItem(run, { gap, hold })
     return {
       projectId: project.id,
       displayName: project.displayName,
       hasRun: true,
       feed: projectLiveWorkFeedState(run, gap),
+      primaryState: workItem.primaryState,
+      primaryReasonLabel: workItem.primaryReasonLabel,
       runId: run.id,
       // The one real fact update-safety.mjs's adoption gate actually needs
       // -- see isRunExecuting's own comment in live-work-feed.mjs.

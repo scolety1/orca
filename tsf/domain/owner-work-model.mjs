@@ -15,6 +15,7 @@
 import { compareStateToGoal } from './keep-going.mjs'
 import { projectLiveWorkFeedState } from './live-work-feed.mjs'
 import { computeResearchMissionPhase } from './research-mission.mjs'
+import { ownerPrimaryState } from './owner-primary-state.mjs'
 
 export const OWNER_WORK_STATES = Object.freeze([
   'PLANNING',
@@ -65,7 +66,7 @@ const RESEARCH_PHASE_TO_OWNER_STATE = Object.freeze({
 // consulting the live-feed classifier, because projectLiveWorkFeedState
 // collapses PAUSED/resource-wait/dispatch-tick-lock into the same WAITING
 // word -- the owner model needs PAUSED to stay its own distinct state.
-export function keepGoingRunWorkItem(run, { gap = null, advancedEntry = null } = {}) {
+export function keepGoingRunWorkItem(run, { gap = null, advancedEntry = null, hold = null } = {}) {
   let state
   let reason
   if (advancedEntry) {
@@ -79,9 +80,18 @@ export function keepGoingRunWorkItem(run, { gap = null, advancedEntry = null } =
     state = RUN_FEED_TO_OWNER_STATE[feed.state] ?? feed.state
     reason = feed.reason
   }
+  // TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #5/#6/#7: the
+  // settled 4-word primary model (WORKING/WAITING/NEEDS_YOU/DONE), with a
+  // real active execution hold always winning WAITING/Execution hold --
+  // `state` above stays the richer, unchanged internal value (still
+  // consulted by keepGoingAvailableActions and anything else that needs
+  // it); this is strictly an additional, derived presentation field.
+  const primary = ownerPrimaryState(state, { hold, reason })
   return {
     id: `run:${run.id}`,
     projectId: run.projectId,
+    primaryState: primary.primary,
+    primaryReasonLabel: primary.reasonLabel,
     // TSF Final Pre-UI P1 Closure V1, P1 #2: the real, restart-stable
     // Goal identity owner-goal-model.mjs's own keepGoingRunGoal derives
     // for this exact run -- never fabricated, never re-derived here (see
@@ -138,15 +148,23 @@ function keepGoingAvailableActions(run, ownerState) {
 // wires a real "pause research" caller, computeResearchMissionPhase needs a
 // mission.state === 'PAUSED' branch (owner state: PAUSED, matching BLOCKED's
 // own reasoning below) before this function can honestly report it.
-export function researchMissionWorkItem(mission) {
+export function researchMissionWorkItem(mission, { hold = null } = {}) {
   const phase = computeResearchMissionPhase(mission)
   const state = RESEARCH_PHASE_TO_OWNER_STATE[phase]
   if (!state) {
     throw new Error(`owner-work-model: unknown research mission phase ${phase}`)
   }
+  const reason = researchMissionReason(mission, phase)
+  // Finding #5/#6/#7: same primary-state collapse as keepGoingRunWorkItem --
+  // a real project-scoped research mission (mission.projectId real, not the
+  // COMMAND_CHAT placeholder) can in principle be held exactly like a Keep
+  // Going run; the mapping is honest either way.
+  const primary = ownerPrimaryState(state, { hold, reason })
   return {
     id: `research:${mission.id}`,
     projectId: mission.projectId ?? null,
+    primaryState: primary.primary,
+    primaryReasonLabel: primary.reasonLabel,
     // TSF Final Pre-UI P1 Closure V1, P1 #2: the real, restart-stable
     // Goal identity owner-goal-model.mjs's own researchMissionGoal
     // derives for this exact mission.
@@ -154,7 +172,7 @@ export function researchMissionWorkItem(mission) {
     kind: 'RESEARCH_MISSION',
     parentId: null,
     state,
-    reason: researchMissionReason(mission, phase),
+    reason,
     progress: { nodeCount: mission.nodes.length },
     startedAt: mission.createdAt,
     updatedAt: mission.updatedAt,
@@ -224,9 +242,11 @@ const LEGACY_MISSION_STATE_TO_OWNER_STATE = Object.freeze({
   REVIEW: 'VERIFYING'
 })
 
-function legacyMissionStateWorkItem(project) {
+function legacyMissionStateWorkItem(project, hold) {
   const state = LEGACY_MISSION_STATE_TO_OWNER_STATE[project.mission.state]
   if (state) {
+    const reason = `legacy mission state is ${project.mission.state} (no Keep Going run exists yet)`
+    const primary = ownerPrimaryState(state, { hold, reason })
     return {
       id: `legacy-mission:${project.id}`,
       projectId: project.id,
@@ -238,7 +258,9 @@ function legacyMissionStateWorkItem(project) {
       kind: 'PROJECT',
       parentId: null,
       state,
-      reason: `legacy mission state is ${project.mission.state} (no Keep Going run exists yet)`,
+      reason,
+      primaryState: primary.primary,
+      primaryReasonLabel: primary.reasonLabel,
       progress: null,
       startedAt: null,
       updatedAt: null,
@@ -254,6 +276,12 @@ function legacyMissionStateWorkItem(project) {
       parentId: null,
       state: 'DONE',
       reason: 'adopted (legacy candidate flow)',
+      // DONE is immune to hold override (see owner-primary-state.mjs) --
+      // ownerPrimaryState(hold) here would be a no-op either way, called
+      // directly for clarity rather than threading `hold` through for a
+      // case where it can never matter.
+      primaryState: 'DONE',
+      primaryReasonLabel: null,
       progress: null,
       startedAt: null,
       updatedAt: project.receipts?.chain?.at(-1)?.timestamp ?? null,
@@ -269,10 +297,12 @@ function legacyMissionStateWorkItem(project) {
 // `mission.state` and `candidate.state` are different fields) -- a
 // distinct id so both can coexist for the same project, exactly like
 // work-feed-summary.mjs's own project appearing in two buckets at once.
-function legacyCandidateReadinessWorkItem(project) {
+function legacyCandidateReadinessWorkItem(project, hold) {
   if (project.candidate?.state !== 'READY_FOR_ADOPTION') {
     return null
   }
+  const reason = 'candidate is ready for your adoption decision (no Keep Going run exists yet)'
+  const primary = ownerPrimaryState('READY', { hold, reason })
   return {
     id: `legacy-candidate:${project.id}`,
     projectId: project.id,
@@ -280,7 +310,9 @@ function legacyCandidateReadinessWorkItem(project) {
     kind: 'PROJECT',
     parentId: null,
     state: 'READY',
-    reason: 'candidate is ready for your adoption decision (no Keep Going run exists yet)',
+    reason,
+    primaryState: primary.primary,
+    primaryReasonLabel: primary.reasonLabel,
     progress: null,
     startedAt: null,
     updatedAt: null,
@@ -297,10 +329,12 @@ function legacyCandidateReadinessWorkItem(project) {
 // "needs you" list as needsYou/stalled/readyForAdoption) -- re-labeled,
 // never re-derived: the underlying check is the identical real
 // `mission.state.startsWith('BLOCKED')` test work-feed-summary.mjs uses.
-function legacyBlockedWorkItem(project) {
+function legacyBlockedWorkItem(project, hold) {
   if (!(project.mission.state ?? '').startsWith('BLOCKED')) {
     return null
   }
+  const reason = project.mission.blockedReason ?? `legacy mission state is ${project.mission.state}`
+  const primary = ownerPrimaryState('NEEDS_YOU', { hold, reason })
   return {
     id: `legacy-blocked:${project.id}`,
     projectId: project.id,
@@ -308,7 +342,9 @@ function legacyBlockedWorkItem(project) {
     kind: 'PROJECT',
     parentId: null,
     state: 'NEEDS_YOU',
-    reason: project.mission.blockedReason ?? `legacy mission state is ${project.mission.state}`,
+    reason,
+    primaryState: primary.primary,
+    primaryReasonLabel: primary.reasonLabel,
     progress: null,
     startedAt: null,
     updatedAt: null,
@@ -330,10 +366,12 @@ export function buildOwnerWorkItems(
   keepGoingRuns = {},
   researchMissions = {},
   canonicalBases = {},
+  projectExecutionHolds = {},
   clock = () => new Date()
 ) {
   const items = []
   for (const project of projects) {
+    const hold = projectExecutionHolds[project.id]
     const run = keepGoingRuns[project.id]
     if (run) {
       const gap =
@@ -341,24 +379,25 @@ export function buildOwnerWorkItems(
       const advancedEntry = (canonicalBases[project.id]?.history ?? []).find(
         (h) => h.action === 'ADVANCED' && h.missionId === run.id
       )
-      items.push(keepGoingRunWorkItem(run, { gap, advancedEntry }))
+      items.push(keepGoingRunWorkItem(run, { gap, advancedEntry, hold }))
     } else {
-      const legacyMission = legacyMissionStateWorkItem(project)
+      const legacyMission = legacyMissionStateWorkItem(project, hold)
       if (legacyMission) {
         items.push(legacyMission)
       }
-      const legacyCandidate = legacyCandidateReadinessWorkItem(project)
+      const legacyCandidate = legacyCandidateReadinessWorkItem(project, hold)
       if (legacyCandidate) {
         items.push(legacyCandidate)
       }
     }
-    const legacyBlocked = legacyBlockedWorkItem(project)
+    const legacyBlocked = legacyBlockedWorkItem(project, hold)
     if (legacyBlocked) {
       items.push(legacyBlocked)
     }
   }
   for (const mission of Object.values(researchMissions)) {
-    items.push(researchMissionWorkItem(mission))
+    const hold = mission.projectId ? projectExecutionHolds[mission.projectId] : null
+    items.push(researchMissionWorkItem(mission, { hold }))
   }
   return items
 }

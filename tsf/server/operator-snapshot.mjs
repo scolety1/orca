@@ -63,6 +63,7 @@ export function buildOperatorSnapshot(clock = () => new Date(), deps = {}) {
     keepGoingRuns,
     researchMissions,
     projectCanonicalBases,
+    projectExecutionHolds,
     clock
   )
 

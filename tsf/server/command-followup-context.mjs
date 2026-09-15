@@ -75,7 +75,7 @@ const NEEDS_ATTENTION_STATES = new Set(['NEEDS_YOU', 'STALLED'])
 // treats that as inactive) -- never fabricated.
 function explainProjectState(project, keepGoingRuns, clock, hold) {
   const held = isProjectExecutionHoldActive(hold)
-  const [status] = fleetWorkStatus([project], keepGoingRuns, clock)
+  const [status] = fleetWorkStatus([project], keepGoingRuns, clock, { [project.id]: hold })
   if (!status.hasRun) {
     return held
       ? `**${project.displayName}** is on hold -- ${hold.note ?? hold.reason} -- that's why nothing is in flight.`

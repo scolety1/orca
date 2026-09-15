@@ -195,10 +195,12 @@ function isConsequentialDirective(message) {
 // praise-verb phrase ("this is amazing"), not as a bare word ("amazing" on
 // its own fell through to GENERAL) -- the two word lists had silently
 // diverged. Kept in sync now.
-const ACK_WORD = "(?:awesome|great|perfect|nice|sweet|cool|sick|exactly|amazing|love it|hell yeah|thanks?|thank you|sounds good)"
+const ACK_WORD =
+  '(?:awesome|great|perfect|nice|sweet|cool|sick|exactly|amazing|love it|hell yeah|thanks?|thank you|sounds good)'
 const ACK_BARE_PATTERN = new RegExp(`^${ACK_WORD}(?:\\s+${ACK_WORD})*$`, 'i')
 const ACK_EXACT_PHRASE_PATTERN = /^that'?s exactly what i (?:wanted|was looking for|needed)$/i
-const ACK_PRAISE_VERB_PATTERN = /^[\w' -]{0,40}?\b(?:looks (?:good|great|awesome|perfect)|is (?:so )?(?:great|awesome|perfect|amazing))\b$/i
+const ACK_PRAISE_VERB_PATTERN =
+  /^[\w' -]{0,40}?\b(?:looks (?:good|great|awesome|perfect)|is (?:so )?(?:great|awesome|perfect|amazing))\b$/i
 // Real emoji this fires on, kept separate from ACK_EMOJI_STRIP_PATTERN below
 // (that one is used to remove emoji from a segment BEFORE word-matching, so
 // it must match a bare emoji character, not require the whole segment).
@@ -221,7 +223,11 @@ function isAcknowledgementSegment(segment) {
     // against the original so an empty-after-strip segment still counts.
     return ACK_EMOJI_PATTERN.test(segment)
   }
-  return ACK_BARE_PATTERN.test(withoutEmoji) || ACK_EXACT_PHRASE_PATTERN.test(withoutEmoji) || ACK_PRAISE_VERB_PATTERN.test(withoutEmoji)
+  return (
+    ACK_BARE_PATTERN.test(withoutEmoji) ||
+    ACK_EXACT_PHRASE_PATTERN.test(withoutEmoji) ||
+    ACK_PRAISE_VERB_PATTERN.test(withoutEmoji)
+  )
 }
 
 // Duck-typed like a RegExp (classifyIntent below only ever calls
@@ -258,8 +264,13 @@ const INTENTS = [
     // is)` covers "what's"/"whats"/"what is" all three, preserving the
     // original apostrophe-optional "whats running" match this file's own
     // test suite already pins.
+    // TSF UI FINDINGS #2-#16, Finding #3: "what is everyone doing right
+    // now?"/"what's everyone working on?"/"what's the fleet up to?" are the
+    // same GLOBAL_STATUS question in different words, but none matched --
+    // kept in sync with command-scope-classifier.mjs's own deterministic
+    // fallback gaining the identical alternative for the same root cause.
     pattern:
-      /\b(what(?:'?s| is) going on|status|where are we|update me|catch me up|what (is|'s) it doing|what(?:'?s| is) running)\b/i
+      /\b(what(?:'?s| is) going on|status|where are we|update me|catch me up|what (is|'s) it doing|what(?:'?s| is) running|(everyone|the fleet|all projects)\s+(?:is\s+|are\s+)?(doing|working on|up to))\b/i
   },
   // Phase 7 dogfood finding: "What finished?" (this phase's own command
   // list, and a natural fleet-wide phrasing) matched none of the alternatives
@@ -275,7 +286,11 @@ const INTENTS = [
   // not-yet-fixed gap) fell through to GENERAL for the identical missing-
   // synonym reason "what finished" originally did. `(done|finished)` closes
   // that gap the same way STATUS's `what(?:'?s| is)` prefix already does.
-  { id: 'FINISHED', pattern: /\b(is (this|it) (actually )?(done|finished|ready)|are we done|what finished|what(?:'?s| is) (done|finished))\b/i },
+  {
+    id: 'FINISHED',
+    pattern:
+      /\b(is (this|it) (actually )?(done|finished|ready)|are we done|what finished|what(?:'?s| is) (done|finished))\b/i
+  },
   // M3: the affirmative "go do real work" phrasings Tim's own north star
   // names ("go ahead," "build that," "do the recommended next step") --
   // deliberately a SEPARATE intent from FIX_REQUEST (which stays scoped to
@@ -381,7 +396,8 @@ const INTENTS = [
   // normally.
   {
     id: 'FEEDBACK_BUG',
-    pattern: /\b(bug|broken|doesn['’]?t work|not working|jumps? around|regression|(?<!(?:run|ran|running) into an? )issue)\b/i
+    pattern:
+      /\b(bug|broken|doesn['’]?t work|not working|jumps? around|regression|(?<!(?:run|ran|running) into an? )issue)\b/i
   },
   // FIXED (real, live-reproduced -- Full Conversational Control Plane
   // Exhaustive Gauntlet V1): plain enthusiasm/acknowledgement ("awesome!
@@ -638,7 +654,10 @@ function respondAcknowledgement(project) {
   if (project.candidate?.state === 'READY_FOR_ADOPTION') {
     return `Glad to hear it! No action was taken -- the candidate for **${project.displayName}** is still **READY_FOR_ADOPTION**, waiting on your decision. Say "adopt it" (or "adopt the candidate") when you want me to move forward with it.`
   }
-  if (project.mission.state === 'BLOCKED' || project.mission.state === 'BLOCKED_ARCHITECTURAL_CONFLICT') {
+  if (
+    project.mission.state === 'BLOCKED' ||
+    project.mission.state === 'BLOCKED_ARCHITECTURAL_CONFLICT'
+  ) {
     return `Thanks! No action was taken -- **${project.displayName}** is still **blocked**: ${project.mission.blockedReason ?? 'see Health for details'}.`
   }
   return `Thanks! No action was taken -- **${project.displayName}** is currently **${project.mission.state}**. Tell me explicitly what you'd like next (e.g. "adopt it", "fix X", "keep going") and I'll act on that.`

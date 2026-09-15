@@ -10,6 +10,7 @@ import {
   keepGoingRunWorkItem,
   researchMissionWorkItem
 } from '../domain/owner-work-model.mjs'
+import { ownerPrimaryState } from '../domain/owner-primary-state.mjs'
 import {
   createOvernightRun,
   planWave,
@@ -29,6 +30,7 @@ import {
   transitionResearchMission
 } from '../domain/research-mission.mjs'
 import { recordDispatchAttempt } from '../domain/research-dispatch-bookkeeping.mjs'
+import { createProjectExecutionHold } from '../domain/project-execution-hold.mjs'
 
 const clock = () => new Date('2026-09-13T00:00:00.000Z')
 
@@ -252,6 +254,77 @@ test('buildOwnerWorkItems: assembles Keep Going runs and research missions into 
   assert.deepEqual(new Set(items.map((i) => i.id)), new Set(['run:r1', 'research:m9']))
 })
 
+// TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #5/#6/#7: a real
+// active execution hold must reach the work item's primaryState no matter
+// which code path produced the item (run-based or legacy), and must never
+// affect an UNHELD project in the same call.
+test('buildOwnerWorkItems: an active execution hold makes a WORKING run report primaryState WAITING/Execution hold, an unheld project is unaffected', () => {
+  let held = newRun('r1', 'p1')
+  const heldPlan = planWave(held, [{ id: 't1', scope: ['a'] }], clock)
+  held = dispatchWave(
+    held,
+    heldPlan,
+    [{ workItemId: 't1', scope: ['a'], taskId: 'task-1', dispatchId: 'ctx-1' }],
+    clock,
+    held.revision
+  )
+  let free = newRun('r2', 'p2')
+  const freePlan = planWave(free, [{ id: 't2', scope: ['b'] }], clock)
+  const freeDispatched = dispatchWave(
+    free,
+    freePlan,
+    [{ workItemId: 't2', scope: ['b'], taskId: 'task-2', dispatchId: 'ctx-2' }],
+    clock,
+    free.revision
+  )
+  const dispatched = held
+  const hold = createProjectExecutionHold(
+    {
+      projectId: 'p1',
+      reason: 'EXTERNAL_WORK_ACTIVE',
+      setBy: 'test',
+      note: 'another AI is on this'
+    },
+    clock
+  )
+  const items = buildOwnerWorkItems(
+    [
+      { id: 'p1', mission: { state: 'DRAFT' } },
+      { id: 'p2', mission: { state: 'DRAFT' } }
+    ],
+    { p1: dispatched, p2: freeDispatched },
+    {},
+    {},
+    { p1: hold }
+  )
+  const heldItem = items.find((i) => i.projectId === 'p1')
+  const freeItem = items.find((i) => i.projectId === 'p2')
+  assert.equal(heldItem.primaryState, 'WAITING')
+  assert.equal(heldItem.primaryReasonLabel, 'Execution hold')
+  assert.equal(
+    heldItem.state,
+    'WORKING',
+    'the richer internal state is untouched -- only the derived primary field changes'
+  )
+  assert.equal(freeItem.primaryState, 'WORKING')
+})
+
+test('buildOwnerWorkItems: a real execution hold on a run-less legacy project threads into its primaryState too', () => {
+  const hold = createProjectExecutionHold(
+    { projectId: 'p1', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test' },
+    clock
+  )
+  const items = buildOwnerWorkItems(
+    [{ id: 'p1', mission: { state: 'ACTIVE' } }],
+    {},
+    {},
+    {},
+    { p1: hold }
+  )
+  assert.equal(items[0].primaryState, 'WAITING')
+  assert.equal(items[0].primaryReasonLabel, 'Execution hold')
+})
+
 test('buildOwnerWorkItems: threads real canonicalBases ADVANCED evidence into DONE, exactly like keepGoingRunWorkItem alone would', () => {
   const run = completeRun(newRun('r9', 'p1'), clock)
   const canonicalBases = {
@@ -278,6 +351,8 @@ for (const [missionState, ownerState] of [
 ]) {
   test(`buildOwnerWorkItems: a run-less project with legacy mission.state ${missionState} projects as owner state ${ownerState}`, () => {
     const items = buildOwnerWorkItems([{ id: 'p1', mission: { state: missionState } }], {})
+    const reason = `legacy mission state is ${missionState} (no Keep Going run exists yet)`
+    const primary = ownerPrimaryState(ownerState, { reason })
     assert.deepEqual(items, [
       {
         id: 'legacy-mission:p1',
@@ -286,7 +361,9 @@ for (const [missionState, ownerState] of [
         kind: 'PROJECT',
         parentId: null,
         state: ownerState,
-        reason: `legacy mission state is ${missionState} (no Keep Going run exists yet)`,
+        reason,
+        primaryState: primary.primary,
+        primaryReasonLabel: primary.reasonLabel,
         progress: null,
         startedAt: null,
         updatedAt: null,

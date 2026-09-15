@@ -204,6 +204,34 @@ test('UX polish: a large idle fleet (> 3) collapses to a human-first summary ins
   )
 })
 
+// TSF UI FINDINGS #2-#16, Finding #3: "Command does not answer 'what is
+// everyone doing right now?'" -- these are the mission's own required
+// acceptance-criteria phrasings, all grounded in the same canonical
+// fleetWorkStatus snapshot "what's running right now?" already reads (never
+// a fabricated summary, never a redirect to "couldn't tell which project").
+test('Finding #3: natural fleet-status phrasings all answer with real grounded prose, not "couldn\'t tell which project"', async () => {
+  const projects = [project('alpha-widgets', 'Alpha Widgets')]
+  const phrasings = [
+    'What is everyone doing right now?',
+    "What's everyone working on?",
+    "What's running right now?",
+    'What is the fleet doing?'
+  ]
+  for (const message of phrasings) {
+    const result = await respondCommand({ message, projects, opState, clock })
+    assert.doesNotMatch(
+      result.text,
+      /couldn't tell which project/i,
+      `"${message}" must not fall through to the generic unresolved-project reply`
+    )
+    assert.match(
+      result.text,
+      /idle|Alpha Widgets/i,
+      `"${message}" must answer from real fleet state, not a fabricated reply`
+    )
+  }
+})
+
 // Phase 2: bounded follow-up conversational context. Deliberately narrow --
 // covered here rather than a separate file since it's a small addition to
 // this exact resolution-confidence gate the rest of this file already
@@ -509,10 +537,14 @@ test('NEEDS_YOU_QUERY: "what needs me?" surfaces real outstanding Needs You acro
     // -> fleetWorkStatus) reads run.checkpoints unconditionally (for
     // lastCheckpointAt) -- a bare literal missing it (fine for the old,
     // narrower fleetNeedsYouStatus) now needs this one extra real-shaped field.
+    // TSF UI FINDINGS #2-#16, Finding #5: fleetWorkStatus now also calls
+    // keepGoingRunWorkItem (owner-work-model.mjs) for primaryState, which
+    // reads run.waves unconditionally for its own progress field.
     keepGoingRuns: {
       'alpha-widgets': {
         needsYou: [{ id: 'q1', question: 'A real decision is pending', resolvedAt: null }],
-        checkpoints: []
+        checkpoints: [],
+        waves: []
       }
     }
   }

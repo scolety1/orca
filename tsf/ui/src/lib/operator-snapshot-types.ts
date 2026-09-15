@@ -18,6 +18,15 @@ export type OwnerWorkState =
   | 'FAILED'
   | 'PAUSED'
 
+// TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #5/#6/#7: the
+// settled primary owner-facing state model -- mirrors
+// tsf/domain/owner-primary-state.mjs's own OWNER_PRIMARY_STATES exactly.
+// Every surface showing ONE top-level status word for a work item must use
+// `primaryState`/`primaryReasonLabel`, never re-derive its own reading of
+// `state` (the richer, still-real internal vocabulary, unchanged and still
+// consumed by HQ's own more granular sections).
+export type OwnerPrimaryState = 'WORKING' | 'WAITING' | 'NEEDS_YOU' | 'DONE'
+
 export type OwnerWorkItem = {
   id: string
   projectId: string | null
@@ -26,6 +35,8 @@ export type OwnerWorkItem = {
   parentId: string | null
   state: OwnerWorkState
   reason: string
+  primaryState: OwnerPrimaryState
+  primaryReasonLabel: string | null
   progress: Record<string, number> | null
   startedAt: string | null
   updatedAt: string | null

@@ -113,8 +113,8 @@ const SCOPE_SYSTEM_PROMPT = [
   'Your only job is to pick exactly one scope label for the message. You are not answering the message, not taking any action, and nothing you say here can dispatch work or spend money -- this is a routing decision only.',
   '',
   'Labels:',
-  '- GLOBAL_STATUS: asking what is currently running/happening across the whole fleet, no specific project implied.',
-  '- GLOBAL_ADVISORY: asking for a recommendation, explanation, or overview about the fleet or its projects in the abstract (e.g. which projects are safe/disposable/OK to test on, general guidance) -- read-only, not about acting on one named project.',
+  '- GLOBAL_STATUS: a factual "what is happening / what is everyone doing right now" question about the whole fleet, no specific project implied. Examples: "what is everyone doing right now?", "what\'s running?", "what\'s the fleet up to?", "catch me up". If the message is only asking what is currently running/active/being worked on, it is GLOBAL_STATUS even if it could loosely be described as an "overview" -- do not route it to GLOBAL_ADVISORY.',
+  '- GLOBAL_ADVISORY: asking for a RECOMMENDATION or SAFETY judgment -- e.g. which project is safe/disposable/OK to experiment on, or general guidance -- never a plain "what is happening/running now" question.',
   '- RESEARCH_REQUEST: asking to research or build a dataset about some real-world topic that is NOT a TSF/Orca project (e.g. historical sports data, market data, any external subject matter).',
   '- NEEDS_YOU_QUERY: asking what outstanding decisions/owner attention are pending across the whole fleet (e.g. "what needs me?", "what am I blocking?").',
   '- PROJECT_REQUIRED: the message is clearly about acting on or asking about ONE SPECIFIC project, but did not name it clearly enough to resolve -- it genuinely needs a project name.',
@@ -124,7 +124,11 @@ const SCOPE_SYSTEM_PROMPT = [
 ].join('\n')
 
 function deterministicScopeFallback(message) {
-  if (/\bwhat needs me\b|\bwhat am i blocking\b|\bwhat'?s blocked on me\b|\bwhat decisions? (are|do i have) (pending|outstanding|waiting)\b/i.test(message)) {
+  if (
+    /\bwhat needs me\b|\bwhat am i blocking\b|\bwhat'?s blocked on me\b|\bwhat decisions? (are|do i have) (pending|outstanding|waiting)\b/i.test(
+      message
+    )
+  ) {
     return 'NEEDS_YOU_QUERY'
   }
   // Phase 7 dogfood finding: kept in sync with chat-responder.mjs's own
@@ -134,7 +138,20 @@ function deterministicScopeFallback(message) {
   // chat-responder.mjs's own STATUS pattern didn't already match (see
   // UNROUTED_QUESTION_INTENTS in command-responder.mjs), so the same
   // vocabulary gap here is independently reachable and independently fixed.
-  if (/\b(what(?:'?s| is) (running|going on)|status|catch me up|update me|where are we)\b/i.test(message)) {
+  // TSF UI FINDINGS #2-#16, Finding #3: the pattern above required "running"/
+  // "going on" literally adjacent to "what's"/"what is" -- "what is everyone
+  // doing right now?" (and "what's everyone working on?"/"what's the fleet
+  // up to?") never matched, silently falling through to UNCLEAR/GLOBAL_ADVISORY
+  // even though it's asking the exact same GLOBAL_STATUS question in
+  // different words.
+  const everyoneFleetActivity =
+    /\b(everyone|the fleet|all projects)\s+(?:is\s+|are\s+)?(doing|working on|up to)\b/i
+  if (
+    /\b(what(?:'?s| is) (running|going on)|status|catch me up|update me|where are we)\b/i.test(
+      message
+    ) ||
+    everyoneFleetActivity.test(message)
+  ) {
     return 'GLOBAL_STATUS'
   }
   // Adversarial-corpus findings, two real gaps closed:
@@ -151,8 +168,10 @@ function deterministicScopeFallback(message) {
   //     project resolved from the message at all (see classifyGlobalScope's
   //     one call site) -- a genuine "let's experiment with NWR" is never
   //     reached here, since "NWR" would already have resolved.
-  const safetyImplyingActivity = /\b(mess (around|with)|screw around( with)?|play around( with)?|experiment( with)?)\b/i
-  const safetyWords = /\b(safe(ly)?|disposable|throwaway|don'?t matter|doesn'?t matter|expendable)\b/i
+  const safetyImplyingActivity =
+    /\b(mess (around|with)|screw around( with)?|play around( with)?|experiment( with)?)\b/i
+  const safetyWords =
+    /\b(safe(ly)?|disposable|throwaway|don'?t matter|doesn'?t matter|expendable)\b/i
   const safetyPhrase = /\bwithout (breaking|messing|f\S*ing|screwing) (anything |it |that )?up\b/i
   const neutralTestWords = /\b(project|projects|repo|repos|test|tests|testing)\b/i
   if (
@@ -197,7 +216,11 @@ export async function classifyGlobalScope({ message, deps = {} }) {
     timeoutOverrideMs: 20000
   })
   if (live.ok && GLOBAL_SCOPES.includes(live.data?.scope)) {
-    return { scope: live.data.scope, source: 'LIVE_PLANNER', reasoning: live.data.reasoning ?? null }
+    return {
+      scope: live.data.scope,
+      source: 'LIVE_PLANNER',
+      reasoning: live.data.reasoning ?? null
+    }
   }
   return {
     scope: deterministicScopeFallback(message),
@@ -216,7 +239,11 @@ export async function classifyGlobalScope({ message, deps = {} }) {
 // guesses safety from a REAL project's mere absence of a health finding --
 // silence is not evidence of safety.
 function isAdvisorySafeProject(project) {
-  return project.sourceClass === 'FIXTURE' || /\btest\b/i.test(project.id) || /\btest\b/i.test(project.displayName)
+  return (
+    project.sourceClass === 'FIXTURE' ||
+    /\btest\b/i.test(project.id) ||
+    /\btest\b/i.test(project.displayName)
+  )
 }
 
 // Exported separately (not just used internally by buildGlobalAdvisoryText)
@@ -236,7 +263,10 @@ export function buildGlobalAdvisoryText(projects) {
     return "I don't see a project in the current catalog that's clearly marked as disposable/test-only -- every known project here is a real one. Ask me to onboard a throwaway repo if you want something safe to experiment on."
   }
   const lines = safe.map((p) => {
-    const why = p.sourceClass === 'FIXTURE' ? 'a deterministic fixture project, not real state' : "its own name marks it as a disposable test project"
+    const why =
+      p.sourceClass === 'FIXTURE'
+        ? 'a deterministic fixture project, not real state'
+        : 'its own name marks it as a disposable test project'
     return `- **${p.displayName}** (\`${p.id}\`) -- ${why}.`
   })
   return `Safe to mess around with, from the current catalog:\n${lines.join('\n')}\n\nEverything else in the catalog is a real project -- I won't start anything automatically; say which one you want to act on.`

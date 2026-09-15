@@ -243,10 +243,19 @@ async function dispatchAction(project, rawClause, clock, deps) {
 }
 
 function reportStatus(project, opState, clock) {
-  const [status] = fleetWorkStatus([project], opState.keepGoingRuns ?? {}, clock)
+  const [status] = fleetWorkStatus(
+    [project],
+    opState.keepGoingRuns ?? {},
+    clock,
+    opState.projectExecutionHolds ?? {}
+  )
   return {
+    // Finding #5: the settled primary word (WORKING/WAITING/NEEDS_YOU/DONE)
+    // as the headline, the richer real reason as detail -- never the raw
+    // live-work-feed state, which a held project would otherwise still
+    // report as e.g. WORKING even while genuinely on hold.
     text: status.hasRun
-      ? `${status.feed.state} -- ${status.feed.reason}.`
+      ? `${status.primaryState} -- ${status.feed.reason}.`
       : 'no Keep Going run right now.',
     category: null,
     ok: true

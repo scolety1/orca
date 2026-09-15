@@ -36,15 +36,40 @@ function projectCard(overrides: Partial<ProjectCard> = {}): ProjectCard {
   }
 }
 
+// Mirrors tsf/domain/owner-primary-state.mjs's own mapping table -- kept
+// as a small, explicit lookup here rather than importing the real .mjs
+// (a different module-resolution boundary than this UI package), so test
+// fixtures stay honest about what the real backend actually returns for
+// each `state` rather than hand-picking values that happen to make a test
+// pass.
+const PRIMARY_STATE_BY_STATE: Record<
+  OwnerWorkItem['state'],
+  { primary: string; label: string | null }
+> = {
+  PLANNING: { primary: 'WAITING', label: 'Preparing' },
+  WORKING: { primary: 'WORKING', label: null },
+  WAITING: { primary: 'WAITING', label: 'Resources' },
+  VERIFYING: { primary: 'WAITING', label: 'Verifying' },
+  NEEDS_YOU: { primary: 'NEEDS_YOU', label: null },
+  READY: { primary: 'NEEDS_YOU', label: 'Ready for adoption' },
+  DONE: { primary: 'DONE', label: null },
+  FAILED: { primary: 'NEEDS_YOU', label: 'Stalled' },
+  PAUSED: { primary: 'WAITING', label: 'Paused' }
+}
+
 function workItem(overrides: Partial<OwnerWorkItem> = {}): OwnerWorkItem {
+  const state = overrides.state ?? 'WORKING'
+  const primary = PRIMARY_STATE_BY_STATE[state]
   return {
     id: 'run:r1',
     projectId: 'p1',
     goalId: null,
     kind: 'KEEP_GOING_RUN',
     parentId: null,
-    state: 'WORKING',
+    state,
     reason: 'in-flight wave',
+    primaryState: primary.primary as OwnerWorkItem['primaryState'],
+    primaryReasonLabel: primary.label,
     progress: null,
     startedAt: null,
     updatedAt: null,
@@ -118,6 +143,13 @@ test('needsYouCards: NEEDS_YOU, FAILED, and READY all land in the combined needs
   assert.deepEqual(new Set(needsYouCards(cards).map((c) => c.id)), new Set(['a', 'b', 'c']))
 })
 
+// TSF UI FINDINGS #2-#16 RECONCILE & UPGRADE, Finding #5/#7: PLANNING and
+// PAUSED moved OUT of activeCards (which now means ONLY primaryState
+// WORKING -- genuinely progressing right now) and INTO waitingCards.
+// VERIFYING collapses to primaryState WAITING too, but stays out of
+// waitingCards (its own dedicated section, verifyingCards, already exists
+// -- see operator-work-cards.ts's own comment on why double-rendering it
+// would be wrong).
 test('activeCards/waitingCards/verifyingCards/readyForAdoptionCards/recentlyCompletedCards: each canonical state lands in exactly one bucket', () => {
   const projects = [projectCard({ id: 'p1' })]
   const cards = projectWorkCards(
@@ -134,13 +166,10 @@ test('activeCards/waitingCards/verifyingCards/readyForAdoptionCards/recentlyComp
       ]
     })
   )
+  assert.deepEqual(new Set(activeCards(cards).map((c) => c.id)), new Set(['working']))
   assert.deepEqual(
-    new Set(activeCards(cards).map((c) => c.id)),
-    new Set(['planning', 'working', 'paused'])
-  )
-  assert.deepEqual(
-    waitingCards(cards).map((c) => c.id),
-    ['waiting']
+    new Set(waitingCards(cards).map((c) => c.id)),
+    new Set(['planning', 'paused', 'waiting'])
   )
   assert.deepEqual(
     verifyingCards(cards).map((c) => c.id),
@@ -154,6 +183,50 @@ test('activeCards/waitingCards/verifyingCards/readyForAdoptionCards/recentlyComp
     recentlyCompletedCards(cards).map((c) => c.id),
     ['done']
   )
+})
+
+test('Finding #7: a real active execution hold moves a WORKING run out of activeCards and into waitingCards with the Execution hold label', () => {
+  const cards = projectWorkCards(
+    snapshot({
+      projects: [projectCard({ id: 'p1' })],
+      work: [
+        workItem({
+          id: 'held',
+          projectId: 'p1',
+          state: 'WORKING',
+          primaryState: 'WAITING',
+          primaryReasonLabel: 'Execution hold'
+        })
+      ]
+    })
+  )
+  assert.deepEqual(activeCards(cards), [])
+  assert.equal(waitingCards(cards).length, 1)
+  assert.equal(waitingCards(cards)[0].primaryReasonLabel, 'Execution hold')
+  assert.equal(
+    waitingCards(cards)[0].state,
+    'WORKING',
+    'the richer internal state stays real, unmodified'
+  )
+})
+
+test('Finding #2: needsYouCards keys off primaryState, so a held NEEDS_YOU/FAILED/READY item moves out of Needs You into Waiting', () => {
+  const cards = projectWorkCards(
+    snapshot({
+      projects: [projectCard({ id: 'p1' })],
+      work: [
+        workItem({
+          id: 'held-ready',
+          projectId: 'p1',
+          state: 'READY',
+          primaryState: 'WAITING',
+          primaryReasonLabel: 'Execution hold'
+        })
+      ]
+    })
+  )
+  assert.deepEqual(needsYouCards(cards), [])
+  assert.equal(waitingCards(cards).length, 1)
 })
 
 // Real, confirmed divergence: a research mission's WAITING_FOR_RESOURCES

@@ -136,9 +136,13 @@ export function formatFleetStatusText(statuses, researchStatuses = []) {
   if (statuses.length === 0 && researchStatuses.length === 0) {
     return 'No known projects yet -- add one from the Projects page.'
   }
+  // Finding #5: leads with the settled primary word, never the raw feed state.
   const activeProjectLines = statuses
     .filter((s) => s.hasRun)
-    .map((s) => `- **${s.displayName}** — ${s.feed.state} (run \`${s.runId}\`) — ${s.feed.reason}.`)
+    .map(
+      (s) =>
+        `- **${s.displayName}** — ${s.primaryState}${s.primaryReasonLabel ? ` (${s.primaryReasonLabel})` : ''} (run \`${s.runId}\`) — ${s.feed.reason}.`
+    )
   const idleProjects = statuses.filter((s) => !s.hasRun)
   const researchLines = researchStatuses.map(
     (r) =>
@@ -177,7 +181,8 @@ function respondNoProjectResolved(
   keepGoingRuns,
   researchMissions,
   clock,
-  aliases
+  aliases,
+  projectExecutionHolds = {}
 ) {
   const aliasHint = findAliasForAbsentProject(message, projects, aliases)
   if (aliasHint) {
@@ -185,7 +190,7 @@ function respondNoProjectResolved(
   }
   if (STATUS_LIKE_INTENTS.has(intent)) {
     return formatFleetStatusText(
-      fleetWorkStatus(projects, keepGoingRuns, clock),
+      fleetWorkStatus(projects, keepGoingRuns, clock, projectExecutionHolds),
       fleetResearchStatus(researchMissions)
     )
   }
@@ -228,6 +233,7 @@ export async function respondCommand({
   // still loads its own real defaults when omitted.
   aliases
 }) {
+  const holds = opState.projectExecutionHolds
   // Phase 3: Dataset Research bridge -- checked FIRST, ahead of every
   // project-fleet intent/decision classification below, since a research
   // message is never about a registered TSF project (see
@@ -680,7 +686,7 @@ export async function respondCommand({
           intent,
           decisionClass,
           text: formatFleetStatusText(
-            fleetWorkStatus([backReferenceProject], opState.keepGoingRuns, clock)
+            fleetWorkStatus([backReferenceProject], opState.keepGoingRuns, clock, holds)
           ),
           plannerRole: 'PLANNER_DEEP',
           providerLabel:
@@ -708,7 +714,7 @@ export async function respondCommand({
           intent: 'GLOBAL_STATUS',
           decisionClass,
           text: formatFleetStatusText(
-            fleetWorkStatus(projects, opState.keepGoingRuns, clock),
+            fleetWorkStatus(projects, opState.keepGoingRuns, clock, holds),
             fleetResearchStatus(opState.researchMissions)
           ),
           plannerRole: 'PLANNER_DEEP',
@@ -826,13 +832,15 @@ export async function respondCommand({
               opState.keepGoingRuns,
               opState.researchMissions,
               clock,
-              aliases
+              aliases,
+              holds
             )
           : formatFleetStatusText(
               fleetWorkStatus(
                 resolution.matches.map((m) => m.project),
                 opState.keepGoingRuns,
-                clock
+                clock,
+                holds
               )
             ),
       plannerRole: 'PLANNER_DEEP',

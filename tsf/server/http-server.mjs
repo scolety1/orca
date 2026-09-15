@@ -186,7 +186,12 @@ export function createRequestHandler(options = {}) {
         return json(
           res,
           200,
-          fleetWorkStatus(projects, opState.keepGoingRuns, () => new Date())
+          fleetWorkStatus(
+            projects,
+            opState.keepGoingRuns,
+            () => new Date(),
+            opState.projectExecutionHolds ?? {}
+          )
         )
       }
 
