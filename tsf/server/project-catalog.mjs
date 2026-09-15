@@ -154,6 +154,12 @@ export function summarizeCard(project) {
     missionState: project.mission.state,
     blockedReason: project.mission.blockedReason,
     healthStatus: project.health.status,
+    // TSF UI FINDINGS #2-#16 CLOSURE, Gate 3A: the same canonical
+    // WORKING/WAITING/NEEDS_YOU/DONE truth HQ/Work/Command/Overview already
+    // read -- project already carries these (withPrimaryState/
+    // projectOnboardedProject), never re-derived here.
+    primaryState: project.primaryState,
+    primaryReasonLabel: project.primaryReasonLabel,
     topFinding: topFinding
       ? { code: topFinding.code, summary: topFinding.summary, remediation: topFinding.remediation }
       : null,

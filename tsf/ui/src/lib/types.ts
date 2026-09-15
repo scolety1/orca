@@ -112,6 +112,8 @@ export type ProjectCard = {
   missionState: string
   blockedReason: string | null
   healthStatus: HealthStatus
+  primaryState: OwnerPrimaryState
+  primaryReasonLabel: string | null
   topFinding: { code: string; summary: string; remediation: string } | null
   migrationClassification: string | null
   restrictions: string[]
