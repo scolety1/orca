@@ -232,7 +232,11 @@ async function runFullHappyPathCase(clock, freeBytes = 8 * 1024 ** 3) {
         schemaVersion: 'TSF_VERIFICATION_VERDICT_V1',
         runId,
         criteria: [
-          { criterion, verified: true, evidence: 'golden-path eval fixture: real disk verdict artifact' }
+          {
+            criterion,
+            verified: true,
+            evidence: 'golden-path eval fixture: real disk verdict artifact'
+          }
         ],
         verifiedAt: clock().toISOString()
       })
@@ -260,8 +264,18 @@ async function runFullHappyPathCase(clock, freeBytes = 8 * 1024 ** 3) {
       verificationWaveSettledReal: settleVerify.action === 'WAVE_SETTLED',
       reconcilerReadRealDiskVerdictAndCompleted: reconcileAfterVerdict.action === 'COMPLETE',
       missionReachedDurableCompleteState: finalRun.state === 'COMPLETE',
+      // TSF UI FINDINGS #2-#16 CLOSURE: this eval was still asserting the
+      // pre-unification Live Work Feed vocabulary (bare "READY_FOR_ADOPTION")
+      // that command-global-scope-bridge.mjs's own fleet-status line
+      // (Finding #4/#5's settled primaryState unification, commit 5a54dad3c8)
+      // already replaced with the real, canonical primaryState/
+      // primaryReasonLabel pair -- a completed run now reads "NEEDS_YOU
+      // (Ready for adoption)" everywhere else in the product (HQ/Work/
+      // Projects/Command all agree, re-verified live this closure pass).
+      // Production text is correct; this assertion was simply never updated
+      // when that vocabulary was unified.
       operatorVisibleTextConfirmsCompletion:
-        /READY_FOR_ADOPTION/.test(statusTurn.text) &&
+        /NEEDS_YOU \(Ready for adoption\)/.test(statusTurn.text) &&
         /independently-verified acceptance criteria/.test(statusTurn.text)
     }
   } finally {
