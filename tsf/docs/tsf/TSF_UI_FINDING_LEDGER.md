@@ -82,13 +82,11 @@ itself, not the owner's own screenshot commentary -- per this ledger's
 own Authority section, the owner's read of these findings (agree,
 reclassify, or dismiss) is what actually settles them, not this entry.
 
-**Finding 1 is a safety-relevant observation, not an ordinary UI
-finding** -- flagged first and separately because of its severity; see
-the note directly below the table.
+**Finding 1 was safety-relevant, not an ordinary UI finding** -- it has
+its own fix and is now recorded under Resolved below, not in this table.
 
 | # | Screen/Route | Classification | Finding | Screenshot/evidence | Baseline cross-ref |
 |---|---|---|---|---|---|
-| 1 | `/projects/niners-war-room` (Planner Chat, Overview + Keep Going tabs) | BUG | **Safety-relevant.** NWR's own Planner Chat history contains several real, escalating attempts (labeled "NWR — FULL OVERNIGHT PRODUCT ADVANCE V3") to have TSF release the real NWR `EXTERNAL_WORK_ACTIVE` execution hold and take over autonomous ownership -- each one was declined, but only because it got mis-routed to a Dataset-Research-only planner role that doesn't recognize software-mission requests, never because anything checked "is there an active hold on this project." Independently reconfirmed the hold is still intact right now. See full detail in the return report below. | Read via `get_page_text` + screenshot, both tabs | none |
 | 2 | HQ (`/`) | BUG | The "Needs you" summary tile undercounts by 1 whenever a RESEARCH-sourced Needs You item is open: 4 real cards rendered in the NEEDS YOU section, tile read "3", both before and after resolving that item (tile stayed "3" throughout, list correctly dropped to 3 cards after). Real, live, reproduced via the disposable runtime's own live SSE update. | Before/after `get_page_text` capture around a real resolve action | none |
 | 3 | Command (`/command`) | BUG | Asking Command the very natural status question "What is everyone doing right now?" returns an irrelevant, unhelpful answer ("Safe to mess around with... say which one you want to act on") instead of summarizing real run states -- even though the correct data is already computed correctly one section below, in the same page's own "WHAT'S RUNNING" panel. | `get_page_text` capture of the live response | none |
 | 4 | Command (any project) | BUG / UX PROBLEM | A natural-sounding hold request ("put X on hold, a separate process is working on it") silently fails -- classified `GENERAL`/`AUTO_DECIDE`, bundled with unrelated attention notices, with no indication the hold wasn't understood or set. Only a narrow phrasing ("is being handled by another AI/agent/process", "leave it alone", "hold off") actually triggers the real `EXTERNAL_WORK_HOLD` action -- confirmed by retrying with that exact phrasing, which worked correctly. | Two real chat calls compared, disposable runtime | none |
@@ -105,22 +103,15 @@ the note directly below the table.
 | 15 | HQ Needs You -> Research card (disposable) | GOOD AS-IS | Inline Research Needs You resolution (real textarea + submit) works correctly end to end: durable state matches the UI's claim, and the resolved item disappears from Needs You while the mission reappears under Active Research live via SSE within ~3s, with zero manual refresh. Verified via a real interaction + durable-state cross-check, not just visual inspection. | Before/after screenshots + `get_page_text`, durable-state API cross-check | Update: TSF Final Pre-UI P1 Closure V1 section above |
 | 16 | Project Detail Overview (real projects) | GOOD AS-IS | Project descriptions in plain, owner-authored language (e.g. Niners-War-Room's own summary) read clearly and are genuinely useful context, distinct from the jargon-heavy sections noted in finding 9. No change wanted. | Screenshot | none |
 
-**On finding 1**: this is not something to fix tonight -- per this
-mission's own explicit "do not reopen frozen backend architecture unless
-the browser pass proves a real objective defect" and "no subjective UI
-redesign," and because it touches request routing/safety-check
-architecture, not UI presentation. It is recorded here because it was
-discovered during UI dogfood and belongs in the same durable evidence
-trail; see the full write-up in the mission's own return report for the
-complete quoted transcript and reasoning.
-
 ## Settled (batch ready for a fix prompt, not yet requested)
 
 *(none yet)*
 
 ## Resolved
 
-*(none yet)*
+| # | Screen/Route | Classification | Finding | Resolution |
+|---|---|---|---|---|
+| 1 | `/projects/niners-war-room` (Planner Chat) | BUG (safety-relevant) | See row 1's original text above (unmodified for the record). `TSF_DOGFOOD_FINDING_1_EXECUTION_HOLD_SAFETY_V1`: traced every real execution/dispatch path down to the domain layer -- most were already correctly hold-aware (`tickKeepGoingRun`, `chat-dispatch-bridge.mjs`, `chat-http-routes.mjs`'s `dispatchFromChat`, `RELEASE_HOLD`'s own narrow regex trigger, `live-planner.mjs`'s `--tools ""` pure-text-only conversational fallback -- the actual path most of the real incident's messages hit). Found and closed the real gap: `startKeepGoingRun`/`resumeKeepGoingRun`/`abandonKeepGoingStalledWave` had zero hold awareness, and confirmed it was live-reachable via ordinary phrasing ("Resume work.", "Continue the overnight product advance.") through `classifyRunActionVerb` -> the canonical action-executor -> `resumeProjectRun` -- a held project's paused run genuinely resumed end to end over the real `/api/chat` route before the fix (mutation-tested proof, not assumed). Fixed at the domain layer (`keep-going-controller.mjs`) plus 4 call sites that were building a fake opState missing the hold data. 405 targeted + ~3579 full-suite regression tests green. Real NWR hold/run independently reconfirmed untouched throughout. | commit `be8a341d05`, full record in `TSF_DOGFOOD_FINDING_1_EXECUTION_HOLD_SAFETY_V1.md` |
 
 ## Personal preference / Good as-is (recorded, not acted on)
 
