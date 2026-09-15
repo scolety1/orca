@@ -478,8 +478,16 @@ export function classifyAdoptionCommandIntent(message, projects) {
 // ============================================================================
 const KEEP_GOING_SOURCE = '(?:keep\\s+going|overnight)'
 const ASSESS_SOURCE = '(?:needs?\\s+(?:serious\\s+)?work|get\\s+.+?\\s+up|upgrade|assess)'
+// TSF UI FINDINGS #2-#16, Finding #4: real, narrower phrasings of the exact
+// same "another process/agent already owns this, don't touch it" intent
+// never matched -- "put X on hold" (own directive, no external-agent claim
+// at all) and "a separate process is working on it" (subject-first order,
+// "separate" instead of "another"/"different") both fell through to
+// ordinary conversation. `put\s+.+?\s+on\s+hold` mirrors ASSESS_SOURCE's own
+// established `get\s+.+?\s+up` lazy-wildcard convention so a multi-word
+// project name between the verb and its object still matches.
 const EXTERNAL_HOLD_SOURCE =
-  '(?:(?:is\\s+)?being\\s+handled\\s+by\\s+(?:another|a\\s+different)\\s+(?:ai|agent|process)|leave\\s+(?:it|that|this|\\S+)\\s+alone|hold\\s+off(?:\\s+on)?)'
+  '(?:put\\s+.+?\\s+on\\s+hold|(?:is\\s+)?being\\s+(?:handled|worked\\s+on)\\s+by\\s+(?:another|a\\s+different|a\\s+separate)\\s+(?:ai|agent|process)|(?:another|a\\s+different|a\\s+separate)\\s+(?:ai|agent|process)\\s+(?:is|are)\\s+(?:handling|working\\s+on)\\s+(?:it|that|this|\\S+)|leave\\s+(?:it|that|this|\\S+)\\s+alone|hold\\s+off(?:\\s+on)?)'
 const STATUS_QUERY_SOURCE = "(?:status|what'?s\\s+(?:going\\s+on|happening)|how'?s\\s+it\\s+going)"
 
 // Verbs with no existing multi-action execution intent yet (research/fix/

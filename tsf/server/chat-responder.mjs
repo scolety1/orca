@@ -171,11 +171,17 @@ function isGenuineDirective(clause, sentence) {
   return true
 }
 
-function isConsequentialDirective(message) {
+// TSF UI FINDINGS #2-#16, Finding #4: generalized out of isConsequentialDirective
+// below (unchanged behavior there) so command-responder.mjs's own action-shaped-
+// ambiguity fallback can reuse the exact same genuine-directive judgment
+// (never a question, never negated/hedged, never merely quoted) against its
+// own bounded verb vocabulary -- never a second parser.
+export function messageContainsGenuineDirectiveFor(message, verbPatterns) {
+  const patterns = Array.isArray(verbPatterns) ? verbPatterns : [verbPatterns]
   for (const sentence of splitIntoSentences(message)) {
     for (const clause of splitIntoClauses(sentence)) {
       if (
-        TIM_REQUIRED_PATTERNS.some((pattern) => pattern.test(clause)) &&
+        patterns.some((pattern) => pattern.test(clause)) &&
         isGenuineDirective(clause, sentence)
       ) {
         return true
@@ -183,6 +189,10 @@ function isConsequentialDirective(message) {
     }
   }
   return false
+}
+
+function isConsequentialDirective(message) {
+  return messageContainsGenuineDirectiveFor(message, TIM_REQUIRED_PATTERNS)
 }
 
 // See the ACKNOWLEDGEMENT entry in INTENTS below for the full rationale.

@@ -232,6 +232,27 @@ test('Finding #3: natural fleet-status phrasings all answer with real grounded p
   }
 })
 
+// TSF UI FINDINGS #2-#16, Finding #4: an exact-matched project combined with
+// an action-shaped verb this codebase does not map to a real action (a
+// PAUSE synonym like "stop") must never read as ordinary, successful
+// conversation -- see command-action-ambiguity-fallback.mjs's own header.
+test('Finding #4: an unrecognized action-shaped verb against an exact-matched project answers NO ACTION WAS TAKEN, not a normal status reply', async () => {
+  const projects = [project('alpha-widgets', 'Alpha Widgets')]
+  const result = await respondCommand({ message: 'Stop Alpha Widgets.', projects, opState, clock })
+  assert.match(result.text, /NO ACTION WAS TAKEN/)
+})
+
+// Adversarial controls: a genuine question or a negated/hedged form using
+// the same verb vocabulary must NOT trigger the honest-failure fallback --
+// isGenuineDirective's own reused judgment is what keeps these ordinary.
+for (const message of ['Is Alpha Widgets stopped?', "Don't stop Alpha Widgets."]) {
+  test(`Finding #4 adversarial control: "${message}" is never misread as an ambiguous action attempt`, async () => {
+    const projects = [project('alpha-widgets', 'Alpha Widgets')]
+    const result = await respondCommand({ message, projects, opState, clock })
+    assert.doesNotMatch(result.text, /NO ACTION WAS TAKEN/)
+  })
+}
+
 // Phase 2: bounded follow-up conversational context. Deliberately narrow --
 // covered here rather than a separate file since it's a small addition to
 // this exact resolution-confidence gate the rest of this file already

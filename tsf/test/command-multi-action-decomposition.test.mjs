@@ -1,12 +1,18 @@
 // Multi-Project Command + Real Fleet Orchestration Overnight V1, Part A3.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { decomposeMultiAction, MULTI_ACTION_INTENTS } from '../domain/command-multi-action-decomposition.mjs'
+import {
+  decomposeMultiAction,
+  MULTI_ACTION_INTENTS
+} from '../domain/command-multi-action-decomposition.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
 
 const PROJECTS = [
   { id: 'niners-war-room', displayName: 'Niners War Room' },
-  { id: 'worldforge-sablewake-live-runtime-repair-v3', displayName: 'Worldforge-Sablewake-Live-Runtime-Repair-V3' },
+  {
+    id: 'worldforge-sablewake-live-runtime-repair-v3',
+    displayName: 'Worldforge-Sablewake-Live-Runtime-Repair-V3'
+  },
   { id: 'easylifehq-github-io', displayName: 'EasyLifeHQ' }
 ]
 const aliases = loadProjectAliases()
@@ -17,9 +23,9 @@ function entriesFor(target, entries) {
 
 // The mission's own literal example, verbatim.
 const MESSAGE =
-  "NWR is being handled by another AI, leave it alone. Nytheria looks good, adopt that run and keep going overnight. EasyLife needs serious work -- get EasyWorkouts up so I can start logging workouts."
+  'NWR is being handled by another AI, leave it alone. Nytheria looks good, adopt that run and keep going overnight. EasyLife needs serious work -- get EasyWorkouts up so I can start logging workouts.'
 
-test('the mission\'s own literal multi-project message decomposes into real, correctly-targeted, correctly-intended actions', () => {
+test("the mission's own literal multi-project message decomposes into real, correctly-targeted, correctly-intended actions", () => {
   const entries = decomposeMultiAction(MESSAGE, PROJECTS, aliases)
 
   const nwr = entriesFor('niners-war-room', entries)
@@ -27,18 +33,24 @@ test('the mission\'s own literal multi-project message decomposes into real, cor
   assert.equal(nwr[0].intent, 'EXTERNAL_WORK_HOLD')
 
   const worldforge = entriesFor('worldforge-sablewake-live-runtime-repair-v3', entries)
-  assert.deepEqual(new Set(worldforge.map((e) => e.intent)), new Set(['ADOPT_CANDIDATE_REPORT', 'START_KEEP_GOING']))
+  assert.deepEqual(
+    new Set(worldforge.map((e) => e.intent)),
+    new Set(['ADOPT_CANDIDATE_REPORT', 'START_KEEP_GOING'])
+  )
 
   const easylife = entriesFor('easylifehq-github-io', entries)
   assert.equal(easylife.length, 1)
   assert.equal(easylife[0].intent, 'ASSESS_AND_UPGRADE')
 
   // Every real target resolved, nothing fabricated, nothing dropped.
-  assert.deepEqual(new Set(entries.map((e) => e.target)), new Set([
-    'niners-war-room',
-    'worldforge-sablewake-live-runtime-repair-v3',
-    'easylifehq-github-io'
-  ]))
+  assert.deepEqual(
+    new Set(entries.map((e) => e.target)),
+    new Set([
+      'niners-war-room',
+      'worldforge-sablewake-live-runtime-repair-v3',
+      'easylifehq-github-io'
+    ])
+  )
 })
 
 test('never produces ADOPT_CANDIDATE_EXECUTE or any execution intent -- adoption is always report-only', () => {
@@ -48,11 +60,15 @@ test('never produces ADOPT_CANDIDATE_EXECUTE or any execution intent -- adoption
 })
 
 test('a single clause naming two projects attributes an entry to each, never drops one', () => {
-  const entries = decomposeMultiAction('get niners-war-room and worldforge-sablewake-live-runtime-repair-v3 ready', PROJECTS, aliases)
-  assert.deepEqual(new Set(entries.map((e) => e.target)), new Set([
-    'niners-war-room',
-    'worldforge-sablewake-live-runtime-repair-v3'
-  ]))
+  const entries = decomposeMultiAction(
+    'get niners-war-room and worldforge-sablewake-live-runtime-repair-v3 ready',
+    PROJECTS,
+    aliases
+  )
+  assert.deepEqual(
+    new Set(entries.map((e) => e.target)),
+    new Set(['niners-war-room', 'worldforge-sablewake-live-runtime-repair-v3'])
+  )
 })
 
 test('a clause naming no project at all is honestly dropped -- never a fabricated null-target action', () => {
@@ -62,7 +78,10 @@ test('a clause naming no project at all is honestly dropped -- never a fabricate
 
 test('a single-project message decomposes to entries for exactly one target', () => {
   const entries = decomposeMultiAction('worldforge needs serious work', PROJECTS, aliases)
-  assert.deepEqual(new Set(entries.map((e) => e.target)), new Set(['worldforge-sablewake-live-runtime-repair-v3']))
+  assert.deepEqual(
+    new Set(entries.map((e) => e.target)),
+    new Set(['worldforge-sablewake-live-runtime-repair-v3'])
+  )
   assert.ok(entries.some((e) => e.intent === 'ASSESS_AND_UPGRADE'))
 })
 
@@ -80,19 +99,30 @@ test('no separate chat threads required -- one decomposeMultiAction call covers 
 // that wrongly refused BOTH projects. ADOPT_CANDIDATE_DECLINED is real,
 // distinct decomposition output that fixes this at its root.
 test('a negated adoption clause decomposes to ADOPT_CANDIDATE_DECLINED, distinct from an affirmed adoption clause for a different project', () => {
-  const entries = decomposeMultiAction("Don't adopt niners-war-room; adopt EasyLifeHQ.", PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    "Don't adopt niners-war-room; adopt EasyLifeHQ.",
+    PROJECTS,
+    aliases
+  )
   const nwr = entries.find((e) => e.target === 'niners-war-room')
   const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
   assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
   assert.equal(easyLife.intent, 'ADOPT_CANDIDATE_REPORT')
 })
 
-for (const message of ["Do not adopt niners-war-room.", "Don't adopt niners-war-room.", "Never adopt niners-war-room."]) {
+for (const message of [
+  'Do not adopt niners-war-room.',
+  "Don't adopt niners-war-room.",
+  'Never adopt niners-war-room.'
+]) {
   test(`ADOPT_CANDIDATE_DECLINED, not ADOPT_CANDIDATE_REPORT, for a genuinely negated single-clause adoption request -- "${message}"`, () => {
     const entries = decomposeMultiAction(message, PROJECTS, aliases)
     const forNwr = entries.filter((e) => e.target === 'niners-war-room')
     assert.ok(forNwr.length > 0, 'must still resolve the target')
-    assert.ok(forNwr.every((e) => e.intent !== 'ADOPT_CANDIDATE_REPORT'), 'must never carry the unnegated report intent')
+    assert.ok(
+      forNwr.every((e) => e.intent !== 'ADOPT_CANDIDATE_REPORT'),
+      'must never carry the unnegated report intent'
+    )
     assert.ok(forNwr.some((e) => e.intent === 'ADOPT_CANDIDATE_DECLINED'))
   })
 }
@@ -116,7 +146,11 @@ test('"hold off on adopting X" carries BOTH EXTERNAL_WORK_HOLD and ADOPT_CANDIDA
 // project wrongly suppressing a different project's own, separate,
 // legitimate adoption request).
 test('adversarial-review fix: "and"-joined negated/affirmed adoption for DIFFERENT targets is correctly split, not shared', () => {
-  const entries = decomposeMultiAction("Don't adopt niners-war-room and adopt EasyLifeHQ.", PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    "Don't adopt niners-war-room and adopt EasyLifeHQ.",
+    PROJECTS,
+    aliases
+  )
   const nwr = entries.find((e) => e.target === 'niners-war-room')
   const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
   assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
@@ -124,7 +158,11 @@ test('adversarial-review fix: "and"-joined negated/affirmed adoption for DIFFERE
 })
 
 test('adversarial-review fix: comma-fragmented negation ("Do not, under any circumstances, adopt X") is not lost by clause-splitting', () => {
-  const entries = decomposeMultiAction('Do not, under any circumstances, adopt niners-war-room, but please adopt EasyLifeHQ.', PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    'Do not, under any circumstances, adopt niners-war-room, but please adopt EasyLifeHQ.',
+    PROJECTS,
+    aliases
+  )
   const nwr = entries.find((e) => e.target === 'niners-war-room')
   const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
   assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
@@ -136,7 +174,11 @@ test('adversarial-review fix: comma-fragmented negation ("Do not, under any circ
 // apart and must keep the SAME intent for every named target -- the "and"
 // split is verb-lookahead-gated specifically so this never breaks.
 test('a genuine shared adoption request across two projects ("adopt A and B") is NOT split -- both keep the same real intent', () => {
-  const entries = decomposeMultiAction('adopt niners-war-room and worldforge-sablewake-live-runtime-repair-v3', PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    'adopt niners-war-room and worldforge-sablewake-live-runtime-repair-v3',
+    PROJECTS,
+    aliases
+  )
   const nwr = entries.find((e) => e.target === 'niners-war-room')
   const worldforge = entries.find((e) => e.target === 'worldforge-sablewake-live-runtime-repair-v3')
   assert.equal(nwr.intent, 'ADOPT_CANDIDATE_REPORT')
@@ -166,7 +208,11 @@ test('a negated "assess/upgrade" clause decomposes to MULTI_ACTION_DECLINED, nev
 })
 
 test('a negated keep-going clause for one target never suppresses a genuine keep-going/assess request for a different target', () => {
-  const entries = decomposeMultiAction("Don't keep going on niners-war-room; EasyLifeHQ needs serious work.", PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    "Don't keep going on niners-war-room; EasyLifeHQ needs serious work.",
+    PROJECTS,
+    aliases
+  )
   const nwr = entries.find((e) => e.target === 'niners-war-room')
   const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
   assert.equal(nwr.intent, 'MULTI_ACTION_DECLINED')
@@ -177,7 +223,11 @@ test('a negated keep-going clause for one target never suppresses a genuine keep
 // tolerance in the "and"-split lookahead missed a comma directly after
 // "please" and a second filler word.
 test('adversarial-review fix: "and please, adopt X" (comma after please) still splits correctly', () => {
-  const entries = decomposeMultiAction("Don't adopt niners-war-room and please, adopt EasyLifeHQ.", PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    "Don't adopt niners-war-room and please, adopt EasyLifeHQ.",
+    PROJECTS,
+    aliases
+  )
   const nwr = entries.find((e) => e.target === 'niners-war-room')
   const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
   assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
@@ -185,7 +235,11 @@ test('adversarial-review fix: "and please, adopt X" (comma after please) still s
 })
 
 test('adversarial-review fix: "and please just adopt X" (two filler words) still splits correctly', () => {
-  const entries = decomposeMultiAction('Don\'t adopt niners-war-room and please just adopt EasyLifeHQ.', PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    "Don't adopt niners-war-room and please just adopt EasyLifeHQ.",
+    PROJECTS,
+    aliases
+  )
   const nwr = entries.find((e) => e.target === 'niners-war-room')
   const easyLife = entries.find((e) => e.target === 'easylifehq-github-io')
   assert.equal(nwr.intent, 'ADOPT_CANDIDATE_DECLINED')
@@ -219,7 +273,12 @@ for (const message of [
 for (const message of [
   'niners-war-room is being handled by another AI, leave it alone.',
   'hold off on niners-war-room.',
-  'leave niners-war-room alone.'
+  'leave niners-war-room alone.',
+  // TSF UI FINDINGS #2-#16, Finding #4: narrower real phrasings of the same
+  // intent that never matched before -- an owner's own directive form ("put
+  // X on hold") and a subject-first "separate process" claim.
+  'put niners-war-room on hold, a separate process is working on it.',
+  'a separate agent is working on niners-war-room, leave it alone.'
 ]) {
   test(`a genuine hold request still correctly fires EXTERNAL_WORK_HOLD -- "${message}"`, () => {
     const entries = decomposeMultiAction(message, PROJECTS, aliases)
@@ -227,6 +286,19 @@ for (const message of [
     assert.ok(forNwr.some((e) => e.intent === 'EXTERNAL_WORK_HOLD'))
   })
 }
+
+// Adversarial control: ordinary conversation mentioning "working on" the
+// project (no external-agent claim) must stay GENERAL, never a false-
+// positive hold.
+test('"keep working on X directly" is never misread as an external hold', () => {
+  const entries = decomposeMultiAction(
+    'keep working on niners-war-room directly.',
+    PROJECTS,
+    aliases
+  )
+  const forNwr = entries.filter((e) => e.target === 'niners-war-room')
+  assert.ok(forNwr.every((e) => e.intent !== 'EXTERNAL_WORK_HOLD'))
+})
 
 // Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
 // V1, Batch 5): the negator list never generalized the "-n't" contraction
@@ -245,7 +317,11 @@ for (const message of [
     const entries = decomposeMultiAction(message, PROJECTS, aliases)
     const forNwr = entries.filter((e) => e.target === 'niners-war-room')
     assert.ok(forNwr.some((e) => e.intent === 'MULTI_ACTION_DECLINED'))
-    assert.ok(forNwr.every((e) => !['ASSESS_AND_UPGRADE', 'START_KEEP_GOING', 'EXTERNAL_WORK_HOLD'].includes(e.intent)))
+    assert.ok(
+      forNwr.every(
+        (e) => !['ASSESS_AND_UPGRADE', 'START_KEEP_GOING', 'EXTERNAL_WORK_HOLD'].includes(e.intent)
+      )
+    )
   })
 }
 
@@ -253,8 +329,16 @@ for (const message of [
 // negation at all) must survive the contraction-family generalization
 // completely unchanged.
 test('the negation-vocabulary generalization does not regress a genuine, unnegated request', () => {
-  const entries = decomposeMultiAction('niners-war-room needs serious work. EasyLifeHQ needs serious work.', PROJECTS, aliases)
-  assert.ok(entries.filter((e) => e.target === 'niners-war-room').every((e) => e.intent === 'ASSESS_AND_UPGRADE'))
+  const entries = decomposeMultiAction(
+    'niners-war-room needs serious work. EasyLifeHQ needs serious work.',
+    PROJECTS,
+    aliases
+  )
+  assert.ok(
+    entries
+      .filter((e) => e.target === 'niners-war-room')
+      .every((e) => e.intent === 'ASSESS_AND_UPGRADE')
+  )
 })
 
 // Adversarial-review finding (BLOCKING, real, verified): a curly/"smart"
@@ -262,14 +346,18 @@ test('the negation-vocabulary generalization does not regress a genuine, unnegat
 // covered base "doesn't". Also covers the archaic "shan't" form found in
 // the same review pass.
 for (const message of [
-  "niners-war-room doesn\u2019t need work. EasyLifeHQ needs serious work.",
+  'niners-war-room doesn\u2019t need work. EasyLifeHQ needs serious work.',
   "niners-war-room shan't need work. EasyLifeHQ needs serious work."
 ]) {
   test(`curly apostrophes and archaic "-n't" forms are recognized as negation, never a real positive action -- "${message}"`, () => {
     const entries = decomposeMultiAction(message, PROJECTS, aliases)
     const forNwr = entries.filter((e) => e.target === 'niners-war-room')
     assert.ok(forNwr.some((e) => e.intent === 'MULTI_ACTION_DECLINED'))
-    assert.ok(forNwr.every((e) => !['ASSESS_AND_UPGRADE', 'START_KEEP_GOING', 'EXTERNAL_WORK_HOLD'].includes(e.intent)))
+    assert.ok(
+      forNwr.every(
+        (e) => !['ASSESS_AND_UPGRADE', 'START_KEEP_GOING', 'EXTERNAL_WORK_HOLD'].includes(e.intent)
+      )
+    )
   })
 }
 
@@ -280,15 +368,26 @@ for (const message of [
 // ADOPT_CANDIDATE_REPORT for that project -- decomposeMultiAction now
 // threads `projects` through to hasAdoptionVerb's own allowlist check.
 test('accept/approve object-recognition allowlist applies inside decomposeMultiAction too -- an unrelated co-mention never triggers ADOPT_CANDIDATE_REPORT', () => {
-  const entries = decomposeMultiAction('approve the budget for easylifehq-github-io. niners-war-room needs serious work.', PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    'approve the budget for easylifehq-github-io. niners-war-room needs serious work.',
+    PROJECTS,
+    aliases
+  )
   const forEasyLife = entries.filter((e) => e.target === 'easylifehq-github-io')
-  assert.ok(forEasyLife.every((e) => e.intent !== 'ADOPT_CANDIDATE_REPORT'), `expected no ADOPT_CANDIDATE_REPORT, got ${JSON.stringify(forEasyLife)}`)
+  assert.ok(
+    forEasyLife.every((e) => e.intent !== 'ADOPT_CANDIDATE_REPORT'),
+    `expected no ADOPT_CANDIDATE_REPORT, got ${JSON.stringify(forEasyLife)}`
+  )
 })
 
 // Positive control: a genuine "accept <ProjectName>" request inside a
 // multi-project message still correctly fires ADOPT_CANDIDATE_REPORT.
 test('accept/approve object-recognition allowlist does not regress a genuine accept request inside decomposeMultiAction', () => {
-  const entries = decomposeMultiAction('accept easylifehq-github-io. niners-war-room needs serious work.', PROJECTS, aliases)
+  const entries = decomposeMultiAction(
+    'accept easylifehq-github-io. niners-war-room needs serious work.',
+    PROJECTS,
+    aliases
+  )
   const forEasyLife = entries.filter((e) => e.target === 'easylifehq-github-io')
   assert.ok(forEasyLife.some((e) => e.intent === 'ADOPT_CANDIDATE_REPORT'))
 })
