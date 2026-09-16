@@ -110,6 +110,33 @@ test('a project with no Keep Going run falls through to the unchanged legacy cla
   assert.equal(summary.recentlyCompleted[0].adoptedAt, '2026-08-01T00:00:00.000Z')
 })
 
+// Real Codex adversarial-review finding on this same diff: a run-less
+// project (legacy mission.state ACTIVE, no Keep Going run at all) under a
+// real execution hold previously landed in `legacyActive` unconditionally
+// -- the SAME held != Working violation Round 2 Finding #18 closed for
+// run-driven projects, just missed on this run-less legacy path.
+test('a run-less legacy-ACTIVE project under a real execution hold lands in waiting, never active', () => {
+  const held = project('legacy-held', {
+    mission: { state: 'ACTIVE', id: 'm3', blockedReason: null }
+  })
+  const notHeld = project('legacy-not-held', {
+    mission: { state: 'ACTIVE', id: 'm4', blockedReason: null }
+  })
+  const hold = createProjectExecutionHold(
+    { projectId: 'legacy-held', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'tim' },
+    clock
+  )
+  const summary = summarizeWorkFromRuns([held, notHeld], {}, clock, {}, {}, { 'legacy-held': hold })
+  assert.deepEqual(
+    summary.active.map((p) => p.id),
+    ['legacy-not-held']
+  )
+  assert.deepEqual(
+    summary.waiting.map((p) => p.id),
+    ['legacy-held']
+  )
+})
+
 test('a run in WORKING/NEEDS_YOU/STALLED/COMPLETE buckets into active/needsYou/stalled/readyForAdoption respectively', () => {
   let workingRun = newRun('r-working', 'p-working')
   const wavePlan = {

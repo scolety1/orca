@@ -22,6 +22,7 @@
 // when its own primaryState says it isn't actually WORKING.
 import { fleetWorkStatus } from './fleet-work-status.mjs'
 import { computeResearchMissionPhase } from './research-mission.mjs'
+import { isProjectExecutionHoldActive } from './project-execution-hold.mjs'
 
 // Real free-path research execution finding: this aggregation (Work page/
 // Home) had zero ResearchMission awareness at all -- a mission genuinely
@@ -119,6 +120,7 @@ export function summarizeWorkFromRuns(
   // Legacy classification -- unchanged from the original summarizeWork,
   // computed only for projects with no real run (see module header).
   const legacyActive = []
+  const legacyWaiting = []
   const legacyReadyForAdoption = []
   const legacyRecentlyCompleted = []
   // `blocked` has no run-driven equivalent -- always the static,
@@ -137,8 +139,21 @@ export function summarizeWorkFromRuns(
   for (const project of projects) {
     const status = statusByProjectId.get(project.id)
     if (!status?.hasRun) {
+      // Real Codex adversarial-review finding on this same diff: a run-less
+      // project (no Keep Going run at all) with a legacy mission.state of
+      // ACTIVE/PLANNING/REVIEW previously landed in `legacyActive`
+      // unconditionally -- never checking whether it's also under a real
+      // execution hold. Reuses the SAME `isProjectExecutionHoldActive`
+      // check ownerPrimaryState() itself is built on (never a second
+      // derivation): a held run-less project moves to `legacyWaiting`
+      // instead, exactly like a held run-driven one already does above.
+      const legacyHeld = isProjectExecutionHoldActive(projectExecutionHolds[project.id])
       if (['ACTIVE', 'PLANNING', 'REVIEW'].includes(project.mission.state)) {
-        legacyActive.push(project)
+        if (legacyHeld) {
+          legacyWaiting.push(project)
+        } else {
+          legacyActive.push(project)
+        }
       }
       if (project.candidate?.state === 'READY_FOR_ADOPTION') {
         legacyReadyForAdoption.push(project)
@@ -268,7 +283,7 @@ export function summarizeWorkFromRuns(
 
   return {
     active: [...legacyActive, ...runActive, ...researchActive],
-    waiting: [...runWaiting, ...researchWaiting],
+    waiting: [...legacyWaiting, ...runWaiting, ...researchWaiting],
     queued,
     verifying,
     needsYou: [...needsYou, ...researchNeedsYou],
