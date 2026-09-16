@@ -92,9 +92,15 @@ test('classifyIntent recognizes the Finding #22 status-question family, subject-
     'Is it paused?',
     'Is NWR working?',
     'Why is NWR waiting?',
+    'Why is NWR on hold?',
     'Can TSF work on NWR right now?',
     'What is NWR doing?',
-    'What is the status of NWR?'
+    'What is the status of NWR?',
+    // Real Codex adversarial-review finding: the subject gap must cover a
+    // real, already-onboarded project's own (long) display name, not just
+    // short placeholders like "NWR".
+    'Is Worldforge-Sablewake-Live-Runtime-Repair-V3 on hold?',
+    'Is Customer Portal Authentication Modernization on hold?'
   ]) {
     assert.equal(classifyIntent(message), 'STATUS', message)
     assert.ok(CANONICAL_STATUS_FACT_PATTERN.test(message), message)
@@ -112,7 +118,10 @@ test('classifyIntent: Finding #22 predicates never hijack a genuine bug report o
     ['Fix the bug where NWR is working when it is actually held.', 'FEEDBACK_BUG'],
     ['This project is broken and not working right, please fix it.', 'FIX_REQUEST'],
     ['The log incorrectly prints what is NWR doing after startup.', 'GENERAL'],
-    ['Explain why NWR is waiting incorrectly in this report.', 'GENERAL']
+    ['Explain why NWR is waiting incorrectly in this report.', 'GENERAL'],
+    // The exact phrasing the real Codex adversarial review reported as a
+    // "substantive defect" before this anchoring fix.
+    ['Fix wording what is NWR doing in the dashboard.', 'GENERAL']
   ]
   for (const [message, expected] of cases) {
     assert.equal(classifyIntent(message), expected, message)

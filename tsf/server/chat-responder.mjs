@@ -334,7 +334,7 @@ const ACKNOWLEDGEMENT_PATTERN = {
 // gate can reuse this EXACT pattern rather than re-deriving which STATUS
 // sub-shape it is.
 export const CANONICAL_STATUS_FACT_PATTERN =
-  /\bstatus\b|(?:^|[.!?]\s+)(?:what(?:'?s| is) \S+ doing\b|is\s+.{0,30}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+.{0,30}?\b(?:waiting|paused|held|stuck|blocked)\b|can\s+.{0,30}?\bwork on\b)/i
+  /\bstatus\b|(?:^|[.!?]\s+)(?:what(?:'?s| is) \S+ doing\b|is\s+.{0,80}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+.{0,80}?\b(?:waiting|on hold|paused|held|stuck|blocked)\b|can\s+.{0,80}?\bwork on\b)/i
 
 const INTENTS = [
   {
@@ -375,9 +375,13 @@ const INTENTS = [
     // those have no "is"/"why is"/"can ... work on" lead-in, and (defense
     // in depth) chat-http-routes.mjs's own hold-setting/run-action branches
     // are checked before this classification ever decides the response
-    // shape anyway. The subject gap (`.{0,30}?`) between the lead word and
-    // the real predicate is deliberately loose -- the subject may be "it",
-    // "this", or the project's own real (arbitrarily-shaped) name/id, and
+    // shape anyway. The subject gap (`.{0,80}?`, widened from an initial
+    // `.{0,30}?` after a real Codex adversarial-review finding: a real,
+    // already-onboarded project's own display name --
+    // "Worldforge-Sablewake-Live-Runtime-Repair-V3" -- is 44 characters,
+    // longer than the original bound) between the lead word and the real
+    // predicate is deliberately loose -- the subject may be "it", "this",
+    // or the project's own real (arbitrarily-shaped) name/id, and
     // trying to enumerate every real project name here would be exactly
     // the "hardcode only the literal phrase" mistake this finding's own
     // fix explicitly rules out. The `is`/`why`/`can` lead-ins are anchored
