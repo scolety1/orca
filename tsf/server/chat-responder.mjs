@@ -334,7 +334,7 @@ const ACKNOWLEDGEMENT_PATTERN = {
 // gate can reuse this EXACT pattern rather than re-deriving which STATUS
 // sub-shape it is.
 export const CANONICAL_STATUS_FACT_PATTERN =
-  /\bwhat(?:'?s| is) \S+ doing\b|\bstatus\b|(?:^|[.!?]\s+)(?:is\s+.{0,30}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+.{0,30}?\b(?:waiting|paused|held|stuck|blocked)\b|can\s+.{0,30}?\bwork on\b)/i
+  /\bstatus\b|(?:^|[.!?]\s+)(?:what(?:'?s| is) \S+ doing\b|is\s+.{0,30}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+.{0,30}?\b(?:waiting|paused|held|stuck|blocked)\b|can\s+.{0,30}?\bwork on\b)/i
 
 const INTENTS = [
   {

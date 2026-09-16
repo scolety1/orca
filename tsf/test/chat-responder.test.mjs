@@ -4,7 +4,8 @@ import {
   classifyDecision,
   classifyIntent,
   respond,
-  isGenuineDirectiveAt
+  isGenuineDirectiveAt,
+  CANONICAL_STATUS_FACT_PATTERN
 } from '../server/chat-responder.mjs'
 import { loadRealPilotProjects } from '../server/portfolio-projection.mjs'
 import {
@@ -78,6 +79,56 @@ test('bug feedback names the project and gives a real next step, never a false "
 test('classifyIntent recognizes Command\'s "what\'s running (right now)?" as STATUS', () => {
   assert.equal(classifyIntent("what's running right now?"), 'STATUS')
   assert.equal(classifyIntent('whats running'), 'STATUS')
+})
+
+// TSF REAL-PILOT READINESS -- FINAL P1 CLOSURE, Finding #22: a genuine
+// hold/pause/working/waiting status question -- regardless of how the
+// subject is named -- must classify as STATUS and match
+// CANONICAL_STATUS_FACT_PATTERN, so it grounds in project.primaryState
+// instead of escalating to a live LLM call with no hold awareness.
+test('classifyIntent recognizes the Finding #22 status-question family, subject-agnostic', () => {
+  for (const message of [
+    'Is NWR on hold?',
+    'Is it paused?',
+    'Is NWR working?',
+    'Why is NWR waiting?',
+    'Can TSF work on NWR right now?',
+    'What is NWR doing?',
+    'What is the status of NWR?'
+  ]) {
+    assert.equal(classifyIntent(message), 'STATUS', message)
+    assert.ok(CANONICAL_STATUS_FACT_PATTERN.test(message), message)
+  }
+})
+
+// Real adversarial-review finding (Codex, bounded review of this same
+// diff): "what is X doing" was broadened from the original literal "it"
+// to any single-word subject, which -- before this pattern was anchored
+// to a real clause start -- could match a QUOTED phrase deep inside an
+// unrelated bug report, misclassifying it as STATUS instead of
+// FIX_REQUEST/FEEDBACK_BUG/GENERAL.
+test('classifyIntent: Finding #22 predicates never hijack a genuine bug report or unrelated sentence that merely contains the same words', () => {
+  const cases = [
+    ['Fix the bug where NWR is working when it is actually held.', 'FEEDBACK_BUG'],
+    ['This project is broken and not working right, please fix it.', 'FIX_REQUEST'],
+    ['The log incorrectly prints what is NWR doing after startup.', 'GENERAL'],
+    ['Explain why NWR is waiting incorrectly in this report.', 'GENERAL']
+  ]
+  for (const [message, expected] of cases) {
+    assert.equal(classifyIntent(message), expected, message)
+    assert.equal(CANONICAL_STATUS_FACT_PATTERN.test(message), false, message)
+  }
+})
+
+// A deliberative question about a FUTURE action, and a direct imperative,
+// must never be swept into the same grounded-status path -- CORE
+// INVARIANT: discussing/asking about an action != authorizing it, and a
+// status question is neither.
+test('classifyIntent: Finding #22 predicates never collide with a deliberative question or a direct imperative', () => {
+  assert.equal(classifyIntent('Should I put NWR on hold?'), 'QUESTION')
+  assert.equal(classifyIntent('Should I resume NWR?'), 'QUESTION')
+  assert.equal(classifyIntent('Put NWR on hold.'), 'GENERAL')
+  assert.equal(classifyIntent('Resume NWR.'), 'GENERAL')
 })
 
 // Phase 7 dogfood finding: real, reproduced via respondCommand against a
