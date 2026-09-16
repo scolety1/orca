@@ -187,4 +187,117 @@ test('zero-relay: the owner answer is durable, routes back to the real worker, a
   const received = JSON.parse(readFileSync(REPLY_DEBUG_FILE, 'utf8'))
   assert.equal(received.id, QUESTION_MESSAGE.id, 'the reply targets the exact worker message that asked')
   assert.equal(received.body, 'Approve', 'the owner answer is relayed back verbatim')
+
+  // Real Codex adversarial review finding: a relay failure (or a crash
+  // between resolve and relay) previously left no durable trace -- only a
+  // console.error. A successful relay must now be durably recorded too.
+  assert.equal(
+    readKeepGoingRun(PROJECT_ID).needsYou[0].escalation.relayedAt,
+    clock().toISOString(),
+    'a successful relay is durably recorded on the needsYou entry, not just console.error-able'
+  )
+  assert.equal(readKeepGoingRun(PROJECT_ID).needsYou[0].escalation.relayFailure, null)
+})
+
+// Real Codex adversarial review finding: newWorkerQuestions previously
+// deduped only against ALREADY-ESCALATED ids from a prior tick -- a single
+// mailbox response that itself contained the same message id twice slipped
+// through and raised two Needs You entries for one real question.
+test('zero-relay: the same message id appearing twice in ONE mailbox response still raises exactly one Needs You', async () => {
+  const store = makeFakeStore(baseRun())
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration(), store })
+
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      checkOrchestrationMessages: async () => ({
+        ok: true,
+        result: { messages: [QUESTION_MESSAGE, { ...QUESTION_MESSAGE }] }
+      })
+    }),
+    store
+  })
+
+  assert.equal(result.action, 'WORKER_ESCALATED_TO_NEEDS_YOU')
+  assert.equal(
+    store.readRun().needsYou.length,
+    1,
+    'a duplicate id within the SAME mailbox batch must never raise two entries for one question'
+  )
+})
+
+// Real Codex adversarial review finding: a failed mailbox read previously
+// fell through silently as "no pending questions", reaching the stall
+// check below it -- a real worker question hidden behind a transient CLI
+// failure could eventually get the run wrongly marked STALLED instead of
+// NEEDS_YOU.
+test('zero-relay: a failed mailbox read honestly bails instead of silently proceeding to the stall check', async () => {
+  const store = makeFakeStore(baseRun())
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration(), store })
+
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      checkOrchestrationMessages: async () => ({
+        ok: false,
+        reason: 'CLI_ERROR',
+        detail: 'deliberate transient failure'
+      })
+    }),
+    store
+  })
+
+  assert.equal(result.action, 'SETTLE_MESSAGE_CHECK_FAILED')
+  const run = store.readRun()
+  assert.equal(run.state, 'ACTIVE', 'never silently marked NEEDS_YOU or STALLED on a mailbox-read failure')
+  assert.equal(run.needsYou.length, 0, 'no question fabricated from a failed read')
+  assert.equal(run.tickLock, null, 'lock released, not left held')
+})
+
+// Real Codex adversarial review finding: a relay failure was previously
+// only a console.error -- invisible in canonical state, so a genuinely
+// failed `orchestration reply` (the worker's dispatch already ended, the
+// CLI is transiently unavailable, etc.) left the worker silently blocked
+// forever with no durable trace an operator or a future retry mechanism
+// could act on. The durable resolution itself must still stand (the
+// owner's answer is the source of truth, never rolled back for a
+// notification failure).
+test('zero-relay: a real relay failure is durably recorded on the needsYou entry, never silently lost, and never un-resolves the answer', async () => {
+  const STATE_FILE = path.join(
+    import.meta.dirname,
+    '..',
+    'server',
+    '.local-state',
+    `operator-state.test-keep-going-worker-escalation-relay-fail-${process.pid}.json`
+  )
+  process.env.TSF_UI_STATE_FILE = STATE_FILE
+  for (const suffix of ['', '.tmp', '.keep-going.lock']) {
+    rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  }
+
+  const { withKeepGoingRun, readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
+  await withKeepGoingRun(PROJECT_ID, () => baseRun())
+
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration() })
+  const orchestration = okOrchestration({
+    checkOrchestrationMessages: async () => ({ ok: true, result: { messages: [QUESTION_MESSAGE] } })
+  })
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration })
+  const needsYouId = readKeepGoingRun(PROJECT_ID).needsYou[0].id
+
+  process.env.STUB_ORCA_MODE = 'error'
+  try {
+    const resolved = await resolveProjectNeedsYou(PROJECT_ID, needsYouId, 'Approve', clock)
+    assert.equal(
+      resolved.state,
+      'ACTIVE',
+      'the durable resolution itself must still succeed even though the relay failed'
+    )
+    assert.equal(resolved.needsYou[0].resolution, 'Approve', 'never rolled back for a relay failure')
+  } finally {
+    process.env.STUB_ORCA_MODE = 'success'
+  }
+
+  const escalation = readKeepGoingRun(PROJECT_ID).needsYou[0].escalation
+  assert.equal(escalation.relayedAt, null, 'never falsely claims a successful relay')
+  assert.ok(escalation.relayFailure, 'the failure is durably recorded, not lost after only a console.error')
+  assert.equal(escalation.relayFailure.reason, 'CLI_ERROR')
 })

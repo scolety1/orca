@@ -760,16 +760,31 @@ async function commitDispatchedWave(
 // (e.g. this module's own heartbeats). Filters out ids already present as
 // an escalation.messageId on the run's own needsYou (dedup -- a message
 // this tick already escalated must never raise a second, duplicate
-// question just because it is still unanswered on a later tick).
+// question just because it is still unanswered on a later tick). Real
+// Codex adversarial review finding: also requires a truthy `id` (with no
+// id there is no correlation key for either dedup or the later reply-back,
+// so such a message can never be safely escalated) and dedupes WITHIN this
+// same batch by id -- alreadyEscalatedMessageIds alone only guards against
+// a PRIOR tick's escalations, so a single `check` response that itself
+// contains the same message id twice previously produced two Needs You
+// entries for one real question.
 function newWorkerQuestions(messages, alreadyEscalatedMessageIds) {
-  return (messages ?? []).filter(
-    (m) =>
-      m.type === 'question' &&
-      typeof m.from_handle === 'string' &&
-      m.from_handle.startsWith('dispatch:') &&
-      m.body?.trim() &&
-      !alreadyEscalatedMessageIds.has(m.id)
-  )
+  const seenThisBatch = new Set()
+  return (messages ?? []).filter((m) => {
+    if (
+      m.type !== 'question' ||
+      typeof m.from_handle !== 'string' ||
+      !m.from_handle.startsWith('dispatch:') ||
+      !m.body?.trim() ||
+      !m.id ||
+      alreadyEscalatedMessageIds.has(m.id) ||
+      seenThisBatch.has(m.id)
+    ) {
+      return false
+    }
+    seenThisBatch.add(m.id)
+    return true
+  })
 }
 
 function parseMessagePayload(message) {
@@ -845,9 +860,23 @@ async function settleStep(projectId, clock, orchestration, store) {
     const messagesResult = await orchestration.checkOrchestrationMessages({
       run: orchestrationRunId
     })
-    const pendingQuestions = messagesResult.ok
-      ? newWorkerQuestions(messagesResult.result?.messages, alreadyEscalated)
-      : []
+    // Real Codex adversarial review finding: a failed mailbox read used to
+    // silently fall through to the stall-threshold check below as if it
+    // had confirmed there was nothing pending -- a real worker question
+    // could sit unseen behind a transient CLI failure until the wave aged
+    // past stallThresholdMs and got marked STALLED, contradicting the
+    // "must never be reported as a silent stall" guarantee this same
+    // feature exists to provide. Bail out honestly instead (same shape as
+    // the tasksResult failure just above): release the lock, report the
+    // real failure, and let the NEXT tick retry the mailbox read rather
+    // than guess.
+    if (!messagesResult.ok) {
+      return commitReleaseOnly(projectId, store, claimed, clock, 'SETTLE_MESSAGE_CHECK_FAILED', undefined, {
+        reason: messagesResult.reason,
+        detail: messagesResult.detail
+      })
+    }
+    const pendingQuestions = newWorkerQuestions(messagesResult.result?.messages, alreadyEscalated)
     if (pendingQuestions.length > 0) {
       try {
         const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {

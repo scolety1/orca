@@ -16,6 +16,7 @@ import {
 import { withKeepGoingRun, readKeepGoingRun } from './keep-going-run-store.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
 import { replyToOrchestrationMessage } from '../adapters/orca-orchestration-bridge.mjs'
+import { recordNeedsYouRelayOutcome } from '../domain/keep-going.mjs'
 
 // Mirrors keep-going-http-routes.mjs's own mutateThroughStore exactly (not
 // exported there, so duplicated rather than reaching across a route file
@@ -103,9 +104,31 @@ export async function resolveProjectNeedsYou(
       body,
       run: escalation.orchestrationRunId
     })
+    // Real Codex adversarial review finding: a relay failure (or a crash
+    // between the resolve above and this call) previously left the
+    // worker silently blocked forever, with the failure visible only in
+    // a console.error log, not in canonical state. Stamped onto the SAME
+    // needsYou entry's escalation field (a second, best-effort store
+    // write -- never un-resolves the Needs You, never throws past this
+    // point) so a stuck relay is durably discoverable, not lost.
+    const outcome = replyResult.ok
+      ? { relayedAt: clock().toISOString(), relayFailure: null }
+      : {
+          relayedAt: null,
+          relayFailure: { reason: replyResult.reason, detail: replyResult.detail, at: clock().toISOString() }
+        }
     if (!replyResult.ok) {
       console.error(
         `resolveProjectNeedsYou: durably resolved ${needsYouId} but failed to relay the answer back to worker message ${escalation.messageId} (${replyResult.reason}: ${replyResult.detail})`
+      )
+    }
+    try {
+      await withKeepGoingRun(projectId, (current) =>
+        recordNeedsYouRelayOutcome(current, needsYouId, outcome, clock)
+      )
+    } catch (error) {
+      console.error(
+        `resolveProjectNeedsYou: failed to durably record the relay outcome for ${needsYouId}: ${error.message}`
       )
     }
   }

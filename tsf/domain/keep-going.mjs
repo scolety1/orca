@@ -754,6 +754,37 @@ export function resolveNeedsYou(run, needsYouId, resolution, clock, expectedRevi
   return transitionRun(next, 'ACTIVE', { reason: 'ALL_NEEDS_YOU_RESOLVED' }, clock)
 }
 
+// TSF Overnight Product Completion V1, Phase 1 (zero-relay), real Codex
+// adversarial review finding: resolveNeedsYou above durably commits the
+// owner's answer BEFORE any attempt to relay it back to a real worker
+// (see server/command-run-action-bridge.mjs). A relay failure was
+// previously only a console.error -- invisible in canonical state, so a
+// crash between commit and relay, or a real relay failure, left the
+// worker silently blocked forever with no durable trace. Bookkeeping-only:
+// never touches run.state or resolution/resolvedAt, just stamps the
+// relay outcome onto the SAME needsYou entry's escalation field so it is
+// visible to any future caller/operator/retry mechanism, not lost. A
+// missing/already-cleared entry is a no-op (the resolve itself is the
+// source of truth; this is best-effort bookkeeping on top of it).
+export function recordNeedsYouRelayOutcome(run, needsYouId, outcome, clock) {
+  if (!run) {
+    return run
+  }
+  const index = run.needsYou.findIndex((entry) => entry.id === needsYouId)
+  if (index === -1) {
+    return run
+  }
+  const next = deepClone(run)
+  const entry = next.needsYou[index]
+  next.needsYou[index] = {
+    ...entry,
+    escalation: entry.escalation ? { ...entry.escalation, ...outcome } : entry.escalation
+  }
+  next.revision += 1
+  next.updatedAt = isoNow(clock)
+  return next
+}
+
 // Durable, hash-chained checkpoint after each meaningful phase — the
 // anti-drift anchor a resumed/rehydrated run reads before continuing.
 export function checkpointRun(
