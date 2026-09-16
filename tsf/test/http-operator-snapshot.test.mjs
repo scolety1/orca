@@ -110,9 +110,12 @@ test('PARITY: a real Keep Going run appears with the SAME owner-facing state in 
     const work = await workRes.json()
 
     // The fresh run has no wave dispatched yet -- legacy /api/work buckets
-    // it under `active` (RUN_FEED_SECTION.PLANNING === 'active'); the new
-    // canonical owner model calls the SAME real fact PLANNING directly.
-    assert.ok(work.active.some((p) => p.id === PROJECT_ID))
+    // it under `waiting` (TSF REAL-PILOT READINESS CLOSURE V1, Round 2
+    // Finding #18: a PLANNING-state run's canonical primaryState is
+    // WAITING/Preparing, never active/working); the new canonical owner
+    // model calls the SAME real fact PLANNING directly.
+    assert.ok(!work.active.some((p) => p.id === PROJECT_ID))
+    assert.ok(work.waiting.some((p) => p.id === PROJECT_ID))
     const snapshotItem = snapshot.work.find(
       (i) => i.id === `run:${PROJECT_ID}` || i.projectId === PROJECT_ID
     )

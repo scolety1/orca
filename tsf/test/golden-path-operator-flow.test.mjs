@@ -108,13 +108,20 @@ async function chat(base, payload) {
 // a STALLED/NEEDS_YOU/COMPLETE run must appear in EXACTLY its one real
 // section, never elsewhere.
 const WORK_SECTIONS_FOR_RUN_STATE = {
-  ACTIVE: ['active', 'verifying'],
+  // TSF REAL-PILOT READINESS CLOSURE V1, Round 2 Finding #18: run.state
+  // ACTIVE spans two real, distinct owner-facing situations -- a fresh,
+  // not-yet-dispatched run (canonical primaryState WAITING/Preparing, now
+  // correctly in Work's own 'waiting' section) and a genuinely dispatched,
+  // in-flight wave ('active'/WORKING). Both are legitimately "ACTIVE" at
+  // the run.state layer; only the work-bucket differs.
+  ACTIVE: ['active', 'verifying', 'waiting'],
   STALLED: ['stalled'],
   NEEDS_YOU: ['needsYou'],
   COMPLETE: ['readyForAdoption']
 }
 const ALL_WORK_SECTIONS = [
   'active',
+  'waiting',
   'queued',
   'verifying',
   'needsYou',
@@ -183,7 +190,9 @@ test('GOLDEN PATH: a governed mission moves ACTIVE -> STALLED -> recovered ACTIV
 
     // 3. Dispatch a real wave.
     const dispatchTick = await post(base, `/api/keep-going/${PROJECT_ID}/tick`, {
-      candidateWorkItems: [{ id: 'golden-path-item', scope: ['a.md'], worktree: 'C:/repo/golden-path-wt' }]
+      candidateWorkItems: [
+        { id: 'golden-path-item', scope: ['a.md'], worktree: 'C:/repo/golden-path-wt' }
+      ]
     })
     assert.equal(dispatchTick.body.action, 'WAVE_DISPATCHED')
     await assertCanonicalStateAgreement(base, 'ACTIVE')
@@ -235,7 +244,11 @@ test('GOLDEN PATH: a real retry-budget-exceeded Needs You escalation reads ident
     })
     assert.equal(started.body.started, true)
 
-    const workItem = { id: 'golden-path-retry-item', scope: ['b.md'], worktree: 'C:/repo/golden-path-wt2' }
+    const workItem = {
+      id: 'golden-path-retry-item',
+      scope: ['b.md'],
+      worktree: 'C:/repo/golden-path-wt2'
+    }
     const clock = () => new Date()
 
     // Exhausts the real retry budget (maxRetriesPerTask: 2, domain/keep-
@@ -266,7 +279,10 @@ test('GOLDEN PATH: a real retry-budget-exceeded Needs You escalation reads ident
     assert.equal(cross.keepGoing.readyForAdoption, false)
     assert.equal(cross.work.needsYou[0].liveWorkFeed.state, 'NEEDS_YOU')
 
-    const nextAction = await chat(base, { projectId: PROJECT_ID, message: 'what should we do next?' })
+    const nextAction = await chat(base, {
+      projectId: PROJECT_ID,
+      message: 'what should we do next?'
+    })
     assert.match(nextAction.body.text, /NEEDS_YOU/)
     assert.match(
       nextAction.body.text,
@@ -327,6 +343,9 @@ test('GOLDEN PATH: Planner Chat honestly refuses a negated consequential instruc
     // real cross-surface proof for this state is the REST agreement above.
     const readyChat = await chat(base, { projectId: PROJECT_ID, message: 'what is it doing?' })
     assert.equal(readyChat.status, 200)
-    assert.ok(readyChat.body.text?.length > 0, 'chat must still answer honestly once COMPLETE, not error out')
+    assert.ok(
+      readyChat.body.text?.length > 0,
+      'chat must still answer honestly once COMPLETE, not error out'
+    )
   })
 })
