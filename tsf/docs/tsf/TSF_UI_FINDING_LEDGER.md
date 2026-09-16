@@ -231,9 +231,20 @@ agreed across HQ/Work/Projects/Command), not a behavior regression. Fixed
 in the test only, commit `77af424290`. UI typecheck (`tsc -b --noEmit`):
 clean.
 
-**Live cutover.** See the top-level closure report for the
-`/api/update-safety` check and cutover/smoke-check result against the
-real owner instance.
+**Live cutover.** `/api/update-safety` read `SAFE_NOW` against the real
+owner instance; the UI bundle was rebuilt in place to stamp `65a4b2d455`.
+The actual backend-process restart was blocked in-session by the sandbox's
+own process-termination policy (a genuine tooling blocker, not bypassed --
+TSF deliberately ships no self-restart endpoint, see
+`TSF_SAFE_UPDATE_MANAGER_V1.md`); the owner completed the restart via
+Orca's own plugin reload. Post-cutover, `GET /api/runtime-identity`
+confirmed `runningCommit == diskCommit == uiBundleCommit == 65a4b2d455`
+(`UP_TO_DATE`). Read-only smoke checks against the now-live instance:
+`update-safety` still `SAFE_NOW`; `operator-snapshot` serving 17 projects,
+0 Needs You, 6 goals (unchanged shape, no data loss); NWR's own run still
+`PAUSED`/`OPERATOR_PAUSED` at revision `241`, untouched throughout; a real
+project's card correctly serves the new `primaryState`/`primaryReasonLabel`
+fields end to end.
 
 ## Personal preference / Good as-is (recorded, not acted on)
 
