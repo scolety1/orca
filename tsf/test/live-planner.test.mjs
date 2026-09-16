@@ -231,7 +231,12 @@ test('Bug 5 guardrail: the system prompt explicitly forbids fabricated conversat
   const debugFile = path.join(dir, 'argv.json')
   try {
     await withStubEnv(
-      { TSF_PLANNER_CLAUDE_COMMAND: STUB, STUB_MODE: 'success', STUB_SESSION_ID: 's1', STUB_DEBUG_FILE: debugFile },
+      {
+        TSF_PLANNER_CLAUDE_COMMAND: STUB,
+        STUB_MODE: 'success',
+        STUB_SESSION_ID: 's1',
+        STUB_DEBUG_FILE: debugFile
+      },
       async () => {
         await invokeLivePlanner({
           project: project({ id: 'nwr-fixture' }),
@@ -244,9 +249,21 @@ test('Bug 5 guardrail: the system prompt explicitly forbids fabricated conversat
     const seen = JSON.parse(readFileSync(debugFile, 'utf8'))
     const prompt = seen.args[seen.args.indexOf('--system-prompt') + 1]
     assert.match(prompt, /never assert conversational continuity you cannot see/i)
-    assert.match(prompt, /same as a second ago/i, 'the exact real-pilot phrasing must be named as an example to avoid')
-    assert.match(prompt, /\(no prior turns in this session\)/, 'an honestly empty history must say so explicitly, not omit the block')
-    assert.doesNotMatch(prompt, /nytheria/i, "a different project's own conversation must never leak into this project's prompt")
+    assert.match(
+      prompt,
+      /same as a second ago/i,
+      'the exact real-pilot phrasing must be named as an example to avoid'
+    )
+    assert.match(
+      prompt,
+      /\(no prior turns in this session\)/,
+      'an honestly empty history must say so explicitly, not omit the block'
+    )
+    assert.doesNotMatch(
+      prompt,
+      /nytheria/i,
+      "a different project's own conversation must never leak into this project's prompt"
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -257,7 +274,12 @@ test('UX polish guardrail: the system prompt instructs leading with state/blocke
   const debugFile = path.join(dir, 'argv.json')
   try {
     await withStubEnv(
-      { TSF_PLANNER_CLAUDE_COMMAND: STUB, STUB_MODE: 'success', STUB_SESSION_ID: 's1', STUB_DEBUG_FILE: debugFile },
+      {
+        TSF_PLANNER_CLAUDE_COMMAND: STUB,
+        STUB_MODE: 'success',
+        STUB_SESSION_ID: 's1',
+        STUB_DEBUG_FILE: debugFile
+      },
       async () => {
         await invokeLivePlanner({
           project: project({ id: 'nytheria-fixture' }),
@@ -322,6 +344,9 @@ test('BUG-13: a real Keep Going run for this project reaches the live planner sy
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// Finding #22 (live-planner ownerPrimaryState grounding) has its own test
+// file: live-planner-canonical-status-fact.test.mjs.
 
 // Real V1 stabilization finding: the planner subprocess's cwd was nested
 // inside THIS repo (tsf/server/.local-state/planner-cwd), so a real `claude

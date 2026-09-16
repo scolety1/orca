@@ -178,6 +178,21 @@ export function buildProjectContextCapsule(
 
 function buildSystemPrompt({ project, capsule, opState, recentHistory, attachments }) {
   const operatorFacts = {
+    // TSF REAL-PILOT READINESS -- FINAL P1 CLOSURE, Finding #22: the ONE
+    // canonical primaryState/primaryReasonLabel fact -- already present on
+    // `project` (project-catalog.mjs's withPrimaryState, hold-aware, never
+    // re-derived here) -- was never included anywhere in this prompt, so a
+    // genuine "is it on hold?" style question this route still escalates
+    // to a live call (chat-responder.mjs's narrower deterministic grounding
+    // only covers a bounded set of phrasings) could confidently deny a
+    // real, active hold with zero basis to know otherwise. Always present
+    // (never omitted even when null) so its ABSENCE is never itself
+    // ambiguous -- the model must ground any status/hold/working/waiting
+    // claim in this field, never invent one.
+    ownerPrimaryState: {
+      state: project.primaryState ?? null,
+      reason: project.primaryReasonLabel ?? null
+    },
     releaseTrack: {
       stable: project.release.stable,
       testing: project.release.testing,
@@ -222,6 +237,8 @@ function buildSystemPrompt({ project, capsule, opState, recentHistory, attachmen
     `${firstTurnNotice}You are the TSF (Thousand Sunny Fleet) Planner — the PLANNER_DEEP role in an Orca-based multi-project operator system. You are having a real, natural conversation with Tim, the operator, about ONE selected project.`,
     '',
     'Ground every answer in the project context capsule and operator facts below. Do not invent facts, evidence, test results, or history beyond what is given here and in the conversation — if you do not know something, say so plainly rather than guessing.',
+    '',
+    'If Tim asks whether this project is on hold, paused, working, waiting, blocked, or otherwise about its current status, answer strictly from operatorFacts.ownerPrimaryState below (state WAITING with reason "Execution hold" means it genuinely IS on hold and TSF will not resume/dispatch work on it until the hold is released) — never guess or infer this from absence of other blockers.',
     '',
     '=== PROJECT CONTEXT CAPSULE (TSF_PROJECT_CONTEXT_CAPSULE_V1) ===',
     JSON.stringify(capsule, null, 2),
@@ -378,7 +395,9 @@ export function stripSchemaMetaKeys(jsonSchema) {
 // field-source-reconciliation, command-scope-classifier,
 // command-research-spec-synthesis, llm-latent-knowledge-research-worker).
 export function conformsToRequiredShape(parsed, jsonSchema) {
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { return false }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return false
+  }
   const required = Array.isArray(jsonSchema?.required) ? jsonSchema.required : []
   return required.every((key) => key in parsed)
 }
@@ -537,7 +556,9 @@ export async function invokeLivePlanner({
   // same way http-server.mjs's own statusWorthy check does, so this
   // capsule can never disagree with what those surfaces show.
   const liveRun = opState.keepGoingRuns?.[project.id] ?? null
-  const liveGap = liveRun ? compareStateToGoal(liveRun, { verifiedSatisfied: [] }, () => new Date()) : null
+  const liveGap = liveRun
+    ? compareStateToGoal(liveRun, { verifiedSatisfied: [] }, () => new Date())
+    : null
   const capsule = buildProjectContextCapsule(
     project,
     opState.projectMemory?.[project.id],
@@ -763,7 +784,9 @@ export async function invokeLiveStructuredAnalysis({
     // -- a shape mismatch would reproduce identically on the same input) --
     // never silently accepted as ok:true just because it happened to parse.
     const required = Array.isArray(jsonSchema?.required) ? jsonSchema.required : []
-    const missing = required.filter((key) => !(parsed && typeof parsed === 'object' && !Array.isArray(parsed) && key in parsed))
+    const missing = required.filter(
+      (key) => !(parsed && typeof parsed === 'object' && !Array.isArray(parsed) && key in parsed)
+    )
     return {
       ok: false,
       role: 'PLANNER_DEEP',

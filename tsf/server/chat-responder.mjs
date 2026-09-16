@@ -318,6 +318,24 @@ const ACKNOWLEDGEMENT_PATTERN = {
   }
 }
 
+// TSF REAL-PILOT READINESS -- FINAL P1 CLOSURE, Finding #22: the narrower
+// subset of STATUS-shaped questions with a real, precise, canonical-fact
+// answer (hold/pause/working/blocked state, "why is X waiting", "can TSF
+// work on X", "what is X doing", "what's the status of X") -- these must
+// ALWAYS ground in project.primaryState/primaryReasonLabel, whether or not
+// a live Keep Going run exists (a run-less held project has a real,
+// canonical hold fact too). Deliberately narrower than all of STATUS:
+// the open-ended "what's going on/where are we/catch me up/what's running"
+// phrasings keep their existing, unchanged, run-dependent behavior
+// (isLiveRunRelevantFor) -- those are genuinely open-ended catch-up
+// requests the live planner can still add real value to when no run
+// exists, not the precise, binary-ish factual questions this pattern
+// targets. Exported so chat-http-routes.mjs's own groundedResponseWorthy
+// gate can reuse this EXACT pattern rather than re-deriving which STATUS
+// sub-shape it is.
+export const CANONICAL_STATUS_FACT_PATTERN =
+  /\bwhat(?:'?s| is) \S+ doing\b|\bstatus\b|(?:^|[.!?]\s+)(?:is\s+.{0,30}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+.{0,30}?\b(?:waiting|paused|held|stuck|blocked)\b|can\s+.{0,30}?\bwork on\b)/i
+
 const INTENTS = [
   {
     id: 'STATUS',
@@ -340,8 +358,39 @@ const INTENTS = [
     // same GLOBAL_STATUS question in different words, but none matched --
     // kept in sync with command-scope-classifier.mjs's own deterministic
     // fallback gaining the identical alternative for the same root cause.
-    pattern:
-      /\b(what(?:'?s| is) going on|status|where are we|update me|catch me up|what (is|'s) it doing|what(?:'?s| is) running|(everyone|the fleet|all projects)\s+(?:is\s+|are\s+)?(doing|working on|up to))\b/i
+    //
+    // TSF REAL-PILOT READINESS -- FINAL P1 CLOSURE, Finding #22: a genuine,
+    // non-imperative status question naming a real predicate ("is X on
+    // hold?", "why is X waiting?", "can TSF work on X right now?", "what is
+    // X doing?" with the project's own name rather than only the literal
+    // word "it") previously matched none of these alternatives, fell
+    // through to the generic QUESTION intent, and (chat-http-routes.mjs's
+    // own groundedResponseWorthy gate) escalated to a live LLM call whose
+    // prompt never included the project's real execution-hold record or
+    // canonical primaryState -- the model could then confidently deny a
+    // real, active hold. These predicates are intentionally subject-
+    // agnostic (no literal "it"/project-name requirement) since this
+    // classifier only ever sees one already-resolved project's message.
+    // Never matches a genuine imperative ("put X on hold", "pause X") --
+    // those have no "is"/"why is"/"can ... work on" lead-in, and (defense
+    // in depth) chat-http-routes.mjs's own hold-setting/run-action branches
+    // are checked before this classification ever decides the response
+    // shape anyway. The subject gap (`.{0,30}?`) between the lead word and
+    // the real predicate is deliberately loose -- the subject may be "it",
+    // "this", or the project's own real (arbitrarily-shaped) name/id, and
+    // trying to enumerate every real project name here would be exactly
+    // the "hardcode only the literal phrase" mistake this finding's own
+    // fix explicitly rules out. The `is`/`why`/`can` lead-ins are anchored
+    // to a real clause start (start of message, or right after sentence
+    // punctuation) via a lookbehind -- a genuine question opens with these
+    // words; a declarative sentence that merely CONTAINS "is ... working"
+    // deep inside a bug report ("this project is broken and not working
+    // right, please fix it") must never be swept in here instead of
+    // FIX_REQUEST/FEEDBACK_BUG.
+    pattern: new RegExp(
+      `\\b(what(?:'?s| is) going on|where are we|update me|catch me up|what(?:'?s| is) running|(everyone|the fleet|all projects)\\s+(?:is\\s+|are\\s+)?(doing|working on|up to))\\b|${CANONICAL_STATUS_FACT_PATTERN.source}`,
+      'i'
+    )
   },
   // Phase 7 dogfood finding: "What finished?" (this phase's own command
   // list, and a natural fleet-wide phrasing) matched none of the alternatives
@@ -591,9 +640,24 @@ function recentHistoryLine(run) {
   return `Recent history: ${phases.join(' -> ')}.`
 }
 
+// TSF REAL-PILOT READINESS -- FINAL P1 CLOSURE, Finding #22: the ONE
+// canonical primaryState/primaryReasonLabel fact -- already present on
+// every project object this whole route already resolves
+// (project-catalog.mjs's withPrimaryState, hold-aware, never re-derived
+// here) -- is now always the FIRST fact any grounded status answer
+// states, never omitted. The exact same field HQ/Work/Projects/Command's
+// own sidebar/Project Overview all already read, so a grounded chat
+// answer can never contradict them -- most concretely, an active
+// execution hold (primaryState WAITING, reasonLabel "Execution hold")
+// is now always stated, closing the real false-denial gap a live LLM
+// call (never given this fact at all) could otherwise fall into.
+function canonicalStatusClause(project) {
+  return `${project.primaryState}${project.primaryReasonLabel ? ` (${project.primaryReasonLabel})` : ''}`
+}
+
 function respondStatusOrNextActionFromRun(intent, project, run, gap) {
   const feed = projectLiveWorkFeedState(run, gap)
-  const base = `**${project.displayName}** — Keep Going run \`${run.id}\` is **${feed.state}**: ${feed.reason}.`
+  const base = `**${project.displayName}** is **${canonicalStatusClause(project)}** — Keep Going run \`${run.id}\` is **${feed.state}**: ${feed.reason}.`
   if (intent === 'FINISHED') {
     return `No, not yet — ${base}`
   }
@@ -633,7 +697,7 @@ function respondStatus(project) {
   const m = project.mission
   const r = project.release
   const reason = m.blockedReason?.replace(/\.+$/, '')
-  return `**${project.displayName}** — mission \`${m.id ?? 'none'}\` is **${m.state}**. Health: **${project.health.status}**${reason ? ` — ${reason}.` : '.'} Stable at \`${(r.stable.head ?? 'unknown').slice(0, 10)}\`, Testing: ${r.testing}, Adoption: ${r.adoption}.`
+  return `**${project.displayName}** is **${canonicalStatusClause(project)}** — mission \`${m.id ?? 'none'}\` is **${m.state}**. Health: **${project.health.status}**${reason ? ` — ${reason}.` : '.'} Stable at \`${(r.stable.head ?? 'unknown').slice(0, 10)}\`, Testing: ${r.testing}, Adoption: ${r.adoption}.`
 }
 
 function respondFinished(project) {

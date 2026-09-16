@@ -12,7 +12,8 @@ import {
   respond,
   classifyIntent,
   classifyDecision,
-  isLiveRunRelevantFor
+  isLiveRunRelevantFor,
+  CANONICAL_STATUS_FACT_PATTERN
 } from './chat-responder.mjs'
 import { invokeLivePlanner, providerLabel, fallbackLabel } from './live-planner.mjs'
 import { planAndDispatchFromChat, ensureWorktreeForDispatch } from './chat-dispatch-bridge.mjs'
@@ -398,7 +399,26 @@ export async function handleChatRoute(
     // grounded, zero-LLM-call answer; routed the same way statusWorthy/
     // feedbackWorthy already are.
     const acknowledgementWorthy = intent === 'ACKNOWLEDGEMENT'
-    const groundedResponseWorthy = statusWorthy || feedbackWorthy || acknowledgementWorthy
+    // TSF REAL-PILOT READINESS -- FINAL P1 CLOSURE, Finding #22: a STATUS
+    // question with a real, precise, canonical-fact answer (hold/pause/
+    // working/blocked state, "why is X waiting", "can TSF work on X",
+    // "what is X doing", "what's the status of X") must be grounded
+    // regardless of whether a live Keep Going run exists -- a run-less
+    // project (e.g. a real, active execution hold with no run ever
+    // dispatched) still has a real, canonical primaryState/
+    // primaryReasonLabel (project-catalog.mjs's withPrimaryState) that
+    // respond()'s own respondStatus already reads; it must never fall
+    // through to a live LLM call with no awareness of that fact. Reuses
+    // the EXACT same pattern chat-responder.mjs's own STATUS classifier
+    // is built from -- never a second, independently-drifting check.
+    // Deliberately narrower than all of STATUS: an open-ended "what's
+    // going on"/"catch me up" question keeps its existing, unchanged,
+    // run-dependent behavior (statusWorthy above) -- those are genuine
+    // catch-up requests the live planner can still add real value to,
+    // not the precise factual questions this test targets.
+    const canonicalStatusWorthy = intent === 'STATUS' && CANONICAL_STATUS_FACT_PATTERN.test(message)
+    const groundedResponseWorthy =
+      statusWorthy || feedbackWorthy || acknowledgementWorthy || canonicalStatusWorthy
 
     // Project detail's "Research for this project": the SAME real
     // research bridge Command's global scope already uses, just given
