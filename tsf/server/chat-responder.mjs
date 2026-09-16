@@ -333,8 +333,23 @@ const ACKNOWLEDGEMENT_PATTERN = {
 // targets. Exported so chat-http-routes.mjs's own groundedResponseWorthy
 // gate can reuse this EXACT pattern rather than re-deriving which STATUS
 // sub-shape it is.
+//
+// The is/why gaps are wide (.{0,80}?) because what precedes their predicate
+// is the TARGET (a project name, which can be long -- see the 44-char real
+// project name cited below). The can-branch gap is different in kind: what
+// precedes "work on" there is the CAPACITY QUESTION'S SUBJECT (who/what can
+// do the work -- TSF, we, the fleet, someone), which is always a short,
+// closed set of words, never an arbitrary verb phrase. A final Codex
+// adversarial review (session 01a0abf8-3229-7132-a655-6abfb7098c35) found
+// that reusing the wide .{0,80}? gap here let unrelated intervening verb
+// phrases sneak in, e.g. "Can you fix the wording work on NWR?" (a genuine
+// FIX_REQUEST) misclassified as STATUS purely because "work on" appeared
+// somewhere in the following 80 characters. Enumerating the real subject
+// vocabulary and requiring it immediately before "work on" closes this
+// without reopening the same whack-a-mole the wide gap was meant to solve
+// (that gap solves a different, real problem for a different branch).
 export const CANONICAL_STATUS_FACT_PATTERN =
-  /\bstatus\b|(?:^|[.!?]\s+)(?:what(?:'?s| is) \S+ doing\b|is\s+.{0,80}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+.{0,80}?\b(?:waiting|on hold|paused|held|stuck|blocked)\b|can\s+.{0,80}?\bwork on\b)/i
+  /\bstatus\b|(?:^|[.!?]\s+)(?:what(?:'?s| is) \S+ doing\b|is\s+.{0,80}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+.{0,80}?\b(?:waiting|on hold|paused|held|stuck|blocked)\b|can\s+(?:tsf|we|you|it|someone|anyone|anybody|i|the team|the fleet)\s+work on\b)/i
 
 const INTENTS = [
   {

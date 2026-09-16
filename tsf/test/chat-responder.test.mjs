@@ -121,7 +121,13 @@ test('classifyIntent: Finding #22 predicates never hijack a genuine bug report o
     ['Explain why NWR is waiting incorrectly in this report.', 'GENERAL'],
     // The exact phrasing the real Codex adversarial review reported as a
     // "substantive defect" before this anchoring fix.
-    ['Fix wording what is NWR doing in the dashboard.', 'GENERAL']
+    ['Fix wording what is NWR doing in the dashboard.', 'GENERAL'],
+    // Final Codex adversarial review (session
+    // 01a0abf8-3229-7132-a655-6abfb7098c35): the can-branch's gap before
+    // "work on" is the capacity question's SUBJECT (TSF/we/the fleet), not
+    // a target name -- reusing the wide is/why gap there let an unrelated
+    // intervening verb phrase ("fix the wording") sneak through.
+    ['Can you fix the wording work on NWR?', 'QUESTION']
   ]
   for (const [message, expected] of cases) {
     assert.equal(classifyIntent(message), expected, message)
