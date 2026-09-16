@@ -73,19 +73,19 @@ Waiting · Needs You · Done**, not as implementation machinery.
 
 ## Open
 
-*(Round 2 real-owner dogfood, 2026-09-16, against canonical `08a5023db6`
--- evidence collection only, nothing implemented. Full context:
-`TSF_REAL_OWNER_UI_DOGFOOD_ROUND_2` below the Resolved table.)*
+*(Round 2 real-owner dogfood findings #17/#18 -- and the legacy-held gap
+Codex found while fixing them -- are now Resolved, below. #19-21 remain
+open/deferred by explicit instruction. #22 is new, found live during the
+`TSF_REAL_PROJECT_PILOT_READINESS_V1` mission's own rehearsal, and NOT
+fixed -- see that mission's own section below the Resolved table for full
+context on both.)*
 
 | # | Screen/Route | Classification | Finding | Evidence |
 |---|---|---|---|---|
-| 17 | Command (`/command`) sidebar "What's running" panel | BUG | `ui/src/pages/CommandPage.tsx` (lines 84/93) renders `s.feed?.state`/`s.feed?.reason` directly -- the pre-unification 9-state Live Work Feed vocabulary -- never the canonical `primaryState`/`primaryReasonLabel` `fleetWorkStatus()` has always also returned. `ui/src/lib/fleet-status-types.ts`'s `FleetWorkStatusItem` type never even declares those two fields. For states where the two vocabularies happen to share a word (WORKING, WAITING) this is invisible; for a completed run, a fresh no-wave run, a stalled run, or a run mid-verification, the panel shows the raw internal word (`READY_FOR_ADOPTION`, `PLANNING`, `STALLED`, `VERIFYING`) while Command's own CHAT reply on the SAME page (`formatFleetStatusText`, correctly migrated) shows the canonical word for the identical project. Live-confirmed on the real owner instance: `easylifehq.github.io`/`Landing Page`/`Worldforge-Sablewake-Live-Runtime-Repair-V3` all show `READY_FOR_ADOPTION` in the sidebar panel; `TSF_ORCA` shows `VERIFYING`. | real owner instance, canonical `08a5023db6`, read-only |
-| 18 | Work (`/work`) "Active" section | BUG | `domain/work-feed-summary.mjs`'s `RUN_FEED_SECTION` maps `PLANNING`/`WORKING`/`WAITING` (the raw live-work-feed state, including a PAUSED run or a resource-wait) all into the SAME `active` bucket, so a genuinely paused or held project renders identically to a genuinely in-flight one, with no visual distinction, directly on the Work page. This is the one surface Finding #5/#7's "apply `primaryState` consistently across HQ, Work, Projects, Project Overview, Command" acceptance criterion was never actually reconciled on -- HQ/Projects/Command/Project Overview all correctly read `primaryState`. Live-confirmed on the real owner instance: `Niners-War-Room` (a real project under a real, active execution hold) appears under Work's "ACTIVE" header reading only "run state is PAUSED," no hold indication at all -- while the SAME project reads `WAITING`/`Execution hold` correctly on HQ, Projects, and its own Overview banner at the same moment. Reproduced cleanly on a disposable fixture set (a Paused and a Waiting-for-Resources fixture both rendered under "ACTIVE"). | real owner instance (NWR) + disposable fixture reproduction, canonical `08a5023db6`/worktree `77af424290` |
 | 19 | Projects grid `LifecycleBadge` | UX PROBLEM | When `primaryReasonLabel` is present, the badge shows only that reason text (e.g. "Ready for adoption," "Paused"), never the literal primaryState word -- correct by design, and correctly color-coded (verified against the API: a `NEEDS_YOU`-class item like `Landing Page` renders in the same warning color as a literal "NEEDS YOU" badge) -- but a card whose reason text doesn't itself say "needs you" relies solely on badge color to convey that urgency, a real scanability/color-reliance concern. | real owner instance (`Landing Page`), canonical `08a5023db6` |
 | 20 | `/projects/niners-war-room?tab=keep-going` | VISUAL-POLISH ISSUE | Three related-but-different status labels appear in quick succession on one screen: the top `ProjectPrimaryStateBanner` ("WAITING / Execution hold"), the Keep Going section's own header badge ("PAUSED," the raw run state), and a nested "WORK FEED" card ("WAITING" + "run state is PAUSED" + a "Drill down" link). Not incorrect -- Keep Going is explicitly a deeper technical view -- but reads as mildly redundant. | real owner instance (NWR), canonical `08a5023db6` |
 | 21 | Projects grid card title | VISUAL-POLISH ISSUE | A long display name truncates mid-word on the grid card title (e.g. "R2 Fixture: Done + Degr…") with no tooltip/full-name affordance observed in the screenshot evidence. | disposable fixture, worktree `77af424290` |
-
-**Out-of-scope observation (not a TSF finding, recorded for awareness only):** Orca's own outer left-sidebar widget ("Active runs: N") shows a raw internal phase enum (`WAITING_FOR_RESOURCES`) unstyled. This widget lives in Orca's own shell chrome, not `tsf/ui/src` -- outside Findings #2-16's diff and this ledger's ownership boundary.
+| 22 | Command (`/command`), any per-project conversational question about a held project | **BUG, P1** | Asking Command chat "Is `<project>` on hold?" or "Why is `<project>` waiting?" about a project under a REAL, active execution hold gets a confident, detailed, **false denial** ("No — it's not on hold... there's no blocker, escalation, or pause flag against it"), even though the same Command instance's own deterministic "what needs me?" answer correctly reports the hold for the identical project. Root cause (independently confirmed by a real, bounded Codex adversarial review, session id in the closure mission's own report below): a genuine, non-imperative question about a named project classifies as `GENERAL`/`QUESTION` and routes to a live-LLM call (`invokeLivePlanner`, `server/live-planner.mjs`) whose prompt-building (`buildProjectContextCapsule`/`operatorFacts`) never includes the project's execution-hold record or its own canonical `primaryState` -- the model is structurally unable to ground an answer in the real hold and confidently denies it. **Confirmed NOT a mutation-safety issue**: the dispatch-time safety gate (`chat-dispatch-bridge.mjs`, `keep-going-controller.mjs`, `keep-going-dispatch-loop.mjs`) is a separate, unconditional check that still correctly refuses to start/resume work on a held project regardless of what the conversation said -- verified by real, passing tests. Pre-existing (confirmed via `git diff` empty for every file in this code path across the closure mission's own commits), not introduced or worsened by that mission. Real, reproducible, live-verified on a disposable fixture with a real hold. **Not fixed** -- out of scope for the mission that found it (narrowly scoped to Findings #17/#18); flagged here as a genuine trust/safety concern for the next dedicated finding. | disposable fixture (`TSF-REHEARSAL-BETA`), worktree `tsf/readiness-closure-v1` |
 
 **Re-confirmed GOOD AS-IS:** real, persisted Command chat history predating this closure work correctly still shows the pre-unification vocabulary (chat history is immutable by design, not a live bug) -- a returning owner scrolling back will see two vocabularies mixed across time; expected, not a defect.
 
@@ -113,6 +113,8 @@ Waiting · Needs You · Done**, not as implementation machinery.
 | 14 | Command (`/command`) | GOOD AS-IS | Re-verified live: `Targeting: [chips]` still renders under multi-project and resolved single-project answers (confirmed across several real chat turns this batch's own dogfood pass exercised). Command's own role explanation was not re-read verbatim this pass but its rendering code was not touched by this batch. | re-verified (Targeting chips) against worktree commit `987c6717a3`; role-explanation text not independently re-read this pass |
 | 15 | HQ Needs You -> Research card (disposable) | GOOD AS-IS | **Not independently re-exercised in this batch's dogfood pass** (no active research mission existed in the disposable fixture data used) -- but no file in this batch's diff touches `command-research-bridge.mjs`, the research Needs You resolution route, or its own UI component, so no regression risk was introduced. Flagged honestly rather than claimed as re-verified. | not touched by this diff; not independently re-exercised |
 | 16 | Project Detail Overview (real projects) | GOOD AS-IS | Re-verified live: the fixture project's own plain-language description ("Exercises the real Adopt / Request Revision / Reject code path...") still renders prominently under the title, unchanged position/styling, above the new `ProjectPrimaryStateBanner`. | re-verified against worktree commit `987c6717a3` |
+| 17 | Command (`/command`) sidebar "What's running" panel | BUG | `ui/src/pages/CommandPage.tsx` now reads the canonical `primaryState`/`primaryReasonLabel` (added to `ui/src/lib/fleet-status-types.ts`'s `FleetWorkStatusItem`) instead of the raw `feed.state`/`feed.reason` -- the same values `fleetWorkStatus()` had always already computed, never a new derivation. `feed.reason` stays as the richer detail sentence underneath the primary badge. A real, bounded Codex adversarial review then found the SAME raw-vocabulary leak in a second, more prominent place this fix's own diff also touched (`GlobalRunStatusIndicator`, the always-visible app-shell widget I'd earlier mis-attributed to Orca's own shell chrome in the Round 2 entry above -- it is in fact `ui/src/components/GlobalRunStatusIndicator.tsx`, squarely TSF's own code) -- fixed the same way (optional `primaryState`/`primaryReasonLabel` on `GlobalRunStatusItem`, a new `globalRunStatusLabel()` helper, `state` untouched as the richer internal urgency-ranking signal). Live-verified on a disposable fixture set: Command's sidebar panel and chat text agree exactly ("WORKING", "WAITING (Paused)", etc). | worktree `tsf/readiness-closure-v1` commits `ac24a84354`, `8ed0b9054d` |
+| 18 | Work (`/work`) "Active" section | BUG | `domain/work-feed-summary.mjs` gained a real `waiting` bucket; `projectExecutionHolds` now threads through `summarizeWork()`'s whole call chain (previously never passed to `GET /api/work` at all); an item `RUN_FEED_SECTION` still routes to `active` is redirected to `waiting` when its own already-computed `primaryState` (from the SAME `fleetWorkStatus()`/`keepGoingRunWorkItem()` call, hold-aware) isn't `WORKING` -- covers a fresh no-wave run, a paused run, a resource-wait, and a held run (even one still mechanically mid-wave, matching HQ's own already-shipped Finding #7 precedent exactly: "ANY run under a real execution hold, regardless of its own mechanical state... moves to waiting"). `WorkPage.tsx` gained a real "Waiting" section mirroring "Active"'s own card pattern. Real Codex adversarial review then found two more real gaps in the first pass of this fix (Fleet Planning's `work-feed-lookup.ts` losing status badges for everything moved out of `active`; the `GlobalRunStatusIndicator` leak noted under #17 above) -- both fixed. A second, final adversarial review then found one more: a run-LESS project (no Keep Going run at all) with legacy `mission.state` ACTIVE/PLANNING/REVIEW under a real hold still read `active` (`legacyActive`'s own bucketing never checked the hold) -- fixed by checking `isProjectExecutionHoldActive` directly and routing to a new `legacyWaiting` array. Live-verified end to end on a disposable 4-project rehearsal (Working/Execution-hold/Needs-You/Done+Degraded): HQ, Work, Projects, and Command's sidebar all agree exactly on primary state for the same project at every step, including after a live hold was set on a mid-wave project via natural language ("Put ALPHA on hold...") and after a real disposable-runtime restart (state, holds, and Needs You all durably unchanged). | worktree `tsf/readiness-closure-v1` commits `ac24a84354`, `8ed0b9054d`, `755dc42ce5`, `4b33a6e3e3` |
 
 ### Adoption status (as of 2026-09-15) -- CLOSED, ADOPTED, LIVE
 
@@ -311,6 +313,46 @@ already-canonical fix target (read `primaryState`/`primaryReasonLabel`
 instead of `feed.state`/`feed.reason` in both places) whenever the owner
 chooses to request a fix prompt; #19-21 are real but lower-severity and
 can wait for a normal review pass.
+
+## TSF_REAL_PROJECT_PILOT_READINESS_V1 (2026-09-17)
+
+Fixed Findings #17/#18 (now Resolved above, with #22 disclosed as a new,
+separate, pre-existing, unfixed P1 found along the way), then ran a full
+first-real-project-pilot readiness rehearsal. Full detail lives in the
+mission's own final report (delivered to the owner directly); summarized
+here for the ledger's own record:
+
+**Gates**: #17 PASS, #18 PASS (both closed via two rounds of real,
+bounded Codex adversarial review -- sessions `01a0aba9-7a20-7ff1-b0d9-17deb38e0036`
+and a second final review, both provider `openai`/model `gpt-5.6-sol` --
+which together found and led to fixing 3 additional real gaps beyond the
+original two: Fleet Planning's status-badge loss, the always-visible
+`GlobalRunStatusIndicator`'s own raw-vocabulary leak, and a run-less
+legacy-held project still reading `active`). Clean direct-action retest
+with unmistakably unique fixture names (`TSF-READINESS-ALPHA-7Q9`/
+`-BETA-4M2`) closed Round 2's own overlapping-name evidence gap: a direct
+action affects only its named project (byte-identical sibling state
+confirmed via diff), a deliberative question never mutates. A 4-project
+final rehearsal (Working/Execution-hold/Needs-You/Done+Degraded) showed
+full cross-surface primary-state agreement on HQ/Work/Projects/Command
+at every step, including live after setting a real hold via natural
+language on a mid-wave project and after a real disposable-runtime
+restart (state, holds, and Needs You all durably unchanged, no duplicate
+dispatch). Real owner instance read-only pass: NWR unchanged throughout,
+`PAUSED`/`WAITING`/`Execution hold` intact. Full backend suite: 3305/3308
+pass; the 3 non-passing runs are all independently confirmed pre-existing
+host-timing flakes (clean in isolation), zero mission regressions.
+
+**#22 is the one real, disclosed exception to an otherwise clean
+verdict**: a live-LLM-routed conversational question about a held
+project's status can give a confident, false denial of the hold. Real,
+reproducible, independently confirmed pre-existing (not part of this or
+the #17/#18 diff) by the final Codex review, and confirmed to NOT
+compromise the actual mutation-safety gate (start/resume/dispatch still
+correctly refuse on a held project regardless of what the chat said) --
+but a genuine trust/conversational-honesty concern the owner should be
+aware of before relying on Command chat's own informational answers
+about hold status specifically.
 
 ## Personal preference / Good as-is (recorded, not acted on)
 
