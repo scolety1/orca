@@ -108,9 +108,32 @@ export function classifyContinueAction(projectId) {
 // verb with no object/pronoun at all ("is it paused?", "the tick paused
 // the wave" -- neither opens its clause with the verb nor has a pronoun
 // immediately after it).
+//
+// Final Codex adversarial review of Finding #22 (session
+// 01a0abf8-3229-7132-a655-6abfb7098c35), a real, pre-existing gap unrelated
+// to that diff: a genuinely deliberative compound question like "Is NWR
+// paused, or should I resume it?" kept "or should I resume it" as ONE
+// clause -- the leading "or" defeated QUESTION_OPENER's start-of-clause
+// anchor (it saw "or should I...", not "should I..."), so the bare
+// "resume it" pronoun match fell through the question guard and mutated a
+// real run.
+//
+// Splitting on every bare "or" (mirroring "and"/"but") was tried first and
+// reverted: it fixes the case above but breaks the mirror-image case where
+// the question word leads BOTH disjuncts ("Should I pause NWR or resume
+// it?") -- splitting there strands "resume it" as its own clause that
+// (correctly, by the CLAUSE_OPENS_WITH rule for a bare "resume NWR"/
+// "resume it" directive) opens with the verb, losing the "Should I..."
+// context that was never repeated after "or". Splitting on "or" only when
+// it is immediately followed by a genuine question-opener word targets
+// exactly the reported shape (the question word trails "or") without
+// touching the lead-question shape (the question word is never adjacent
+// to "or" there, so this narrower pattern never matches it).
+const OR_BEFORE_QUESTION =
+  /\bor(?=\s+(?:did|do|does|is|are|was|were|would|could|should|can|will)\s+(?:you|it|that|this|he|she|they|i|we)\b)/i
 function splitIntoClauses(message) {
   return message
-    .split(/[.!?;,]|\band\b|\bbut\b/i)
+    .split(new RegExp(`[.!?;,]|\\band\\b|\\bbut\\b|${OR_BEFORE_QUESTION.source}`, 'i'))
     .map((c) => c.trim())
     .filter(Boolean)
 }

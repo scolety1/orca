@@ -165,6 +165,29 @@ test('classifyRunActionVerb: a genuine WH-question or auxiliary-inversion questi
   assert.equal(classifyRunActionVerb('pause it, please explain why'), 'PAUSE')
 })
 
+// Real Codex adversarial review, final Finding #22 gate (session
+// 01a0abf8-3229-7132-a655-6abfb7098c35): a real, pre-existing gap
+// unrelated to Finding #22's own diff (this file was untouched by it) --
+// "Is NWR paused, or should I resume it?" is a genuinely deliberative
+// compound question, but the trailing "should I resume it" survived as
+// part of the SAME clause as the leading "or", which defeated
+// QUESTION_OPENER's clause-start anchor and let the bare "resume it"
+// pronoun match through as a real directive.
+test('classifyRunActionVerb: a deliberative "is X ..., or should I <verb> it?" compound question never mutates', () => {
+  assert.equal(classifyRunActionVerb('Is NWR paused, or should I resume it?'), null)
+  assert.equal(classifyRunActionVerb('Is NWR active, or should we pause it?'), null)
+  assert.equal(classifyRunActionVerb('Is NWR paused or is it active?'), null)
+  // The mirror-image shape (question word leads BOTH disjuncts) was
+  // already correct before this fix and must stay correct: splitting on
+  // every bare "or" here would strand "resume it" as its own clause that
+  // (correctly, by its own OPENER rule) reads as a bare directive, losing
+  // the "Should I" context that only appears once, before "or".
+  assert.equal(classifyRunActionVerb('Should I pause NWR or resume it?'), null)
+  // A genuine directive using "or" between two named actions is unaffected
+  // -- neither disjunct is a question-opener word, so nothing splits.
+  assert.equal(classifyRunActionVerb('pause NWR or resume it'), 'PAUSE')
+})
+
 test('classifyContinueAction: RESUME for a real PAUSED run, DISPATCH otherwise (no run, or an ACTIVE run)', async () => {
   await seedPausedRun('proj-paused')
   await seedActiveRun('proj-active')
