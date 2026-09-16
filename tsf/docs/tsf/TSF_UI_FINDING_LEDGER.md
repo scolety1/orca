@@ -73,8 +73,21 @@ Waiting · Needs You · Done**, not as implementation machinery.
 
 ## Open
 
-*(none currently -- findings 2-16 moved to Resolved / Good as-is below,
-per `TSF UI FINDINGS #2-#16 -- RECONCILE & UPGRADE`, 2026-09-15.)*
+*(Round 2 real-owner dogfood, 2026-09-16, against canonical `08a5023db6`
+-- evidence collection only, nothing implemented. Full context:
+`TSF_REAL_OWNER_UI_DOGFOOD_ROUND_2` below the Resolved table.)*
+
+| # | Screen/Route | Classification | Finding | Evidence |
+|---|---|---|---|---|
+| 17 | Command (`/command`) sidebar "What's running" panel | BUG | `ui/src/pages/CommandPage.tsx` (lines 84/93) renders `s.feed?.state`/`s.feed?.reason` directly -- the pre-unification 9-state Live Work Feed vocabulary -- never the canonical `primaryState`/`primaryReasonLabel` `fleetWorkStatus()` has always also returned. `ui/src/lib/fleet-status-types.ts`'s `FleetWorkStatusItem` type never even declares those two fields. For states where the two vocabularies happen to share a word (WORKING, WAITING) this is invisible; for a completed run, a fresh no-wave run, a stalled run, or a run mid-verification, the panel shows the raw internal word (`READY_FOR_ADOPTION`, `PLANNING`, `STALLED`, `VERIFYING`) while Command's own CHAT reply on the SAME page (`formatFleetStatusText`, correctly migrated) shows the canonical word for the identical project. Live-confirmed on the real owner instance: `easylifehq.github.io`/`Landing Page`/`Worldforge-Sablewake-Live-Runtime-Repair-V3` all show `READY_FOR_ADOPTION` in the sidebar panel; `TSF_ORCA` shows `VERIFYING`. | real owner instance, canonical `08a5023db6`, read-only |
+| 18 | Work (`/work`) "Active" section | BUG | `domain/work-feed-summary.mjs`'s `RUN_FEED_SECTION` maps `PLANNING`/`WORKING`/`WAITING` (the raw live-work-feed state, including a PAUSED run or a resource-wait) all into the SAME `active` bucket, so a genuinely paused or held project renders identically to a genuinely in-flight one, with no visual distinction, directly on the Work page. This is the one surface Finding #5/#7's "apply `primaryState` consistently across HQ, Work, Projects, Project Overview, Command" acceptance criterion was never actually reconciled on -- HQ/Projects/Command/Project Overview all correctly read `primaryState`. Live-confirmed on the real owner instance: `Niners-War-Room` (a real project under a real, active execution hold) appears under Work's "ACTIVE" header reading only "run state is PAUSED," no hold indication at all -- while the SAME project reads `WAITING`/`Execution hold` correctly on HQ, Projects, and its own Overview banner at the same moment. Reproduced cleanly on a disposable fixture set (a Paused and a Waiting-for-Resources fixture both rendered under "ACTIVE"). | real owner instance (NWR) + disposable fixture reproduction, canonical `08a5023db6`/worktree `77af424290` |
+| 19 | Projects grid `LifecycleBadge` | UX PROBLEM | When `primaryReasonLabel` is present, the badge shows only that reason text (e.g. "Ready for adoption," "Paused"), never the literal primaryState word -- correct by design, and correctly color-coded (verified against the API: a `NEEDS_YOU`-class item like `Landing Page` renders in the same warning color as a literal "NEEDS YOU" badge) -- but a card whose reason text doesn't itself say "needs you" relies solely on badge color to convey that urgency, a real scanability/color-reliance concern. | real owner instance (`Landing Page`), canonical `08a5023db6` |
+| 20 | `/projects/niners-war-room?tab=keep-going` | VISUAL-POLISH ISSUE | Three related-but-different status labels appear in quick succession on one screen: the top `ProjectPrimaryStateBanner` ("WAITING / Execution hold"), the Keep Going section's own header badge ("PAUSED," the raw run state), and a nested "WORK FEED" card ("WAITING" + "run state is PAUSED" + a "Drill down" link). Not incorrect -- Keep Going is explicitly a deeper technical view -- but reads as mildly redundant. | real owner instance (NWR), canonical `08a5023db6` |
+| 21 | Projects grid card title | VISUAL-POLISH ISSUE | A long display name truncates mid-word on the grid card title (e.g. "R2 Fixture: Done + Degr…") with no tooltip/full-name affordance observed in the screenshot evidence. | disposable fixture, worktree `77af424290` |
+
+**Out-of-scope observation (not a TSF finding, recorded for awareness only):** Orca's own outer left-sidebar widget ("Active runs: N") shows a raw internal phase enum (`WAITING_FOR_RESOURCES`) unstyled. This widget lives in Orca's own shell chrome, not `tsf/ui/src` -- outside Findings #2-16's diff and this ledger's ownership boundary.
+
+**Re-confirmed GOOD AS-IS:** real, persisted Command chat history predating this closure work correctly still shows the pre-unification vocabulary (chat history is immutable by design, not a live bug) -- a returning owner scrolling back will see two vocabularies mixed across time; expected, not a defect.
 
 ## Settled (batch ready for a fix prompt, not yet requested)
 
@@ -245,6 +258,59 @@ confirmed `runningCommit == diskCommit == uiBundleCommit == 65a4b2d455`
 `PAUSED`/`OPERATOR_PAUSED` at revision `241`, untouched throughout; a real
 project's card correctly serves the new `primaryState`/`primaryReasonLabel`
 fields end to end.
+
+## TSF_REAL_OWNER_UI_DOGFOOD_ROUND_2 (2026-09-16)
+
+Evidence-collection-only dogfood against canonical `08a5023db6` (functional
+generation `65a4b2d455` -- the two commits between them are docs-only,
+reconciled against the real artifact contract before starting: real owner
+instance `runtime-identity` read `UP_TO_DATE` at `08a5023db6`, no stale-
+runtime defect). Nothing implemented; findings #17-21 above are the new,
+open output of this round.
+
+**Real owner instance, read-only**: HQ, Work, Projects, Command (chat +
+sidebar), and two materially different real Project Overviews
+(`niners-war-room` -- Overview/Keep Going/Health tabs; `landing-page`)
+were actually navigated and screenshotted. No real project was mutated.
+
+**Disposable interaction instance**: a fresh isolated worktree/state file
+(`tsf-codex-ui-reconcile`, port 4713, `TSF_DISPOSABLE_RUNTIME=1`) was
+seeded with the full required fixture set -- Working, Waiting (Paused),
+Waiting (Execution hold, run-less), Waiting (Resources), Needs You, Done,
+Done+Degraded Health, Research Needs You -- and actually interacted with:
+the Research Needs You question was answered inline and durably resolved
+(`openNeedsYouCount` 1 -> 0, revision 1 -> 2, item moved live from Needs
+You to Active Research with no manual refresh); a multi-project Command
+query correctly resolved and Targeted two named fixtures. Cleaned up and
+deleted after use.
+
+**Settled findings #2-#11**: visually re-confirmed coherent on HQ,
+Projects, Command's own chat replies, and Project Overview -- the one
+exception is Work's own "Active" bucket (#18 above), which is a real gap
+against Finding #5/#7's own acceptance criterion, not a new regression
+introduced by anything after `08a5023db6`.
+
+**Protected findings #12-#16**: no regression observed. #15 (inline
+Research Needs You) was actually re-exercised end to end this round (see
+above), not merely inspected.
+
+**Primary question** ("can the owner understand Working/Waiting/why/Needs
+You/Done/Health/what-changed at a glance, without TSF internals"): **yes**
+on HQ, Projects, Project Overview, and Command's own chat text -- these
+consistently show the plain WORKING/WAITING/NEEDS_YOU/DONE vocabulary with
+clear secondary reasons, and Health renders as a visibly separate,
+non-competing signal. **Not yet** on Work's own "Active" section or
+Command's own sidebar "What's running" panel specifically (#17/#18) --
+both still leak internal vocabulary, and Work's own miscategorization
+could genuinely mislead an owner about whether a held/paused real project
+(observed live: NWR) is actually being worked on right now.
+
+No redesign performed. No owner design decision required to *read* this
+evidence -- #17/#18 are factual defects (BUG) with a clear, narrow,
+already-canonical fix target (read `primaryState`/`primaryReasonLabel`
+instead of `feed.state`/`feed.reason` in both places) whenever the owner
+chooses to request a fix prompt; #19-21 are real but lower-severity and
+can wait for a normal review pass.
 
 ## Personal preference / Good as-is (recorded, not acted on)
 
