@@ -14,6 +14,12 @@ export function buildLiveWorkFeedLookup(
   const lookup = new Map<string, { state: string; reason: string }>()
   for (const bucket of [
     work.active,
+    // Round 2 Finding #18: a paused/held/resource-waiting/fresh-run item
+    // moved out of `active` into its own `waiting` bucket -- without this,
+    // Fleet Planning silently loses its status badge entirely (a real
+    // regression this diff would otherwise introduce, caught by Codex
+    // adversarial review).
+    work.waiting,
     work.verifying,
     work.needsYou,
     work.stalled,

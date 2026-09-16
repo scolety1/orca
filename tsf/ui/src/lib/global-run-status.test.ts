@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   attentionItemToGlobalRunStatusItem,
   buildGlobalRunStatusItems,
+  globalRunStatusLabel,
   resolveAttentionDeepLink,
   selectExtraAttentionItems,
   sortByUrgency,
@@ -45,6 +46,53 @@ test('a legacy work.blocked/active project with no liveWorkFeed is honestly excl
     active: [{ id: 'legacy-1', displayName: 'legacy' } as WorkSummary['active'][number]]
   })
   assert.deepEqual(buildGlobalRunStatusItems(work), [])
+})
+
+// TSF REAL-PILOT READINESS CLOSURE V1 (Codex adversarial review finding on
+// the #17/#18 diff): a run-driven item's own primaryState/primaryReasonLabel
+// (already computed by work-feed-summary.mjs, hold-aware) must thread
+// through to the always-visible global indicator -- never left as the raw
+// liveWorkFeed vocabulary a held-but-mechanically-WORKING run would
+// otherwise leak as "WORKING".
+test('a run-driven item carries its own primaryState/primaryReasonLabel through', () => {
+  const work = emptyWork({
+    waiting: [
+      item('held', 'WORKING', { primaryState: 'WAITING', primaryReasonLabel: 'Execution hold' })
+    ]
+  })
+  const items = buildGlobalRunStatusItems(work)
+  assert.equal(
+    items[0].state,
+    'WORKING',
+    'the rich, internal ranking signal stays what it always was'
+  )
+  assert.equal(items[0].primaryState, 'WAITING')
+  assert.equal(items[0].primaryReasonLabel, 'Execution hold')
+})
+
+test('globalRunStatusLabel: a run-driven item with a primaryState shows it (+ reasonLabel), never the raw internal state', () => {
+  const withReason = {
+    state: 'READY_FOR_ADOPTION',
+    primaryState: 'NEEDS_YOU',
+    primaryReasonLabel: 'Ready for adoption'
+  }
+  const withoutReason = { state: 'WORKING', primaryState: 'WORKING', primaryReasonLabel: null }
+  assert.equal(
+    globalRunStatusLabel(withReason as ReturnType<typeof buildGlobalRunStatusItems>[number]),
+    'NEEDS_YOU (Ready for adoption)'
+  )
+  assert.equal(
+    globalRunStatusLabel(withoutReason as ReturnType<typeof buildGlobalRunStatusItems>[number]),
+    'WORKING'
+  )
+})
+
+test('globalRunStatusLabel: an attention-sourced item (no primaryState) falls back to its own category text', () => {
+  const attentionItem = { state: 'BLOCKED_EXTERNAL', reason: 'held' }
+  assert.equal(
+    globalRunStatusLabel(attentionItem as ReturnType<typeof buildGlobalRunStatusItems>[number]),
+    'BLOCKED_EXTERNAL'
+  )
 })
 
 test('every run-driven bucket contributes its items', () => {

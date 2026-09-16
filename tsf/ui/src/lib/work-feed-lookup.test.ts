@@ -6,6 +6,7 @@ import type { WorkSummary } from './types.ts'
 function emptyWork(overrides: Partial<WorkSummary> = {}): WorkSummary {
   return {
     active: [],
+    waiting: [],
     queued: [],
     verifying: [],
     needsYou: [],
@@ -32,6 +33,22 @@ test('a project with a run in any run-driven bucket is looked up by id', () => {
   })
   const lookup = buildLiveWorkFeedLookup(work)
   assert.deepEqual(lookup.get('proj-1'), { state: 'STALLED', reason: 'run state is STALLED' })
+})
+
+// Round 2 Finding #18 regression: a paused/held/resource-waiting/fresh-run
+// item moved out of `active` into `waiting` must still reach Fleet
+// Planning's lookup, not silently lose its badge.
+test('a project in the waiting bucket (paused/held/resource-wait) is looked up by id, same as active', () => {
+  const work = emptyWork({
+    waiting: [
+      {
+        id: 'proj-waiting',
+        liveWorkFeed: { state: 'WAITING', reason: 'run state is PAUSED' }
+      } as WorkSummary['waiting'][number]
+    ]
+  })
+  const lookup = buildLiveWorkFeedLookup(work)
+  assert.deepEqual(lookup.get('proj-waiting'), { state: 'WAITING', reason: 'run state is PAUSED' })
 })
 
 test('a legacy blocked project (no liveWorkFeed) is never entered -- honestly absent, not a fabricated feed', () => {

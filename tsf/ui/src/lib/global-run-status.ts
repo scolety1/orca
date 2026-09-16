@@ -15,9 +15,23 @@ export type GlobalRunStatusItem = {
   id: string
   displayName: string
   runId: string | null
+  // The rich, internal live-work-feed/attention-category vocabulary --
+  // kept exactly as before, still what URGENCY_RANK/sortByUrgency key off
+  // of (a real, useful, richer-than-primaryState ranking: e.g.
+  // WAITING_FOR_RESOURCES outranks plain WAITING). Never rendered as the
+  // owner-facing label directly -- see primaryState below.
   state: string
   reason: string
   lastCheckpointAt: string | null
+  // TSF REAL-PILOT READINESS CLOSURE V1 (Codex adversarial review finding
+  // on the #17/#18 diff): present (never fabricated) ONLY for a run-driven
+  // item, whose primaryState/primaryReasonLabel work-feed-summary.mjs
+  // already computes -- the settled WORKING/WAITING/NEEDS_YOU/DONE word,
+  // reused verbatim, never re-derived. Absent for an attention-sourced
+  // item (attentionItemToGlobalRunStatusItem below), which has no
+  // equivalent field and falls back to its own category text.
+  primaryState?: string | null
+  primaryReasonLabel?: string | null
   // Operator Attention V1, Wave 2: present (possibly null) ONLY for an item
   // merged in from GET /api/attention (see attentionItemToGlobalRunStatusItem
   // below) -- a real link when one exists (PROJECT), null when it honestly
@@ -51,7 +65,9 @@ export function buildGlobalRunStatusItems(work: WorkSummary): GlobalRunStatusIte
           runId: p.runId ?? null,
           state: p.liveWorkFeed.state,
           reason: p.liveWorkFeed.reason,
-          lastCheckpointAt: p.lastCheckpointAt ?? null
+          lastCheckpointAt: p.lastCheckpointAt ?? null,
+          primaryState: p.primaryState,
+          primaryReasonLabel: p.primaryReasonLabel
         })
       }
     }
@@ -142,6 +158,20 @@ export function attentionItemToGlobalRunStatusItem(item: AttentionItem): GlobalR
     lastCheckpointAt: item.changedAt,
     linkTo: resolveAttentionDeepLink(item)
   }
+}
+
+// The one owner-facing label for an item's Badge text -- primaryState (+
+// reasonLabel) when this is a run-driven item that has one, the raw
+// state/category text otherwise (an attention-sourced item has no
+// primaryState equivalent to reuse). `state`/URGENCY_RANK stay the rich,
+// internal ranking signal underneath, never the displayed word.
+export function globalRunStatusLabel(item: GlobalRunStatusItem): string {
+  if (!item.primaryState) {
+    return item.state
+  }
+  return item.primaryReasonLabel
+    ? `${item.primaryState} (${item.primaryReasonLabel})`
+    : item.primaryState
 }
 
 export function sortByUrgency(items: GlobalRunStatusItem[]): GlobalRunStatusItem[] {

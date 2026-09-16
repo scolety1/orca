@@ -23,6 +23,7 @@ import { EmptyState } from '@/components/States'
 import {
   attentionItemToGlobalRunStatusItem,
   buildGlobalRunStatusItems,
+  globalRunStatusLabel,
   selectExtraAttentionItems,
   sortByUrgency,
   mostUrgentState
@@ -59,15 +60,24 @@ export function GlobalRunStatusIndicator() {
   // resource pressure -- neither has a liveWorkFeed) so the badge count/
   // dialog list honestly reflect the combined total, not run-driven work
   // alone.
-  const { data: attention, reload: reloadAttention } = useApi(() => api.attention(), [location.pathname])
+  const { data: attention, reload: reloadAttention } = useApi(
+    () => api.attention(),
+    [location.pathname]
+  )
   const reload = () => {
     reloadWork()
     reloadAttention()
   }
   const runItems = work ? buildGlobalRunStatusItems(work) : []
-  const extraItems = attention ? selectExtraAttentionItems(attention.items).map(attentionItemToGlobalRunStatusItem) : []
+  const extraItems = attention
+    ? selectExtraAttentionItems(attention.items).map(attentionItemToGlobalRunStatusItem)
+    : []
   const items = sortByUrgency([...runItems, ...extraItems])
   const urgent = mostUrgentState(items)
+  // items is already sorted by urgency -- its own first entry is the same
+  // one mostUrgentState's own ranking picked; only the label reused here
+  // differs (primaryState-aware, not urgent's raw internal string).
+  const urgentLabel = items.length > 0 ? globalRunStatusLabel(items[0]) : null
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -81,7 +91,7 @@ export function GlobalRunStatusIndicator() {
               : `Active runs: ${items.length}`}
           {urgent && (
             <Badge variant={liveWorkFeedBadgeVariant(urgent)} className="ml-auto">
-              {urgent}
+              {urgentLabel}
             </Badge>
           )}
         </button>
@@ -105,7 +115,10 @@ export function GlobalRunStatusIndicator() {
         )}
 
         {work && items.length === 0 && (
-          <EmptyState title="Nothing running right now" description="No project has a live Keep Going run in progress." />
+          <EmptyState
+            title="Nothing running right now"
+            description="No project has a live Keep Going run in progress."
+          />
         )}
 
         {items.length > 0 && (
@@ -115,7 +128,9 @@ export function GlobalRunStatusIndicator() {
                 <>
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <span className="font-medium">{item.displayName}</span>
-                    <Badge variant={liveWorkFeedBadgeVariant(item.state)}>{item.state}</Badge>
+                    <Badge variant={liveWorkFeedBadgeVariant(item.state)}>
+                      {globalRunStatusLabel(item)}
+                    </Badge>
                   </div>
                   <p className="text-muted-foreground">{item.reason}</p>
                   <p className="mt-1 text-[10px] text-muted-foreground">
