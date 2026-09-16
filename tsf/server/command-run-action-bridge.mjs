@@ -15,6 +15,7 @@ import {
 } from './keep-going-controller.mjs'
 import { withKeepGoingRun, readKeepGoingRun } from './keep-going-run-store.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
+import { replyToOrchestrationMessage } from '../adapters/orca-orchestration-bridge.mjs'
 
 // Mirrors keep-going-http-routes.mjs's own mutateThroughStore exactly (not
 // exported there, so duplicated rather than reaching across a route file
@@ -58,6 +59,24 @@ export async function resumeProjectRun(projectId, clock) {
 // today's default semantics (a later answer freely replaces an earlier
 // one); a caller that read a specific run revision before answering gets a
 // real TSF_STALE_REVISION rejection if the run changed underneath it.
+//
+// TSF Overnight Product Completion V1, Phase 1 (zero-relay): this is the
+// ONE real call site for a PROJECT-source Needs You resolution (both
+// action-executor.mjs's canonical RESOLVE_NEEDS_YOU route and Command's
+// own direct usage call this exact function -- confirmed, not assumed).
+// If the resolved question originated from a real worker's own
+// `orchestration ask` (raised by keep-going-dispatch-loop.mjs's settle
+// step, tagged with an `escalation.messageId`), the owner's durable
+// answer is now also relayed back to that same still-blocked worker via
+// `orchestration reply` -- closing the loop the pilot found open
+// (worker asks -> [nothing] -- the owner's own Needs You answer never
+// reached the worker at all). The domain resolution above already
+// durably committed by the time this runs, so a reply-back failure here
+// (e.g. the worker's dispatch already ended, or the CLI is transiently
+// unavailable) is reported, never silently swallowed, but never
+// un-resolves the Needs You either -- the durable answer is the source of
+// truth; failing to notify one specific worker process is a narrower,
+// separately-diagnosable problem than losing the owner's answer would be.
 export async function resolveProjectNeedsYou(
   projectId,
   needsYouId,
@@ -65,7 +84,7 @@ export async function resolveProjectNeedsYou(
   clock,
   expectedRevision
 ) {
-  return mutateThroughStore(projectId, (fakeOpState) =>
+  const run = await mutateThroughStore(projectId, (fakeOpState) =>
     resolveKeepGoingNeedsYou(
       fakeOpState,
       projectId,
@@ -75,6 +94,22 @@ export async function resolveProjectNeedsYou(
       expectedRevision
     )
   )
+  const resolved = run.needsYou.find((entry) => entry.id === needsYouId)
+  const escalation = resolved?.escalation
+  if (escalation?.kind === 'WORKER_ASK' && escalation.messageId) {
+    const body = typeof resolution === 'string' ? resolution : JSON.stringify(resolution)
+    const replyResult = await replyToOrchestrationMessage({
+      id: escalation.messageId,
+      body,
+      run: escalation.orchestrationRunId
+    })
+    if (!replyResult.ok) {
+      console.error(
+        `resolveProjectNeedsYou: durably resolved ${needsYouId} but failed to relay the answer back to worker message ${escalation.messageId} (${replyResult.reason}: ${replyResult.detail})`
+      )
+    }
+  }
+  return run
 }
 
 // "continue"/"resume" is genuinely ambiguous in isolation -- for a PAUSED

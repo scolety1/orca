@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Stands in for the real `orca` CLI in tests. Driven by env vars so tests
 // never depend on a live Orca runtime being reachable.
+import { writeFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 const mode = process.env.STUB_ORCA_MODE || 'success'
 const seededRepos = process.env.STUB_ORCA_REPOS ? JSON.parse(process.env.STUB_ORCA_REPOS) : []
@@ -191,6 +192,29 @@ if (args[0] === 'account' && args[1] === 'list') {
       question: questionIndex === -1 ? null : args[questionIndex + 1]
     }
   })
+} else if (args[0] === 'orchestration' && args[1] === 'check') {
+  // TSF Overnight Product Completion V1, Phase 1 (zero-relay): a run's own
+  // pending worker-ask messages, seeded via STUB_ORCA_MESSAGES so a test
+  // controls exactly what settleStep's checkOrchestrationMessages sees.
+  const messages = process.env.STUB_ORCA_MESSAGES ? JSON.parse(process.env.STUB_ORCA_MESSAGES) : []
+  ok({ messages, count: messages.length })
+} else if (args[0] === 'orchestration' && args[1] === 'reply') {
+  // The other half: records exactly what a real `orchestration reply`
+  // call received, via STUB_ORCA_REPLY_DEBUG_FILE, so a test can assert
+  // the owner's Needs You answer really reached the (simulated) worker --
+  // no monkeypatching of the real bridge module needed.
+  const idIndex = args.indexOf('--id')
+  const bodyIndex = args.indexOf('--body')
+  const runIndex = args.indexOf('--run')
+  const received = {
+    id: idIndex === -1 ? null : args[idIndex + 1],
+    body: bodyIndex === -1 ? null : args[bodyIndex + 1],
+    run: runIndex === -1 ? null : args[runIndex + 1]
+  }
+  if (process.env.STUB_ORCA_REPLY_DEBUG_FILE) {
+    writeFileSync(process.env.STUB_ORCA_REPLY_DEBUG_FILE, JSON.stringify(received))
+  }
+  ok({ message: { id: 'stub-reply-msg' } })
 } else {
   process.stdout.write(
     JSON.stringify({

@@ -50,6 +50,7 @@ import path from 'node:path'
 import {
   abandonOrchestrationWorker,
   bindOrchestrationRun,
+  checkOrchestrationMessages,
   createDispatcherTerminal,
   createOrchestrationRun,
   createOrchestrationTask,
@@ -85,6 +86,7 @@ import { placementsCollide } from './keep-going-placement-collision.mjs'
 const DEFAULT_ORCHESTRATION = Object.freeze({
   abandonOrchestrationWorker,
   bindOrchestrationRun,
+  checkOrchestrationMessages,
   createDispatcherTerminal,
   createOrchestrationRun,
   createOrchestrationTask,
@@ -745,6 +747,39 @@ async function commitDispatchedWave(
   }
 }
 
+// TSF Overnight Product Completion V1, Phase 1 (zero-relay): a real worker
+// can hit its own `orchestration ask` mid-task -- a genuine design/
+// approval question it decided it could not resolve alone (distinct from
+// ordinary self-resolvable uncertainty, which a worker just resolves and
+// keeps going on; a worker only calls `ask` when it won't proceed without
+// an answer). Before this, nothing here ever read the Run's own mailbox,
+// so that question sat invisible to TSF's canonical Needs You system and
+// the owner had no way to see it short of raw Orca CLI. `from_handle`
+// starting with "dispatch:" is how a genuine worker-originated question is
+// told apart from any other message type/sender this same mailbox carries
+// (e.g. this module's own heartbeats). Filters out ids already present as
+// an escalation.messageId on the run's own needsYou (dedup -- a message
+// this tick already escalated must never raise a second, duplicate
+// question just because it is still unanswered on a later tick).
+function newWorkerQuestions(messages, alreadyEscalatedMessageIds) {
+  return (messages ?? []).filter(
+    (m) =>
+      m.type === 'question' &&
+      typeof m.from_handle === 'string' &&
+      m.from_handle.startsWith('dispatch:') &&
+      m.body?.trim() &&
+      !alreadyEscalatedMessageIds.has(m.id)
+  )
+}
+
+function parseMessagePayload(message) {
+  try {
+    return JSON.parse(message.payload ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
 async function settleStep(projectId, clock, orchestration, store) {
   let claimed
   try {
@@ -796,6 +831,58 @@ async function settleStep(projectId, clock, orchestration, store) {
     }
   }
   if (!allTerminal) {
+    // TSF Overnight Product Completion V1, Phase 1 (zero-relay): checked in
+    // the SAME settle pass that already calls listOrchestrationTasks for
+    // this run, so no extra tick/poll cadence is introduced, and only
+    // while a wave is genuinely in flight -- there is no live worker to
+    // ask anything otherwise. Takes priority over the stall-threshold
+    // check just below: a worker waiting on a real owner answer is not
+    // stalled, it is correctly, honestly blocked, and must never be
+    // reported as a silent stall instead of what it actually is.
+    const alreadyEscalated = new Set(
+      (claimed.needsYou ?? []).map((entry) => entry.escalation?.messageId).filter(Boolean)
+    )
+    const messagesResult = await orchestration.checkOrchestrationMessages({
+      run: orchestrationRunId
+    })
+    const pendingQuestions = messagesResult.ok
+      ? newWorkerQuestions(messagesResult.result?.messages, alreadyEscalated)
+      : []
+    if (pendingQuestions.length > 0) {
+      try {
+        const next = await commitClaimed(projectId, store, claimed, (current, expectedRevision) => {
+          let n = { ...current, revision: expectedRevision }
+          for (const message of pendingQuestions) {
+            const payload = parseMessagePayload(message)
+            n = raiseNeedsYou(
+              n,
+              {
+                question: message.body,
+                options: Array.isArray(payload.options) ? payload.options : [],
+                taskId: payload.taskId ?? null,
+                escalation: {
+                  kind: 'WORKER_ASK',
+                  messageId: message.id,
+                  dispatchId: payload.dispatchId ?? message.from_handle.slice('dispatch:'.length),
+                  orchestrationRunId
+                }
+              },
+              clock,
+              n.revision,
+              true
+            )
+          }
+          return releaseTick(n, clock, n.revision)
+        })
+        return {
+          action: 'WORKER_ESCALATED_TO_NEEDS_YOU',
+          run: next,
+          questions: pendingQuestions.map((m) => m.id)
+        }
+      } catch (error) {
+        return lostLockResult('WORKER_ESCALATION_FAILED', error, {})
+      }
+    }
     // No real per-worker heartbeat timestamp exists to feed keep-going.mjs's
     // own detectStall (mapOrchestrationFacts always emits lastHeartbeatAt:
     // null -- a disclosed, still-open limitation, see wave 11 finding 4).

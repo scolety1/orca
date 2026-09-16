@@ -376,3 +376,34 @@ export async function createOrchestrationGate({ task, question, options, from } 
   }
   return runOrca(args)
 }
+
+// TSF Overnight Product Completion V1, Phase 1 (zero-relay): reads a Run's
+// own mailbox -- this is how a real worker's own `orchestration ask`
+// (a genuine, unprompted mid-task decision question, distinct from the
+// gate-create primitive above, which nothing in this codebase ever calls)
+// actually surfaces. `--all` (not the default unread-only view) so a
+// caller can dedupe against already-escalated message ids itself, rather
+// than depending on this CLI's own read-tracking, which a caller with no
+// bound coordinator terminal (TSF's server process) cannot reliably
+// participate in anyway.
+export async function checkOrchestrationMessages({ run } = {}) {
+  if (!run) {
+    return { ok: false, reason: 'INVALID_ARGS', detail: 'run is required' }
+  }
+  return runOrca(['orchestration', 'check', '--run', run, '--all'])
+}
+
+// The other half of the zero-relay loop: once the owner answers the
+// canonical Needs You this message became, this is what actually reaches
+// the real, still-blocked worker -- the same `orchestration reply` a human
+// operator would type by hand, just called from the server instead.
+export async function replyToOrchestrationMessage({ id, body, run } = {}) {
+  if (!id || body === undefined || body === null) {
+    return { ok: false, reason: 'INVALID_ARGS', detail: 'id and body are required' }
+  }
+  const args = ['orchestration', 'reply', '--id', id, '--body', body]
+  if (run) {
+    args.push('--run', run)
+  }
+  return runOrca(args)
+}

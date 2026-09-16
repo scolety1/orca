@@ -675,9 +675,18 @@ export function detectStall(run, workerHeartbeats, clock) {
 // -- the non-transitioning "already NEEDS_YOU" path doesn't go through
 // transitionRun (see comment below) and previously had no revision check
 // or bump at all, an inconsistency an independent review caught.
+// TSF Overnight Product Completion V1, Phase 1 (zero-relay): `escalation`
+// (optional) carries the ORIGIN of a worker-initiated question -- e.g. a
+// real Orca worker's own `orchestration ask` message -- so the resolver
+// can route the owner's answer back to that same worker (see
+// server/keep-going-worker-escalation.mjs and resolveProjectNeedsYou's own
+// reply-back step). Not a new store: same needsYou entry every other
+// caller already reads/writes, just with one more optional field. Callers
+// that omit it (the pre-existing owner-raised-question paths) keep
+// escalation: null, unchanged.
 export function raiseNeedsYou(
   run,
-  { question, options = [], taskId = null },
+  { question, options = [], taskId = null, escalation = null },
   clock,
   expectedRevision,
   tickInternal = false
@@ -698,6 +707,7 @@ export function raiseNeedsYou(
     question,
     options,
     taskId,
+    escalation,
     raisedAt: at,
     resolvedAt: null,
     resolution: null
