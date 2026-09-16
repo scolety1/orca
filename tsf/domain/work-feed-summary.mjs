@@ -9,6 +9,17 @@
 // legacy, onboarding-time-only bucket (no Keep Going run makes a project
 // less/more blocked in that sense), independent of `needsYou`/`stalled`,
 // which are purely run-driven and have no legacy equivalent.
+//
+// TSF REAL-PILOT READINESS CLOSURE V1, Round 2 Finding #18: `active` used
+// to ALSO catch PLANNING/WAITING feed states (a fresh no-wave run, a
+// PAUSED run, a resource-wait, an execution hold) -- indistinguishable
+// from a genuinely in-flight WORKING run on this page. Reuses the SAME
+// canonical `primaryState` every other surface already reads (already
+// present on each `project`, hold-aware, computed once by
+// project-catalog.mjs's `withPrimaryState`) purely as the active/waiting
+// disambiguator -- never a second derivation: only an item RUN_FEED_SECTION
+// already routed to 'active' gets redirected to the new 'waiting' bucket
+// when its own primaryState says it isn't actually WORKING.
 import { fleetWorkStatus } from './fleet-work-status.mjs'
 import { computeResearchMissionPhase } from './research-mission.mjs'
 
@@ -21,8 +32,11 @@ import { computeResearchMissionPhase } from './research-mission.mjs'
 // derived classification.
 const RESEARCH_PHASE_SECTION = Object.freeze({
   EXECUTING: 'active',
-  // Match Keep Going's WAITING precedent until Work gains a waiting section.
-  WAITING_FOR_RESOURCES: 'active',
+  // Round 2 Finding #18: Work now has a real waiting section -- research's
+  // own resource-wait phase is unambiguous on its own vocabulary, no
+  // primaryState disambiguation needed the way a run's shared PLANNING/
+  // WORKING/WAITING words require.
+  WAITING_FOR_RESOURCES: 'waiting',
   WAITING_NEEDS_INPUT: 'needsYou',
   COMPLETE: 'recentlyCompleted',
   BLOCKED: 'blocked'
@@ -92,10 +106,14 @@ export function summarizeWorkFromRuns(
   keepGoingRuns = {},
   clock = () => new Date(),
   researchMissions = {},
-  canonicalBases = {}
+  canonicalBases = {},
+  projectExecutionHolds = {}
 ) {
   const statusByProjectId = new Map(
-    fleetWorkStatus(projects, keepGoingRuns, clock).map((status) => [status.projectId, status])
+    fleetWorkStatus(projects, keepGoingRuns, clock, projectExecutionHolds).map((status) => [
+      status.projectId,
+      status
+    ])
   )
 
   // Legacy classification -- unchanged from the original summarizeWork,
@@ -108,6 +126,7 @@ export function summarizeWorkFromRuns(
   const blocked = projects.filter((p) => (p.mission.state ?? '').startsWith('BLOCKED'))
 
   const runActive = []
+  const runWaiting = []
   const queued = []
   const verifying = []
   const needsYou = []
@@ -141,7 +160,15 @@ export function summarizeWorkFromRuns(
       ...project,
       liveWorkFeed: status.feed,
       runId: status.runId,
-      lastCheckpointAt: status.lastCheckpointAt
+      lastCheckpointAt: status.lastCheckpointAt,
+      // Round 2 Finding #18: always the SAME status this function's own
+      // bucketing decision just used, never whatever `project` itself
+      // happened to carry (a run-bearing project's own primaryState should
+      // already agree, but a bucketed item must be self-consistent with
+      // the exact status that placed it here, not a second, possibly-stale
+      // source).
+      primaryState: status.primaryState,
+      primaryReasonLabel: status.primaryReasonLabel
     }
     // Real finding (#11), disclosed earlier this mission, fixed here:
     // projectLiveWorkFeedState's own READY_FOR_ADOPTION classification is
@@ -165,13 +192,27 @@ export function summarizeWorkFromRuns(
     const advancedEntry = (canonicalBases[project.id]?.history ?? []).find(
       (h) => h.action === 'ADVANCED' && h.missionId === status.runId
     )
-    const section =
+    const rawSection =
       status.feed.state === 'READY_FOR_ADOPTION' && advancedEntry
         ? 'recentlyCompleted'
         : RUN_FEED_SECTION[status.feed.state]
+    // Round 2 Finding #18: `active` is only ever correct when this run's own
+    // canonical primaryState (status.primaryState -- computed above by the
+    // SAME fleetWorkStatus()/keepGoingRunWorkItem() call chain every other
+    // surface reads, hold-aware via projectExecutionHolds -- never
+    // re-derived here) says WORKING. A fresh no-wave run (PLANNING), a
+    // PAUSED run, a resource-wait, or an active execution hold all land in
+    // RUN_FEED_SECTION's 'active' bucket too, but their real primaryState
+    // is WAITING -- redirect those, and only those, to the new 'waiting'
+    // bucket.
+    const section =
+      rawSection === 'active' && status.primaryState !== 'WORKING' ? 'waiting' : rawSection
     switch (section) {
       case 'active':
         runActive.push(item)
+        break
+      case 'waiting':
+        runWaiting.push(item)
         break
       case 'verifying':
         verifying.push(item)
@@ -204,6 +245,7 @@ export function summarizeWorkFromRuns(
   }
 
   const researchActive = []
+  const researchWaiting = []
   const researchNeedsYou = []
   const researchRecentlyCompleted = []
   const researchBlocked = []
@@ -213,6 +255,8 @@ export function summarizeWorkFromRuns(
     const item = researchMissionWorkItem(mission, phase)
     if (section === 'active') {
       researchActive.push(item)
+    } else if (section === 'waiting') {
+      researchWaiting.push(item)
     } else if (section === 'needsYou') {
       researchNeedsYou.push(item)
     } else if (section === 'recentlyCompleted') {
@@ -224,6 +268,7 @@ export function summarizeWorkFromRuns(
 
   return {
     active: [...legacyActive, ...runActive, ...researchActive],
+    waiting: [...runWaiting, ...researchWaiting],
     queued,
     verifying,
     needsYou: [...needsYou, ...researchNeedsYou],

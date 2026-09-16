@@ -40,8 +40,8 @@ export function CommandPage() {
           <h1 className="text-xl font-semibold tracking-tight">Command</h1>
           <p className="text-sm text-muted-foreground">
             Ask what&apos;s running, name a project to work on it, or name several to prepare and
-            start them together. Command routes through your existing planners, Health Repair, Prepare
-            for Work, and Keep Going -- it never runs a second execution engine of its own.
+            start them together. Command routes through your existing planners, Health Repair,
+            Prepare for Work, and Keep Going -- it never runs a second execution engine of its own.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={collapse} className="shrink-0 gap-1.5">
@@ -81,7 +81,8 @@ export function CommandPage() {
                         <span className="truncate text-sm font-medium">{s.displayName}</span>
                         {s.hasRun ? (
                           <span className="shrink-0 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                            {s.feed?.state}
+                            {s.primaryState}
+                            {s.primaryReasonLabel ? ` (${s.primaryReasonLabel})` : ''}
                           </span>
                         ) : (
                           <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">

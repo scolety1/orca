@@ -172,7 +172,8 @@ export function createRequestHandler(options = {}) {
             opState.keepGoingRuns,
             () => new Date(),
             opState.researchMissions,
-            opState.projectCanonicalBases
+            opState.projectCanonicalBases,
+            opState.projectExecutionHolds
           )
         )
       }

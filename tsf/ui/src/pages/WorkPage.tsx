@@ -7,7 +7,8 @@ import {
   CalendarClock,
   ShieldCheck,
   Search,
-  AlertTriangle
+  AlertTriangle,
+  Clock
 } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
 import { api } from '@/lib/api'
@@ -19,7 +20,12 @@ import { Badge } from '@/components/ui/badge'
 import { StartMissionDialog } from '@/components/missions/StartMissionDialog'
 import { StartOvernightFleetDialog } from '@/components/missions/StartOvernightFleetDialog'
 import { projectDeepLinkTo } from '@/lib/project-work-deep-link'
-import { isResearchMissionWorkItem, type ProjectDetail, type RecentlyCompletedItem, type WorkItem } from '@/lib/types'
+import {
+  isResearchMissionWorkItem,
+  type ProjectDetail,
+  type RecentlyCompletedItem,
+  type WorkItem
+} from '@/lib/types'
 import { ResearchMissionCard } from '@/components/research/ResearchMissionCard'
 import { cn } from '@/lib/cn'
 import { useReloadOnDockActivity } from '@/lib/command-dock-context'
@@ -131,7 +137,9 @@ export function WorkPage() {
             onClick={() => setTypeFilter(id)}
             className={cn(
               'rounded-full border px-3 py-1 text-[11px] font-medium transition-colors',
-              typeFilter === id ? 'border-primary/50 bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'
+              typeFilter === id
+                ? 'border-primary/50 bg-primary/10 text-foreground'
+                : 'border-border text-muted-foreground hover:text-foreground'
             )}
           >
             {label}
@@ -155,9 +163,14 @@ export function WorkPage() {
 
       <Section icon={PlayCircle} title="Active">
         {(() => {
-          const activeCoding = work.active.filter((p): p is WorkItem => !isResearchMissionWorkItem(p))
+          const activeCoding = work.active.filter(
+            (p): p is WorkItem => !isResearchMissionWorkItem(p)
+          )
           const activeResearch = work.active.filter(isResearchMissionWorkItem)
-          const shown = [...(showCoding ? activeCoding : []), ...(showResearch ? activeResearch : [])]
+          const shown = [
+            ...(showCoding ? activeCoding : []),
+            ...(showResearch ? activeResearch : [])
+          ]
           return shown.length === 0 ? (
             <EmptyState
               title="No active work"
@@ -197,7 +210,60 @@ export function WorkPage() {
                     </Card>
                   </Link>
                 ))}
-              {showResearch && activeResearch.map((item) => <ResearchMissionCard key={item.missionId} item={item} />)}
+              {showResearch &&
+                activeResearch.map((item) => (
+                  <ResearchMissionCard key={item.missionId} item={item} />
+                ))}
+            </div>
+          )
+        })()}
+      </Section>
+
+      <Section icon={Clock} title="Waiting">
+        {(() => {
+          const waitingCoding = work.waiting.filter(
+            (p): p is WorkItem => !isResearchMissionWorkItem(p)
+          )
+          const waitingResearch = work.waiting.filter(isResearchMissionWorkItem)
+          const shown = [
+            ...(showCoding ? waitingCoding : []),
+            ...(showResearch ? waitingResearch : [])
+          ]
+          return shown.length === 0 ? (
+            <EmptyState
+              title="Nothing waiting"
+              description="No project in the Work Set is currently paused, resource-constrained, or held."
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {showCoding &&
+                waitingCoding.map((p) => (
+                  <Link
+                    key={p.id}
+                    to={projectDeepLinkTo(p.id, {
+                      tab: p.liveWorkFeed ? 'keep-going' : undefined,
+                      runId: p.runId
+                    })}
+                  >
+                    <Card>
+                      <CardHeader className="flex-row items-center justify-between space-y-0">
+                        <CardTitle>{p.displayName}</CardTitle>
+                        {p.primaryReasonLabel && (
+                          <Badge variant="neutral" className="shrink-0">
+                            {p.primaryReasonLabel}
+                          </Badge>
+                        )}
+                      </CardHeader>
+                      <CardContent className="text-xs text-muted-foreground">
+                        {p.liveWorkFeed?.reason ?? p.mission.state}
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              {showResearch &&
+                waitingResearch.map((item) => (
+                  <ResearchMissionCard key={item.missionId} item={item} />
+                ))}
             </div>
           )
         })()}
@@ -226,9 +292,13 @@ export function WorkPage() {
 
       <Section icon={CircleSlash} title="Needs you / blocked">
         {(() => {
-          const needsYouCoding = work.needsYou.filter((p): p is WorkItem => !isResearchMissionWorkItem(p))
+          const needsYouCoding = work.needsYou.filter(
+            (p): p is WorkItem => !isResearchMissionWorkItem(p)
+          )
           const needsYouResearch = work.needsYou.filter(isResearchMissionWorkItem)
-          const blockedCoding = work.blocked.filter((p): p is ProjectDetail => !isResearchMissionWorkItem(p))
+          const blockedCoding = work.blocked.filter(
+            (p): p is ProjectDetail => !isResearchMissionWorkItem(p)
+          )
           const blockedResearch = work.blocked.filter(isResearchMissionWorkItem)
           const codingCount = needsYouCoding.length + work.stalled.length + blockedCoding.length
           const researchCount = needsYouResearch.length + blockedResearch.length
@@ -254,7 +324,9 @@ export function WorkPage() {
                     <Card className="border-status-blocked/40">
                       <CardHeader className="flex-row items-center justify-between space-y-0">
                         <CardTitle>{p.displayName}</CardTitle>
-                        <Badge variant={p.liveWorkFeed?.state === 'STALLED' ? 'blocked' : 'degraded'}>
+                        <Badge
+                          variant={p.liveWorkFeed?.state === 'STALLED' ? 'blocked' : 'degraded'}
+                        >
                           <AlertTriangle className="size-3" />
                           {p.liveWorkFeed?.state === 'STALLED' ? 'Stalled' : 'Needs you'}
                         </Badge>
@@ -279,7 +351,10 @@ export function WorkPage() {
                     </Card>
                   </Link>
                 ))}
-              {showResearch && [...needsYouResearch, ...blockedResearch].map((item) => <ResearchMissionCard key={item.missionId} item={item} />)}
+              {showResearch &&
+                [...needsYouResearch, ...blockedResearch].map((item) => (
+                  <ResearchMissionCard key={item.missionId} item={item} />
+                ))}
             </div>
           )
         })()}
@@ -312,10 +387,14 @@ export function WorkPage() {
       <Section icon={PackageCheck} title="Recently completed">
         {(() => {
           const completedCoding = work.recentlyCompleted.filter(
-            (p): p is Exclude<RecentlyCompletedItem, { kind: 'RESEARCH_MISSION' }> => !isResearchMissionWorkItem(p)
+            (p): p is Exclude<RecentlyCompletedItem, { kind: 'RESEARCH_MISSION' }> =>
+              !isResearchMissionWorkItem(p)
           )
           const completedResearch = work.recentlyCompleted.filter(isResearchMissionWorkItem)
-          const shown = [...(showCoding ? completedCoding : []), ...(showResearch ? completedResearch : [])]
+          const shown = [
+            ...(showCoding ? completedCoding : []),
+            ...(showResearch ? completedResearch : [])
+          ]
           return shown.length === 0 ? (
             <EmptyState title="Nothing completed yet" />
           ) : (
@@ -334,7 +413,10 @@ export function WorkPage() {
                     </div>
                   </Link>
                 ))}
-              {showResearch && completedResearch.map((item) => <ResearchMissionCard key={item.missionId} item={item} />)}
+              {showResearch &&
+                completedResearch.map((item) => (
+                  <ResearchMissionCard key={item.missionId} item={item} />
+                ))}
             </div>
           )
         })()}

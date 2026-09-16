@@ -11,6 +11,7 @@ import type { AttentionItem, WorkSummary } from './types.ts'
 function emptyWork(overrides: Partial<WorkSummary> = {}): WorkSummary {
   return {
     active: [],
+    waiting: [],
     queued: [],
     verifying: [],
     needsYou: [],

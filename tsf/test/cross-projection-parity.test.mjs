@@ -94,7 +94,8 @@ function project3Ways(projects, keepGoingRuns, extra = {}) {
     keepGoingRuns,
     clock,
     extra.researchMissions,
-    extra.projectCanonicalBases
+    extra.projectCanonicalBases,
+    extra.projectExecutionHolds
   )
   const attention = buildFleetAttentionItems({
     projects,
@@ -103,7 +104,7 @@ function project3Ways(projects, keepGoingRuns, extra = {}) {
     projectCanonicalBases: extra.projectCanonicalBases ?? {},
     clock
   })
-  const status = fleetWorkStatus(projects, keepGoingRuns, clock)
+  const status = fleetWorkStatus(projects, keepGoingRuns, clock, extra.projectExecutionHolds)
   return { work, attention, status }
 }
 
@@ -137,30 +138,34 @@ test('parity: WORKING (in-flight wave) -- Work says WORKING, no attention item, 
   assertRunStateFamily(run, feed.state)
 })
 
-test('parity: PLANNING (fresh run, no wave, not resource-blocked) -- Work says PLANNING, no attention item', () => {
+test('parity: PLANNING (fresh run, no wave, not resource-blocked) -- Work says waiting (Round 2 Finding #18: PLANNING is WAITING/Preparing, not active), no attention item', () => {
   const run = newRun('r2', 'p2')
   const { work, attention, status } = project3Ways([project('p2')], { p2: run })
   const feed = projectLiveWorkFeedState(run)
   assert.equal(feed.state, 'PLANNING')
-  assert.ok(work.active.some((x) => x.id === 'p2'))
+  assert.ok(work.waiting.some((x) => x.id === 'p2'))
+  assert.ok(!work.active.some((x) => x.id === 'p2'))
   assert.equal(status[0].feed.state, 'PLANNING')
+  assert.equal(status[0].primaryState, 'WAITING')
   assert.deepEqual(attentionFor(attention, 'p2'), [])
   assertRunStateFamily(run, feed.state)
 })
 
-test('parity: PAUSED -- Work says WAITING(PAUSED), Command agrees, no attention item (an operator-intended pause is not itself an attention-worthy condition), run.state PAUSED', () => {
+test('parity: PAUSED -- Work says waiting (Round 2 Finding #18), Command agrees, no attention item (an operator-intended pause is not itself an attention-worthy condition), run.state PAUSED', () => {
   const run = pauseRun(newRun('r3', 'p3'), 'OPERATOR_PAUSE', clock)
   const { work, attention, status } = project3Ways([project('p3')], { p3: run })
   const feed = projectLiveWorkFeedState(run)
   assert.equal(feed.state, 'WAITING')
   assert.match(feed.reason, /PAUSED/)
-  assert.ok(work.active.some((x) => x.id === 'p3'))
+  assert.ok(work.waiting.some((x) => x.id === 'p3'))
+  assert.ok(!work.active.some((x) => x.id === 'p3'))
   assert.equal(status[0].feed.state, 'WAITING')
+  assert.equal(status[0].primaryState, 'WAITING')
   assert.deepEqual(attentionFor(attention, 'p3'), [])
   assertRunStateFamily(run, feed.state)
 })
 
-test("parity: HELD (active PROJECT_EXECUTION_HOLD, run otherwise ACTIVE/WORKING) -- Attention flags the hold; Work/Command still honestly describe the run's own mechanical state (a hold gates FUTURE dispatch, it does not retroactively change what a currently-dispatched wave is doing) -- not a contradiction, a different question", () => {
+test("parity: HELD (active PROJECT_EXECUTION_HOLD, run otherwise ACTIVE/WORKING) -- a hold always wins WAITING/Execution hold regardless of the run's own mechanical state, matching HQ's own settled Finding #7 (operator-work-cards.ts: 'ANY run under a real execution hold, regardless of its own mechanical state... moves to waitingCards'); Round 2 Finding #18 brings Work into the same agreement. Attention still separately flags the hold.", () => {
   let run = newRun('r4', 'p4')
   const plan = planWave(run, [{ id: 't1', scope: ['a.mjs'] }], clock)
   run = dispatchWave(
@@ -185,10 +190,17 @@ test("parity: HELD (active PROJECT_EXECUTION_HOLD, run otherwise ACTIVE/WORKING)
     { projectExecutionHolds: { p4: hold } }
   )
   assert.ok(
-    work.active.some((x) => x.id === 'p4'),
-    'the in-flight wave is still real work, still shown'
+    !work.active.some((x) => x.id === 'p4'),
+    'held != Working, even mid-wave -- the owner must never read this as genuinely progressing'
   )
+  assert.ok(work.waiting.some((x) => x.id === 'p4'))
+  assert.equal(work.waiting.find((x) => x.id === 'p4').primaryReasonLabel, 'Execution hold')
+  // The run's own mechanical feed state is honestly unchanged -- a hold
+  // gates future dispatch, it doesn't retroactively rewrite what the
+  // in-flight wave is doing; only the owner-facing primaryState/bucket
+  // (what the OWNER should trust as "progressing") changes.
   assert.equal(status[0].feed.state, 'WORKING')
+  assert.equal(status[0].primaryState, 'WAITING')
   const items = attentionFor(attention, 'p4')
   assert.equal(items.length, 1)
   assert.equal(items[0].category, 'BLOCKED_EXTERNAL')

@@ -235,6 +235,9 @@ export type RecentlyCompletedItem =
 
 export type WorkSummary = {
   active: AnyWorkItem[]
+  // Round 2 Finding #18: genuinely not-progressing work (paused, resource-
+  // waiting, a fresh no-wave run, or held) -- never counted as active.
+  waiting: AnyWorkItem[]
   // Always empty in this pass -- no domain signal yet distinguishes
   // "queued" from "planning" (see tsf/domain/work-feed-summary.mjs).
   queued: WorkItem[]

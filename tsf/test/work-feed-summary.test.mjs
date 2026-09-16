@@ -16,8 +16,11 @@ import {
   markStalled,
   raiseNeedsYou,
   completeRun,
-  checkpointRun
+  checkpointRun,
+  pauseRun,
+  recordPendingDispatch
 } from '../domain/keep-going.mjs'
+import { createProjectExecutionHold } from '../domain/project-execution-hold.mjs'
 
 const clock = () => new Date('2026-08-25T00:00:00.000Z')
 
@@ -39,14 +42,21 @@ function newRun(id, projectId) {
   )
 }
 
-test('the exact Started->Work bug: an onboarded project (mission.state ONBOARDED, no legacy bucket) with a fresh Keep Going run appears in active, not nowhere', () => {
+test('the exact Started->Work bug: an onboarded project (mission.state ONBOARDED, no legacy bucket) with a fresh Keep Going run appears in waiting, not nowhere', () => {
   const p = project('tsf-orca')
   const run = newRun('keep-going-tsf-orca-1', 'tsf-orca')
   const summary = summarizeWorkFromRuns([p], { 'tsf-orca': run }, clock)
-  assert.equal(summary.active.length, 1)
-  assert.equal(summary.active[0].id, 'tsf-orca')
-  assert.equal(summary.active[0].liveWorkFeed.state, 'PLANNING')
-  assert.equal(summary.active[0].runId, run.id)
+  // Round 2 Finding #18: a fresh, no-wave-dispatched run's own canonical
+  // primaryState is WAITING/Preparing, not WORKING -- it must never read as
+  // active, but (the original bug this test protects) it must still appear
+  // SOMEWHERE, never silently nowhere.
+  assert.equal(summary.active.length, 0)
+  assert.equal(summary.waiting.length, 1)
+  assert.equal(summary.waiting[0].id, 'tsf-orca')
+  assert.equal(summary.waiting[0].liveWorkFeed.state, 'PLANNING')
+  assert.equal(summary.waiting[0].primaryState, 'WAITING')
+  assert.equal(summary.waiting[0].primaryReasonLabel, 'Preparing')
+  assert.equal(summary.waiting[0].runId, run.id)
   // Never appears in any other section.
   assert.equal(summary.blocked.length, 0)
   assert.equal(summary.needsYou.length, 0)
@@ -62,7 +72,9 @@ test('lastCheckpointAt threads through into the bucketed item', () => {
   let run = newRun('keep-going-tsf-orca-1', 'tsf-orca')
   run = checkpointRun(run, { phase: 'RUN_STARTED' }, clock)
   const summary = summarizeWorkFromRuns([p], { 'tsf-orca': run }, clock)
-  assert.equal(summary.active[0].lastCheckpointAt, run.checkpoints.at(-1).at)
+  // A fresh, no-wave-dispatched run lands in waiting (Round 2 Finding #18),
+  // not active -- see the Started->Work bug test above.
+  assert.equal(summary.waiting[0].lastCheckpointAt, run.checkpoints.at(-1).at)
   assert.equal(summary.readyForAdoption.length, 0)
 })
 
@@ -261,7 +273,7 @@ test('a run with a recorded wave and no independent verification lands in verify
   assert.equal(summary.active.length, 0)
 })
 
-test('blocked stays a legacy, run-independent bucket -- a project can be both legacy-blocked and have an active run', () => {
+test('blocked stays a legacy, run-independent bucket -- a project can be both legacy-blocked and have a real (waiting) run', () => {
   const p = project('mixed', {
     mission: { state: 'BLOCKED_X', id: null, blockedReason: 'sensitive' }
   })
@@ -271,10 +283,97 @@ test('blocked stays a legacy, run-independent bucket -- a project can be both le
     summary.blocked.map((x) => x.id),
     ['mixed']
   )
+  // A fresh, no-wave-dispatched run lands in waiting (Round 2 Finding #18),
+  // not active -- the real point of this test (blocked is independent of
+  // run state) still holds regardless of which run-driven bucket it lands in.
   assert.deepEqual(
-    summary.active.map((x) => x.id),
+    summary.waiting.map((x) => x.id),
     ['mixed']
   )
+  assert.equal(summary.active.length, 0)
+})
+
+// TSF REAL-PILOT READINESS CLOSURE V1, Round 2 Finding #18's own real bug
+// report: a genuinely in-flight run stays active; a PAUSED run, a
+// resource-waiting run, and an execution-held run (even one whose
+// underlying run.state would otherwise be genuinely WORKING) must never
+// read as active -- explicit held != Working / paused != Working /
+// resource-wait != Working assertions, not just an absence check.
+test('Round 2 Finding #18: WORKING stays active; PAUSED, resource-wait, and an execution hold on an in-flight run all land in waiting, never active', () => {
+  let workingRun = newRun('r-working-2', 'p-working-2')
+  workingRun = dispatchWave(
+    workingRun,
+    {
+      schemaVersion: 'TSF_KEEP_GOING_WAVE_PLAN_V1',
+      runId: workingRun.id,
+      waveNumber: 1,
+      batches: []
+    },
+    [{ workItemId: 't1', taskId: 'task-1' }],
+    clock,
+    workingRun.revision
+  )
+
+  const pausedRun = pauseRun(newRun('r-paused-2', 'p-paused-2'), 'OPERATOR_PAUSE', clock)
+
+  let waitingRun = recordPendingDispatch(
+    newRun('r-waiting-2', 'p-waiting-2'),
+    [{ id: 't1', scope: ['a.mjs'] }],
+    clock,
+    0
+  )
+  waitingRun = checkpointRun(
+    waitingRun,
+    { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: 'host memory critical' },
+    clock,
+    waitingRun.revision
+  )
+
+  let heldRun = newRun('r-held-2', 'p-held-2')
+  heldRun = dispatchWave(
+    heldRun,
+    { schemaVersion: 'TSF_KEEP_GOING_WAVE_PLAN_V1', runId: heldRun.id, waveNumber: 1, batches: [] },
+    [{ workItemId: 't1', taskId: 'task-1' }],
+    clock,
+    heldRun.revision
+  )
+  const hold = createProjectExecutionHold(
+    { projectId: 'p-held-2', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'tim' },
+    clock
+  )
+
+  const projects = [
+    project('p-working-2'),
+    project('p-paused-2'),
+    project('p-waiting-2'),
+    project('p-held-2')
+  ]
+  const runs = {
+    'p-working-2': workingRun,
+    'p-paused-2': pausedRun,
+    'p-waiting-2': waitingRun,
+    'p-held-2': heldRun
+  }
+  const realSummary = summarizeWorkFromRuns(projects, runs, clock, {}, {}, { 'p-held-2': hold })
+
+  assert.deepEqual(
+    realSummary.active.map((p) => p.id),
+    ['p-working-2']
+  )
+  const waitingIds = realSummary.waiting.map((p) => p.id).sort()
+  assert.deepEqual(waitingIds, ['p-held-2', 'p-paused-2', 'p-waiting-2'])
+
+  const byId = new Map(realSummary.waiting.map((p) => [p.id, p]))
+  assert.equal(byId.get('p-paused-2').primaryReasonLabel, 'Paused')
+  assert.equal(byId.get('p-waiting-2').primaryReasonLabel, 'Resources')
+  assert.equal(byId.get('p-held-2').primaryReasonLabel, 'Execution hold')
+
+  // held != Working / paused != Working / resource-wait != Working,
+  // explicitly, not merely "absent from active."
+  for (const id of ['p-held-2', 'p-paused-2', 'p-waiting-2']) {
+    assert.notEqual(byId.get(id).primaryState, 'WORKING')
+    assert.equal(byId.get(id).primaryState, 'WAITING')
+  }
 })
 
 test('queued is always empty in this pass -- no domain signal fabricated', () => {
@@ -344,7 +443,7 @@ test('a research mission with a real dispatch attempt (EXECUTING) appears in act
   assert.equal(summary.active[0].phase, 'EXECUTING')
 })
 
-test('a resource-blocked research mission appears in active, not silently outside every Work section', () => {
+test('a resource-blocked research mission appears in waiting (Round 2 Finding #18), not silently outside every Work section', () => {
   let mission = createResearchMission(
     {
       id: 'mission:resource-wait',
@@ -371,11 +470,12 @@ test('a resource-blocked research mission appears in active, not silently outsid
     mission.revision
   )
   const summary = summarizeWorkFromRuns([], {}, clock, { [mission.id]: mission })
+  assert.equal(summary.active.length, 0)
   assert.deepEqual(
-    summary.active.map((x) => x.missionId),
+    summary.waiting.map((x) => x.missionId),
     ['mission:resource-wait']
   )
-  assert.equal(summary.active[0].phase, 'WAITING_FOR_RESOURCES')
+  assert.equal(summary.waiting[0].phase, 'WAITING_FOR_RESOURCES')
 })
 
 // IA consolidation: HQ/Work render a real title/stats line straight from

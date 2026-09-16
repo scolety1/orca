@@ -129,9 +129,17 @@ export function summarizeWork(
   keepGoingRuns = {},
   clock = () => new Date(),
   researchMissions = {},
-  canonicalBases = {}
+  canonicalBases = {},
+  projectExecutionHolds = {}
 ) {
-  return summarizeWorkFromRuns(projects, keepGoingRuns, clock, researchMissions, canonicalBases)
+  return summarizeWorkFromRuns(
+    projects,
+    keepGoingRuns,
+    clock,
+    researchMissions,
+    canonicalBases,
+    projectExecutionHolds
+  )
 }
 
 // Real V1 stabilization finding (Operator UX pass, self-explaining project

@@ -43,6 +43,7 @@ test('normalizeWorkSummary fills in every missing array', () => {
   const result = normalizeWorkSummary({} as never)
   assert.deepEqual(result, {
     active: [],
+    waiting: [],
     queued: [],
     verifying: [],
     needsYou: [],

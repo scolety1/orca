@@ -142,7 +142,7 @@ test('a freshly-onboarded project with no Keep Going run appears in none of the 
   })
 })
 
-test('POST start really is durable, and GET /api/work now shows the project active (planning) -- the exact bug fix', async () => {
+test('POST start really is durable, and GET /api/work now shows the project waiting (planning) -- the exact bug fix, refined by Round 2 Finding #18', async () => {
   await withServer(async (base) => {
     const projectId = await onboardTestProject(base)
 
@@ -162,12 +162,21 @@ test('POST start really is durable, and GET /api/work now shows the project acti
     assert.equal(freshGet.body.state, 'ACTIVE')
 
     const { body: work } = await get(base, '/api/work')
+    // Round 2 Finding #18: a fresh, no-wave-dispatched run's own primaryState
+    // is WAITING/Preparing, not WORKING -- it must never read as active, but
+    // (the original bug this test protects) it must still appear SOMEWHERE,
+    // never silently nowhere.
     assert.ok(
-      work.active.some((p) => p.id === projectId),
-      "the project must appear in Work's active section now that a real Keep Going run exists"
+      !work.active.some((p) => p.id === projectId),
+      'a not-yet-dispatched run must never read as genuinely active/working'
     )
-    const item = work.active.find((p) => p.id === projectId)
+    assert.ok(
+      work.waiting.some((p) => p.id === projectId),
+      "the project must appear in Work's waiting section now that a real, not-yet-dispatched Keep Going run exists"
+    )
+    const item = work.waiting.find((p) => p.id === projectId)
     assert.equal(item.liveWorkFeed.state, 'PLANNING')
+    assert.equal(item.primaryReasonLabel, 'Preparing')
     assert.equal(item.runId, startRes.body.runId)
     // Not fabricated into any other section at the same time.
     for (const section of ['needsYou', 'stalled', 'verifying', 'readyForAdoption']) {
@@ -176,7 +185,7 @@ test('POST start really is durable, and GET /api/work now shows the project acti
   })
 })
 
-test('a real dispatch tick moves the project from active/PLANNING to active/WORKING in Work', async () => {
+test('a real dispatch tick moves the project from waiting/PLANNING to active/WORKING in Work', async () => {
   await withServer(async (base) => {
     const projectId = await onboardTestProject(base)
     await post(base, `/api/keep-going/${projectId}/start`, {

@@ -31,6 +31,10 @@ export function buildGlobalRunStatusItems(work: WorkSummary): GlobalRunStatusIte
   const items: GlobalRunStatusItem[] = []
   for (const bucket of [
     work.active,
+    // Round 2 Finding #18: a paused/held/resource-waiting run moved out of
+    // `active` into its own `waiting` bucket -- it must stay visible here,
+    // not silently disappear from the always-visible global indicator.
+    work.waiting,
     work.verifying,
     work.needsYou,
     work.stalled,

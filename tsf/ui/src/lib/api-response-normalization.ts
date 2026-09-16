@@ -29,6 +29,7 @@ export function normalizePortfolio(raw: Partial<Portfolio> | null | undefined): 
 export function normalizeWorkSummary(raw: Partial<WorkSummary> | null | undefined): WorkSummary {
   return {
     active: arr(raw?.active),
+    waiting: arr(raw?.waiting),
     queued: arr(raw?.queued),
     verifying: arr(raw?.verifying),
     needsYou: arr(raw?.needsYou),
