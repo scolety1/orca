@@ -100,11 +100,32 @@ test('classifyIntent recognizes the Finding #22 status-question family, subject-
     // real, already-onboarded project's own (long) display name, not just
     // short placeholders like "NWR".
     'Is Worldforge-Sablewake-Live-Runtime-Repair-V3 on hold?',
-    'Is Customer Portal Authentication Modernization on hold?'
+    'Is Customer Portal Authentication Modernization on hold?',
+    // Self-found while closing the above: "what is X doing" used \S+ (one
+    // token) for the subject, so it missed every multi-word real project
+    // display name -- including real, currently-onboarded fleet projects
+    // like "Weird Talent Marketplace" and "Colety Labs Sales Engine".
+    'What is Customer Portal Authentication Modernization doing?',
+    'What is Weird Talent Marketplace doing?'
   ]) {
     assert.equal(classifyIntent(message), 'STATUS', message)
     assert.ok(CANONICAL_STATUS_FACT_PATTERN.test(message), message)
   }
+})
+
+// Self-found while widening the "what is X doing" subject gap above: a
+// bare `.` in the gap also matches "." and "?", so it could cross into a
+// LATER, unrelated sentence and pick up a stray "doing" there -- fixed by
+// excluding sentence terminators from all three target-name gaps. (intent
+// is still STATUS here, correctly and unrelated to this fix -- the
+// message's second sentence genuinely contains the pre-existing,
+// unchanged open-ended "what is going on" phrase; what must be false is
+// CANONICAL_STATUS_FACT_PATTERN, i.e. this must NOT be treated as a
+// precise, deterministically-grounded fact question.)
+test('classifyIntent: the widened target-name gaps never cross a sentence boundary to find their predicate', () => {
+  const message =
+    'What is the deal with this feature? I need to know what is going on with the doing of tasks.'
+  assert.equal(CANONICAL_STATUS_FACT_PATTERN.test(message), false, message)
 })
 
 // Real adversarial-review finding (Codex, bounded review of this same

@@ -334,22 +334,38 @@ const ACKNOWLEDGEMENT_PATTERN = {
 // gate can reuse this EXACT pattern rather than re-deriving which STATUS
 // sub-shape it is.
 //
-// The is/why gaps are wide (.{0,80}?) because what precedes their predicate
-// is the TARGET (a project name, which can be long -- see the 44-char real
-// project name cited below). The can-branch gap is different in kind: what
-// precedes "work on" there is the CAPACITY QUESTION'S SUBJECT (who/what can
-// do the work -- TSF, we, the fleet, someone), which is always a short,
-// closed set of words, never an arbitrary verb phrase. A final Codex
-// adversarial review (session 01a0abf8-3229-7132-a655-6abfb7098c35) found
-// that reusing the wide .{0,80}? gap here let unrelated intervening verb
-// phrases sneak in, e.g. "Can you fix the wording work on NWR?" (a genuine
-// FIX_REQUEST) misclassified as STATUS purely because "work on" appeared
-// somewhere in the following 80 characters. Enumerating the real subject
-// vocabulary and requiring it immediately before "work on" closes this
-// without reopening the same whack-a-mole the wide gap was meant to solve
-// (that gap solves a different, real problem for a different branch).
+// The is/why/what-doing gaps are wide (.{0,80}?/.{1,80}?) because what
+// precedes their predicate is the TARGET (a project name, which can be
+// long AND multi-word -- see the 44-char real project name cited below,
+// and real fleet projects with multi-word display names like "Weird
+// Talent Marketplace"/"Colety Labs Sales Engine"). what-doing originally
+// used \S+ (a single token) for that target, which missed every
+// multi-word real project name -- found via the same audit that produced
+// the 44-char single-token case, widened identically. The can-branch gap
+// is different in kind: what precedes "work on" there is the CAPACITY
+// QUESTION'S SUBJECT (who/what can do the work -- TSF, we, the fleet,
+// someone), which is always a short, closed set of words, never an
+// arbitrary verb phrase. A final Codex adversarial review (session
+// 01a0abf8-3229-7132-a655-6abfb7098c35) found that reusing the wide
+// .{0,80}? gap here let unrelated intervening verb phrases sneak in, e.g.
+// "Can you fix the wording work on NWR?" (a genuine FIX_REQUEST)
+// misclassified as STATUS purely because "work on" appeared somewhere in
+// the following 80 characters. Enumerating the real subject vocabulary
+// and requiring it immediately before "work on" closes this without
+// reopening the same whack-a-mole the wide gap was meant to solve (that
+// gap solves a different, real problem for the target-name branches).
+//
+// All three target-name gaps use [^.!?]{0,80}?/[^.!?]{1,80}?, not a bare
+// `.`, because `.` also matches "." and "?" -- a bare `.{0,80}?` let the
+// gap cross into a LATER, unrelated sentence and pick up a stray "doing"/
+// "on hold"/etc there (e.g. "What is the deal with this feature? ... what
+// is going on with the doing of tasks." matched purely because "doing"
+// eventually appeared within 80 characters, in a different sentence
+// entirely). Excluding sentence terminators keeps the target confined to
+// the SAME sentence as its predicate, which is the only shape any of
+// these questions ever legitimately take.
 export const CANONICAL_STATUS_FACT_PATTERN =
-  /\bstatus\b|(?:^|[.!?]\s+)(?:what(?:'?s| is) \S+ doing\b|is\s+.{0,80}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+.{0,80}?\b(?:waiting|on hold|paused|held|stuck|blocked)\b|can\s+(?:tsf|we|you|it|someone|anyone|anybody|i|the team|the fleet)\s+work on\b)/i
+  /\bstatus\b|(?:^|[.!?]\s+)(?:what(?:'?s| is) [^.!?]{1,80}? doing\b|is\s+[^.!?]{0,80}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+[^.!?]{0,80}?\b(?:waiting|on hold|paused|held|stuck|blocked)\b|can\s+(?:tsf|we|you|it|someone|anyone|anybody|i|the team|the fleet)\s+work on\b)/i
 
 const INTENTS = [
   {
