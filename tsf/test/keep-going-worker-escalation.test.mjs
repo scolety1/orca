@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import path from 'node:path'
 import { rmSync, readFileSync } from 'node:fs'
-import { createOvernightRun } from '../domain/keep-going.mjs'
+import {
+  createOvernightRun,
+  raiseNeedsYou,
+  resolveNeedsYou,
+  recordNeedsYouRelayOutcome
+} from '../domain/keep-going.mjs'
 import { tickKeepGoingRun } from '../server/keep-going-dispatch-loop.mjs'
 import { resolveProjectNeedsYou } from '../server/command-run-action-bridge.mjs'
 
@@ -196,6 +201,22 @@ test('zero-relay: the owner answer is durable, routes back to the real worker, a
     clock().toISOString(),
     'a successful relay is durably recorded on the needsYou entry, not just console.error-able'
   )
+  // Real Codex adversarial review finding (2nd round): resolveProjectNeedsYou
+  // used to always return the run from the FIRST (resolve) write, one
+  // revision behind the SECOND (relay-outcome) write it made moments
+  // later -- a caller acting on that stale revision risked an avoidable
+  // TSF_STALE_REVISION on its own next CAS-protected call. The RETURNED
+  // value itself must carry the relay outcome, not just a fresh re-read.
+  assert.equal(
+    resolved.needsYou[0].escalation.relayedAt,
+    clock().toISOString(),
+    'the returned run itself (not just a later re-read) reflects the relay outcome -- never stale'
+  )
+  assert.equal(
+    readKeepGoingRun(PROJECT_ID).revision,
+    resolved.revision,
+    'the returned run is the SAME (freshest) revision as what is durably persisted, not one behind it'
+  )
   assert.equal(readKeepGoingRun(PROJECT_ID).needsYou[0].escalation.relayFailure, null)
 })
 
@@ -300,4 +321,73 @@ test('zero-relay: a real relay failure is durably recorded on the needsYou entry
   assert.equal(escalation.relayedAt, null, 'never falsely claims a successful relay')
   assert.ok(escalation.relayFailure, 'the failure is durably recorded, not lost after only a console.error')
   assert.equal(escalation.relayFailure.reason, 'CLI_ERROR')
+})
+
+// Real Codex adversarial review finding (2nd round): resolveProjectNeedsYou
+// permits concurrent resolutions of the SAME question when a caller omits
+// expectedRevision ("a later answer freely replaces an earlier one" -- see
+// resolveProjectNeedsYou's own header comment). Their relay attempts can
+// then land out of order -- an OLDER, losing resolution's relay outcome
+// must never silently overwrite the NEWER, winning resolution's own
+// outcome. Domain-level (not server-level) since this tests
+// recordNeedsYouRelayOutcome's own correlation guard directly and
+// deterministically, rather than racing real async calls.
+test('recordNeedsYouRelayOutcome: a stale/losing concurrent resolution attempt never overwrites the winning resolution\'s own relay outcome', () => {
+  let run = raiseNeedsYou(
+    baseRun(),
+    {
+      question: QUESTION_MESSAGE.body,
+      escalation: { kind: 'WORKER_ASK', messageId: 'msg-race', dispatchId: 'ctx-race', orchestrationRunId: 'orch-race' }
+    },
+    clock,
+    baseRun().revision
+  )
+  const needsYouId = run.needsYou[0].id
+
+  // Two concurrent resolutions, both reading the same starting revision --
+  // distinct resolvedAt timestamps stand in for "which attempt actually
+  // won the durable write", since a real concurrent pair would otherwise
+  // be indistinguishable under a fixed test clock.
+  const olderResolvedAt = new Date('2026-08-20T05:00:01.000Z').toISOString()
+  const newerResolvedAt = new Date('2026-08-20T05:00:02.000Z').toISOString()
+  const runIfOlderResolvedFirst = resolveNeedsYou(run, needsYouId, 'A (older)', () => new Date(olderResolvedAt))
+  // The run actually, durably ends up on the NEWER resolution (B "wins"
+  // the real compare-and-swap write) -- resolved from the SAME starting
+  // `run`, exactly like resolveKeepGoingNeedsYou's real CAS semantics.
+  let committed = resolveNeedsYou(run, needsYouId, 'B (newer, wins)', () => new Date(newerResolvedAt))
+  assert.equal(committed.needsYou[0].resolvedAt, newerResolvedAt, 'sanity: B is the durably committed resolution')
+
+  // The OLDER (A) relay attempt's outcome arrives AFTER B has already won
+  // -- must be silently dropped (no-op), never applied to B's entry.
+  committed = recordNeedsYouRelayOutcome(
+    committed,
+    needsYouId,
+    { relayedAt: 'A-relayed-at', relayFailure: null },
+    runIfOlderResolvedFirst.needsYou[0].resolvedAt,
+    clock
+  )
+  assert.notEqual(
+    committed.needsYou[0].escalation.relayedAt,
+    'A-relayed-at',
+    "a stale resolution's relay outcome must never be stamped onto the winning resolution's entry"
+  )
+  assert.equal(
+    committed.needsYou[0].escalation.messageId,
+    'msg-race',
+    'the guard is a clean no-op -- the entry is otherwise completely untouched'
+  )
+
+  // The NEWER (B, the real winner)'s own relay outcome must still apply normally.
+  committed = recordNeedsYouRelayOutcome(
+    committed,
+    needsYouId,
+    { relayedAt: 'B-relayed-at', relayFailure: null },
+    newerResolvedAt,
+    clock
+  )
+  assert.equal(
+    committed.needsYou[0].escalation.relayedAt,
+    'B-relayed-at',
+    "the winning resolution's own relay outcome is recorded correctly"
+  )
 })

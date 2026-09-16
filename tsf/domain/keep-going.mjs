@@ -761,17 +761,32 @@ export function resolveNeedsYou(run, needsYouId, resolution, clock, expectedRevi
 // previously only a console.error -- invisible in canonical state, so a
 // crash between commit and relay, or a real relay failure, left the
 // worker silently blocked forever with no durable trace. Bookkeeping-only:
-// never touches run.state or resolution/resolvedAt, just stamps the
-// relay outcome onto the SAME needsYou entry's escalation field so it is
-// visible to any future caller/operator/retry mechanism, not lost. A
-// missing/already-cleared entry is a no-op (the resolve itself is the
-// source of truth; this is best-effort bookkeeping on top of it).
-export function recordNeedsYouRelayOutcome(run, needsYouId, outcome, clock) {
+// never touches run.state or resolution, just stamps the relay outcome
+// onto the SAME needsYou entry's escalation field so it is visible to any
+// future caller/operator/retry mechanism, not lost. A missing/already-
+// cleared entry is a no-op (the resolve itself is the source of truth;
+// this is best-effort bookkeeping on top of it).
+//
+// `expectedResolvedAt` (the resolvedAt this specific resolution call just
+// committed) guards against a second, real Codex review finding: two
+// concurrent resolutions of the SAME question are explicitly permitted
+// when a caller omits expectedRevision ("a later answer freely replaces
+// an earlier one" -- see resolveProjectNeedsYou's own header comment).
+// Their relay attempts can then land out of order, and correlating only
+// by needsYouId let an OLDER resolution's outcome silently overwrite a
+// NEWER resolution's outcome. Only stamping when the entry's current
+// resolvedAt still matches what THIS call resolved means a losing/stale
+// resolution's relay outcome is honestly dropped (no-op) instead of
+// corrupting the winning resolution's own bookkeeping.
+export function recordNeedsYouRelayOutcome(run, needsYouId, outcome, expectedResolvedAt, clock) {
   if (!run) {
     return run
   }
   const index = run.needsYou.findIndex((entry) => entry.id === needsYouId)
   if (index === -1) {
+    return run
+  }
+  if (run.needsYou[index].resolvedAt !== expectedResolvedAt) {
     return run
   }
   const next = deepClone(run)

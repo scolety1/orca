@@ -85,7 +85,7 @@ export async function resolveProjectNeedsYou(
   clock,
   expectedRevision
 ) {
-  const run = await mutateThroughStore(projectId, (fakeOpState) =>
+  let run = await mutateThroughStore(projectId, (fakeOpState) =>
     resolveKeepGoingNeedsYou(
       fakeOpState,
       projectId,
@@ -122,9 +122,17 @@ export async function resolveProjectNeedsYou(
         `resolveProjectNeedsYou: durably resolved ${needsYouId} but failed to relay the answer back to worker message ${escalation.messageId} (${replyResult.reason}: ${replyResult.detail})`
       )
     }
+    // Real Codex adversarial review finding: this used to always `return
+    // run` -- the run from the FIRST (resolve) write -- even after this
+    // second write durably advanced the revision and added the outcome.
+    // Every caller of resolveProjectNeedsYou (action-executor.mjs's
+    // RESOLVE_NEEDS_YOU route, Command's own direct usage) would then act
+    // on/publish a stale revision, risking an avoidable TSF_STALE_REVISION
+    // on its own very next CAS-protected call. Returns the fresher run
+    // whenever the second write actually lands.
     try {
-      await withKeepGoingRun(projectId, (current) =>
-        recordNeedsYouRelayOutcome(current, needsYouId, outcome, clock)
+      run = await withKeepGoingRun(projectId, (current) =>
+        recordNeedsYouRelayOutcome(current, needsYouId, outcome, resolved.resolvedAt, clock)
       )
     } catch (error) {
       console.error(
