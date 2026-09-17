@@ -808,6 +808,34 @@ async function settleStep(projectId, clock, orchestration, store) {
   }
 
   const { inFlightWave, orchestrationRunId } = claimed
+  // Real live-pilot finding, TSF Research-Driven Development V1: the
+  // calling coordinator's own "currently bound Run" is real, ambient,
+  // MUTABLE state -- any other real `orca orchestration check --run
+  // <other-id>` call from the SAME terminal identity (a manual diagnostic,
+  // a concurrent unrelated script) silently rebinds it, and every
+  // subsequent settle tick's own checkOrchestrationMessages call then
+  // fails with a real, honest consumer_fenced error -- live-reproduced,
+  // not hypothetical. dispatchStep already defensively rebinds before ITS
+  // OWN CLI calls on a reused orchestrationRunId (see resolveSenderTerminal
+  // + bindOrchestrationRun above) for exactly this reason; settleStep
+  // never did, despite running on every tick, not just the first. Mirrors
+  // that same defensive rebind here -- a no-op when already correctly
+  // bound, and an honest SETTLE_CHECK_FAILED (never a silent stall) if
+  // even rebinding itself fails.
+  const senderTerminal = await resolveSenderTerminal(orchestration)
+  if (!senderTerminal.ok) {
+    return commitReleaseOnly(projectId, store, claimed, clock, 'SETTLE_CHECK_FAILED', undefined, {
+      reason: senderTerminal.reason ?? 'SENDER_TERMINAL_UNAVAILABLE',
+      detail: senderTerminal.detail ?? 'could not resolve a sender-terminal identity for settlement'
+    })
+  }
+  const bindResult = await orchestration.bindOrchestrationRun({ id: orchestrationRunId, from: senderTerminal.handle })
+  if (!bindResult.ok) {
+    return commitReleaseOnly(projectId, store, claimed, clock, 'SETTLE_CHECK_FAILED', undefined, {
+      reason: bindResult.reason,
+      detail: bindResult.detail
+    })
+  }
   const tasksResult = await orchestration.listOrchestrationTasks({ run: orchestrationRunId })
   if (!tasksResult.ok) {
     return commitReleaseOnly(projectId, store, claimed, clock, 'SETTLE_CHECK_FAILED', undefined, {

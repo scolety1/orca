@@ -434,6 +434,41 @@ test('a still-in-flight wave reports WAVE_STILL_IN_FLIGHT and releases the lock 
   )
 })
 
+// Real live-pilot finding, TSF Research-Driven Development V1: the
+// calling coordinator's own "currently bound Run" is real, ambient,
+// mutable state a completely unrelated `orca` call from the same
+// terminal identity can rebind out from under a real settle tick,
+// producing a real, live consumer_fenced failure on every subsequent
+// settle attempt. dispatchStep already rebinds defensively on a reused
+// orchestrationRunId; settleStep now does too, on every tick (not just
+// the first), mirroring that exact pattern.
+test('settleStep rebinds the coordinator to the run\'s own orchestrationRunId before checking it, and a failed rebind honestly reports SETTLE_CHECK_FAILED without ever calling listOrchestrationTasks', async () => {
+  const store = makeFakeStore(baseRun())
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration(), store })
+  let boundToId = null
+  let tasksCallCount = 0
+  const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      bindOrchestrationRun: async ({ id }) => {
+        boundToId = id
+        return { ok: false, reason: 'CLI_ERROR', detail: 'consumer_fenced' }
+      },
+      listOrchestrationTasks: async () => {
+        tasksCallCount += 1
+        return { ok: true, result: { tasks: [{ id: 'task-t1', status: 'completed' }] } }
+      }
+    }),
+    store
+  })
+  assert.equal(result.action, 'SETTLE_CHECK_FAILED')
+  assert.equal(result.reason, 'CLI_ERROR')
+  assert.equal(boundToId, store.readRun(PROJECT_ID).orchestrationRunId, 'rebinds to the run\'s own real orchestrationRunId, not a stale/guessed one')
+  assert.equal(tasksCallCount, 0, 'a failed rebind must never proceed to check tasks -- would misdirect the call to whatever run this terminal happens to still be bound to')
+  const run = store.readRun(PROJECT_ID)
+  assert.equal(run.tickLock, null, 'lock released, never left held on this failure path')
+  assert.ok(run.inFlightWave, 'the wave is left honestly still in flight, never falsely marked settled')
+})
+
 test('a wave stuck in flight past the stall threshold escalates the run to STALLED instead of looping forever', async () => {
   const store = makeFakeStore(baseRun({ budget: { stallThresholdMs: 60_000 } }))
   await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration(), store })
