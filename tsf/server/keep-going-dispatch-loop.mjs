@@ -168,6 +168,27 @@ const DEFAULT_STORE = Object.freeze({
 const COMPLETED_STATUSES = new Set(['completed', 'succeeded'])
 const FAILED_STATUSES = new Set(['failed', 'error'])
 
+// Real, live-observed environment note (TSF Research-Driven Development
+// V1's own real pilot, both its CHALLENGE dispatch and settled-run-
+// reconciler.mjs's own independent-verification dispatch hit this): a
+// freshly-spawned worker's own exec sandbox can refuse to read Orca's
+// runtime metadata (needed for every `orca orchestration ...` call,
+// including the final, REQUIRED worker_done self-report this module's
+// own wave-settle detection depends on) with a runtime_unavailable/"Orca
+// is not running" error -- retrying the exact same command with escalated
+// sandbox permissions resolved it every time observed live. Appended
+// ONCE, HERE, to every real dispatched task's spec (not duplicated into
+// each individual caller's own spec-building code, e.g.
+// settled-run-reconciler.mjs's buildVerificationWorkItem) so no future
+// caller can forget it and leave a worker stuck unable to ever report
+// its own real, completed work.
+const SANDBOX_ESCALATION_NOTE =
+  'If any `orca` CLI command (including your final, required worker_done ' +
+  'report) fails with a runtime_unavailable/"Orca is not running" or ' +
+  'sandbox/permission error, immediately retry the exact same command with ' +
+  'escalated sandbox permissions -- this is expected and normal in this ' +
+  'environment, not a real outage.'
+
 // Each dispatched work item costs up to two sequential CLI round-trips
 // (task-create + worker-start, the latter composing worktree/terminal/
 // readiness itself), each up to the orchestration bridge's own 15s
@@ -551,7 +572,7 @@ async function dispatchStep(
   for (const batch of placedBatches) {
     for (const { item, placement } of batch) {
       const taskResult = await orchestration.createOrchestrationTask({
-        spec: item.spec ?? item.id,
+        spec: `${item.spec ?? item.id}\n\n${SANDBOX_ESCALATION_NOTE}`,
         run: orchestrationRunId,
         taskTitle: item.id,
         // BUG-07 (bug-ledger.json): displayName was never populated --

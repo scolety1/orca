@@ -27,23 +27,10 @@ const RUN_TERMINAL_STATES = new Set(['COMPLETE', 'STALLED', 'NEEDS_YOU', 'BLOCKE
 // this one module so they cannot silently drift apart.
 export const CHALLENGE_FINDINGS_FILENAME = 'challenge-findings.json'
 
-// Real, live-observed environment note (found dispatching this exact
-// pilot): a freshly-spawned worker's own exec sandbox can refuse to read
-// Orca's runtime metadata (needed for every `orca orchestration ...`
-// call, including the final, REQUIRED worker_done self-report this
-// bridge's own wave-settle detection depends on) with a
-// runtime_unavailable/"Orca is not running" error -- retrying the exact
-// same command with escalated sandbox permissions resolved it every time
-// observed. Included explicitly in the task spec so a worker does not
-// give up on its one required worker_done call after a single sandboxed
-// failure.
-export const SANDBOX_ESCALATION_NOTE =
-  'If any `orca` CLI command (including your final, required worker_done ' +
-  'report) fails with a runtime_unavailable/"Orca is not running" or ' +
-  'sandbox/permission error, immediately retry the exact same command with ' +
-  'escalated sandbox permissions -- this is expected and normal in this ' +
-  'environment, not a real outage.'
-
+// The sandbox-escalation guidance a real worker's own worker_done self-
+// report needs (see keep-going-dispatch-loop.mjs's own SANDBOX_ESCALATION_NOTE
+// for the full story) is now appended ONCE, centrally, to every real
+// dispatched task's spec by dispatchStep itself -- not duplicated here.
 function challengeTaskSpec(draftAcceptanceCriteria) {
   return [
     'CHALLENGE step, TSF Research-Driven Development V1: you are reviewing a',
@@ -61,9 +48,7 @@ function challengeTaskSpec(draftAcceptanceCriteria) {
     'your working directory: a JSON array, each entry',
     '{"id": string, "severity": "MUST_FIX" | "ADVISORY", "summary": string}.',
     'An empty array is an honest, acceptable result if you find nothing real to',
-    'challenge -- never fabricate a finding to have something to report.',
-    '',
-    SANDBOX_ESCALATION_NOTE
+    'challenge -- never fabricate a finding to have something to report.'
   ].join('\n')
 }
 

@@ -235,6 +235,33 @@ test('a real dispatch supplies a human-readable displayName -- project id + real
   assert.equal(capturedDisplayName, `${PROJECT_ID}: src/a.mjs`)
 })
 
+// Real live-pilot finding, TSF Research-Driven Development V1: a real
+// Orca-dispatched Codex worker's own exec sandbox can refuse to read
+// Orca's runtime metadata, failing its REQUIRED worker_done self-report
+// with a runtime_unavailable/"Orca is not running" error -- retrying
+// with escalated sandbox permissions resolved it every time observed
+// live, but a worker only reliably does that when told to expect it.
+// Appended ONCE here (not duplicated into every individual work item's
+// own spec text, or every caller of tickKeepGoingRun) so no future
+// caller can forget it and leave a worker stuck unable to ever report
+// its own real, completed work.
+test('a real dispatch appends the sandbox-escalation guidance to every task spec, so a worker never gives up after one sandboxed worker_done failure', async () => {
+  const store = makeFakeStore(baseRun())
+  let capturedSpec
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
+    orchestration: okOrchestration({
+      createOrchestrationTask: async ({ taskTitle, spec }) => {
+        capturedSpec = spec
+        return { ok: true, result: { task: { id: `task-${taskTitle}` } } }
+      }
+    }),
+    store
+  })
+  assert.match(capturedSpec, /^t1/, 'the real work item spec text still leads')
+  assert.match(capturedSpec, /escalated sandbox permissions/)
+  assert.match(capturedSpec, /runtime_unavailable/)
+})
+
 // M5: a real, low-capacity signal must pause and checkpoint BEFORE any
 // Orca CLI dispatch work happens -- never start a real worker that
 // capacity can't finish. Seeds a genuinely high codex usage into the
