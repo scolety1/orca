@@ -140,11 +140,35 @@ function assessChallengeCompletion(challengeRunFinal, lastTickResult, timedOut, 
   if (timedOut) {
     return { ok: false, reason: 'CHALLENGE_TIMED_OUT' }
   }
-  if (lastTickResult && DISPATCH_NEVER_STARTED_ACTIONS.has(lastTickResult.action)) {
+  // Real adversarial-review finding (2nd round): the named-action Set was
+  // textually incomplete against dispatchStep's own real output --
+  // 'NOOP' (no candidate items) and every dynamically-suffixed
+  // '..._LOST_LOCK' variant lostLockResult can produce were both missing.
+  // Never fail-open either way: the mandatory settled-outcome lookup
+  // just below still requires a real COMPLETED outcome for this exact
+  // work item regardless of whether this check recognizes the action
+  // name, so this refinement only sharpens the REPORTED reason, it does
+  // not change whether an ungenuine "completion" could ever slip through.
+  if (
+    lastTickResult &&
+    (lastTickResult.action === 'NOOP' ||
+      lastTickResult.action.endsWith('_LOST_LOCK') ||
+      DISPATCH_NEVER_STARTED_ACTIONS.has(lastTickResult.action))
+  ) {
     return { ok: false, reason: 'CHALLENGE_NOT_DISPATCHED', detail: lastTickResult }
   }
-  const outcome = challengeRunFinal?.waves
-    ?.flatMap((w) => w.waveResult?.outcomes ?? [])
+  // Real adversarial-review finding (2nd round): waves append oldest-
+  // first, so a plain .find() would pick a STALE FAILED outcome over a
+  // later real COMPLETED retry of the same work item id (this bridge
+  // itself never retries, but a caller sharing this run via the public
+  // tick route could). Searching from the most recent wave backward
+  // means the real, final outcome always wins -- and since the only
+  // failure direction this can introduce is fail-closed (rejecting a
+  // real success it should have found), never fail-open, it is safe
+  // to prefer without also needing to handle every EARLIER outcome.
+  const outcome = [...(challengeRunFinal?.waves ?? [])]
+    .reverse()
+    .flatMap((w) => w.waveResult?.outcomes ?? [])
     .find((o) => o.workItemId === workItemId)
   if (!outcome) {
     return { ok: false, reason: 'CHALLENGE_NEVER_DISPATCHED', detail: lastTickResult }
