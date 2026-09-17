@@ -52,6 +52,32 @@ test('buildResearchDrivenMissionSpec: refuses to build from a research mission w
   )
 })
 
+// Real adversarial-review finding: plain JSON.stringify hashes the SAME
+// logical fact differently depending on incidental object-key insertion
+// order, which would silently break "same fact, same hash-verified
+// reference" traceability across two calls that happen to construct the
+// identical fact with keys in a different order (e.g. spread order, or a
+// future refactor).
+test('buildResearchDrivenMissionSpec: the artifactReference hash is stable regardless of incidental object-key order (canonical, not JSON.stringify)', () => {
+  const factA = fixtureCanonicalFact()
+  const factB = { value: factA.value, id: factA.id, fieldName: factA.fieldName, schemaVersion: factA.schemaVersion, temporalScope: factA.temporalScope, reconciliationDecisionId: factA.reconciliationDecisionId, derivationLineage: factA.derivationLineage, canonicalizedAt: factA.canonicalizedAt }
+  const specA = buildResearchDrivenMissionSpec({
+    researchMissionId: 'mission-1',
+    projectId: 'proj-1',
+    researchPackageBody: fixturePackageBody({ nodes: [{ id: 'node-1', targetEntity: { id: 'entity-1', name: 'PaymentAPI' }, status: 'COMPLETED', canonicalFacts: [factA] }] })
+  })
+  const specB = buildResearchDrivenMissionSpec({
+    researchMissionId: 'mission-1',
+    projectId: 'proj-1',
+    researchPackageBody: fixturePackageBody({ nodes: [{ id: 'node-1', targetEntity: { id: 'entity-1', name: 'PaymentAPI' }, status: 'COMPLETED', canonicalFacts: [factB] }] })
+  })
+  assert.equal(
+    specA.artifactReferences[0].sha256,
+    specB.artifactReferences[0].sha256,
+    'the same logical fact must hash identically regardless of key insertion order'
+  )
+})
+
 test('buildResearchDrivenMissionSpec: every acceptance criterion cites the real CanonicalFact id it came from (SPEC_TRACEABILITY)', () => {
   const spec = buildResearchDrivenMissionSpec({
     researchMissionId: 'mission-1',

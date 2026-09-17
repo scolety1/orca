@@ -11,7 +11,7 @@
 // reaches it, per research-provenance.mjs's own fail-closed boundary) and
 // turns it into the SAME missionSpec shape createOvernightRun already
 // accepts (domain/mission-specification.mjs) -- extending, not duplicating.
-import { sha256 } from './canonical.mjs'
+import { sha256, canonicalJson } from './canonical.mjs'
 import { buildMissionSpecification } from './mission-specification.mjs'
 
 export const RESEARCH_DRIVEN_MISSION_TYPE = 'RESEARCH_DRIVEN_DEVELOPMENT_V1'
@@ -46,7 +46,13 @@ export function acceptanceCriteriaFromResearch(packageBody) {
 // buildMissionSpecification, same as any other attachment) -- this is the
 // durable, hash-verified half of traceability: the acceptance criterion
 // TEXT above is a rendering; this is the actual, tamper-evident source
-// record it was rendered from.
+// record it was rendered from. Real adversarial-review finding: plain
+// JSON.stringify is key-insertion-order-sensitive -- two calls building
+// the SAME logical fact from differently-ordered object literals hashed
+// to two different values, silently breaking "same fact, same reference"
+// traceability. canonicalJson (this module's own established convention
+// for anything that gets hashed) sorts keys first, so the hash depends
+// only on the real content, never incidental construction order.
 function researchArtifactReferences(packageBody) {
   const refs = []
   for (const node of groundedNodes(packageBody)) {
@@ -54,7 +60,7 @@ function researchArtifactReferences(packageBody) {
       refs.push({
         name: `canonical-fact:${fact.id}`,
         type: 'RESEARCH_CANONICAL_FACT',
-        extractedText: JSON.stringify({ nodeId: node.id, targetEntity: node.targetEntity, fact })
+        extractedText: canonicalJson({ nodeId: node.id, targetEntity: node.targetEntity, fact })
       })
     }
   }

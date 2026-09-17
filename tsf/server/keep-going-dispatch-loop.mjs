@@ -112,7 +112,13 @@ const DISPATCHER_TERMINAL_WORKTREE = `path:${path.resolve(import.meta.dirname, '
 // persisted-run-state changes to this adversarially-hardened module, left
 // as a disclosed follow-up rather than risked here). Never fabricates a
 // handle on failure -- the caller aborts honestly instead.
-async function resolveSenderTerminal(orchestration) {
+// Exported: real adversarial-review finding -- command-run-action-bridge.mjs's
+// resolveProjectNeedsYou relays an owner's answer back to a real worker via
+// replyToOrchestrationMessage, subject to the EXACT same unbound-coordinator
+// race dispatchStep/settleStep already defend against (this module's own
+// SANDBOX_ESCALATION_NOTE/rebind comments tell the fuller story). Reused
+// here rather than re-implemented so both real callers stay identical.
+export async function resolveSenderTerminal(orchestration) {
   if (process.env.ORCA_TERMINAL_HANDLE) {
     return { ok: true, handle: process.env.ORCA_TERMINAL_HANDLE }
   }

@@ -13,7 +13,7 @@
 // and reads one file the CHALLENGE worker is asked to write.
 import { readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
-import { readResearchMissionArtifacts } from './research-mission-driver.mjs'
+import { readResearchMissionArtifacts, readResearchMissionStatus } from './research-mission-driver.mjs'
 import { withKeepGoingRun, readKeepGoingRun } from './keep-going-run-store.mjs'
 import { createOvernightRun } from '../domain/keep-going.mjs'
 import { tickKeepGoingRun } from './keep-going-dispatch-loop.mjs'
@@ -21,6 +21,22 @@ import { driveOneCycle } from './keep-going-fleet-driver.mjs'
 import { buildResearchDrivenMissionSpec } from '../domain/research-driven-development.mjs'
 
 const RUN_TERMINAL_STATES = new Set(['COMPLETE', 'STALLED', 'NEEDS_YOU', 'BLOCKED'])
+
+// Real adversarial-review finding: a dispatch refused before any real
+// wave ever went in flight (resource pressure, an execution hold, a
+// claim race, or a real task-create/worker-start failure) previously
+// left `run.inFlightWave` falsy, which tickUntilWaveSettled's own
+// "no wave in flight" check read as an already-SETTLED (i.e. successful)
+// CHALLENGE -- silently starting the real BUILD run with an empty,
+// unreviewed finding set and no visible signal CHALLENGE never actually
+// ran at all.
+const DISPATCH_NEVER_STARTED_ACTIONS = new Set([
+  'DISPATCH_WAITING_FOR_RESOURCES',
+  'DISPATCH_BLOCKED_BY_HOLD',
+  'DISPATCH_FAILED',
+  'DISPATCH_CLAIM_FAILED',
+  'DISPATCH_SKIPPED_LOW_CAPACITY'
+])
 
 // Real caller reads the exact file name a CHALLENGE worker's task spec
 // (below) instructs it to write -- both sides of this contract live in
@@ -113,6 +129,32 @@ export async function driveUntilTerminal(
   return { run: readKeepGoingRun(projectId), timedOut: true }
 }
 
+// Fail-closed judgment of whether the CHALLENGE dispatch genuinely,
+// really ran to a real COMPLETED task outcome -- never inferred merely
+// from "no wave is in flight right now" (true for "never dispatched at
+// all" and "dispatched, then FAILED" alike, not just for "ran and
+// succeeded"). Returns a real, typed reason for every way this can be
+// honestly false; a caller must never proceed to BUILD without checking
+// this first.
+function assessChallengeCompletion(challengeRunFinal, lastTickResult, timedOut, workItemId) {
+  if (timedOut) {
+    return { ok: false, reason: 'CHALLENGE_TIMED_OUT' }
+  }
+  if (lastTickResult && DISPATCH_NEVER_STARTED_ACTIONS.has(lastTickResult.action)) {
+    return { ok: false, reason: 'CHALLENGE_NOT_DISPATCHED', detail: lastTickResult }
+  }
+  const outcome = challengeRunFinal?.waves
+    ?.flatMap((w) => w.waveResult?.outcomes ?? [])
+    .find((o) => o.workItemId === workItemId)
+  if (!outcome) {
+    return { ok: false, reason: 'CHALLENGE_NEVER_DISPATCHED', detail: lastTickResult }
+  }
+  if (outcome.outcome !== 'COMPLETED') {
+    return { ok: false, reason: 'CHALLENGE_TASK_FAILED', detail: outcome }
+  }
+  return { ok: true }
+}
+
 // Honest, never-fabricated read: a missing/malformed findings file is
 // reported as an empty array plus a real warning, never silently treated
 // as "the worker found nothing" (a different, stronger claim than "we
@@ -150,6 +192,20 @@ export async function startResearchDrivenRun(
     tickOptions = {}
   } = {}
 ) {
+  // Real adversarial-review finding: readResearchMissionArtifacts
+  // integrity-checks individual CanonicalFacts but never checks the
+  // MISSION's own state -- an ACTIVE, still-in-progress mission that
+  // happens to already have one real, valid CanonicalFact could
+  // otherwise start a real BUILD run grounded in research that has not
+  // actually finished. "One real fact exists" is not the same claim as
+  // "this research is done."
+  const status = readResearchMissionStatus(researchMissionId)
+  if (!status) {
+    return { ok: false, reason: 'RESEARCH_MISSION_NOT_FOUND', detail: researchMissionId }
+  }
+  if (status.state !== 'COMPLETE') {
+    return { ok: false, reason: 'RESEARCH_MISSION_NOT_COMPLETE', detail: status.state }
+  }
   const artifacts = readResearchMissionArtifacts(researchMissionId, clock)
   if (!artifacts) {
     return { ok: false, reason: 'RESEARCH_MISSION_NOT_FOUND', detail: researchMissionId }
@@ -202,13 +258,22 @@ export async function startResearchDrivenRun(
       spec: challengeTaskSpec(draftSpec.acceptanceCriteria)
     }
   ]
-  const { run: challengeRunFinal, timedOut: challengeTimedOut } = await tickUntilWaveSettled(
-    projectId,
-    challengeWorkItem,
-    clock,
-    tickOptions
-  )
+  const { run: challengeRunFinal, lastTickResult: challengeLastTickResult, timedOut: challengeTimedOut } =
+    await tickUntilWaveSettled(projectId, challengeWorkItem, clock, tickOptions)
+
+  const completion = assessChallengeCompletion(challengeRunFinal, challengeLastTickResult, challengeTimedOut, challengeWorkItemId)
+  if (!completion.ok) {
+    return { ok: false, reason: completion.reason, detail: completion.detail }
+  }
   const { findings: rawFindings, warning: findingsWarning } = readChallengeFindings(challengeWorktree)
+  if (findingsWarning) {
+    // The task genuinely completed, but its one required output either
+    // never showed up or was unreadable -- proceeding with a silently
+    // empty finding set here would let the real BUILD run's own spec
+    // falsely claim "no findings" for a CHALLENGE that may have found
+    // real issues nobody can now see. Fail closed instead.
+    return { ok: false, reason: 'CHALLENGE_FINDINGS_UNREADABLE', detail: findingsWarning }
+  }
 
   let finalSpec
   try {

@@ -69,6 +69,16 @@ if (args[0] === 'account' && args[1] === 'list') {
     run: { id: 'stub-run-id', objective: objectiveIndex === -1 ? null : args[objectiveIndex + 1] }
   })
 } else if (args[0] === 'orchestration' && args[1] === 'run-use') {
+  // Narrow, opt-in failure mode (real adversarial-review finding): lets a
+  // test prove a caller honestly surfaces a failed coordinator rebind
+  // (consumer_fenced in real life) without ever proceeding to whatever
+  // real CLI call the rebind was meant to protect.
+  if (process.env.STUB_ORCA_RUN_USE_MODE === 'error') {
+    process.stdout.write(
+      JSON.stringify({ id: 'stub', ok: false, error: { message: 'consumer_fenced' } })
+    )
+    process.exit(0)
+  }
   const idIndex = args.indexOf('--id')
   ok({
     run: { id: idIndex === -1 ? null : args[idIndex + 1] },

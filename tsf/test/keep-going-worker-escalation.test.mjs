@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import path from 'node:path'
-import { rmSync, readFileSync } from 'node:fs'
+import { rmSync, readFileSync, existsSync } from 'node:fs'
 import {
   createOvernightRun,
   raiseNeedsYou,
@@ -321,6 +321,60 @@ test('zero-relay: a real relay failure is durably recorded on the needsYou entry
   assert.equal(escalation.relayedAt, null, 'never falsely claims a successful relay')
   assert.ok(escalation.relayFailure, 'the failure is durably recorded, not lost after only a console.error')
   assert.equal(escalation.relayFailure.reason, 'CLI_ERROR')
+})
+
+// Real adversarial-review finding: resolveProjectNeedsYou's own reply-back
+// call is subject to the exact same unbound-coordinator race
+// keep-going-dispatch-loop.mjs's settleStep already defends against (a
+// real `orca` call from this same terminal identity can rebind the
+// ambient "currently bound Run" elsewhere first). Proves the fix: a
+// failed rebind is surfaced honestly as relayFailure, and the real
+// `orchestration reply` call is never even attempted once the rebind
+// itself has already failed.
+test('zero-relay: a failed coordinator rebind before the reply-back is surfaced honestly, and the real reply is never attempted', async () => {
+  const STATE_FILE = path.join(
+    import.meta.dirname,
+    '..',
+    'server',
+    '.local-state',
+    `operator-state.test-keep-going-worker-escalation-rebind-fail-${process.pid}.json`
+  )
+  process.env.TSF_UI_STATE_FILE = STATE_FILE
+  for (const suffix of ['', '.tmp', '.keep-going.lock']) {
+    rmSync(`${STATE_FILE}${suffix}`, { force: true })
+  }
+  const REPLY_DEBUG_FILE = path.join(
+    import.meta.dirname,
+    '..',
+    'server',
+    '.local-state',
+    `stub-orca-reply-rebind-fail-${process.pid}.json`
+  )
+  rmSync(REPLY_DEBUG_FILE, { force: true })
+  process.env.STUB_ORCA_REPLY_DEBUG_FILE = REPLY_DEBUG_FILE
+
+  const { withKeepGoingRun, readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
+  await withKeepGoingRun(PROJECT_ID, () => baseRun())
+
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration() })
+  const orchestration = okOrchestration({
+    checkOrchestrationMessages: async () => ({ ok: true, result: { messages: [QUESTION_MESSAGE] } })
+  })
+  await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration })
+  const needsYouId = readKeepGoingRun(PROJECT_ID).needsYou[0].id
+
+  process.env.STUB_ORCA_RUN_USE_MODE = 'error'
+  try {
+    const resolved = await resolveProjectNeedsYou(PROJECT_ID, needsYouId, 'Approve', clock)
+    assert.equal(resolved.state, 'ACTIVE', 'the durable resolution itself must still succeed even though the rebind failed')
+  } finally {
+    delete process.env.STUB_ORCA_RUN_USE_MODE
+  }
+
+  assert.ok(!existsSync(REPLY_DEBUG_FILE), 'a real reply must never be attempted once the coordinator rebind itself has already failed')
+  const escalation = readKeepGoingRun(PROJECT_ID).needsYou[0].escalation
+  assert.equal(escalation.relayedAt, null)
+  assert.ok(escalation.relayFailure, 'the failed rebind is durably recorded as a relay failure, not silently lost')
 })
 
 // Real Codex adversarial review finding (2nd round): resolveProjectNeedsYou

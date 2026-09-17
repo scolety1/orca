@@ -72,17 +72,17 @@ function fixtureExpectedUniverse() {
   }
 }
 
-async function seedGroundedCompleteMission() {
-  await withResearchMission(MISSION_ID, () =>
+async function seedGroundedCompleteMission({ missionId = MISSION_ID, complete = true } = {}) {
+  await withResearchMission(missionId, () =>
     createResearchMission(
-      { id: MISSION_ID, projectId: PROJECT_ID, specification: fixtureSpecification(), expectedUniverse: fixtureExpectedUniverse() },
+      { id: missionId, projectId: PROJECT_ID, specification: fixtureSpecification(), expectedUniverse: fixtureExpectedUniverse() },
       clock
     )
   )
-  await withResearchMission(MISSION_ID, (m) =>
+  await withResearchMission(missionId, (m) =>
     addResearchNode(m, { id: 'node-1', nodeRole: 'PRIMARY_RESEARCH', targetEntity: { entityId: 'PaymentAPI' } }, clock, m.revision)
   )
-  await withResearchMission(MISSION_ID, (m) =>
+  await withResearchMission(missionId, (m) =>
     decideReconciliation(
       m,
       'node-1',
@@ -97,16 +97,99 @@ async function seedGroundedCompleteMission() {
       m.revision
     )
   )
-  const withDecision = readResearchMission(MISSION_ID)
+  const withDecision = readResearchMission(missionId)
   const decisionId = withDecision.nodes.find((n) => n.id === 'node-1').reconciliationDecisions[0].id
-  await withResearchMission(MISSION_ID, (m) => admitReconciliationDecision(m, 'node-1', decisionId, clock, m.revision))
-  await withResearchMission(MISSION_ID, (m) => completeResearchMission(m, clock, m.revision))
+  await withResearchMission(missionId, (m) => admitReconciliationDecision(m, 'node-1', decisionId, clock, m.revision))
+  if (complete) {
+    await withResearchMission(missionId, (m) => completeResearchMission(m, clock, m.revision))
+  }
 }
 
 test('startResearchDrivenRun: refuses honestly when the research mission does not exist', async () => {
   const result = await startResearchDrivenRun(PROJECT_ID, 'no-such-mission', { clock, challengeWorktree: os.tmpdir() })
   assert.equal(result.ok, false)
   assert.equal(result.reason, 'RESEARCH_MISSION_NOT_FOUND')
+})
+
+// Real adversarial-review finding: readResearchMissionArtifacts integrity-
+// checks individual CanonicalFacts but never checked the MISSION's own
+// state -- "one real fact already exists" is not the same claim as "this
+// research is actually done." An ACTIVE, still-in-progress mission must
+// never ground a real BUILD run.
+test('startResearchDrivenRun: refuses honestly when the research mission has a real CanonicalFact but is not yet COMPLETE', async () => {
+  const missionId = 'research-driven-bridge-mission-incomplete'
+  await seedGroundedCompleteMission({ missionId, complete: false })
+  const result = await startResearchDrivenRun(PROJECT_ID, missionId, { clock, challengeWorktree: os.tmpdir() })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'RESEARCH_MISSION_NOT_COMPLETE')
+  assert.equal(result.detail, 'ACTIVE')
+})
+
+// Real adversarial-review finding: a dispatch refused before any real
+// wave ever went in flight (resource pressure here) previously left
+// tickUntilWaveSettled's own "no wave in flight" check reading that as
+// an already-settled, successful CHALLENGE -- silently starting the real
+// BUILD run with an empty, unreviewed finding set.
+test('startResearchDrivenRun: fails closed, never starting BUILD, when the CHALLENGE dispatch is refused by the Resource Pressure Governor before any real wave goes in flight', async () => {
+  const missionId = 'research-driven-bridge-mission-resource-refused'
+  await seedGroundedCompleteMission({ missionId })
+  const previousTotal = process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES
+  const previousFree = process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES
+  process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = String(16 * 1024 ** 3)
+  process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = String(1 * 1024 ** 3) // CRITICAL tier
+  try {
+    const result = await startResearchDrivenRun('research-driven-bridge-resource-refused-proj', missionId, {
+      clock,
+      challengeWorktree: os.tmpdir(),
+      tickOptions: { maxTicks: 1, pollIntervalMs: 1 }
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'CHALLENGE_NOT_DISPATCHED')
+  } finally {
+    process.env.TSF_RESOURCE_PRESSURE_TEST_TOTAL_BYTES = previousTotal
+    process.env.TSF_RESOURCE_PRESSURE_TEST_FREE_BYTES = previousFree
+  }
+})
+
+// Real adversarial-review finding: a CHALLENGE task that genuinely
+// dispatched but ended FAILED (not completed) must never be read as "ran
+// successfully, found nothing" -- distinguishing "never ran" from "ran
+// and failed" from "ran and succeeded" is the whole point of this check.
+test('startResearchDrivenRun: fails closed when the real CHALLENGE task reaches a FAILED (not completed) outcome', async () => {
+  const missionId = 'research-driven-bridge-mission-challenge-failed'
+  await seedGroundedCompleteMission({ missionId })
+  const previousTasks = process.env.STUB_ORCA_TASKS
+  process.env.STUB_ORCA_TASKS = JSON.stringify([{ id: 'stub-task-id', status: 'failed' }])
+  try {
+    const result = await startResearchDrivenRun('research-driven-bridge-challenge-failed-proj', missionId, {
+      clock,
+      challengeWorktree: os.tmpdir(),
+      tickOptions: { maxTicks: 5, pollIntervalMs: 1 }
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'CHALLENGE_TASK_FAILED')
+  } finally {
+    process.env.STUB_ORCA_TASKS = previousTasks
+  }
+})
+
+// Real adversarial-review finding: a genuinely COMPLETED CHALLENGE task
+// whose one required output (challenge-findings.json) never showed up or
+// was unreadable must never silently proceed as "reviewed, found
+// nothing" -- the real BUILD run's own spec would then falsely claim
+// "Challenge review raised no findings" for a review nobody can actually
+// verify happened.
+test('startResearchDrivenRun: fails closed when the CHALLENGE task completes but its required findings file is missing', async () => {
+  const missionId = 'research-driven-bridge-mission-challenge-missing-output'
+  await seedGroundedCompleteMission({ missionId })
+  const emptyWorktree = mkdtempSync(path.join(os.tmpdir(), 'rdd-challenge-missing-'))
+  const result = await startResearchDrivenRun('research-driven-bridge-challenge-missing-output-proj', missionId, {
+    clock,
+    challengeWorktree: emptyWorktree,
+    tickOptions: { maxTicks: 5, pollIntervalMs: 1 }
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'CHALLENGE_FINDINGS_UNREADABLE')
 })
 
 test('startResearchDrivenRun: CHALLENGE runs first through the REAL Keep Going dispatch loop, its findings become traceable acceptance criteria, then the real BUILD run starts grounded in the research (RESEARCH_GROUNDED, CHALLENGE, SPEC_TRACEABILITY, REAL_CODEX via the real orchestration bridge/stub CLI boundary)', async () => {

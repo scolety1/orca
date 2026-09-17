@@ -15,7 +15,8 @@ import {
 } from './keep-going-controller.mjs'
 import { withKeepGoingRun, readKeepGoingRun } from './keep-going-run-store.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
-import { replyToOrchestrationMessage } from '../adapters/orca-orchestration-bridge.mjs'
+import { bindOrchestrationRun, createDispatcherTerminal, replyToOrchestrationMessage } from '../adapters/orca-orchestration-bridge.mjs'
+import { resolveSenderTerminal } from './keep-going-dispatch-loop.mjs'
 import { recordNeedsYouRelayOutcome } from '../domain/keep-going.mjs'
 
 // Mirrors keep-going-http-routes.mjs's own mutateThroughStore exactly (not
@@ -99,11 +100,30 @@ export async function resolveProjectNeedsYou(
   const escalation = resolved?.escalation
   if (escalation?.kind === 'WORKER_ASK' && escalation.messageId) {
     const body = typeof resolution === 'string' ? resolution : JSON.stringify(resolution)
-    const replyResult = await replyToOrchestrationMessage({
-      id: escalation.messageId,
-      body,
-      run: escalation.orchestrationRunId
-    })
+    // Real adversarial-review finding: this calling coordinator's own
+    // "currently bound Run" is real, mutable, ambient state -- exactly
+    // the same unbound-coordinator race keep-going-dispatch-loop.mjs's
+    // settleStep already defends against (see its own header comment for
+    // the live-reproduced story). Without rebinding first, a relay here
+    // can fail with a real, honest consumer_fenced error whenever some
+    // OTHER real `orca` call from this same terminal identity rebound it
+    // elsewhere first -- reported truthfully via relayFailure below, but
+    // never reaching the real worker either way. Mirrors dispatchStep's
+    // own resolveSenderTerminal + bindOrchestrationRun pattern exactly.
+    let replyResult
+    const senderTerminal = escalation.orchestrationRunId
+      ? await resolveSenderTerminal({ createDispatcherTerminal })
+      : { ok: true, handle: undefined }
+    if (!senderTerminal.ok) {
+      replyResult = senderTerminal
+    } else if (escalation.orchestrationRunId) {
+      const bindResult = await bindOrchestrationRun({ id: escalation.orchestrationRunId, from: senderTerminal.handle })
+      replyResult = bindResult.ok
+        ? await replyToOrchestrationMessage({ id: escalation.messageId, body, run: escalation.orchestrationRunId })
+        : bindResult
+    } else {
+      replyResult = await replyToOrchestrationMessage({ id: escalation.messageId, body, run: escalation.orchestrationRunId })
+    }
     // Real Codex adversarial review finding: a relay failure (or a crash
     // between the resolve above and this call) previously left the
     // worker silently blocked forever, with the failure visible only in
