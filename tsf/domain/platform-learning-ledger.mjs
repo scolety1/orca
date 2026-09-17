@@ -40,7 +40,14 @@ export const LESSON_CATEGORIES = Object.freeze([
   // above rather than adding a redundant category.
   'DETECTOR_FALSE_POSITIVE_PATTERN', // a detector's REJECTED_FALSE_POSITIVE finding, recurring by sourceDetector/kind
   'VERIFIER_FAILURE_PATTERN', // a recurring reason class a repair mission's verifier rejected a candidate fix
-  'RECURRING_SUBSYSTEM_DEFECT' // repeated findings whose affectedSurface names the same subsystem
+  'RECURRING_SUBSYSTEM_DEFECT', // repeated findings whose affectedSurface names the same subsystem
+  // TSF Research-Driven Development V1 (EXTEND, additive only -- see
+  // server/research-driven-development-bridge.mjs): how well a research-
+  // grounded build run's own acceptance criteria (traced to real
+  // CanonicalFacts + resolved CHALLENGE findings) actually matched what
+  // convergence needed, learned from the Keep Going run's own real
+  // gap/retry history, not the ResearchMission's.
+  'RESEARCH_TO_BUILD_HANDOFF_PATTERN'
 ])
 
 export const LESSON_CONFIDENCE_LEVELS = Object.freeze(['LOW', 'MEDIUM', 'HIGH'])
@@ -283,6 +290,58 @@ export function extractLessonsFromCompletedMission(mission, clock) {
 export function recordLessonsFromCompletedMission(ledger, mission, clock) {
   const before = ledger.lessons.length
   const lessonRecords = extractLessonsFromCompletedMission(mission, clock)
+  const merged = mergeLessonsIntoLedger(ledger, lessonRecords)
+  return { ledger: merged, lessonsRecorded: merged.lessons.length - before }
+}
+
+// TSF Research-Driven Development V1: the same "extract, pure, real-
+// evidence-only" shape as extractLessonsFromCompletedMission above, but
+// over a COMPLETE Keep Going RUN (not a ResearchMission) that carries
+// missionSpec.researchDrivenProvenance -- see domain/research-driven-
+// development.mjs's own buildResearchDrivenMissionSpec, the one real
+// producer of that field. Uses sourceMissionIds: [run.id] the same way
+// every other lesson traces to a real source (a Keep Going run id is as
+// real a source as a ResearchMission id; this ledger does not
+// distinguish the two kinds of "mission" beyond that string).
+export function extractResearchDrivenDevelopmentLessons(run, clock) {
+  if (run?.state !== 'COMPLETE') {
+    const error = new Error(`extractResearchDrivenDevelopmentLessons requires a COMPLETE run, got state=${run?.state}`)
+    error.code = 'TSF_LEARNING_LEDGER_RUN_NOT_COMPLETE'
+    throw error
+  }
+  const provenance = run.missionSpec?.researchDrivenProvenance
+  if (!provenance) {
+    const error = new Error('extractResearchDrivenDevelopmentLessons requires a run whose missionSpec carries researchDrivenProvenance')
+    error.code = 'TSF_LEARNING_LEDGER_NOT_RESEARCH_DRIVEN'
+    throw error
+  }
+  const lessons = []
+  const make = (fields) => lessons.push(createLessonRecord({ ...fields, sourceMissionIds: [run.id] }, clock))
+  const totalRetries = Object.values(run.retryCounts ?? {}).reduce((a, b) => a + b, 0)
+  const remainingGaps = run.gap?.remainingGaps ?? []
+
+  if (totalRetries > 0) {
+    make({
+      category: 'RESEARCH_TO_BUILD_HANDOFF_PATTERN',
+      statement: `Research-driven run ${run.id} (research mission ${provenance.researchMissionId}) needed ${totalRetries} real retry attempt(s) across its work items before converging.`,
+      evidenceSummary: `retryCounts: ${JSON.stringify(run.retryCounts ?? {})}; researchDrivenProvenance: ${JSON.stringify(provenance)}`,
+      confidence: confidenceForSampleSize(totalRetries)
+    })
+  }
+  if (provenance.challengeMustFixCount > 0 && remainingGaps.length === 0) {
+    make({
+      category: 'RESEARCH_TO_BUILD_HANDOFF_PATTERN',
+      statement: `The CHALLENGE step's ${provenance.challengeMustFixCount} MUST_FIX finding(s) for research mission ${provenance.researchMissionId} were incorporated before build, and the resulting run ${run.id} converged with zero remaining gaps.`,
+      evidenceSummary: `researchDrivenProvenance: ${JSON.stringify(provenance)}; gap.remainingGaps: ${JSON.stringify(remainingGaps)}`,
+      confidence: confidenceForSampleSize(provenance.challengeMustFixCount)
+    })
+  }
+  return lessons
+}
+
+export function recordResearchDrivenDevelopmentLessons(ledger, run, clock) {
+  const before = ledger.lessons.length
+  const lessonRecords = extractResearchDrivenDevelopmentLessons(run, clock)
   const merged = mergeLessonsIntoLedger(ledger, lessonRecords)
   return { ledger: merged, lessonsRecorded: merged.lessons.length - before }
 }
