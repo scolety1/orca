@@ -116,6 +116,33 @@ test('deriveWorktreePath returns the real worktree from the most recent wave', (
   assert.equal(deriveWorktreePath(run), '/real/worktree')
 })
 
+// Real, live-discovered bug (RDD V1 refinement pilot): a wave item's
+// `worktree` field can genuinely be Orca's own `id:<repoId>::<path>`
+// worktree-selector syntax (a valid, documented value to dispatch with),
+// not a bare filesystem path. Before this fix, deriveWorktreePath returned
+// that selector string unresolved, and every downstream consumer that
+// needs a real fs path (gatherWorktreeEvidence's `git` spawn,
+// readVerificationVerdict's `readFile`) failed -- on Windows, a `git`
+// spawn with a nonexistent `cwd` fails with the misleading `spawn git
+// ENOENT`, not an error naming the real problem (the cwd).
+test('deriveWorktreePath resolves an Orca id:<repoId>::<path> worktree selector down to the real filesystem path', () => {
+  const run = withSettledWave(
+    baseRun(),
+    'id:02c97f0a-4bd2-4594-971d-5deaf3e7bc41::C:/some/real/worktree',
+    clock().toISOString()
+  )
+  assert.equal(deriveWorktreePath(run), 'C:/some/real/worktree')
+})
+
+test('gatherWorktreeEvidence succeeds against a real git worktree even when the wave recorded it as an Orca id:<repoId>::<path> selector -- reproduces the exact live spawn-git-ENOENT failure and proves the fix', async () => {
+  const dir = initRepo()
+  const run = withSettledWave(baseRun(), `id:fake-repo-id::${dir}`, new Date().toISOString())
+  const evidence = await gatherWorktreeEvidence(run)
+  assert.equal(evidence.ok, true, JSON.stringify(evidence))
+  assert.equal(evidence.worktreePath, dir)
+  assert.match(evidence.headCommit, /^[0-9a-f]{40}$/)
+})
+
 // --- buildVerificationWorkItem ---
 
 test("buildVerificationWorkItem carries the run's own real constraints into the dispatched spec -- real-production finding: reconciling NWR live dispatched a verification pass that ran the project's real pytest suite (a reasonable thing to do to independently verify) and hit the EXACT known, structural side effect NWR's own constraints warned about, because this spec never carried those constraints forward. Reverted by hand once found; this pins the fix.", () => {
@@ -356,15 +383,32 @@ test('reconcileSettledRun: DISPATCH_VERIFICATION honestly refuses for a project 
   delete process.env.ORCA_TERMINAL_HANDLE
   const readProjectExecutionHold = (projectId) =>
     projectId === PROJECT_ID
-      ? { status: 'ACTIVE', reason: 'EXTERNAL_WORK_ACTIVE', note: 'another agent is on this repo', setBy: 'OPERATOR_CHAT' }
+      ? {
+          status: 'ACTIVE',
+          reason: 'EXTERNAL_WORK_ACTIVE',
+          note: 'another agent is on this repo',
+          setBy: 'OPERATOR_CHAT'
+        }
       : null
   const tickDeps = { store, orchestration: okOrchestration(), readProjectExecutionHold }
 
   const result = await reconcileSettledRun(PROJECT_ID, clock, { store, tickDeps })
-  assert.equal(result.action, 'DISPATCH_VERIFICATION', 'reconciliation itself still honestly reports what it found')
-  assert.equal(result.dispatch.action, 'DISPATCH_BLOCKED_BY_HOLD', 'but the real dispatch attempt is honestly refused')
+  assert.equal(
+    result.action,
+    'DISPATCH_VERIFICATION',
+    'reconciliation itself still honestly reports what it found'
+  )
+  assert.equal(
+    result.dispatch.action,
+    'DISPATCH_BLOCKED_BY_HOLD',
+    'but the real dispatch attempt is honestly refused'
+  )
   assert.match(result.dispatch.reason, /project execution hold active/)
-  assert.equal(store.current.inFlightWave, null, 'no real wave may be dispatched into a held project')
+  assert.equal(
+    store.current.inFlightWave,
+    null,
+    'no real wave may be dispatched into a held project'
+  )
 })
 
 test('reconcileSettledRun: a real verdict with a failing criterion raises NEEDS_YOU once the retry budget is exhausted, never silently completes', async () => {

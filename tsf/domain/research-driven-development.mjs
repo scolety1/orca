@@ -29,13 +29,27 @@ function groundedNodes(packageBody) {
 // embeds that id -- a human or a later automated check can always walk
 // from "why must the build satisfy this" back to the one real, integrity-
 // checked research finding that grounded it, never an invented one.
+// A string fact.value is rendered as-is (this criterion is prose a human or
+// a worker reads and later transcribes verbatim into a verification verdict
+// -- see settled-run-reconciler.mjs's exact-match verdict gate); wrapping it
+// in JSON.stringify would escape any quote characters already inside the
+// fact's own text (e.g. a quoted example date), producing a criterion whose
+// literal `\"` a worker naturally normalizes back to `"` when transcribing
+// it, breaking that exact-match gate on a real, live-discovered run (never a
+// hypothetical). Non-string values still need JSON.stringify -- there's no
+// other unambiguous generic rendering for a number/boolean/object.
+function renderFactValue(value) {
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
 export function acceptanceCriteriaFromResearch(packageBody) {
   const criteria = []
   for (const node of groundedNodes(packageBody)) {
     for (const fact of node.canonicalFacts) {
-      const entity = node.targetEntity?.name ?? node.targetEntity?.entityId ?? node.targetEntity?.id ?? node.id
+      const entity =
+        node.targetEntity?.name ?? node.targetEntity?.entityId ?? node.targetEntity?.id ?? node.id
       criteria.push(
-        `[FACT:${fact.id}] ${entity} -- ${fact.fieldName}: ${JSON.stringify(fact.value)}`
+        `[FACT:${fact.id}] ${entity} -- ${fact.fieldName}: ${renderFactValue(fact.value)}`
       )
     }
   }

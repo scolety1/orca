@@ -45,9 +45,16 @@ function fixturePackageBody({ nodes } = {}) {
 }
 
 test('buildResearchDrivenMissionSpec: refuses to build from a research mission with no CanonicalFacts at all', () => {
-  const ungrounded = fixturePackageBody({ nodes: [{ id: 'node-1', targetEntity: null, status: 'COMPLETED', canonicalFacts: [] }] })
+  const ungrounded = fixturePackageBody({
+    nodes: [{ id: 'node-1', targetEntity: null, status: 'COMPLETED', canonicalFacts: [] }]
+  })
   assert.throws(
-    () => buildResearchDrivenMissionSpec({ researchMissionId: 'mission-1', projectId: 'proj-1', researchPackageBody: ungrounded }),
+    () =>
+      buildResearchDrivenMissionSpec({
+        researchMissionId: 'mission-1',
+        projectId: 'proj-1',
+        researchPackageBody: ungrounded
+      }),
     /no CanonicalFacts to build from/
   )
 })
@@ -60,16 +67,43 @@ test('buildResearchDrivenMissionSpec: refuses to build from a research mission w
 // future refactor).
 test('buildResearchDrivenMissionSpec: the artifactReference hash is stable regardless of incidental object-key order (canonical, not JSON.stringify)', () => {
   const factA = fixtureCanonicalFact()
-  const factB = { value: factA.value, id: factA.id, fieldName: factA.fieldName, schemaVersion: factA.schemaVersion, temporalScope: factA.temporalScope, reconciliationDecisionId: factA.reconciliationDecisionId, derivationLineage: factA.derivationLineage, canonicalizedAt: factA.canonicalizedAt }
+  const factB = {
+    value: factA.value,
+    id: factA.id,
+    fieldName: factA.fieldName,
+    schemaVersion: factA.schemaVersion,
+    temporalScope: factA.temporalScope,
+    reconciliationDecisionId: factA.reconciliationDecisionId,
+    derivationLineage: factA.derivationLineage,
+    canonicalizedAt: factA.canonicalizedAt
+  }
   const specA = buildResearchDrivenMissionSpec({
     researchMissionId: 'mission-1',
     projectId: 'proj-1',
-    researchPackageBody: fixturePackageBody({ nodes: [{ id: 'node-1', targetEntity: { id: 'entity-1', name: 'PaymentAPI' }, status: 'COMPLETED', canonicalFacts: [factA] }] })
+    researchPackageBody: fixturePackageBody({
+      nodes: [
+        {
+          id: 'node-1',
+          targetEntity: { id: 'entity-1', name: 'PaymentAPI' },
+          status: 'COMPLETED',
+          canonicalFacts: [factA]
+        }
+      ]
+    })
   })
   const specB = buildResearchDrivenMissionSpec({
     researchMissionId: 'mission-1',
     projectId: 'proj-1',
-    researchPackageBody: fixturePackageBody({ nodes: [{ id: 'node-1', targetEntity: { id: 'entity-1', name: 'PaymentAPI' }, status: 'COMPLETED', canonicalFacts: [factB] }] })
+    researchPackageBody: fixturePackageBody({
+      nodes: [
+        {
+          id: 'node-1',
+          targetEntity: { id: 'entity-1', name: 'PaymentAPI' },
+          status: 'COMPLETED',
+          canonicalFacts: [factB]
+        }
+      ]
+    })
   })
   assert.equal(
     specA.artifactReferences[0].sha256,
@@ -96,16 +130,50 @@ test('buildResearchDrivenMissionSpec: every acceptance criterion cites the real 
   assert.equal(spec.artifactReferences.length, 1)
   assert.equal(spec.artifactReferences[0].name, 'canonical-fact:fact-1')
   assert.equal(spec.artifactReferences[0].type, 'RESEARCH_CANONICAL_FACT')
-  assert.ok(spec.artifactReferences[0].sha256, 'the artifact reference is really hashed, not left null')
+  assert.ok(
+    spec.artifactReferences[0].sha256,
+    'the artifact reference is really hashed, not left null'
+  )
   assert.equal(spec.researchDrivenProvenance.researchMissionId, 'mission-1')
   assert.equal(spec.researchDrivenProvenance.groundedNodeCount, 1)
   assert.equal(spec.researchDrivenProvenance.researchCriteriaCount, 1)
 })
 
+// Real, live-discovered bug (RDD V1 refinement pilot): a string fact.value
+// containing a double-quote character (e.g. a quoted example date within
+// prose) previously got JSON.stringify-wrapped into the criterion text,
+// embedding literal `\"` escape sequences. A worker transcribing that
+// criterion verbatim into a verification verdict naturally normalizes those
+// back to plain `"`, which silently broke settled-run-reconciler.mjs's
+// exact-match verdict gate and caused an otherwise-complete, all-passing
+// verification to be discarded and re-dispatched forever.
+test('acceptanceCriteriaFromResearch: a string fact.value containing quote characters is embedded as plain text, never JSON-escaped', () => {
+  const fact = fixtureCanonicalFact({
+    id: 'fact-quoted',
+    fieldName: 'holidayFormat',
+    value: 'a full ISO date string (e.g. "2026-12-25" or "2026-12-25T00:00:00Z")'
+  })
+  const criteria = acceptanceCriteriaFromResearch(
+    fixturePackageBody({
+      nodes: [
+        { id: 'node-1', targetEntity: { name: 'X' }, status: 'COMPLETED', canonicalFacts: [fact] }
+      ]
+    })
+  )
+  assert.equal(criteria.length, 1)
+  assert.match(criteria[0], /e\.g\. "2026-12-25" or "2026-12-25T00:00:00Z"/)
+  assert.doesNotMatch(criteria[0], /\\"/)
+})
+
 test('buildResearchDrivenMissionSpec: a node that completed with zero CanonicalFacts contributes nothing (never fabricates a criterion from an ungrounded node)', () => {
   const mixed = fixturePackageBody({
     nodes: [
-      { id: 'node-1', targetEntity: { name: 'A' }, status: 'COMPLETED', canonicalFacts: [fixtureCanonicalFact({ id: 'fact-1' })] },
+      {
+        id: 'node-1',
+        targetEntity: { name: 'A' },
+        status: 'COMPLETED',
+        canonicalFacts: [fixtureCanonicalFact({ id: 'fact-1' })]
+      },
       { id: 'node-2', targetEntity: { name: 'B' }, status: 'COMPLETED', canonicalFacts: [] }
     ]
   })
@@ -120,7 +188,11 @@ test('buildResearchDrivenMissionSpec: a resolved CHALLENGE MUST_FIX finding beco
     projectId: 'proj-1',
     researchPackageBody: fixturePackageBody(),
     resolvedChallengeFindings: [
-      { id: 'chal-1', severity: 'MUST_FIX', summary: 'Handle the case where PaymentAPI rate limit headers are absent.' },
+      {
+        id: 'chal-1',
+        severity: 'MUST_FIX',
+        summary: 'Handle the case where PaymentAPI rate limit headers are absent.'
+      },
       { id: 'chal-2', severity: 'ADVISORY', summary: 'Consider caching the rate limit window.' }
     ],
     createdAt: clock().toISOString()
@@ -129,7 +201,11 @@ test('buildResearchDrivenMissionSpec: a resolved CHALLENGE MUST_FIX finding beco
   assert.equal(mustFix.length, 1)
   assert.match(mustFix[0], /chal-1/)
   assert.match(mustFix[0], /rate limit headers are absent/)
-  assert.equal(spec.researchDrivenProvenance.challengeFindingCount, 2, 'both findings are recorded on the provenance, even the advisory one')
+  assert.equal(
+    spec.researchDrivenProvenance.challengeFindingCount,
+    2,
+    'both findings are recorded on the provenance, even the advisory one'
+  )
   assert.equal(spec.researchDrivenProvenance.challengeMustFixCount, 1)
 })
 
@@ -157,12 +233,18 @@ function completeResearchDrivenRun(overrides = {}) {
 
 test('extractResearchDrivenDevelopmentLessons: requires a COMPLETE run', () => {
   const run = { ...completeResearchDrivenRun(), state: 'ACTIVE' }
-  assert.throws(() => extractResearchDrivenDevelopmentLessons(run, clock), /TSF_LEARNING_LEDGER_RUN_NOT_COMPLETE|requires a COMPLETE run/)
+  assert.throws(
+    () => extractResearchDrivenDevelopmentLessons(run, clock),
+    /TSF_LEARNING_LEDGER_RUN_NOT_COMPLETE|requires a COMPLETE run/
+  )
 })
 
 test('extractResearchDrivenDevelopmentLessons: requires a research-driven run (missionSpec.researchDrivenProvenance)', () => {
   const run = { ...completeResearchDrivenRun(), missionSpec: null }
-  assert.throws(() => extractResearchDrivenDevelopmentLessons(run, clock), /researchDrivenProvenance/)
+  assert.throws(
+    () => extractResearchDrivenDevelopmentLessons(run, clock),
+    /researchDrivenProvenance/
+  )
 })
 
 test('extractResearchDrivenDevelopmentLessons: a run with real retries records a real, evidenced handoff-friction lesson', () => {
@@ -174,7 +256,11 @@ test('extractResearchDrivenDevelopmentLessons: a run with real retries records a
     gap: { satisfiedCriteria: [], remainingGaps: ['[FACT:fact-1] x'], decision: 'CONTINUE' }
   })
   const lessons = extractResearchDrivenDevelopmentLessons(run, clock)
-  assert.equal(lessons.length, 1, 'only the retry-friction lesson, not also a false clean-convergence claim')
+  assert.equal(
+    lessons.length,
+    1,
+    'only the retry-friction lesson, not also a false clean-convergence claim'
+  )
   const friction = lessons.find((l) => /needed 2 real retry/.test(l.statement))
   assert.ok(friction, 'expected a retry-friction lesson')
   assert.equal(friction.category, 'RESEARCH_TO_BUILD_HANDOFF_PATTERN')
@@ -182,7 +268,9 @@ test('extractResearchDrivenDevelopmentLessons: a run with real retries records a
 })
 
 test('extractResearchDrivenDevelopmentLessons: a clean convergence with resolved MUST_FIX findings records a positive lesson; zero real signal records nothing (never padded)', () => {
-  const clean = completeResearchDrivenRun({ gap: { satisfiedCriteria: ['[FACT:fact-1] x'], remainingGaps: [], decision: 'STOP' } })
+  const clean = completeResearchDrivenRun({
+    gap: { satisfiedCriteria: ['[FACT:fact-1] x'], remainingGaps: [], decision: 'STOP' }
+  })
   const lessons = extractResearchDrivenDevelopmentLessons(clean, clock)
   assert.equal(lessons.length, 1)
   assert.match(lessons[0].statement, /converged with zero remaining gaps/)
@@ -210,6 +298,10 @@ test('recordResearchDrivenDevelopmentLessons: idempotent by content hash, matchi
   const once = recordResearchDrivenDevelopmentLessons(emptyPlatformLearningLedger(), run, clock)
   assert.equal(once.lessonsRecorded, 1)
   const twice = recordResearchDrivenDevelopmentLessons(once.ledger, run, clock)
-  assert.equal(twice.lessonsRecorded, 0, 're-recording the same completed run must never duplicate the lesson')
+  assert.equal(
+    twice.lessonsRecorded,
+    0,
+    're-recording the same completed run must never duplicate the lesson'
+  )
   assert.equal(twice.ledger.lessons.length, 1)
 })

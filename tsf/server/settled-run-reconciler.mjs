@@ -36,18 +36,42 @@ export function verificationVerdictPath(runId) {
   return path.join('docs', 'tsf', 'verification', `${runId}.json`)
 }
 
+// A dispatched work item's own `item.worktree` is whatever selector form
+// the dispatcher used to place it -- often Orca's own `id:<repoId>::<path>`
+// worktree-selector syntax (documented by `orca orchestration worker-start
+// --help`), not necessarily a bare filesystem path. The real path is always
+// the substring after Orca's own `::` separator, regardless of which prefix
+// (`id:`, or none) precedes it -- stripping down to that is a correct,
+// general normalization, not a guess. Real, live-discovered bug (RDD V1
+// refinement pilot): every consumer below this point -- git-identity.mjs's
+// `spawn`, readVerificationVerdict's `readFile` -- requires a genuine fs
+// path, and previously received the raw selector unresolved, failing with a
+// raw, misleading `spawn git ENOENT` on Windows (a missing `cwd` makes
+// CreateProcess report the child itself as not found, not the cwd). Live-
+// confirmed safe to also reuse for Orca's own `--worktree` argument on a
+// re-dispatch (buildVerificationWorkItem/buildContinuationWorkItem below):
+// a bare existing-worktree path was observed to dispatch and run correctly
+// in this same pilot once this normalization was applied by hand.
+function toFilesystemWorktreePath(worktreeIdentifier) {
+  const marker = '::'
+  const index = worktreeIdentifier.lastIndexOf(marker)
+  return index === -1 ? worktreeIdentifier : worktreeIdentifier.slice(index + marker.length)
+}
+
 // The real worktree this run's work has actually been happening in --
 // taken from its most recently recorded wave's own plan (real, already-
-// dispatched evidence), never guessed or defaulted. Returns null (an
-// honest "unknown", never a fabricated path) if the run has no waves with
-// an identifiable worktree.
+// dispatched evidence), never guessed or defaulted. Always normalized to a
+// real filesystem path (see toFilesystemWorktreePath above), regardless of
+// which Orca worktree-selector form the dispatching caller originally used.
+// Returns null (an honest "unknown", never a fabricated path) if the run
+// has no waves with an identifiable worktree.
 export function deriveWorktreePath(run) {
   for (let i = run.waves.length - 1; i >= 0; i -= 1) {
     const batches = run.waves[i]?.wavePlan?.batches ?? []
     for (const batch of batches) {
       for (const item of batch) {
         if (item.worktree) {
-          return item.worktree
+          return toFilesystemWorktreePath(item.worktree)
         }
       }
     }

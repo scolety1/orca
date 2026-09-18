@@ -103,6 +103,61 @@ test('tickKeepGoingRun no-ops when no candidate work items are supplied -- it ne
   assert.match(result.reason, /candidate work items/)
 })
 
+// Real, live-discovered bug (RDD V1 refinement pilot): a DISPATCH tick lock
+// left behind by a crashed/interrupted attempt, now past its own
+// TICK_LOCK_TIMEOUT_MS, used to permanently wedge the run -- a later tick
+// with no NEW work to plan (candidateWorkItems: []) NOOPed before ever
+// calling claim(), so the expiry-based reclaim logic claimTick already
+// implements never got a chance to run. This run has no inFlightWave and no
+// leftover dispatchAttempt (the unambiguous case: nothing is genuinely in
+// question), so the reclaim must actually succeed and release the lock.
+test('tickKeepGoingRun reclaims and releases a real EXPIRED tick lock even when there are no new candidate work items to plan -- proves the fix for the permanent-wedge bug', async () => {
+  const run = {
+    ...baseRun(),
+    tickLock: {
+      kind: 'DISPATCH',
+      claimedAt: new Date(clock().getTime() - 3 * 60 * 1000).toISOString(),
+      timeoutMs: 2 * 60 * 1000
+    }
+  }
+  const store = makeFakeStore(run)
+  const result = await tickKeepGoingRun(PROJECT_ID, [], clock, { store })
+  assert.equal(result.action, 'NOOP')
+  assert.match(result.reason, /candidate work items/)
+  const after = store.readRun(PROJECT_ID)
+  assert.equal(
+    after.tickLock,
+    null,
+    'the expired lock was reclaimed and released, not left wedging the run forever'
+  )
+})
+
+// The companion safety case: an expired lock whose dispatchAttempt never
+// got cleared (a genuinely crashed mid-dispatch attempt that may have made
+// real, undiscoverable Orca side effects) must NOT be silently auto-
+// reclaimed -- claimTick's own TSF_KEEP_GOING_DISPATCH_AMBIGUOUS refusal
+// must still fire, now surfaced via lockCheck instead of a silent NOOP.
+test('tickKeepGoingRun does NOT silently reclaim an expired tick lock whose dispatchAttempt is still ambiguous -- surfaces lockCheck instead of guessing', async () => {
+  const run = {
+    ...baseRun(),
+    tickLock: {
+      kind: 'DISPATCH',
+      claimedAt: new Date(clock().getTime() - 3 * 60 * 1000).toISOString(),
+      timeoutMs: 2 * 60 * 1000
+    },
+    dispatchAttempt: { beganAt: new Date(clock().getTime() - 3 * 60 * 1000).toISOString() }
+  }
+  const store = makeFakeStore(run)
+  const result = await tickKeepGoingRun(PROJECT_ID, [], clock, { store })
+  assert.equal(result.action, 'NOOP')
+  assert.equal(result.lockCheck, 'TSF_KEEP_GOING_DISPATCH_AMBIGUOUS')
+  const after = store.readRun(PROJECT_ID)
+  assert.ok(
+    after.tickLock,
+    'a genuinely ambiguous crashed dispatch is left for owner review, not auto-cleared'
+  )
+})
+
 test('tickKeepGoingRun dispatches the next wave, creating the orchestration run lazily on first dispatch', async () => {
   const store = makeFakeStore(baseRun())
   const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
@@ -138,7 +193,12 @@ test('tickKeepGoingRun refuses to dispatch a real wave for a project under an ac
   const store = makeFakeStore(baseRun())
   const readProjectExecutionHold = (projectId) =>
     projectId === PROJECT_ID
-      ? { status: 'ACTIVE', reason: 'EXTERNAL_WORK_ACTIVE', note: 'another agent is on this repo', setBy: 'OPERATOR_CHAT' }
+      ? {
+          status: 'ACTIVE',
+          reason: 'EXTERNAL_WORK_ACTIVE',
+          note: 'another agent is on this repo',
+          setBy: 'OPERATOR_CHAT'
+        }
       : null
 
   const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
@@ -152,7 +212,11 @@ test('tickKeepGoingRun refuses to dispatch a real wave for a project under an ac
 
   const run = store.readRun(PROJECT_ID)
   assert.equal(run.inFlightWave, null, 'no real wave may be dispatched into a held project')
-  assert.equal(run.orchestrationRunId, null, 'no real orchestration run created for a refused dispatch')
+  assert.equal(
+    run.orchestrationRunId,
+    null,
+    'no real orchestration run created for a refused dispatch'
+  )
 })
 
 test('tickKeepGoingRun dispatches normally when there is no active hold (sanity: the new check is a real gate, not a permanent refusal)', async () => {
@@ -181,9 +245,16 @@ test('tickKeepGoingRun: a project that is BOTH held AND resource-refused still g
   const store = makeFakeStore(baseRun())
   const readProjectExecutionHold = (projectId) =>
     projectId === PROJECT_ID
-      ? { status: 'ACTIVE', reason: 'EXTERNAL_WORK_ACTIVE', note: 'another agent is on this repo', setBy: 'OPERATOR_CHAT' }
+      ? {
+          status: 'ACTIVE',
+          reason: 'EXTERNAL_WORK_ACTIVE',
+          note: 'another agent is on this repo',
+          setBy: 'OPERATOR_CHAT'
+        }
       : null
-  const emergencyResourcePressure = { collectHostMemoryEvidence: () => ({ availableBytes: 1 * 1024 ** 3 }) }
+  const emergencyResourcePressure = {
+    collectHostMemoryEvidence: () => ({ availableBytes: 1 * 1024 ** 3 })
+  }
 
   const result = await tickKeepGoingRun(PROJECT_ID, oneItem, clock, {
     orchestration: okOrchestration(),
@@ -191,9 +262,16 @@ test('tickKeepGoingRun: a project that is BOTH held AND resource-refused still g
     readProjectExecutionHold,
     resourcePressure: emergencyResourcePressure
   })
-  assert.equal(result.action, 'DISPATCH_WAITING_FOR_RESOURCES', 'the resource refusal -- with its own durable retry record -- must still be the one reported, even while held')
+  assert.equal(
+    result.action,
+    'DISPATCH_WAITING_FOR_RESOURCES',
+    'the resource refusal -- with its own durable retry record -- must still be the one reported, even while held'
+  )
   const afterRefusal = store.readRun(PROJECT_ID)
-  assert.ok(afterRefusal.pendingDispatch, 'the real, durable resource-wait retry record must be written even while held -- never silently dropped')
+  assert.ok(
+    afterRefusal.pendingDispatch,
+    'the real, durable resource-wait retry record must be written even while held -- never silently dropped'
+  )
   assert.equal(afterRefusal.inFlightWave, null)
 
   // Resources recover, but the hold is still active -- the real dispatch
@@ -201,14 +279,25 @@ test('tickKeepGoingRun: a project that is BOTH held AND resource-refused still g
   // keep-going-fleet-driver.mjs's own auto-resume mechanism would call
   // this) must still be honestly refused by the hold, never silently
   // bypassed just because resource pressure already cleared.
-  const healthyResourcePressure = { collectHostMemoryEvidence: () => ({ availableBytes: 16 * 1024 ** 3 }) }
-  const retryResult = await tickKeepGoingRun(PROJECT_ID, afterRefusal.pendingDispatch.candidateWorkItems, clock, {
-    orchestration: okOrchestration(),
-    store,
-    readProjectExecutionHold,
-    resourcePressure: healthyResourcePressure
-  })
-  assert.equal(retryResult.action, 'DISPATCH_BLOCKED_BY_HOLD', 'once resources recover, the STILL-active hold must be what refuses the real dispatch, not a silent bypass')
+  const healthyResourcePressure = {
+    collectHostMemoryEvidence: () => ({ availableBytes: 16 * 1024 ** 3 })
+  }
+  const retryResult = await tickKeepGoingRun(
+    PROJECT_ID,
+    afterRefusal.pendingDispatch.candidateWorkItems,
+    clock,
+    {
+      orchestration: okOrchestration(),
+      store,
+      readProjectExecutionHold,
+      resourcePressure: healthyResourcePressure
+    }
+  )
+  assert.equal(
+    retryResult.action,
+    'DISPATCH_BLOCKED_BY_HOLD',
+    'once resources recover, the STILL-active hold must be what refuses the real dispatch, not a silent bypass'
+  )
   assert.equal(store.readRun(PROJECT_ID).inFlightWave, null)
 })
 
@@ -469,7 +558,7 @@ test('a still-in-flight wave reports WAVE_STILL_IN_FLIGHT and releases the lock 
 // settle attempt. dispatchStep already rebinds defensively on a reused
 // orchestrationRunId; settleStep now does too, on every tick (not just
 // the first), mirroring that exact pattern.
-test('settleStep rebinds the coordinator to the run\'s own orchestrationRunId before checking it, and a failed rebind honestly reports SETTLE_CHECK_FAILED without ever calling listOrchestrationTasks', async () => {
+test("settleStep rebinds the coordinator to the run's own orchestrationRunId before checking it, and a failed rebind honestly reports SETTLE_CHECK_FAILED without ever calling listOrchestrationTasks", async () => {
   const store = makeFakeStore(baseRun())
   await tickKeepGoingRun(PROJECT_ID, oneItem, clock, { orchestration: okOrchestration(), store })
   let boundToId = null
@@ -489,11 +578,22 @@ test('settleStep rebinds the coordinator to the run\'s own orchestrationRunId be
   })
   assert.equal(result.action, 'SETTLE_CHECK_FAILED')
   assert.equal(result.reason, 'CLI_ERROR')
-  assert.equal(boundToId, store.readRun(PROJECT_ID).orchestrationRunId, 'rebinds to the run\'s own real orchestrationRunId, not a stale/guessed one')
-  assert.equal(tasksCallCount, 0, 'a failed rebind must never proceed to check tasks -- would misdirect the call to whatever run this terminal happens to still be bound to')
+  assert.equal(
+    boundToId,
+    store.readRun(PROJECT_ID).orchestrationRunId,
+    "rebinds to the run's own real orchestrationRunId, not a stale/guessed one"
+  )
+  assert.equal(
+    tasksCallCount,
+    0,
+    'a failed rebind must never proceed to check tasks -- would misdirect the call to whatever run this terminal happens to still be bound to'
+  )
   const run = store.readRun(PROJECT_ID)
   assert.equal(run.tickLock, null, 'lock released, never left held on this failure path')
-  assert.ok(run.inFlightWave, 'the wave is left honestly still in flight, never falsely marked settled')
+  assert.ok(
+    run.inFlightWave,
+    'the wave is left honestly still in flight, never falsely marked settled'
+  )
 })
 
 test('a wave stuck in flight past the stall threshold escalates the run to STALLED instead of looping forever', async () => {
