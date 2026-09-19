@@ -118,7 +118,20 @@ const FOLDER_WORKSPACE_INSTANCE_SUFFIX = /::workspace:[0-9a-f-]{36}$/
 // The `id:` prefix is the only reliable discriminator for "this string uses
 // Orca's composite-id grammar at all" -- checked first, before any `::`
 // search.
+//
+// Real adversarial-review finding (round 4): deriveWorktreePath's own
+// `item.worktree` guard is a truthiness check, not a type check -- a work
+// item placed via `workerTerminal` (hasExplicitPlacement,
+// keep-going-dispatch-loop.mjs, accepts EITHER workerTerminal OR a string
+// worktree) has no reason to ever carry a well-formed `worktree` value, and
+// nothing upstream guarantees it is a string if present at all. An
+// uncaught TypeError from `.startsWith()` on a non-string would crash
+// reconciliation outright instead of failing honestly. Guarded here, once,
+// at the one place every caller already funnels through.
 function toFilesystemWorktreePath(worktreeIdentifier) {
+  if (typeof worktreeIdentifier !== 'string') {
+    return null
+  }
   if (worktreeIdentifier.startsWith(ID_SELECTOR_PREFIX)) {
     const markerIndex = worktreeIdentifier.indexOf(ID_SELECTOR_MARKER)
     if (markerIndex === -1) {

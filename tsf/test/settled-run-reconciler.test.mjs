@@ -219,6 +219,19 @@ test('deriveWorktreePath returns null for a malformed id: selector with no :: se
   assert.equal(deriveWorktreePath(run), null)
 })
 
+// Real adversarial-review finding (round 4): a work item placed via
+// workerTerminal (hasExplicitPlacement accepts EITHER workerTerminal or a
+// string worktree) has no reason to ever carry a well-formed `worktree`
+// value -- nothing upstream guarantees it is a string if one is present at
+// all. Before this fix, a non-string, truthy `item.worktree` (e.g. an
+// object) reaching deriveWorktreePath crashed reconciliation outright with
+// an uncaught TypeError from `.startsWith()`, instead of failing honestly.
+test('deriveWorktreePath returns null (never throws) for a non-string, truthy item.worktree', () => {
+  const run = withSettledWave(baseRun(), { unexpected: 'object' }, clock().toISOString())
+  assert.doesNotThrow(() => deriveWorktreePath(run))
+  assert.equal(deriveWorktreePath(run), null)
+})
+
 test('gatherWorktreeEvidence reports EVIDENCE_UNAVAILABLE (never a fabricated clean report) for an unresolvable name: selector', async () => {
   const run = withSettledWave(baseRun(), 'name:some-worktree', new Date().toISOString())
   const evidence = await gatherWorktreeEvidence(run)
