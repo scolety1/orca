@@ -10,12 +10,20 @@
 // empty-candidates NOOP used to fire unconditionally, before claim() ever
 // ran -- so an expired lock could never be reclaimed by a tick with nothing
 // new to dispatch, permanently wedging the run with no operator signal.
+//
+// Real adversarial-review finding (round 1): claim and release used to be
+// two SEPARATE, sequential `store.withRun` commits. A process crash (or a
+// storage failure -- the second call sat outside any try/catch) between
+// them left a FRESH tickLock/dispatchAttempt durably persisted with nothing
+// to ever release it -- the exact permanent wedge this module exists to
+// fix, now self-inflicted by its own recovery path. Claim and release now
+// happen inside the SAME synchronous `withRun` mutation, so there is no
+// window where a crash can observe one without the other.
 import { claimTick, releaseTick } from '../domain/keep-going.mjs'
 
 export async function reclaimExpiredDispatchLock(projectId, clock, store) {
-  let claimed
   try {
-    claimed = await store.withRun(projectId, (current) => {
+    const run = await store.withRun(projectId, (current) => {
       if (!current) {
         const error = new Error('no Keep Going run for this project')
         error.code = 'TSF_RUN_NOT_FOUND'
@@ -29,8 +37,10 @@ export async function reclaimExpiredDispatchLock(projectId, clock, store) {
         error.code = 'TSF_STALE_ROUTING_DECISION'
         throw error
       }
-      return claimTick(current, 'DISPATCH', clock, current.revision)
+      const claimed = claimTick(current, 'DISPATCH', clock, current.revision)
+      return releaseTick(claimed, clock, claimed.revision)
     })
+    return { reclaimed: true, run }
   } catch (error) {
     // TSF_TICK_IN_PROGRESS (still genuinely active) or
     // TSF_KEEP_GOING_DISPATCH_AMBIGUOUS (a crash with possibly real,
@@ -38,8 +48,4 @@ export async function reclaimExpiredDispatchLock(projectId, clock, store) {
     // never silently swallowed -- the caller surfaces `code`.
     return { reclaimed: false, code: error.code ?? 'CLAIM_FAILED' }
   }
-  const run = await store.withRun(projectId, (current) =>
-    releaseTick(current, clock, claimed.revision)
-  )
-  return { reclaimed: true, run }
 }

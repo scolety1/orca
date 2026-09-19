@@ -39,23 +39,62 @@ export function verificationVerdictPath(runId) {
 // A dispatched work item's own `item.worktree` is whatever selector form
 // the dispatcher used to place it -- often Orca's own `id:<repoId>::<path>`
 // worktree-selector syntax (documented by `orca orchestration worker-start
-// --help`), not necessarily a bare filesystem path. The real path is always
-// the substring after Orca's own `::` separator, regardless of which prefix
-// (`id:`, or none) precedes it -- stripping down to that is a correct,
-// general normalization, not a guess. Real, live-discovered bug (RDD V1
+// --help`: identity:<identity>, id:<repo-id>::<path>, name:<displayName>,
+// branch:<branch>, issue:<number>, path:<path>, or active/current), not
+// necessarily a bare filesystem path. Real, live-discovered bug (RDD V1
 // refinement pilot): every consumer below this point -- git-identity.mjs's
-// `spawn`, readVerificationVerdict's `readFile` -- requires a genuine fs
-// path, and previously received the raw selector unresolved, failing with a
-// raw, misleading `spawn git ENOENT` on Windows (a missing `cwd` makes
-// CreateProcess report the child itself as not found, not the cwd). Live-
-// confirmed safe to also reuse for Orca's own `--worktree` argument on a
-// re-dispatch (buildVerificationWorkItem/buildContinuationWorkItem below):
-// a bare existing-worktree path was observed to dispatch and run correctly
-// in this same pilot once this normalization was applied by hand.
+// `spawn`, readVerificationVerdict's `readFile` -- requires a genuine local
+// fs path, and previously received the raw selector unresolved, failing
+// with a raw, misleading `spawn git ENOENT` on Windows (a missing `cwd`
+// makes CreateProcess report the child itself as not found, not the cwd).
+//
+// `id:<repoId>::<path>` and `path:<path>` are the only forms this can
+// honestly resolve to a real fs path without a live Orca CLI call (the
+// substring after Orca's own `::`, or after the `path:` prefix). Real
+// adversarial-review finding (round 1): `name:`/`branch:`/`issue:`/
+// `identity:` selectors name a worktree ORCA itself must resolve -- there
+// is no filesystem path derivable from the selector text alone, and
+// silently treating one as a literal local path would either fail
+// confusingly or, worse, coincidentally match an unrelated local path.
+// Returns null (unresolvable) for those rather than guessing. A bare
+// string with no recognized prefix and no `::` is assumed to already be a
+// real fs path (unchanged from before this normalization existed).
+//
+// Live-confirmed safe to also reuse for Orca's own `--worktree` argument on
+// a re-dispatch (buildVerificationWorkItem/buildContinuationWorkItem
+// below): a bare existing-worktree path was observed to dispatch and run
+// correctly in this same pilot once this normalization was applied by hand.
+//
+// Disclosed, not yet solved (round 1 adversarial review, real finding): an
+// `id:<repoId>::<path>` selector for a repo hosted on a different machine
+// (SSH/WSL) resolves to that HOST's own path, but gatherWorktreeEvidence
+// below always spawns `git`/reads files on THIS local host (git-identity.mjs
+// is local-host-only by construction -- this TSF-side plain-Node process
+// cannot reach Orca core's own host-routing/GitCapabilityCache). This is a
+// pre-existing limitation of settled-run reconciliation for any remote
+// worktree, not newly introduced here: before this fix the unresolved
+// selector string was ALSO an invalid local cwd, so the practical effect
+// today is the same honest failure (GIT_EVIDENCE_GATHERING_FAILED); the
+// only behavior change is that a REMOTE path could now coincidentally
+// collide with an unrelated LOCAL path of the same shape rather than
+// failing outright, which is worth a real follow-up (host-aware git
+// evidence gathering) but out of scope for this fix.
+const RESOLVABLE_PREFIX_MARKER = '::'
+const WORKTREE_PATH_PREFIX = 'path:'
+const UNRESOLVABLE_SELECTOR_PREFIXES = ['name:', 'branch:', 'issue:', 'identity:']
+
 function toFilesystemWorktreePath(worktreeIdentifier) {
-  const marker = '::'
-  const index = worktreeIdentifier.lastIndexOf(marker)
-  return index === -1 ? worktreeIdentifier : worktreeIdentifier.slice(index + marker.length)
+  const markerIndex = worktreeIdentifier.lastIndexOf(RESOLVABLE_PREFIX_MARKER)
+  if (markerIndex !== -1) {
+    return worktreeIdentifier.slice(markerIndex + RESOLVABLE_PREFIX_MARKER.length)
+  }
+  if (worktreeIdentifier.startsWith(WORKTREE_PATH_PREFIX)) {
+    return worktreeIdentifier.slice(WORKTREE_PATH_PREFIX.length)
+  }
+  if (UNRESOLVABLE_SELECTOR_PREFIXES.some((prefix) => worktreeIdentifier.startsWith(prefix))) {
+    return null
+  }
+  return worktreeIdentifier
 }
 
 // The real worktree this run's work has actually been happening in --
@@ -64,7 +103,8 @@ function toFilesystemWorktreePath(worktreeIdentifier) {
 // real filesystem path (see toFilesystemWorktreePath above), regardless of
 // which Orca worktree-selector form the dispatching caller originally used.
 // Returns null (an honest "unknown", never a fabricated path) if the run
-// has no waves with an identifiable worktree.
+// has no waves with an identifiable worktree, OR if the most recent one is
+// a selector form this function cannot resolve to a real fs path itself.
 export function deriveWorktreePath(run) {
   for (let i = run.waves.length - 1; i >= 0; i -= 1) {
     const batches = run.waves[i]?.wavePlan?.batches ?? []

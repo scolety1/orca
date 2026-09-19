@@ -143,6 +143,32 @@ test('gatherWorktreeEvidence succeeds against a real git worktree even when the 
   assert.match(evidence.headCommit, /^[0-9a-f]{40}$/)
 })
 
+// Real adversarial-review finding (round 1): the first fix only handled the
+// `id:<repoId>::<path>` selector form -- every other real Orca `--worktree`
+// selector form (documented by `orca orchestration worker-start --help`)
+// was silently mishandled: `path:<path>` kept its literal prefix (an
+// invalid local path), and name:/branch:/issue:/identity: selectors (which
+// have no filesystem path at all -- Orca itself must resolve them) were
+// passed straight through as if they already were one.
+test('deriveWorktreePath resolves a path:<path> selector by stripping its prefix', () => {
+  const run = withSettledWave(baseRun(), 'path:C:/some/real/worktree', clock().toISOString())
+  assert.equal(deriveWorktreePath(run), 'C:/some/real/worktree')
+})
+
+test('deriveWorktreePath honestly returns null (never a fabricated path) for name:/branch:/issue:/identity: selectors it cannot resolve to a real fs path', () => {
+  for (const selector of ['name:my-worktree', 'branch:main', 'issue:123', 'identity:abc-123']) {
+    const run = withSettledWave(baseRun(), selector, clock().toISOString())
+    assert.equal(deriveWorktreePath(run), null, `expected null for ${selector}`)
+  }
+})
+
+test('gatherWorktreeEvidence reports EVIDENCE_UNAVAILABLE (never a fabricated clean report) for an unresolvable name: selector', async () => {
+  const run = withSettledWave(baseRun(), 'name:some-worktree', new Date().toISOString())
+  const evidence = await gatherWorktreeEvidence(run)
+  assert.equal(evidence.ok, false)
+  assert.equal(evidence.reason, 'NO_KNOWN_WORKTREE')
+})
+
 // --- buildVerificationWorkItem ---
 
 test("buildVerificationWorkItem carries the run's own real constraints into the dispatched spec -- real-production finding: reconciling NWR live dispatched a verification pass that ran the project's real pytest suite (a reasonable thing to do to independently verify) and hit the EXACT known, structural side effect NWR's own constraints warned about, because this spec never carried those constraints forward. Reverted by hand once found; this pins the fix.", () => {
