@@ -14,6 +14,7 @@ import { extractAttachmentContext } from '@/lib/migration-context-attachments'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { useCommandConversation, type CommandMessage } from '@/lib/command-conversation-context'
 import { useVoiceSession } from '@/lib/voice/use-voice-session'
+import { summarizeForSpeech } from '@/lib/voice/speech-summary'
 import { useApi } from '@/lib/use-api'
 import { buildGlobalRunStatusItems, globalRunStatusLabel } from '@/lib/global-run-status'
 import { isResearchMissionWorkItem, type WorkSummary } from '@/lib/types'
@@ -167,13 +168,20 @@ export function CommandPanel({
     setFocusProjectId,
     setRecentProjectStack,
     handsFreeMode,
-    setHandsFreeMode
+    setHandsFreeMode,
+    speakResponses,
+    setSpeakResponses
   } = useCommandConversation()
   const viewportRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   useAutosizeTextarea(composerRef, draft, { minPx: 36, maxPx: 200 })
-  const voice = useVoiceSession()
+  // Conversational Hands-Free V2: handsFreeMode is passed straight through
+  // to the generic voice layer, which now self-manages the whole continuous
+  // session (auto re-arm after a natural end, pause-while-speaking/resume-
+  // after) -- CommandPanel only decides WHEN hands-free is on and WHAT to
+  // do with a transcript, never HOW the mic session stays alive.
+  const voice = useVoiceSession({ handsFreeMode })
   // Background-work compact status line ("NWR · Researching / TSF ·
   // Building") and the focused project's own display name both read this
   // SAME real fetch -- one poll, two uses, never a second dedicated
@@ -265,11 +273,18 @@ export function CommandPanel({
         scope: result.scope
       })
       onActivity?.()
+      // Conversational Hands-Free V2: speak() now internally pauses/resumes
+      // recognition around the utterance (see use-voice-session.ts) -- an
+      // unconditional voice.start() here right after speak() would race
+      // with, and incorrectly cancel, the speech that was just requested
+      // (start() treats "called while speaking" as a deliberate barge-in).
+      // Only the non-speaking path needs an explicit resume.
       if (handsFreeMode) {
-        voice.speak(result.text.replace(/[*_`#]/g, ''))
-      }
-      if (handsFreeMode && voice.supported) {
-        voice.start()
+        if (voice.speechSupported && speakResponses) {
+          voice.speak(summarizeForSpeech(result.text))
+        } else if (voice.supported) {
+          voice.start()
+        }
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach Command right now.')
@@ -430,10 +445,16 @@ export function CommandPanel({
             onToggleHandsFree={() => {
               const next = !handsFreeMode
               setHandsFreeMode(next)
-              if (!next) {
+              if (next) {
+                // Mission default: hands-free speaks replies unless the
+                // owner has already turned that off once this session.
+                setSpeakResponses(true)
+              } else {
                 voice.cancel()
               }
             }}
+            speakResponses={speakResponses}
+            onToggleSpeakResponses={() => setSpeakResponses(!speakResponses)}
           />
           <Textarea
             ref={composerRef}

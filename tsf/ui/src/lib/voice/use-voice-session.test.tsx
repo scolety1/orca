@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useVoiceSession, type VoiceSession } from './use-voice-session'
+import { useVoiceSession, type VoiceSession, type VoiceSessionOptions } from './use-voice-session'
 import type {
   SpeechRecognitionConstructor,
   SpeechRecognitionWindow
@@ -21,6 +21,12 @@ import type {
 // constructor (this repo's own no-this-alias lint rule).
 class FakeSpeechRecognition extends EventTarget {
   static onCreate: ((instance: FakeSpeechRecognition) => void) | null = null
+  // Simulates an engine that fails before ever reaching onstart (a genuine
+  // real-world failure-to-start, distinct from "started fine, then errored
+  // later") -- used to test the bounded consecutive-failure budget, which
+  // must only count THIS kind of failure, never a healthy start followed
+  // by an ordinary later error.
+  static nextStartFails = false
 
   continuous = false
   interimResults = false
@@ -38,6 +44,10 @@ class FakeSpeechRecognition extends EventTarget {
   }
 
   start() {
+    if (FakeSpeechRecognition.nextStartFails) {
+      this.emitError('network')
+      return
+    }
     this.started = true
     this.onstart?.()
   }
@@ -57,12 +67,21 @@ class FakeSpeechRecognition extends EventTarget {
       )
     })
   }
+
+  // Real browsers reliably fire onend immediately after onerror (the
+  // recognition session ends) -- mirrored here so tests exercise the same
+  // cascade use-voice-session.ts's own errorHandledRef is designed against.
+  emitError(error: string, message = '') {
+    this.onerror?.({ error, message })
+    this.onend?.()
+  }
 }
 
-function makeHarness() {
+function makeHarness(initialOptions: VoiceSessionOptions = {}) {
   let latest: VoiceSession | null = null
+  let currentOptions = initialOptions
   function Probe() {
-    latest = useVoiceSession()
+    latest = useVoiceSession(currentOptions)
     return null
   }
   const container = document.createElement('div')
@@ -76,6 +95,10 @@ function makeHarness() {
       return latest as VoiceSession
     },
     rerender: () => act(() => root.render(createElement(Probe))),
+    setOptions: (next: VoiceSessionOptions) => {
+      currentOptions = next
+      act(() => root.render(createElement(Probe)))
+    },
     cleanup: () => {
       act(() => root.unmount())
       container.remove()
@@ -85,6 +108,38 @@ function makeHarness() {
 
 function speechWindow(): SpeechRecognitionWindow {
   return window as unknown as SpeechRecognitionWindow
+}
+
+// A minimal fake SpeechSynthesisUtterance/window.speechSynthesis -- only
+// what use-voice-session.ts's speak()/cancelSpeech touch (onstart/onend/
+// onerror callbacks, speak()/cancel()). Lets a test drive TTS lifecycle
+// events deterministically, same convention as FakeSpeechRecognition above.
+class FakeUtterance {
+  onstart: (() => void) | null = null
+  onend: (() => void) | null = null
+  onerror: (() => void) | null = null
+  constructor(public text: string) {}
+}
+
+function installFakeSpeechSynthesis() {
+  let current: FakeUtterance | null = null
+  const synth = {
+    speak: (utterance: FakeUtterance) => {
+      current = utterance
+      utterance.onstart?.()
+    },
+    cancel: () => {
+      current = null
+    }
+  }
+  ;(window as unknown as { speechSynthesis: typeof synth }).speechSynthesis = synth
+  ;(
+    globalThis as unknown as { SpeechSynthesisUtterance: typeof FakeUtterance }
+  ).SpeechSynthesisUtterance = FakeUtterance
+  return {
+    finishSpeaking: () => current?.onend?.(),
+    errorSpeaking: () => current?.onerror?.()
+  }
 }
 
 describe('useVoiceSession', () => {
@@ -104,6 +159,7 @@ describe('useVoiceSession', () => {
   afterEach(() => {
     speechWindow().SpeechRecognition = originalCtor
     FakeSpeechRecognition.onCreate = null
+    FakeSpeechRecognition.nextStartFails = false
   })
 
   it('reports supported: true when a real SpeechRecognition constructor exists', () => {
@@ -198,5 +254,169 @@ describe('useVoiceSession', () => {
     expect(() => h.session.speak('hello')).not.toThrow()
     expect(() => h.session.cancelSpeech()).not.toThrow()
     h.cleanup()
+  })
+
+  describe('Conversational Hands-Free V2: continuous session', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('handsFreeMode: false (default/V1) never auto-restarts after a natural onend', () => {
+      const h = makeHarness({ handsFreeMode: false })
+      act(() => h.session.start())
+      act(() => lastInstance!.onend?.())
+      act(() => vi.advanceTimersByTime(5000))
+      h.rerender()
+      expect(h.session.listening).toBe(false)
+      h.cleanup()
+    })
+
+    it('handsFreeMode: true auto-restarts listening after a natural onend (a completed turn)', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      const firstInstance = lastInstance
+      act(() => lastInstance!.onend?.())
+      act(() => vi.advanceTimersByTime(1000))
+      h.rerender()
+      expect(h.session.listening).toBe(true)
+      expect(lastInstance).not.toBe(firstInstance)
+      h.cleanup()
+    })
+
+    it('an explicit stop() during handsFreeMode never auto-restarts', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      act(() => h.session.stop())
+      act(() => vi.advanceTimersByTime(5000))
+      h.rerender()
+      expect(h.session.listening).toBe(false)
+      h.cleanup()
+    })
+
+    it('an explicit cancel() during handsFreeMode never auto-restarts', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      act(() => h.session.cancel())
+      act(() => vi.advanceTimersByTime(5000))
+      h.rerender()
+      expect(h.session.listening).toBe(false)
+      h.cleanup()
+    })
+
+    it('a recoverable error (no-speech) auto-restarts with bounded backoff in handsFreeMode', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      act(() => lastInstance!.emitError('no-speech'))
+      h.rerender()
+      expect(h.session.listening).toBe(false)
+      act(() => vi.advanceTimersByTime(300))
+      h.rerender()
+      expect(h.session.listening).toBe(true)
+      h.cleanup()
+    })
+
+    it('an unrecoverable error (not-allowed) never auto-restarts, and is reported as such', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      act(() => lastInstance!.emitError('not-allowed', 'denied'))
+      act(() => vi.advanceTimersByTime(5000))
+      h.rerender()
+      expect(h.session.listening).toBe(false)
+      expect(h.session.error?.code).toBe('not-allowed')
+      expect(h.session.error?.recoverable).toBe(false)
+      h.cleanup()
+    })
+
+    it('repeated consecutive failures-to-start give up after the bounded budget, reporting recoverable: false', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      // The very first start() above already succeeds (onstart fires) --
+      // flip to "engine fails before onstart" for every restart the auto-
+      // recovery loop attempts from here, simulating a real crash-loop.
+      FakeSpeechRecognition.nextStartFails = true
+      act(() => lastInstance!.emitError('network'))
+      for (let i = 0; i < 6; i += 1) {
+        act(() => vi.advanceTimersByTime(3000))
+      }
+      h.rerender()
+      expect(h.session.error?.recoverable).toBe(false)
+      h.cleanup()
+    })
+
+    it('a long session with many ordinary no-speech re-arm cycles never runs out of retries (onstart resets the failure budget)', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      for (let i = 0; i < 10; i += 1) {
+        // Each cycle: the engine genuinely starts (resetting the budget),
+        // then times out on silence -- a normal, expected, endlessly
+        // repeatable pattern for a real long hands-free conversation.
+        act(() => lastInstance!.onend?.())
+        act(() => vi.advanceTimersByTime(300))
+      }
+      h.rerender()
+      expect(h.session.listening).toBe(true)
+      expect(h.session.error).toBe(null)
+      h.cleanup()
+    })
+
+    it('turning handsFreeMode off cancels a pending scheduled restart', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      act(() => lastInstance!.onend?.())
+      h.setOptions({ handsFreeMode: false })
+      act(() => vi.advanceTimersByTime(5000))
+      h.rerender()
+      expect(h.session.listening).toBe(false)
+      h.cleanup()
+    })
+
+    it('speak() pauses recognition while speaking (no self-transcription) and resumes after in handsFreeMode', () => {
+      const tts = installFakeSpeechSynthesis()
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      expect(h.session.listening).toBe(true)
+
+      act(() => h.session.speak('TSF is waiting on verification.'))
+      h.rerender()
+      expect(h.session.speaking).toBe(true)
+      expect(h.session.listening).toBe(false)
+
+      act(() => tts.finishSpeaking())
+      act(() => vi.advanceTimersByTime(300))
+      h.rerender()
+      expect(h.session.speaking).toBe(false)
+      expect(h.session.listening).toBe(true)
+      h.cleanup()
+    })
+
+    it('speak() does not resume listening afterward when handsFreeMode is off', () => {
+      const tts = installFakeSpeechSynthesis()
+      const h = makeHarness({ handsFreeMode: false })
+      act(() => h.session.start())
+      act(() => h.session.speak('a normal tap-to-talk response'))
+      act(() => tts.finishSpeaking())
+      act(() => vi.advanceTimersByTime(300))
+      h.rerender()
+      expect(h.session.listening).toBe(false)
+      h.cleanup()
+    })
+
+    it('calling start() while TSF is speaking cancels the in-flight speech (the safest real approximation of barge-in)', () => {
+      const tts = installFakeSpeechSynthesis()
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.speak('a long spoken response the owner wants to interrupt'))
+      h.rerender()
+      expect(h.session.speaking).toBe(true)
+
+      act(() => h.session.start())
+      h.rerender()
+      expect(h.session.speaking).toBe(false)
+      expect(h.session.listening).toBe(true)
+      void tts
+      h.cleanup()
+    })
   })
 })

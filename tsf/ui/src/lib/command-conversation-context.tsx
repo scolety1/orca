@@ -80,6 +80,14 @@ type CommandConversationContextValue = {
   // other Command UI preference already does.
   handsFreeMode: boolean
   setHandsFreeMode: (on: boolean) => void
+  // Conversational Hands-Free V2: independent of handsFreeMode itself --
+  // "hands-free but silent" (read replies visually only) is a real,
+  // reasonable choice. Defaults ON only once hands-free is actually turned
+  // on (see CommandPanel's own toggle handler); tap-to-talk never touches
+  // this, matching the mission's own "normal tap-to-talk should not
+  // require spoken output" requirement.
+  speakResponses: boolean
+  setSpeakResponses: (on: boolean) => void
 }
 
 const CommandConversationContext = createContext<CommandConversationContextValue | null>(null)
@@ -96,6 +104,7 @@ export function CommandConversationProvider({ children }: { children: ReactNode 
   const [focusProjectId, setFocusProjectId] = useState<string | null>(null)
   const [recentProjectStack, setRecentProjectStack] = useState<string[]>([])
   const [handsFreeMode, setHandsFreeMode] = useState(false)
+  const [speakResponses, setSpeakResponses] = useState(false)
   // Real, honest degrade on failure (e.g. backend not yet reachable at
   // first paint): logs and leaves the transcript empty, never crashes the
   // app or fabricates history. A fresh reload naturally retries via the
@@ -175,7 +184,9 @@ export function CommandConversationProvider({ children }: { children: ReactNode 
       recentProjectStack,
       setRecentProjectStack,
       handsFreeMode,
-      setHandsFreeMode
+      setHandsFreeMode,
+      speakResponses,
+      setSpeakResponses
     }),
     [
       messages,
@@ -189,7 +200,8 @@ export function CommandConversationProvider({ children }: { children: ReactNode 
       selfRepair,
       focusProjectId,
       recentProjectStack,
-      handsFreeMode
+      handsFreeMode,
+      speakResponses
     ]
   )
   return (

@@ -22,18 +22,33 @@ function fakeVoice(overrides: Partial<VoiceSession> = {}): VoiceSession {
     stop: () => {},
     cancel: () => {},
     speechSupported: true,
+    speaking: false,
     speak: () => {},
     cancelSpeech: () => {},
     ...overrides
   }
 }
 
-function render(voice: VoiceSession, handsFreeMode: boolean, onToggleHandsFree: () => void) {
+function render(
+  voice: VoiceSession,
+  handsFreeMode: boolean,
+  onToggleHandsFree: () => void,
+  speakResponses = false,
+  onToggleSpeakResponses: () => void = () => {}
+) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   act(() => {
-    root.render(createElement(CommandVoiceControls, { voice, handsFreeMode, onToggleHandsFree }))
+    root.render(
+      createElement(CommandVoiceControls, {
+        voice,
+        handsFreeMode,
+        onToggleHandsFree,
+        speakResponses,
+        onToggleSpeakResponses
+      })
+    )
   })
   return {
     container,
@@ -76,6 +91,45 @@ describe('CommandVoiceControls', () => {
     const handsFreeButton = container.querySelectorAll('button')[1] as HTMLButtonElement
     act(() => handsFreeButton.click())
     expect(toggled).toBe(1)
+    cleanup()
+  })
+
+  it('the speak-responses toggle only renders when hands-free is on and speech synthesis is supported', () => {
+    const off = render(fakeVoice(), false, () => {})
+    expect(off.container.querySelectorAll('button').length).toBe(2)
+    off.cleanup()
+
+    const on = render(fakeVoice(), true, () => {})
+    expect(on.container.querySelectorAll('button').length).toBe(3)
+    on.cleanup()
+
+    const unsupported = render(fakeVoice({ speechSupported: false }), true, () => {})
+    expect(unsupported.container.querySelectorAll('button').length).toBe(2)
+    unsupported.cleanup()
+  })
+
+  it('calls onToggleSpeakResponses when the speak-responses button is clicked', () => {
+    let toggled = 0
+    const { container, cleanup } = render(
+      fakeVoice(),
+      true,
+      () => {},
+      true,
+      () => {
+        toggled += 1
+      }
+    )
+    const speakButton = container.querySelectorAll('button')[2] as HTMLButtonElement
+    act(() => speakButton.click())
+    expect(toggled).toBe(1)
+    cleanup()
+  })
+
+  it('shows a distinct speaking state on the mic button, separate from listening', () => {
+    const { container, cleanup } = render(fakeVoice({ speaking: true }), false, () => {})
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'Interrupt and start listening'
+    )
     cleanup()
   })
 })
