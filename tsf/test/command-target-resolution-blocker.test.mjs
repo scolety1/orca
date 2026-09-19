@@ -39,8 +39,16 @@ import path from 'node:path'
 // Defensive, even though this file's own real message never reaches it
 // (see the note above): refused explicitly so this file's respondCommand
 // call can never make a real, billable live-planner request.
-process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
-process.env.TSF_PLANNER_CODEX_COMMAND = path.join(import.meta.dirname, 'fixtures', 'does-not-exist-binary')
+process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(
+  import.meta.dirname,
+  'fixtures',
+  'does-not-exist-binary'
+)
+process.env.TSF_PLANNER_CODEX_COMMAND = path.join(
+  import.meta.dirname,
+  'fixtures',
+  'does-not-exist-binary'
+)
 import { resolveProjectsFromText } from '../server/project-name-resolver.mjs'
 import { respondCommand } from '../server/command-responder.mjs'
 
@@ -80,23 +88,54 @@ test('REPRODUCTION: the exact live failing message resolves to ONLY the canonica
 })
 
 test('DIAGNOSTICS/SUPPRESSION: when a genuine (non-stopword) fuzzy candidate WOULD independently clear the floor, an exact match elsewhere in the message still suppresses it from `matches` -- and it stays provable via candidateAlternatives', () => {
+  // Conversational Hands-Free Command V2: this example used to be "tsf
+  // orca" against `tsf-orca`/`TSF_ORCA` -- but that project's displayName
+  // is only 2 tokens, and project-name-resolver.mjs's own new normalized-
+  // name matching tier (added for real speech-variation robustness) now
+  // correctly treats a full, contiguous "tsf orca" mention as an EXACT
+  // match, not merely fuzzy -- a genuine improvement, not a regression,
+  // but it means a 2-token name can never again demonstrate a genuinely
+  // PARTIAL fuzzy candidate (either token overlap is 1/2 = 0.5, below the
+  // floor, or 2/2 = 1.0, now exact). A 3-token name lets the message
+  // overlap exactly 2 of 3 tokens (0.667, clears the floor) without ever
+  // containing the full normalized name as one contiguous phrase.
   const projects = [
     { id: 'niners-war-room', displayName: 'Niners-War-Room' },
-    { id: 'tsf-orca', displayName: 'TSF_ORCA' }
+    { id: 'quiet-fuzzy-widget', displayName: 'Quiet Fuzzy Widget' }
   ]
   const { matches, candidateAlternatives } = resolveProjectsFromText(
-    'fix niners-war-room, curious about tsf orca status too',
+    'fix niners-war-room, curious about the fuzzy widget status too',
     projects
   )
   assert.deepEqual(
     ids(matches),
     ['niners-war-room'],
-    'the unrelated fuzzy tsf-orca match must not ride along with the exact match'
+    'the unrelated fuzzy quiet-fuzzy-widget match must not ride along with the exact match'
   )
   assert.ok(
-    candidateAlternatives.some((c) => c.projectId === 'tsf-orca' && c.matchedOn === 'fuzzy'),
+    candidateAlternatives.some(
+      (c) => c.projectId === 'quiet-fuzzy-widget' && c.matchedOn === 'fuzzy'
+    ),
     'the suppressed fuzzy candidate remains visible in diagnostics, not silently discarded'
   )
+})
+
+// Conversational Hands-Free Command V2, real dogfood finding: a project
+// name mentioned WITHOUT its exact literal punctuation (the way real
+// speech recognition actually transcribes it) must still resolve at full
+// EXACT confidence, never merely fuzzy -- this is the normalized-name
+// matching tier itself, pinned directly (not just as a side effect of the
+// suppression test above).
+test('NORMALIZED NAME MATCH: "tsf orca" (no hyphen/underscore, as speech would transcribe it) resolves TSF_ORCA at exact confidence, not fuzzy', () => {
+  const projects = [{ id: 'tsf-orca', displayName: 'TSF_ORCA' }]
+  const { matches } = resolveProjectsFromText('curious about tsf orca status', projects)
+  assert.equal(matches.length, 1)
+  assert.equal(matches[0].project.id, 'tsf-orca')
+  // Normalizes identically to both the id ("tsf-orca") and displayName
+  // ("TSF_ORCA") here -- the id check runs first, so it wins; either way
+  // this is full, non-fuzzy confidence, which is what this test pins.
+  assert.equal(matches[0].matchedOn, 'id')
+  assert.equal(matches[0].confidence, 1)
 })
 
 test('REPRODUCTION at the respondCommand level: the fleet-status text and resolvedProjectIds for the live failing message never mention whats-the-func', async () => {

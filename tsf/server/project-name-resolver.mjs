@@ -15,6 +15,21 @@ function tokenize(s) {
     .filter(Boolean)
 }
 
+// Conversational Hands-Free Command V2: collapses hyphens/underscores/extra
+// punctuation/spacing down to single spaces -- speech recognition never
+// produces a hyphenated compound like "Niners-War-Room" on its own, so a
+// real project's id/displayName must be matchable by its NORMALIZED word
+// sequence, not only its exact literal punctuation. Distinct from
+// tokenize() (which discards word order for fuzzy overlap scoring): this
+// preserves order, so it can anchor a real `\b...\b` phrase match at the
+// SAME confidence tier as an exact id/displayName hit, not a fuzzy guess.
+function normalizeForMatch(s) {
+  return String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
 // Bounded, hand-rolled token-overlap scoring -- no new dependency, matching
 // this codebase's own stated convention (see migration-context-attachments.ts's
 // header) of not pulling in a library without explicit justification.
@@ -60,6 +75,23 @@ function isExcludedNear(clause, literalText) {
     'i'
   )
   return pattern.test(clause.toLowerCase())
+}
+
+// Conversational Hands-Free Command V2: the normalized-match counterpart
+// to isExcludedNear above, for a project matched only via its normalized
+// (punctuation-collapsed) id/displayName -- "don't touch TSF_ORCA" must
+// exclude a match found by the normalized "tsf orca" phrase exactly as
+// reliably as it excludes a literal one.
+function isExcludedNearNormalized(clause, literalText) {
+  const normalizedText = normalizeForMatch(literalText)
+  if (!normalizedText) {
+    return false
+  }
+  const pattern = new RegExp(
+    `\\b${EXCLUSION_PREFIX}\\s+(?:the\\s+)?${escapeRegExp(normalizedText)}\\b`,
+    'i'
+  )
+  return pattern.test(normalizeForMatch(clause))
 }
 
 // Fuzzy matches have no single literal phrase to anchor an exclusion check
@@ -195,6 +227,21 @@ export function resolveProjectsFromText(message, projects, options = {}) {
   for (const project of projects) {
     const idPattern = new RegExp(`\\b${escapeRegExp(project.id.toLowerCase())}\\b`)
     const namePattern = new RegExp(`\\b${escapeRegExp(project.displayName.toLowerCase())}\\b`)
+    // Conversational Hands-Free Command V2: only built when the normalized
+    // form actually DIFFERS from the plain lowercase form (i.e. the id/name
+    // contains punctuation a speech transcript would drop) -- an id/name
+    // with no punctuation at all would otherwise register a second,
+    // entirely redundant pattern for no reason.
+    const normalizedId = normalizeForMatch(project.id)
+    const normalizedName = normalizeForMatch(project.displayName)
+    const normalizedIdPattern =
+      normalizedId && normalizedId !== project.id.toLowerCase()
+        ? new RegExp(`\\b${escapeRegExp(normalizedId)}\\b`)
+        : null
+    const normalizedNamePattern =
+      normalizedName && normalizedName !== project.displayName.toLowerCase()
+        ? new RegExp(`\\b${escapeRegExp(normalizedName)}\\b`)
+        : null
     const nameTokens = tokenize(project.displayName)
     const aliasEntries = Object.entries(aliases)
       .filter(([, id]) => id === project.id)
@@ -218,6 +265,7 @@ export function resolveProjectsFromText(message, projects, options = {}) {
     let everExcluded = false
     for (const clause of clauses) {
       const lowerClause = clause.toLowerCase()
+      const normalizedClause = normalizeForMatch(clause)
       let clauseMatch = null
       let excluded = false
 
@@ -231,7 +279,43 @@ export function resolveProjectsFromText(message, projects, options = {}) {
           matchedPhrase: project.displayName
         }
         excluded = isExcludedNear(clause, project.displayName)
-      } else {
+      } else if (
+        normalizedIdPattern &&
+        normalizedIdPattern.test(normalizedClause) &&
+        !(infraSensitive && INFRA_MENTION_PATTERN.test(clause))
+      ) {
+        // A speech-plausible punctuation-free mention of the id (e.g.
+        // "tsf orca" for `tsf-orca`) -- same confidence as a literal id
+        // hit. Real regression, caught by this file's own existing suite:
+        // "Run Nytheria using TSF/Orca" normalizes to "tsf orca" too, which
+        // is exactly the generic infra-tooling phrasing INFRA_MENTION_PATTERN
+        // exists to suppress -- without this guard, the normalized tier
+        // silently bypassed it (the literal id/displayName branches above
+        // were never reachable by that phrasing in the first place, which
+        // is why the original infra check only needed to guard the fuzzy
+        // path).
+        clauseMatch = { matchedOn: 'id', confidence: 1, matchedPhrase: project.id }
+        excluded = isExcludedNearNormalized(clause, project.id)
+      } else if (
+        normalizedNamePattern &&
+        normalizedNamePattern.test(normalizedClause) &&
+        !(infraSensitive && INFRA_MENTION_PATTERN.test(clause))
+      ) {
+        clauseMatch = {
+          matchedOn: 'displayName',
+          confidence: 0.95,
+          matchedPhrase: project.displayName
+        }
+        excluded = isExcludedNearNormalized(clause, project.displayName)
+      } else if (!(infraSensitive && INFRA_MENTION_PATTERN.test(clause))) {
+        // Same real regression as the normalized-tier guard above, this
+        // time via the alias path: a short alias like "tsf" (added for
+        // Conversational Hands-Free Command V2's own real dogfood finding)
+        // also matches inside "using TSF/Orca" -- an alias is a friendly
+        // shorthand, not a literal canonical id/displayName, so it gets the
+        // SAME infra-tooling-phrase suppression the fuzzy/normalized tiers
+        // already have; a literal id/displayName mention is still never
+        // suppressed by this guard (those branches run first, above).
         const aliasHit = aliasEntries.find((a) => a.pattern.test(clause))
         if (aliasHit) {
           clauseMatch = { matchedOn: 'alias', confidence: 1, matchedPhrase: aliasHit.alias }
@@ -360,7 +444,9 @@ export function isAllProjectsQuantified(message) {
 // the quantifier at all (callers should fall back to normal
 // resolveProjectsFromText in that case).
 export function resolveAllProjectsQuantifier(message, projects, aliases = loadProjectAliases()) {
-  if (!isAllProjectsQuantified(message)) return null
+  if (!isAllProjectsQuantified(message)) {
+    return null
+  }
   const clauses = splitClauses(message)
   return projects.filter((project) => {
     const aliasEntries = Object.entries(aliases)
@@ -391,8 +477,12 @@ export function findAliasForAbsentProject(message, projects, aliases = loadProje
   const lower = message.toLowerCase()
   let best = null
   for (const [alias, canonicalProjectId] of Object.entries(aliases)) {
-    if (known.has(canonicalProjectId)) continue // present in this catalog -- normal resolution already covers it
-    if (!new RegExp(`\\b${escapeRegExp(alias)}\\b`, 'i').test(lower)) continue
+    if (known.has(canonicalProjectId)) {
+      continue // present in this catalog -- normal resolution already covers it
+    }
+    if (!new RegExp(`\\b${escapeRegExp(alias)}\\b`, 'i').test(lower)) {
+      continue
+    }
     // Longest literal alias match wins when more than one happens to
     // appear (e.g. both "nwr" and "niners war room" for the same target) --
     // the more specific phrase is the more informative one to name back.

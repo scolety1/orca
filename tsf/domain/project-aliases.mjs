@@ -18,6 +18,22 @@ const DEFAULT_PROJECT_ALIASES = {
   worldforge: 'worldforge-sablewake-live-runtime-repair-v3',
   nwr: 'niners-war-room',
   'niners war room': 'niners-war-room',
+  // Conversational Hands-Free Command V2, real dogfood finding (Failure 1):
+  // TSF's own real project is onboarded as id `tsf-orca`, displayName
+  // `TSF_ORCA` -- "TSF" alone only overlaps 1 of that displayName's 2
+  // tokenize()'d words (0.5 ratio), just under project-name-resolver.mjs's
+  // own FUZZY_CONFIDENCE_FLOOR (0.6), so it silently resolved to nothing;
+  // "Thousand Sunny Fleet"/"Sunny Fleet" (the owner's own real spoken name
+  // for this project, used throughout every mission spec) share zero
+  // tokens with "tsf orca" and could never fuzzy-match at all.
+  tsf: 'tsf-orca',
+  'tsf orca': 'tsf-orca',
+  'thousand sunny fleet': 'tsf-orca',
+  'sunny fleet': 'tsf-orca',
+  // Same real gap for Colety Labs (id `colety-labs-sales-engine`, 4
+  // tokenize()'d words -- "Colety Labs" alone is only a 0.5 ratio too).
+  clc: 'colety-labs-sales-engine',
+  'colety labs': 'colety-labs-sales-engine',
   // Multi-Project Command + Real Fleet Orchestration Overnight V1: real,
   // single, unambiguous project confirmed in this mission's own pre-build
   // investigation (repo C:\Dev\easylifehq.github.io, id
