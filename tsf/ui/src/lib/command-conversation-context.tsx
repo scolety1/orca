@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode
+} from 'react'
 import type { ChatMessage, ChatResponse } from '@/lib/types'
 import { api } from '@/lib/api'
 
@@ -57,6 +65,21 @@ type CommandConversationContextValue = {
   setLive: (live: boolean | null) => void
   selfRepair: boolean
   setSelfRepair: (selfRepair: boolean) => void
+  // Hands-Free Command + Project Manager V1: the durable CURRENT FOCUS and
+  // RECENT PROJECT STACK, mirrored client-side from every Command-scope
+  // ChatResponse (server/domain/command-conversation-focus.mjs is the real
+  // source of truth -- this is a read-back, never independently computed).
+  // null until the first Command turn that reports one.
+  focusProjectId: string | null
+  setFocusProjectId: (id: string | null) => void
+  recentProjectStack: string[]
+  setRecentProjectStack: (stack: string[]) => void
+  // Hands-Free/conversation mode: when on, a voice final transcript
+  // auto-sends instead of waiting for manual submit. Purely a UI toggle --
+  // owned here so it survives dock <-> full-page navigation like every
+  // other Command UI preference already does.
+  handsFreeMode: boolean
+  setHandsFreeMode: (on: boolean) => void
 }
 
 const CommandConversationContext = createContext<CommandConversationContextValue | null>(null)
@@ -70,6 +93,9 @@ export function CommandConversationProvider({ children }: { children: ReactNode 
   const [providerLabel, setProviderLabel] = useState<string | null>(null)
   const [live, setLive] = useState<boolean | null>(null)
   const [selfRepair, setSelfRepair] = useState(false)
+  const [focusProjectId, setFocusProjectId] = useState<string | null>(null)
+  const [recentProjectStack, setRecentProjectStack] = useState<string[]>([])
+  const [handsFreeMode, setHandsFreeMode] = useState(false)
   // Real, honest degrade on failure (e.g. backend not yet reachable at
   // first paint): logs and leaves the transcript empty, never crashes the
   // app or fabricates history. A fresh reload naturally retries via the
@@ -117,12 +143,33 @@ export function CommandConversationProvider({ children }: { children: ReactNode 
       live,
       setLive,
       selfRepair,
-      setSelfRepair
+      setSelfRepair,
+      focusProjectId,
+      setFocusProjectId,
+      recentProjectStack,
+      setRecentProjectStack,
+      handsFreeMode,
+      setHandsFreeMode
     }),
-    [messages, addMessage, draft, attachments, sending, error, providerLabel, live, selfRepair]
+    [
+      messages,
+      addMessage,
+      draft,
+      attachments,
+      sending,
+      error,
+      providerLabel,
+      live,
+      selfRepair,
+      focusProjectId,
+      recentProjectStack,
+      handsFreeMode
+    ]
   )
   return (
-    <CommandConversationContext.Provider value={value}>{children}</CommandConversationContext.Provider>
+    <CommandConversationContext.Provider value={value}>
+      {children}
+    </CommandConversationContext.Provider>
   )
 }
 

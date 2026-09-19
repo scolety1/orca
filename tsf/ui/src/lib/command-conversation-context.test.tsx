@@ -35,7 +35,57 @@ function Writer() {
   })
 }
 
+function FocusReader({ testId }: { testId: string }) {
+  const { focusProjectId, recentProjectStack, handsFreeMode } = useCommandConversation()
+  return createElement(
+    'div',
+    { 'data-testid': testId },
+    createElement('span', { 'data-testid': `${testId}-focus` }, focusProjectId ?? ''),
+    createElement('span', { 'data-testid': `${testId}-stack` }, recentProjectStack.join(',')),
+    createElement('span', { 'data-testid': `${testId}-hands-free` }, String(handsFreeMode))
+  )
+}
+
+function FocusWriter() {
+  const { setFocusProjectId, setRecentProjectStack, setHandsFreeMode } = useCommandConversation()
+  return createElement('button', {
+    'data-testid': 'focus-writer',
+    onClick: () => {
+      setFocusProjectId('nwr')
+      setRecentProjectStack(['tsf'])
+      setHandsFreeMode(true)
+    }
+  })
+}
+
 describe('CommandConversationProvider', () => {
+  it('shares CURRENT FOCUS / RECENT PROJECT STACK / hands-free mode across mounts, mirroring messages/draft', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(
+        createElement(
+          CommandConversationProvider,
+          null,
+          createElement(FocusWriter),
+          createElement(FocusReader, { testId: 'reader' })
+        )
+      )
+    })
+
+    const writer = container.querySelector('[data-testid="focus-writer"]') as HTMLButtonElement
+    act(() => writer.click())
+
+    expect(container.querySelector('[data-testid="reader-focus"]')?.textContent).toBe('nwr')
+    expect(container.querySelector('[data-testid="reader-stack"]')?.textContent).toBe('tsf')
+    expect(container.querySelector('[data-testid="reader-hands-free"]')?.textContent).toBe('true')
+
+    act(() => root.unmount())
+    container.remove()
+  })
+
   it('shares one conversation across two separately-mounted consumers, like the dock panel and the full page', async () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -64,11 +114,19 @@ describe('CommandConversationProvider', () => {
     // the router in App.tsx, so it never unmounts on navigation) -- the
     // fresh mount must see the SAME state, not a reset one.
     act(() => {
-      root.render(createElement(CommandConversationProvider, null, createElement(Reader, { testId: 'full-page' })))
+      root.render(
+        createElement(
+          CommandConversationProvider,
+          null,
+          createElement(Reader, { testId: 'full-page' })
+        )
+      )
     })
 
     expect(container.querySelector('[data-testid="full-page-count"]')?.textContent).toBe('1')
-    expect(container.querySelector('[data-testid="full-page-draft"]')?.textContent).toBe('in progress')
+    expect(container.querySelector('[data-testid="full-page-draft"]')?.textContent).toBe(
+      'in progress'
+    )
 
     act(() => root.unmount())
     container.remove()

@@ -6,12 +6,37 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DecisionBadge } from '@/components/DecisionBadge'
+import { CommandVoiceControls } from '@/components/command/CommandVoiceControls'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { scrollTranscriptToBottom } from '@/lib/chat-transcript-scroll'
 import { extractAttachmentContext } from '@/lib/migration-context-attachments'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { useCommandConversation, type CommandMessage } from '@/lib/command-conversation-context'
+import { useVoiceSession } from '@/lib/voice/use-voice-session'
+import { useApi } from '@/lib/use-api'
+import { buildGlobalRunStatusItems, globalRunStatusLabel } from '@/lib/global-run-status'
+import { isResearchMissionWorkItem, type WorkSummary } from '@/lib/types'
+
+// Hands-Free Command + Project Manager V1: the focused project's own
+// display name, resolved from whatever real WorkSummary data the
+// background-work line below already fetches (never a second, dedicated
+// fetch just for a label) -- falls back to the bare id (still real,
+// informative) if the project isn't in any currently-fetched bucket
+// (e.g. a fully DONE/quiet project with no active/waiting/needsYou entry).
+function resolveFocusDisplayName(work: WorkSummary | null, focusProjectId: string): string {
+  if (!work) {
+    return focusProjectId
+  }
+  for (const bucket of [work.active, work.waiting, work.needsYou, work.verifying, work.queued]) {
+    for (const item of bucket) {
+      if (!isResearchMissionWorkItem(item) && item.id === focusProjectId) {
+        return item.displayName
+      }
+    }
+  }
+  return focusProjectId
+}
 
 // Memoized so typing in the composer (draft/attachments/selfRepair state,
 // all local to CommandPanel) never re-renders the transcript -- without
@@ -29,9 +54,9 @@ export const CommandTranscript = memo(function CommandTranscript({
   if (messages.length === 0) {
     return (
       <div className="py-10 text-center text-xs text-muted-foreground">
-        Ask about your fleet, name a project to work on it, or name several to act on them
-        together -- e.g. &quot;what&apos;s running right now?&quot; or &quot;get NWR and WorldForge
-        ready for work.&quot;
+        Ask about your fleet, name a project to work on it, or name several to act on them together
+        -- e.g. &quot;what&apos;s running right now?&quot; or &quot;get NWR and WorldForge ready for
+        work.&quot;
       </div>
     )
   }
@@ -53,7 +78,11 @@ export const CommandTranscript = memo(function CommandTranscript({
                 : 'bg-muted text-foreground'
             )}
           >
-            {message.role === 'assistant' ? <Markdown>{message.content}</Markdown> : message.content}
+            {message.role === 'assistant' ? (
+              <Markdown>{message.content}</Markdown>
+            ) : (
+              message.content
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {message.decisionClass && <DecisionBadge decisionClass={message.decisionClass} />}
@@ -110,7 +139,13 @@ export const CommandTranscript = memo(function CommandTranscript({
 // read as a fleet-wide query -- an explicit named entity in the message
 // always wins (see http-server.mjs's chat route). No second Command
 // engine, no duplicated resolution logic.
-export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => void; routeContext?: { projectId: string; displayName: string } | null } = {}) {
+export function CommandPanel({
+  onActivity,
+  routeContext
+}: {
+  onActivity?: () => void
+  routeContext?: { projectId: string; displayName: string } | null
+} = {}) {
   const {
     messages,
     addMessage,
@@ -127,16 +162,53 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
     live,
     setLive,
     selfRepair,
-    setSelfRepair
+    setSelfRepair,
+    focusProjectId,
+    setFocusProjectId,
+    setRecentProjectStack,
+    handsFreeMode,
+    setHandsFreeMode
   } = useCommandConversation()
   const viewportRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   useAutosizeTextarea(composerRef, draft, { minPx: 36, maxPx: 200 })
+  const voice = useVoiceSession()
+  // Background-work compact status line ("NWR · Researching / TSF ·
+  // Building") and the focused project's own display name both read this
+  // SAME real fetch -- one poll, two uses, never a second dedicated
+  // fetch just for a label. Reuses the exact projection
+  // GlobalRunStatusIndicator.tsx already uses (api.work() +
+  // buildGlobalRunStatusItems/globalRunStatusLabel) rather than a new one.
+  const { data: work } = useApi(() => api.work(), [])
+  const backgroundWorkItems = work ? buildGlobalRunStatusItems(work) : []
 
   useEffect(() => {
     scrollTranscriptToBottom(viewportRef.current)
   }, [messages, sending])
+
+  // Hands-Free Command + Project Manager V1: a voice-produced FINAL
+  // transcript only ever becomes `draft` text -- this hook has zero
+  // knowledge of Command/projects/actions, and the effect below is the one
+  // and only place its output is consumed, by writing into the exact same
+  // `draft` state typed input already uses. In hands-free mode, that final
+  // transcript also auto-sends (through the SAME unchanged `send()` below)
+  // instead of waiting for a manual submit.
+  useEffect(() => {
+    if (!voice.transcript) {
+      return
+    }
+    setDraft(voice.transcript)
+    if (handsFreeMode) {
+      send()
+    }
+    // Deliberately keyed on voice.transcript alone: this effect should only
+    // ever react to a NEW final transcript landing, reading handsFreeMode/
+    // send's current values at that moment (not re-running for unrelated
+    // re-renders in between, which a full dependency list would cause
+    // since `send` is a fresh closure every render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
+  }, [voice.transcript])
 
   async function send() {
     const text = draft.trim()
@@ -151,6 +223,7 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
     addMessage({ role: 'user', content: text + attachmentNote, at: new Date().toISOString() })
     setDraft('')
     setAttachments([])
+    voice.cancel()
     const attachmentMeta = attachments.map((a) => ({
       name: a.name,
       type: a.type || 'unknown',
@@ -167,6 +240,13 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
       )
       setProviderLabel(result.providerLabel)
       setLive(result.live ?? false)
+      // Hands-Free Command + Project Manager V1: mirrors the durable
+      // CURRENT FOCUS / RECENT PROJECT STACK server/domain/command-
+      // conversation-focus.mjs just computed -- a read-back, never
+      // independently derived client-side. Always present on a real
+      // Command-scope response (this call is always projectId: null).
+      setFocusProjectId(result.focusProjectId ?? null)
+      setRecentProjectStack(result.recentProjectStack ?? [])
       addMessage({
         role: 'assistant',
         content: result.text,
@@ -177,6 +257,12 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
         scope: result.scope
       })
       onActivity?.()
+      if (handsFreeMode) {
+        voice.speak(result.text.replace(/[*_`#]/g, ''))
+      }
+      if (handsFreeMode && voice.supported) {
+        voice.start()
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach Command right now.')
     } finally {
@@ -231,11 +317,48 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
           <span>-- only used if your message doesn&apos;t name a project itself</span>
         </div>
       )}
+      {/* Hands-Free Command + Project Manager V1: CURRENT FOCUS, per the
+          mission spec's own Voice UX section -- one line, not a dashboard.
+          Detailed worker/provider/worktree state stays Inspect/Advanced. */}
+      {(focusProjectId || backgroundWorkItems.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-1.5 text-[10px] text-muted-foreground">
+          {focusProjectId && (
+            <span>
+              Talking about:{' '}
+              <Link
+                to={`/projects/${focusProjectId}`}
+                className="font-medium text-foreground hover:underline"
+              >
+                {resolveFocusDisplayName(work, focusProjectId)}
+              </Link>
+            </span>
+          )}
+          {backgroundWorkItems.length > 0 && (
+            <span className="flex flex-wrap items-center gap-1.5">
+              {backgroundWorkItems.slice(0, 4).map((item) => (
+                <span key={item.id} className="rounded-full border border-border px-1.5 py-0.5">
+                  {item.displayName} · {globalRunStatusLabel(item)}
+                </span>
+              ))}
+            </span>
+          )}
+        </div>
+      )}
       <ScrollArea className="tsf-scrollbar flex-1 px-4 py-3" viewportRef={viewportRef}>
         <CommandTranscript messages={messages} sending={sending} />
       </ScrollArea>
       {error && (
         <div className="border-t border-border px-4 py-2 text-[11px] text-destructive">{error}</div>
+      )}
+      {voice.error && voice.error.code !== 'no-speech' && (
+        <div className="border-t border-border px-4 py-2 text-[11px] text-destructive">
+          Voice input: {voice.error.message}
+        </div>
+      )}
+      {voice.listening && voice.interimTranscript && (
+        <div className="border-t border-border px-4 py-2 text-[11px] italic text-muted-foreground">
+          {voice.interimTranscript}
+        </div>
       )}
       {attachments.length > 0 && (
         <div className="border-t border-border px-4 py-2">
@@ -293,6 +416,17 @@ export function CommandPanel({ onActivity, routeContext }: { onActivity?: () => 
           >
             <Paperclip className="size-4" />
           </Button>
+          <CommandVoiceControls
+            voice={voice}
+            handsFreeMode={handsFreeMode}
+            onToggleHandsFree={() => {
+              const next = !handsFreeMode
+              setHandsFreeMode(next)
+              if (!next) {
+                voice.cancel()
+              }
+            }}
+          />
           <Textarea
             ref={composerRef}
             value={draft}
