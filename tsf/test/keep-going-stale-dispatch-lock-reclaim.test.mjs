@@ -87,6 +87,18 @@ test('reclaimExpiredDispatchLock refuses a still-genuinely-active (not yet expir
 // withRun is called exactly ONCE (proving claim+release are the same
 // commit, not two), which only the atomic, single-mutation implementation
 // can satisfy.
+//
+// Real adversarial-review finding (round 3): "exactly one withRun call" by
+// itself is not quite sufficient -- a hypothetical implementation could
+// call withRun once with only the claim, then mutate the RETURNED object
+// afterward (e.g. Object.assign) to apply the release, never actually
+// persisting that release the way the real store would (its own commit --
+// a synchronous disk write inside the withRun callback, see
+// keep-going-run-store.mjs/data-store.mjs -- only covers what happens
+// INSIDE the callback). Freezing the object withRun returns mirrors that
+// real "committed means immutable from here" contract: any implementation
+// that tries to mutate the run after the commit throws here, in strict ESM
+// mode, rather than silently succeeding.
 test('reclaimExpiredDispatchLock: claim and release happen inside exactly ONE store.withRun commit, closing the crash window between them', async () => {
   const run = {
     ...baseRun(),
@@ -98,7 +110,7 @@ test('reclaimExpiredDispatchLock: claim and release happen inside exactly ONE st
     readRun: () => current,
     withRun: (_projectId, mutateFn) => {
       withRunCallCount += 1
-      current = mutateFn(current)
+      current = Object.freeze(mutateFn(current))
       return current
     }
   }

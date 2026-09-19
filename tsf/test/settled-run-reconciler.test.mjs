@@ -196,6 +196,29 @@ test('deriveWorktreePath splits an id: selector on the FIRST :: separator, not t
   assert.equal(deriveWorktreePath(run), '/tmp/weird::path')
 })
 
+// Real adversarial-review finding (round 3): round 2's fix split on the
+// first `::` ANYWHERE in the string, not just inside an `id:` selector --
+// wrongly truncating a `path:` selector or a bare local path that happens
+// to contain a literal `::` substring (POSIX permits `:` in path
+// components). Only a genuine `id:` selector uses `::` as Orca's own
+// composite-id separator.
+test('deriveWorktreePath does NOT split on :: inside a path: selector or a bare path -- only id: selectors use :: as a separator', () => {
+  const pathSelectorRun = withSettledWave(
+    baseRun(),
+    'path:/tmp/repo::segment',
+    clock().toISOString()
+  )
+  assert.equal(deriveWorktreePath(pathSelectorRun), '/tmp/repo::segment')
+
+  const barePathRun = withSettledWave(baseRun(), '/tmp/repo::segment', clock().toISOString())
+  assert.equal(deriveWorktreePath(barePathRun), '/tmp/repo::segment')
+})
+
+test('deriveWorktreePath returns null for a malformed id: selector with no :: separator at all, rather than guessing', () => {
+  const run = withSettledWave(baseRun(), 'id:justarepoidwithnoseparator', clock().toISOString())
+  assert.equal(deriveWorktreePath(run), null)
+})
+
 test('gatherWorktreeEvidence reports EVIDENCE_UNAVAILABLE (never a fabricated clean report) for an unresolvable name: selector', async () => {
   const run = withSettledWave(baseRun(), 'name:some-worktree', new Date().toISOString())
   const evidence = await gatherWorktreeEvidence(run)

@@ -101,6 +101,7 @@ export function verificationVerdictPath(runId) {
 // collide with an unrelated LOCAL path of the same shape rather than
 // failing outright, which is worth a real follow-up (host-aware git
 // evidence gathering) but out of scope for this fix.
+const ID_SELECTOR_PREFIX = 'id:'
 const ID_SELECTOR_MARKER = '::'
 const WORKTREE_PATH_PREFIX = 'path:'
 const UNRESOLVABLE_SELECTOR_PREFIXES = ['name:', 'branch:', 'issue:', 'identity:']
@@ -108,9 +109,23 @@ const UNRESOLVABLE_SELECTOR_VALUES = new Set(['active', 'current', 'new-child', 
 // Mirrors Orca core's FOLDER_WORKSPACE_INSTANCE_SUFFIX (src/shared/worktree-id.ts).
 const FOLDER_WORKSPACE_INSTANCE_SUFFIX = /::workspace:[0-9a-f-]{36}$/
 
+// Real adversarial-review finding (round 3): splitting on the FIRST `::`
+// ANYWHERE in the string (round 2's fix) was still wrong -- `::` is only
+// Orca's composite-id separator inside an `id:<repoId>::<path>` selector.
+// A `path:` selector's own path half, or an already-bare local path, can
+// legally contain a literal `::` substring (e.g. `path:/tmp/repo::segment`,
+// a POSIX directory literally named with `::`) and must NOT be split on it.
+// The `id:` prefix is the only reliable discriminator for "this string uses
+// Orca's composite-id grammar at all" -- checked first, before any `::`
+// search.
 function toFilesystemWorktreePath(worktreeIdentifier) {
-  const markerIndex = worktreeIdentifier.indexOf(ID_SELECTOR_MARKER)
-  if (markerIndex !== -1) {
+  if (worktreeIdentifier.startsWith(ID_SELECTOR_PREFIX)) {
+    const markerIndex = worktreeIdentifier.indexOf(ID_SELECTOR_MARKER)
+    if (markerIndex === -1) {
+      // Malformed id: selector (no repo/path separator at all) -- honest
+      // "unresolvable", never a guess.
+      return null
+    }
     return worktreeIdentifier
       .slice(markerIndex + ID_SELECTOR_MARKER.length)
       .replace(FOLDER_WORKSPACE_INSTANCE_SUFFIX, '')
@@ -135,6 +150,21 @@ function toFilesystemWorktreePath(worktreeIdentifier) {
 // Returns null (an honest "unknown", never a fabricated path) if the run
 // has no waves with an identifiable worktree, OR if the most recent one is
 // a selector form this function cannot resolve to a real fs path itself.
+//
+// Disclosed, pre-existing limitation (round 3 adversarial review, real
+// finding, predates this normalization work): a run's waves can legally
+// place different work items in DIFFERENT worktrees (per-item placement is
+// a real, supported feature -- see hasExplicitPlacement/resolveWorkerPlacement
+// in keep-going-dispatch-loop.mjs), but this function has always returned
+// only the FIRST worktree found scanning the most recent wave backwards,
+// silently ignoring any other worktree the same run may have real,
+// unreconciled work in. Before this file's own worktree-selector fixes,
+// gatherWorktreeEvidence below usually failed outright for any selector-
+// form worktree, which masked how often this matters in practice; now that
+// more selector forms resolve successfully, a genuinely multi-worktree run
+// is more likely to have its evidence gathered against only one of them.
+// A real follow-up (aggregating evidence across every worktree a run's
+// waves reference) is out of scope for this fix chain.
 export function deriveWorktreePath(run) {
   for (let i = run.waves.length - 1; i >= 0; i -= 1) {
     const batches = run.waves[i]?.wavePlan?.batches ?? []
