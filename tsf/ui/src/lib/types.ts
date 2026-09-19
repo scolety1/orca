@@ -332,6 +332,14 @@ export type ChatResponse = {
   // Planner Chat responses.
   resolvedProjectIds?: string[]
   scope?: 'PROJECT' | 'MULTI_PROJECT' | 'FLEET' | 'RESEARCH'
+  // Hands-Free Command + Project Manager V1: the durable CURRENT FOCUS and
+  // RECENT PROJECT STACK (domain/command-conversation-focus.mjs), distinct
+  // from resolvedProjectIds above (that's this turn's own TURN TARGETS --
+  // a status question can target a project without moving focus to it).
+  // Present on every Command-scope (projectId: null) response; absent on
+  // ordinary project-scoped Planner Chat responses, where focus never moves.
+  focusProjectId?: string | null
+  recentProjectStack?: string[]
   // Present when this turn resolved to a real ResearchMission (created,
   // continued, or read) -- HQ's Command composer and Project detail's
   // "Research for this project" both key off this to link straight to it.

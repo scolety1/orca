@@ -24,6 +24,11 @@ import { resolveRouteContextFallback } from './chat-route-context-fallback.mjs'
 import { resolveRepositoryIdentity } from './repository-identity.mjs'
 import { resolveProjectsFromText } from './project-name-resolver.mjs'
 import { loadProjectAliases } from '../domain/project-aliases.mjs'
+import {
+  nextCommandFocus,
+  isExplicitSwitchMessage,
+  isGoBackMessage
+} from '../domain/command-conversation-focus.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
 import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
@@ -243,6 +248,20 @@ export async function handleChatRoute(
 
     let project = map.get(body.projectId) ?? null
     let matchedOn = project ? 'id' : null
+    // Hands-Free Command + Project Manager V1: whether this request is
+    // genuinely a Command-conversation turn (projectId omitted) -- durable
+    // focus is a Command-conversation concept only, never touched by a
+    // genuine Planner Chat request (projectId explicitly supplied). Set
+    // once here, read at both possible save sites below (the respondCommand
+    // fallback and the shared per-project path the single-exact-match
+    // short-circuit also falls through to), since only one of them ever
+    // actually executes per request.
+    const isCommandScope = body.projectId == null
+    // EXACT (never fuzzy) turn-target project ids for THIS message, set by
+    // the resolution below when isCommandScope -- feeds nextCommandFocus at
+    // whichever save site actually runs. Stays null for a genuine Planner
+    // Chat request, where focus must never move.
+    let commandTurnTargetIds = null
     // Adversarial-review finding: a falsy check treated an explicit
     // empty-string projectId identically to Command's genuine null/
     // omitted scope. Precise null/undefined check instead, so an
@@ -258,6 +277,9 @@ export async function handleChatRoute(
       const resolution = resolveProjectsFromText(message, projects, {
         aliases: commandAliases
       })
+      commandTurnTargetIds = resolution.matches
+        .filter((m) => m.matchedOn !== 'fuzzy')
+        .map((m) => m.project.id)
       const contextFallbackProject =
         resolution.matches.length === 0
           ? await resolveRouteContextFallback({
@@ -319,13 +341,28 @@ export async function handleChatRoute(
             resultItems: commandResult.resultItems ?? []
           }
         ].slice(-200)
-        saveState({ ...freshState, chatThreads: threads })
+        const newCommandFocus = nextCommandFocus(
+          freshState.commandFocus,
+          {
+            turnTargetProjectIds: commandTurnTargetIds ?? [],
+            decisionClass: commandResult.decisionClass,
+            isExplicitSwitch: isExplicitSwitchMessage(message),
+            isGoBack: isGoBackMessage(message)
+          },
+          () => new Date()
+        )
+        saveState({ ...freshState, chatThreads: threads, commandFocus: newCommandFocus })
+        const commandResultWithFocus = {
+          ...commandResult,
+          focusProjectId: newCommandFocus.focusProjectId,
+          recentProjectStack: newCommandFocus.recentProjectStack
+        }
         // Both reconcilers run, neither replaces the other -- completion notices first, then attention notices.
         json(
           res,
           200,
           await attachDueAttentionNotices(
-            await attachDueCompletionNotices(commandResult, () => new Date()),
+            await attachDueCompletionNotices(commandResultWithFocus, () => new Date()),
             () => new Date()
           )
         )
@@ -554,26 +591,24 @@ export async function handleChatRoute(
       const conflictingMention = messageNamedProjects.matches.find(
         (m) => m.project.id !== project.id
       )
-      if (conflictingMention) {
-        adoptionCommandResult = {
-          intent: 'ADOPTION_COMMAND',
-          decisionClass: 'NEEDS_OWNER',
-          text: `This is scoped to **${project.displayName}**, but the message names **${conflictingMention.project.displayName}** -- I won't guess which one you mean. Say "adopt it" to adopt **${project.displayName}**, or switch to **${conflictingMention.project.displayName}**'s own chat to adopt that one.`,
-          plannerRole: 'PLANNER_DEEP',
-          providerLabel:
-            'PLANNER_DEEP · adoption target conflicts with the current scope, no action taken',
-          live: false,
-          resolvedProjectIds: [],
-          scope: 'ADOPTION_COMMAND'
-        }
-      } else {
-        adoptionCommandResult = await respondAdoptionCommand({
-          message,
-          exactMatchProjects: [project],
-          projects,
-          clock: () => new Date()
-        })
-      }
+      adoptionCommandResult = conflictingMention
+        ? {
+            intent: 'ADOPTION_COMMAND',
+            decisionClass: 'NEEDS_OWNER',
+            text: `This is scoped to **${project.displayName}**, but the message names **${conflictingMention.project.displayName}** -- I won't guess which one you mean. Say "adopt it" to adopt **${project.displayName}**, or switch to **${conflictingMention.project.displayName}**'s own chat to adopt that one.`,
+            plannerRole: 'PLANNER_DEEP',
+            providerLabel:
+              'PLANNER_DEEP · adoption target conflicts with the current scope, no action taken',
+            live: false,
+            resolvedProjectIds: [],
+            scope: 'ADOPTION_COMMAND'
+          }
+        : await respondAdoptionCommand({
+            message,
+            exactMatchProjects: [project],
+            projects,
+            clock: () => new Date()
+          })
     }
 
     let runActionResult = null
@@ -825,7 +860,39 @@ export async function handleChatRoute(
         intent: result.intent
       }
     ].slice(-200)
-    saveState({ ...freshState, chatThreads: threads, plannerSessions: nextPlannerSessions })
+    // Hands-Free Command + Project Manager V1: this shared save path also
+    // handles Command's own single-exact-match short-circuit (e.g. "Let's
+    // work on NWR" resolving straight into NWR's own handling above,
+    // skipping the respondCommand branch and its own focus wiring
+    // entirely) -- so focus must be computed here too, but ONLY when this
+    // request genuinely originated from Command (isCommandScope); a
+    // genuine Planner Chat request (projectId explicitly supplied) must
+    // never move focus.
+    const newCommandFocus = isCommandScope
+      ? nextCommandFocus(
+          freshState.commandFocus,
+          {
+            turnTargetProjectIds: commandTurnTargetIds ?? [],
+            decisionClass: result.decisionClass,
+            isExplicitSwitch: isExplicitSwitchMessage(message),
+            isGoBack: isGoBackMessage(message)
+          },
+          () => new Date()
+        )
+      : freshState.commandFocus
+    saveState({
+      ...freshState,
+      chatThreads: threads,
+      plannerSessions: nextPlannerSessions,
+      commandFocus: newCommandFocus
+    })
+    if (isCommandScope) {
+      result = {
+        ...result,
+        focusProjectId: newCommandFocus.focusProjectId,
+        recentProjectStack: newCommandFocus.recentProjectStack
+      }
+    }
     json(
       res,
       200,

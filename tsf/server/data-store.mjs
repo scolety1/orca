@@ -87,7 +87,8 @@ const DEFAULTS = {
   selfImprovementReceipts: {}, // missionId -> TSF_SELF_IMPROVEMENT_RECEIPT_V1[] hash-chained receipts (see tsf/domain/self-improvement-receipt-chain.mjs, tsf/server/self-improvement-receipt-store.mjs)
   attentionNotificationEvents: {}, // eventId -> TSF_ATTENTION_NOTIFICATION_EVENT_V1 (see tsf/domain/attention-notification-event.mjs, tsf/server/attention-notification-event-store.mjs)
   projectExecutionHolds: {}, // projectId -> TSF_PROJECT_EXECUTION_HOLD_V1 (see tsf/domain/project-execution-hold.mjs, tsf/server/project-execution-hold-store.mjs)
-  projectCanonicalBases: {} // projectId -> TSF_PROJECT_CANONICAL_BASE_V1 (see tsf/server/project-canonical-base-store.mjs)
+  projectCanonicalBases: {}, // projectId -> TSF_PROJECT_CANONICAL_BASE_V1 (see tsf/server/project-canonical-base-store.mjs)
+  commandFocus: null // TSF_COMMAND_FOCUS_V1 | null -- durable Command conversation focus (see tsf/domain/command-conversation-focus.mjs). A durable pointer, not an append-only log -- deliberately NOT nested inside chatThreads.
   // Resource Pressure Governor leases are NOT stored here -- see
   // server/resource-pressure-lease-store.mjs: they must be host-wide
   // (shared across every worktree's own TSF server process), not scoped to

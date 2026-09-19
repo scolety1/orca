@@ -103,7 +103,15 @@ function lastReferencedProjectId(opState, projects) {
       }
     }
   }
-  return null
+  // Hands-Free Command + Project Manager V1: no exact single-project turn
+  // found in the recent thread -- fall back to the durable Command focus
+  // (domain/command-conversation-focus.mjs) if one exists and still names a
+  // real, known project, same "never resolve to a project that's stopped
+  // existing" discipline as the loop above. This is strictly a fallback,
+  // never checked first -- the narrower, more-recent same-turn signal above
+  // still wins when it has an answer.
+  const focusProjectId = opState.commandFocus?.focusProjectId ?? null
+  return focusProjectId && known.has(focusProjectId) ? focusProjectId : null
 }
 
 function respondNoProjectResolved(
@@ -436,7 +444,9 @@ export async function respondCommand({
         ? singleTargetHoldEntries
         : null
       async function mergeMatchingHold(baseResult) {
-        if (!matchingHoldEntries) return baseResult
+        if (!matchingHoldEntries) {
+          return baseResult
+        }
         const holdResult = await respondMultiActionCommand({
           message,
           projects,
