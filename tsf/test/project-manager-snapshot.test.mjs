@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildProjectManagerSnapshot } from '../domain/project-manager-snapshot.mjs'
 import { createOvernightRun, raiseNeedsYou } from '../domain/keep-going.mjs'
+import {
+  createProjectExecutionHold,
+  releaseProjectExecutionHold
+} from '../domain/project-execution-hold.mjs'
 
 const clock = () => new Date('2026-09-19T00:00:00.000Z')
 const PROJECT = {
@@ -67,7 +71,35 @@ test("buildProjectManagerSnapshot: a research mission for a DIFFERENT project ne
 })
 
 test('buildProjectManagerSnapshot: an active execution hold is reflected honestly (never bypassed, never invented)', () => {
-  const hold = { active: true, reason: 'owner requested', setBy: 'owner' }
+  const hold = createProjectExecutionHold(
+    { projectId: PROJECT.id, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'owner' },
+    clock
+  )
   const snapshot = buildProjectManagerSnapshot(PROJECT, { projectExecutionHold: hold }, clock)
   assert.equal(snapshot.projectExecutionHold, hold)
+})
+
+// REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): a RELEASED hold is
+// a real, durable record (never deleted, status flips instead) -- it must
+// never be reported as if it were still active.
+test('buildProjectManagerSnapshot: a RELEASED execution hold is never reported as active', () => {
+  const active = createProjectExecutionHold(
+    { projectId: PROJECT.id, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'owner' },
+    clock
+  )
+  const released = releaseProjectExecutionHold(active, { releasedBy: 'owner' }, clock)
+  const snapshot = buildProjectManagerSnapshot(PROJECT, { projectExecutionHold: released }, clock)
+  assert.equal(snapshot.projectExecutionHold, null)
+})
+
+// REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): a COMPLETE research
+// mission stayed in openResearchMissions forever (no terminal-state check).
+test('buildProjectManagerSnapshot: a COMPLETE research mission for this project is never reported as still open', () => {
+  const researchMissions = {
+    'mission-done': { id: 'mission-done', projectId: PROJECT.id, phase: 'COMPLETE', needsYou: [] },
+    'mission-live': { id: 'mission-live', projectId: PROJECT.id, phase: 'EXECUTING', needsYou: [] }
+  }
+  const snapshot = buildProjectManagerSnapshot(PROJECT, { researchMissions }, clock)
+  assert.equal(snapshot.openResearchMissions.length, 1)
+  assert.equal(snapshot.openResearchMissions[0].id, 'mission-live')
 })

@@ -7,6 +7,7 @@
 import { buildOwnerWorkItems, legacyProjectPrimaryState } from './owner-work-model.mjs'
 import { fleetNeedsYouStatus } from './fleet-work-status.mjs'
 import { compareStateToGoal } from './keep-going.mjs'
+import { isProjectExecutionHoldActive } from './project-execution-hold.mjs'
 
 // project: the real project object (has .id, .displayName).
 // keepGoingRun: this project's own run (opState.keepGoingRuns[project.id]) or undefined.
@@ -54,8 +55,12 @@ export function buildProjectManagerSnapshot(
     ? { primaryState: runWorkItem.primaryState, primaryReasonLabel: runWorkItem.primaryReasonLabel }
     : legacyProjectPrimaryState(project, projectExecutionHold)
 
+  // REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): a COMPLETE
+  // research mission stayed in this list forever (no terminal-state
+  // check), so the Project Manager footer went on reporting it as still
+  // open indefinitely.
   const openResearchMissions = Object.values(researchMissions).filter(
-    (mission) => mission.projectId === project.id
+    (mission) => mission.projectId === project.id && mission.phase !== 'COMPLETE'
   )
 
   // fleetNeedsYouStatus already merges PROJECT/RESEARCH/PLANNER sources
@@ -86,6 +91,13 @@ export function buildProjectManagerSnapshot(
     gap,
     openResearchMissions,
     openNeedsYou,
-    projectExecutionHold: projectExecutionHold ?? null
+    // REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): a RELEASED hold
+    // is still a real, durable record (never deleted) -- surfacing it
+    // wholesale on any truthy value made the footer report a released
+    // hold as if it were still active. Only a genuinely ACTIVE hold is
+    // surfaced here.
+    projectExecutionHold: isProjectExecutionHoldActive(projectExecutionHold)
+      ? projectExecutionHold
+      : null
   }
 }

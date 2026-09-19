@@ -33,6 +33,31 @@ test('isExplicitSwitchMessage: a natural spoken correction ("No, I meant X") is 
   assert.equal(isExplicitSwitchMessage('I meant the other one.'), true)
 })
 
+// REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): a deliberative
+// question ("Should I switch to B?") previously matched the same as a real
+// directive, silently moving focus in response to the owner merely asking.
+test('isExplicitSwitchMessage / isGoBackMessage: a deliberative question is never treated as a genuine directive', () => {
+  assert.equal(isExplicitSwitchMessage('Should I switch to TSF?'), false)
+  assert.equal(isExplicitSwitchMessage('Could we focus on TSF instead?'), false)
+  assert.equal(isGoBackMessage('Should I go back to NWR?'), false)
+  // The un-guarded phrasing still works -- this isn't a blanket "?" ban.
+  assert.equal(isExplicitSwitchMessage('Switch to TSF.'), true)
+})
+
+// REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): an explicit
+// prohibition ("Do not talk about B") previously matched the same as a
+// real directive, silently moving focus onto the very project the owner
+// said NOT to move to.
+test('isExplicitSwitchMessage: "discuss" is recognized as an explicit switch synonym -- real dogfood-round-1 finding', () => {
+  assert.equal(isExplicitSwitchMessage("Let's discuss TSF now."), true)
+})
+
+test('isExplicitSwitchMessage / isGoBackMessage: an explicit prohibition is never treated as a genuine directive', () => {
+  assert.equal(isExplicitSwitchMessage('Do not talk about TSF right now.'), false)
+  assert.equal(isExplicitSwitchMessage("Don't switch to TSF."), false)
+  assert.equal(isGoBackMessage('Never go back to that project.'), false)
+})
+
 test('nextCommandFocus: a correction phrasing moves focus given a real single exact target, same as an explicit switch', () => {
   const next = nextCommandFocus(
     { focusProjectId: null, recentProjectStack: [], updatedAt: clock().toISOString() },

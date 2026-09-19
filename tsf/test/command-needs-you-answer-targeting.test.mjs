@@ -71,6 +71,52 @@ test('resolveNeedsYouAnswerTarget: no named project, focus set but the focused p
   assert.equal(result.reason, 'AMBIGUOUS')
 })
 
+// REAL DOGFOOD FINDING (round 1, P0, Codex-confirmed): TWO exact project
+// names in the same message previously collapsed into the SAME branch as
+// "zero named" (both produced namedProjectId === null), silently falling
+// back to whichever project happened to be focused -- even though the
+// owner explicitly named two DIFFERENT projects, neither necessarily the
+// focused one.
+test('resolveNeedsYouAnswerTarget: TWO exact project names in the same message refuse -- never silently fall back to focus', () => {
+  const result = resolveNeedsYouAnswerTarget('Answer NWR or TSF, option two.', {
+    openItems: [item('a', 'nwr'), item('b', 'tsf')],
+    turnTargetProjectIds: ['nwr', 'tsf'],
+    mentionedProjectIds: ['nwr', 'tsf'],
+    focusProjectId: 'nwr'
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'AMBIGUOUS')
+})
+
+// REAL DOGFOOD FINDING (round 1, P0, Codex-confirmed): the bridge strips
+// fuzzy matches before ever reaching this function, so a message that only
+// FUZZILY names a different real project than the current focus used to
+// look identical to "nothing named at all" and silently resolved against
+// focus -- e.g. focus is VOICE-ALPHA, the owner says "answer the alpha two
+// question", VOICE-ALPHA-TWO only fuzzy-matches, and the wrong project
+// (VOICE-ALPHA) got answered instead.
+test('resolveNeedsYouAnswerTarget: a fuzzy-only mention of a DIFFERENT project than focus refuses -- never silently answers the focused project instead', () => {
+  const result = resolveNeedsYouAnswerTarget('Answer the alpha two question with option two.', {
+    openItems: [item('a', 'voice-alpha'), item('b', 'voice-alpha-two')],
+    turnTargetProjectIds: [], // "alpha two" only fuzzy-matched, stripped by the bridge
+    mentionedProjectIds: ['voice-alpha-two'], // but still real, un-droppable evidence
+    focusProjectId: 'voice-alpha'
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'AMBIGUOUS')
+})
+
+test('resolveNeedsYouAnswerTarget: a fuzzy mention of the SAME project as focus still resolves via focus -- the new guard only blocks a DIFFERENT mention', () => {
+  const result = resolveNeedsYouAnswerTarget('Answer it, option two.', {
+    openItems: [item('a', 'voice-alpha')],
+    turnTargetProjectIds: [],
+    mentionedProjectIds: ['voice-alpha'],
+    focusProjectId: 'voice-alpha'
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.item.id, 'a')
+})
+
 test('resolveNeedsYouAnswerTarget: a research-source open item is targetable exactly like a project-source one', () => {
   const result = resolveNeedsYouAnswerTarget('Yes, authorize it.', {
     openItems: [item('a', 'nwr', 'RESEARCH')],

@@ -24,18 +24,36 @@ export const RECENT_PROJECT_STACK_CAP = 8
 // only widens which phrasings are TRUSTED to act on a target already
 // found by that separate, stricter, unaffected mechanism.
 const EXPLICIT_SWITCH_PATTERN =
-  /\b(?:switch(?:\s+(?:to|over to))?|let'?s work on|focus on|talk about|I meant)\b/i
+  /\b(?:switch(?:\s+(?:to|over to))?|let'?s work on|focus on|talk about|discuss|I meant)\b/i
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
+
+// REAL DOGFOOD FINDING (round 1, P1 x2, Codex-confirmed): neither pattern
+// above had any question or negation guard. "Should I switch to B?" moved
+// focus despite being a deliberative question (the owner asking, not
+// directing); "Do not talk about B" moved focus despite being an explicit
+// prohibition. Both guards stay message-wide and narrow (not full clause-
+// splitting like chat-responder.mjs's own isGenuineDirective) to keep this
+// classifier the small, separate, easily-audited surface its own header
+// above describes -- deliberately biased toward a false NEGATIVE (the
+// owner repeats an unambiguous switch phrase) over a false POSITIVE (focus
+// silently moves without a genuine directive).
+const DELIBERATIVE_QUESTION_PATTERN =
+  /\b(?:should|could|would|can|may|might)\s+(?:i|we|you)\b[^.!]*\?/i
+const NEGATION_GUARD_PATTERN = /\b(?:do not|don'?t|never|stop)\b/i
+
+function isGuardedAgainst(message) {
+  return DELIBERATIVE_QUESTION_PATTERN.test(message) || NEGATION_GUARD_PATTERN.test(message)
+}
 
 // Real, narrow, conservative regex classifiers -- deliberately NOT reusing
 // chat-responder.mjs's own intent array: a false positive here silently
 // moves focus, so this stays a small, separate, easily-audited surface.
 export function isExplicitSwitchMessage(message) {
-  return EXPLICIT_SWITCH_PATTERN.test(message)
+  return !isGuardedAgainst(message) && EXPLICIT_SWITCH_PATTERN.test(message)
 }
 
 export function isGoBackMessage(message) {
-  return GO_BACK_PATTERN.test(message)
+  return !isGuardedAgainst(message) && GO_BACK_PATTERN.test(message)
 }
 
 function pushStack(stack, projectId) {

@@ -55,6 +55,10 @@ export async function respondNeedsYouAnswerCommand({
   const turnTargetProjectIds = resolution.matches
     .filter((m) => m.matchedOn !== 'fuzzy')
     .map((m) => m.project.id)
+  // Every match, exact or fuzzy -- see targeting.mjs's own header for why a
+  // dropped fuzzy signal must not be treated as "nothing named" (real
+  // dogfood-round-1 P0 finding).
+  const mentionedProjectIds = [...new Set(resolution.matches.map((m) => m.project.id))]
 
   const openItems = fleetNeedsYouStatus(
     projects,
@@ -66,6 +70,7 @@ export async function respondNeedsYouAnswerCommand({
   const targeted = resolveNeedsYouAnswerTarget(message, {
     openItems,
     turnTargetProjectIds,
+    mentionedProjectIds,
     focusProjectId
   })
 

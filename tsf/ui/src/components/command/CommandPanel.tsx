@@ -200,7 +200,15 @@ export function CommandPanel({
     }
     setDraft(voice.transcript)
     if (handsFreeMode) {
-      send()
+      // REAL DOGFOOD FINDING (round 1, P0, Codex-confirmed): calling
+      // send() here with no argument read `draft` via this render's own
+      // stale closure -- setDraft() above only SCHEDULES an update, it
+      // doesn't mutate `draft` in place, so send() saw whatever `draft`
+      // was BEFORE this transcript arrived (empty -> the voice turn was
+      // silently dropped; non-empty leftover typed text -> that stale
+      // text was sent instead of what was actually spoken). Passing the
+      // transcript directly bypasses the stale read entirely.
+      send(voice.transcript)
     }
     // Deliberately keyed on voice.transcript alone: this effect should only
     // ever react to a NEW final transcript landing, reading handsFreeMode/
@@ -210,8 +218,8 @@ export function CommandPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
   }, [voice.transcript])
 
-  async function send() {
-    const text = draft.trim()
+  async function send(overrideText?: string) {
+    const text = (overrideText ?? draft).trim()
     if (!text || sending) {
       return
     }
@@ -444,7 +452,7 @@ export function CommandPanel({
           <Button
             size="icon-sm"
             disabled={!draft.trim() || sending}
-            onClick={send}
+            onClick={() => send()}
             aria-label="Send"
           >
             <SendHorizontal className="size-4" />

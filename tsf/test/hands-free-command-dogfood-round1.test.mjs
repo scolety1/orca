@@ -387,6 +387,106 @@ test('AMBIGUOUS NEEDS YOU: two open items with no named project and no focus -- 
   })
 })
 
+// REAL DOGFOOD FINDING (round 1, P0, Codex-confirmed), reproduced end to
+// end over real HTTP: focus is VOICE-ALPHA, both VOICE-ALPHA and
+// VOICE-ALPHA-TWO have one open item each, and the owner says "answer the
+// alpha two question" -- "alpha two" only fuzzy-matches VOICE-ALPHA-TWO
+// (not its exact registered name), so the bridge's own exact-only
+// turnTargetProjectIds came back empty and the request silently fell back
+// to resolving the FOCUSED project's item (VOICE-ALPHA) -- the wrong one.
+test("WRONG-PROJECT NEEDS-YOU MUTATION (P0, fixed): a fuzzy-only mention of a different project than focus refuses, never silently answers the focused project's item instead", async () => {
+  const alpha = seedDisposableProject('dogfood-ny-fuzzy-alpha', 'VOICE-ALPHA')
+  const alphaTwo = seedDisposableProject('dogfood-ny-fuzzy-alpha-two', 'VOICE-ALPHA-TWO')
+  await seedRunWithOpenQuestion(alpha.id, 'Which provider?')
+  await seedRunWithOpenQuestion(alphaTwo.id, 'Which environment?')
+  await withServer(async (base) => {
+    await chat(base, { projectId: null, message: `Let's work on ${alpha.displayName}.` })
+    const beforeAlpha = JSON.parse(JSON.stringify(readKeepGoingRun(alpha.id)))
+    const beforeAlphaTwo = JSON.parse(JSON.stringify(readKeepGoingRun(alphaTwo.id)))
+
+    const result = await chat(base, {
+      projectId: null,
+      message: 'Answer the alpha two question with option two.'
+    })
+    assert.equal(result.status, 200)
+    assert.deepEqual(
+      readKeepGoingRun(alpha.id).needsYou,
+      beforeAlpha.needsYou,
+      'the FOCUSED project (VOICE-ALPHA) must never be silently answered when the message actually named the OTHER project, even fuzzily'
+    )
+    assert.deepEqual(
+      readKeepGoingRun(alphaTwo.id).needsYou,
+      beforeAlphaTwo.needsYou,
+      'the fuzzily-named project must also stay untouched -- a real refusal, never a guessed resolution either way'
+    )
+  })
+})
+
+// =====================================================================
+// SECTION 6/12 -- CROSS-THREAD PERSISTENCE (reload history loss +
+// wrong-project follow-up mutation, both from the same root cause)
+// =====================================================================
+
+// REAL DOGFOOD FINDING (round 1, P0, Codex-confirmed), reproduced end to
+// end: a Command-scope turn that resolves to exactly one project (e.g.
+// "What is B doing?") only ever wrote into that project's OWN chat
+// thread, never into the durable __command__ thread the visible Command
+// transcript rehydrates from on reload -- this class of turn (extremely
+// common: any single-exact-match mention) silently vanished from the
+// transcript after every reload.
+test("CROSS-THREAD PERSISTENCE (P0, fixed): a single-exact-match Command turn survives in the __command__ thread, not just the project's own thread", async () => {
+  const nwr = seedDisposableProject('dogfood-thread-nwr', 'Dogfood-Thread-NWR')
+  await withServer(async (base) => {
+    await chat(base, { projectId: null, message: `What is ${nwr.displayName} doing?` })
+    const history = await (await fetch(`${base}/api/chat/__command__`)).json()
+    assert.ok(
+      history.some((entry) => entry.role === 'user' && entry.content.includes(nwr.displayName)),
+      "a single-exact-match Command turn must be visible in the durable __command__ thread, not only the project's own thread"
+    )
+  })
+})
+
+// REAL DOGFOOD FINDING (round 1, P0, Codex-confirmed), reproduced end to
+// end: same root cause as above, but with a real mutation consequence.
+// Focus is A. The owner asks a read-only status question about B (an
+// exact match, so it never moves focus off A) -- then says "pause that
+// project," a back-reference with no project name at all, which resolves
+// via command-responder.mjs's own lastReferencedProjectId. Before the
+// fix, that function only ever saw __command__ (which never contained
+// B's turn), so it fell back to durable focus and paused A -- the WRONG
+// project, silently, exactly the danger class this whole mission's
+// safety design exists to prevent.
+test('CROSS-THREAD PERSISTENCE (P0, fixed): "pause that project" after asking about a DIFFERENT project than focus targets the one actually just discussed, never the stale focus', async () => {
+  const a = seedDisposableProject('dogfood-thread-a', 'Dogfood-Thread-A')
+  const b = seedDisposableProject('dogfood-thread-b', 'Dogfood-Thread-B')
+  await seedActiveRun(a.id)
+  await seedActiveRun(b.id)
+  await withServer(async (base) => {
+    await chat(base, { projectId: null, message: `Let's work on ${a.displayName}.` })
+    const status = await chat(base, {
+      projectId: null,
+      message: `What is ${b.displayName} doing?`
+    })
+    assert.equal(
+      status.body.focusProjectId,
+      a.id,
+      'a status question about B must not move focus off A'
+    )
+
+    await chat(base, { projectId: null, message: 'Pause that project.' })
+    assert.equal(
+      readKeepGoingRun(b.id).state,
+      'PAUSED',
+      'the project the owner just asked about (B) must be the one paused'
+    )
+    assert.equal(
+      readKeepGoingRun(a.id).state,
+      'ACTIVE',
+      'the stale-focused project (A) must NOT be silently paused instead'
+    )
+  })
+})
+
 // =====================================================================
 // SECTION 8 -- VOICE AUTHORITY: STATUS vs DELIBERATIVE vs DIRECT
 // =====================================================================

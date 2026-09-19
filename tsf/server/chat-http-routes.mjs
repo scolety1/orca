@@ -902,6 +902,34 @@ export async function handleChatRoute(
         intent: result.intent
       }
     ].slice(-200)
+    // REAL DOGFOOD FINDING (round 1, P0, Codex-confirmed): a Command-scope
+    // single-exact-match turn (e.g. "Let's work on NWR") only ever wrote
+    // into `threads[project.id]` above, never `threads.__command__` --
+    // this had two real, compounding effects: (1) CommandConversationProvider
+    // only ever rehydrates `chatHistory('__command__')`, so this whole,
+    // very common class of turn silently vanished from the visible Command
+    // transcript on reload; (2) command-responder.mjs's own
+    // lastReferencedProjectId reads ONLY `chatThreads.__command__`, so a
+    // later back-reference ("pause that project") could resolve against
+    // stale durable focus instead of the project this turn actually
+    // named. Dual-write into __command__ too (never REPLACING the
+    // project's own thread -- Planner Chat's per-project view still needs
+    // it) whenever this was genuinely a Command-scope request, regardless
+    // of key.
+    if (isCommandScope && key !== '__command__') {
+      threads.__command__ = [
+        ...(threads.__command__ ?? []),
+        { role: 'user', content: message, at: new Date().toISOString(), ...attachmentSummary },
+        {
+          role: 'assistant',
+          content: result.text,
+          at: new Date().toISOString(),
+          decisionClass: result.decisionClass,
+          intent: result.intent,
+          resolvedProjectIds: result.resolvedProjectIds ?? []
+        }
+      ].slice(-200)
+    }
     // Hands-Free Command + Project Manager V1: this shared save path also
     // handles Command's own single-exact-match short-circuit (e.g. "Let's
     // work on NWR" resolving straight into NWR's own handling above,
