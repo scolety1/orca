@@ -29,6 +29,7 @@ import {
   isExplicitSwitchMessage,
   isGoBackMessage
 } from '../domain/command-conversation-focus.mjs'
+import { buildProjectManagerSnapshot } from '../domain/project-manager-snapshot.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
 import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
@@ -409,6 +410,23 @@ export async function handleChatRoute(
     const liveGap = liveRun
       ? compareStateToGoal(liveRun, { verifiedSatisfied: [] }, () => new Date())
       : null
+    // Hands-Free Command + Project Manager V1: the "one logical Project
+    // Manager capability" the mission spec asks for -- composed entirely
+    // from existing, already-read opState slices (no new store, no new
+    // scheduler). Grounds respond()'s own footer below; additive only.
+    const projectManagerSnapshot = project
+      ? buildProjectManagerSnapshot(
+          project,
+          {
+            keepGoingRun: liveRun ?? undefined,
+            researchMissions: opState.researchMissions,
+            plannerMissionRecords: opState.plannerMissions,
+            projectExecutionHold: opState.projectExecutionHolds?.[project.id],
+            canonicalBase: opState.projectCanonicalBases?.[project.id]
+          },
+          () => new Date()
+        )
+      : null
     // Uses the exact same relevance rule respond() itself applies
     // (chat-responder.mjs's isLiveRunRelevantFor) so this "should I
     // skip the live conversational call" decision can never drift
@@ -774,7 +792,7 @@ export async function handleChatRoute(
       // may well be configured and reachable, it was just deliberately
       // not called for this message.
       result = {
-        ...respond(project, message, liveRun, liveGap),
+        ...respond(project, message, liveRun, liveGap, projectManagerSnapshot),
         providerLabel: 'PLANNER_DEEP · policy refusal — consequential action, no live call made',
         live: false
       }
@@ -788,7 +806,7 @@ export async function handleChatRoute(
       })
     } else if (groundedResponseWorthy) {
       result = {
-        ...respond(project, message, liveRun, liveGap),
+        ...respond(project, message, liveRun, liveGap, projectManagerSnapshot),
         providerLabel: statusWorthy
           ? 'PLANNER_DEEP · grounded in the live Keep Going run, no live call made'
           : 'PLANNER_DEEP · grounded in recorded project state, no live call made',
@@ -819,7 +837,7 @@ export async function handleChatRoute(
         }
       } else {
         result = {
-          ...respond(project, message, liveRun, liveGap),
+          ...respond(project, message, liveRun, liveGap, projectManagerSnapshot),
           providerLabel: fallbackLabel(live.reason),
           live: false,
           unavailableReason: live.reason,

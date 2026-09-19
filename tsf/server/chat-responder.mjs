@@ -313,7 +313,9 @@ const ACKNOWLEDGEMENT_PATTERN = {
       .split(/[!.,;:]+/)
       .map((s) => s.trim())
       .filter(Boolean)
-    if (segments.length === 0) return false
+    if (segments.length === 0) {
+      return false
+    }
     return segments.every(isAcknowledgementSegment)
   }
 }
@@ -933,11 +935,41 @@ function liveRunFooter(run, gap) {
   return ` (${describeLiveRunStatus(run, gap)})`
 }
 
+// Hands-Free Command + Project Manager V1: a small, additive footer
+// grounding the answer in the SAME canonical project awareness the mission
+// spec's Project Manager section asks for (research/holds/Needs You),
+// composed by domain/project-manager-snapshot.mjs -- never a second,
+// independently-derived summary. Optional and additive: a caller with no
+// snapshot (every existing caller before this) gets identical text to
+// before, unchanged.
+function projectManagerFooter(snapshot) {
+  if (!snapshot) {
+    return ''
+  }
+  const notes = []
+  if (snapshot.projectExecutionHold) {
+    notes.push('an active execution hold')
+  }
+  if (snapshot.openNeedsYou.length > 0) {
+    notes.push(
+      `${snapshot.openNeedsYou.length} open Needs You item${snapshot.openNeedsYou.length === 1 ? '' : 's'}`
+    )
+  }
+  if (snapshot.openResearchMissions.length > 0) {
+    notes.push(
+      `${snapshot.openResearchMissions.length} research mission${snapshot.openResearchMissions.length === 1 ? '' : 's'}`
+    )
+  }
+  return notes.length > 0 ? ` [also: ${notes.join(', ')}]` : ''
+}
+
 // `run` (a real Keep Going domain run, or null) and `gap` (compareStateToGoal's
 // output, or null) are both optional -- callers with no live run for this
 // project (or that haven't wired the lookup) get the exact prior
-// behavior, unchanged.
-export function respond(project, message, run = null, gap = null) {
+// behavior, unchanged. `snapshot` (domain/project-manager-snapshot.mjs's
+// buildProjectManagerSnapshot output, or null) is likewise optional and
+// purely additive -- see projectManagerFooter above.
+export function respond(project, message, run = null, gap = null, snapshot = null) {
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
   const text = !project
@@ -945,8 +977,9 @@ export function respond(project, message, run = null, gap = null) {
     : decisionClass === 'TIM_REQUIRED'
       ? respondTimRequired(project)
       : isLiveRunRelevantFor(intent, run)
-        ? respondStatusOrNextActionFromRun(intent, project, run, gap)
-        : RESPONDERS[intent](project) + liveRunFooter(run, gap)
+        ? respondStatusOrNextActionFromRun(intent, project, run, gap) +
+          projectManagerFooter(snapshot)
+        : RESPONDERS[intent](project) + liveRunFooter(run, gap) + projectManagerFooter(snapshot)
   return {
     intent,
     decisionClass,
