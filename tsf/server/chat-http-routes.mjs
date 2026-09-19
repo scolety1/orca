@@ -30,6 +30,7 @@ import {
   isGoBackMessage
 } from '../domain/command-conversation-focus.mjs'
 import { buildProjectManagerSnapshot } from '../domain/project-manager-snapshot.mjs'
+import { respondNeedsYouAnswerCommand } from './command-needs-you-answer-bridge.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
 import { attachDueCompletionNotices } from './completion-watch-reconciler.mjs'
@@ -629,12 +630,33 @@ export async function handleChatRoute(
           })
     }
 
+    // Hands-Free Command + Project Manager V1: "answer the NWR question
+    // with option two" typed directly into NWR's own Planner Chat is
+    // unambiguously about THIS project -- its own id stands in for focus,
+    // matching the bridge's own doc comment (a project-scoped chat is as
+    // good as an explicit turn target). Checked early, same reasoning as
+    // every other project-scoped bridge below: never fall through to the
+    // live planner and get answered as free text instead of a real,
+    // governed action-executor resolution.
+    let needsYouAnswerResult = null
+    if (project && decisionClass !== 'TIM_REQUIRED' && intent === 'NEEDS_YOU_ANSWER') {
+      needsYouAnswerResult = await respondNeedsYouAnswerCommand({
+        message,
+        projects,
+        opState,
+        focusProjectId: project.id,
+        clock: () => new Date(),
+        aliases: loadProjectAliases()
+      })
+    }
+
     let runActionResult = null
     if (
       project &&
       !projectResearchResult &&
       decisionClass !== 'TIM_REQUIRED' &&
-      !adoptionCommandResult
+      !adoptionCommandResult &&
+      !needsYouAnswerResult
     ) {
       const runActionVerb = classifyRunActionVerb(message)
       if (runActionVerb === 'PAUSE') {
@@ -775,6 +797,8 @@ export async function handleChatRoute(
 
     if (!project) {
       result = respond(project, message)
+    } else if (needsYouAnswerResult) {
+      result = needsYouAnswerResult
     } else if (projectResearchResult) {
       result = projectResearchResult
     } else if (adoptionCommandResult) {

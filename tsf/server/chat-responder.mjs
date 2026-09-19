@@ -370,6 +370,22 @@ export const CANONICAL_STATUS_FACT_PATTERN =
   /\bstatus\b|(?:^|[.!?]\s+)(?:what(?:'?s| is) [^.!?]{1,80}? doing\b|is\s+[^.!?]{0,80}?\b(?:on hold|held|paused|working|active|blocked)\b|why\s+[^.!?]{0,80}?\b(?:waiting|on hold|paused|held|stuck|blocked)\b|can\s+(?:tsf|we|you|it|someone|anyone|anybody|i|the team|the fleet)\s+work on\b)/i
 
 const INTENTS = [
+  // Hands-Free Command + Project Manager V1: a routing signal only -- does
+  // this message look like an owner answering an open Needs You/approval
+  // item at all? Never a resolver itself (domain/command-needs-you-answer-
+  // targeting.mjs owns which real item, if any, it actually targets).
+  // Checked FIRST, before any broader pattern below could otherwise claim
+  // an answer-shaped message (e.g. DISPATCH_REQUEST's own "go ahead"-style
+  // phrasing). Deliberately conservative: requires an explicit "answer ...
+  // question" framing, an explicit "yes, authorize/approve" (never a bare
+  // "yes" alone -- too common a word to trust on its own, same discipline
+  // command-responder.mjs's own BACK_REFERENCE_PATTERN already applies), or
+  // an explicit "option <word/number>" reference.
+  {
+    id: 'NEEDS_YOU_ANSWER',
+    pattern:
+      /\banswer (the )?[\s\S]*?question\b|\byes,?\s*(authorize|approve) it\b|\boption\s*(one|two|three|four|five|\d+)\b/i
+  },
   {
     id: 'STATUS',
     // "what is it doing?" is Tim's own exact north-star follow-up phrasing

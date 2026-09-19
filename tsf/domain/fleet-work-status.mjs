@@ -73,25 +73,37 @@ export function fleetNeedsYouStatus(
   const items = []
   for (const [projectId, run] of Object.entries(keepGoingRuns)) {
     for (const entry of run.needsYou ?? []) {
-      if (entry.resolvedAt) continue
+      if (entry.resolvedAt) {
+        continue
+      }
       items.push({
         source: 'PROJECT',
         label: displayNameById.get(projectId) ?? projectId,
         id: entry.id,
         question: entry.question,
-        projectId
+        projectId,
+        // Hands-Free Command + Project Manager V1: the real `target`
+        // action-executor.mjs's RESOLVE_NEEDS_YOU expects for this source
+        // (a bare project id) -- added so a caller (e.g. the conversational
+        // Needs-You answer bridge) never has to re-derive it or parse it
+        // back out of `label`, which was never a stable machine-readable
+        // contract.
+        targetId: projectId
       })
     }
   }
   for (const mission of Object.values(researchMissions)) {
     for (const entry of mission.needsYou ?? []) {
-      if (entry.resolvedAt) continue
+      if (entry.resolvedAt) {
+        continue
+      }
       items.push({
         source: 'RESEARCH',
         label: `Research ${mission.id}`,
         id: entry.id,
         question: entry.question,
-        projectId: mission.projectId ?? null
+        projectId: mission.projectId ?? null,
+        targetId: mission.id
       })
     }
   }
@@ -105,7 +117,8 @@ export function fleetNeedsYouStatus(
         label: `Planner ${missionId}`,
         id: entry.id,
         question: entry.question,
-        projectId: null
+        projectId: null,
+        targetId: missionId
       })
     }
   }

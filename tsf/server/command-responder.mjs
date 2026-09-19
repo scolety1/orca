@@ -43,6 +43,10 @@ import {
   respondFleetAttentionCommand
 } from './command-fleet-attention-bridge.mjs'
 import {
+  shouldRouteToNeedsYouAnswerBridge,
+  respondNeedsYouAnswerCommand
+} from './command-needs-you-answer-bridge.mjs'
+import {
   classifyMultiActionEntries,
   classifySingleTargetHoldEntries,
   respondMultiActionCommand
@@ -188,6 +192,22 @@ export async function respondCommand({
     if (researchResult) {
       return researchResult
     }
+  }
+  // Hands-Free Command + Project Manager V1: checked early, same layer as
+  // the bridges above -- "answer the NWR question with option two"/"yes,
+  // authorize it" is never about resolving a NEW project/dispatching new
+  // work, so it must never fall through to that logic below and be
+  // misread as a plain status question or an unrouted-scope fallback.
+  if (shouldRouteToNeedsYouAnswerBridge(message)) {
+    return respondNeedsYouAnswerCommand({
+      message,
+      projects,
+      opState,
+      focusProjectId: opState.commandFocus?.focusProjectId ?? null,
+      clock,
+      aliases,
+      deps: deps.needsYouAnswer ?? {}
+    })
   }
   // Phase 1 (UI_DOGFOOD_AGENT_V0), 1D: same reasoning as the research
   // bridge above -- "dogfood the app"/"review Orca's UI" is never a
