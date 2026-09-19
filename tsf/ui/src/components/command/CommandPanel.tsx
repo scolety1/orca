@@ -15,6 +15,7 @@ import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { useCommandConversation, type CommandMessage } from '@/lib/command-conversation-context'
 import { useVoiceSession } from '@/lib/voice/use-voice-session'
 import { summarizeForSpeech } from '@/lib/voice/speech-summary'
+import { CommandVoiceErrorBanner } from '@/components/command/CommandVoiceErrorBanner'
 import { useApi } from '@/lib/use-api'
 import { buildGlobalRunStatusItems, globalRunStatusLabel } from '@/lib/global-run-status'
 import { isResearchMissionWorkItem, type WorkSummary } from '@/lib/types'
@@ -375,7 +376,7 @@ export function CommandPanel({
       )}
       {voice.error && voice.error.code !== 'no-speech' && (
         <div className="border-t border-border px-4 py-2 text-[11px] text-destructive">
-          Voice input: {voice.error.message}
+          <CommandVoiceErrorBanner error={voice.error} />
         </div>
       )}
       {voice.listening && voice.interimTranscript && (
