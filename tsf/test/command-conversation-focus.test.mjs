@@ -28,6 +28,20 @@ test('nextCommandFocus: dispatch-worthy message naming a project sets focus AND 
   assert.equal(next.focusProjectId, 'nwr')
 })
 
+test('isExplicitSwitchMessage: a natural spoken correction ("No, I meant X") is recognized -- real dogfood-round-1 finding', () => {
+  assert.equal(isExplicitSwitchMessage('No, I meant VOICE-ALPHA.'), true)
+  assert.equal(isExplicitSwitchMessage('I meant the other one.'), true)
+})
+
+test('nextCommandFocus: a correction phrasing moves focus given a real single exact target, same as an explicit switch', () => {
+  const next = nextCommandFocus(
+    { focusProjectId: null, recentProjectStack: [], updatedAt: clock().toISOString() },
+    { turnTargetProjectIds: ['voice-alpha'], decisionClass: 'AUTO_DECIDE', isExplicitSwitch: true },
+    clock
+  )
+  assert.equal(next.focusProjectId, 'voice-alpha')
+})
+
 test('nextCommandFocus: explicit switch moves focus and pushes the old focus onto the stack ("switch to TSF")', () => {
   const next = nextCommandFocus(
     { focusProjectId: 'nwr', recentProjectStack: [], updatedAt: clock().toISOString() },

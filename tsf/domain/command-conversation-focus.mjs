@@ -14,8 +14,17 @@ import { isoNow } from './canonical.mjs'
 
 export const RECENT_PROJECT_STACK_CAP = 8
 
+// REAL DOGFOOD FINDING (round 1, misrecognition/correction safety): a
+// natural spoken correction after a misrecognized/ambiguous turn -- "No, I
+// meant X" -- did not move focus at all, even with a single exact target,
+// because it matched none of the original switch phrasings. "I meant" is
+// bounded-safe to add: it still requires the caller's OWN exact-match
+// target resolution to have found exactly one project in the same
+// message, so this can never manufacture a target out of nothing -- it
+// only widens which phrasings are TRUSTED to act on a target already
+// found by that separate, stricter, unaffected mechanism.
 const EXPLICIT_SWITCH_PATTERN =
-  /\b(?:switch(?:\s+(?:to|over to))?|let'?s work on|focus on|talk about)\b/i
+  /\b(?:switch(?:\s+(?:to|over to))?|let'?s work on|focus on|talk about|I meant)\b/i
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
 
 // Real, narrow, conservative regex classifiers -- deliberately NOT reusing
