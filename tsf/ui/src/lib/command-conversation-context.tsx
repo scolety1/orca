@@ -123,6 +123,32 @@ export function CommandConversationProvider({ children }: { children: ReactNode 
       cancelled = true
     }
   }, [])
+  // Hands-Free Command + Project Manager V1: rehydrate the durable
+  // CURRENT FOCUS / RECENT PROJECT STACK on mount too, same as history
+  // above -- without this, "Talking about: <project>" only appeared
+  // after the NEXT turn's ChatResponse, silently disappearing on every
+  // page reload even though the server's own commandFocus survived it
+  // (see test/http-command-focus-persistence.test.mjs's own restart
+  // proof). A guard against clobbering a focus a fast first turn may
+  // have already set locally, mirroring the history effect's own guard.
+  useEffect(() => {
+    let cancelled = false
+    api
+      .commandFocus()
+      .then((focus) => {
+        if (cancelled) {
+          return
+        }
+        setFocusProjectId((prev) => prev ?? focus.focusProjectId)
+        setRecentProjectStack((prev) => (prev.length === 0 ? focus.recentProjectStack : prev))
+      })
+      .catch((err) => {
+        console.error('Failed to rehydrate Command focus:', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const addMessage = useCallback((message: CommandMessage) => {
     setMessages((prev) => [...prev, message])
   }, [])

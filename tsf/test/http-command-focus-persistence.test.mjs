@@ -115,6 +115,27 @@ test('real HTTP: a genuine Planner Chat request (projectId explicitly set) never
   })
 })
 
+test('real HTTP: GET /api/chat/__command__/focus reads back the durable focus a prior turn set, for client rehydration on mount/reload', async () => {
+  await withServer(async (base) => {
+    await chat(base, { projectId: null, message: `Let's work on ${PROJECT_A}.` })
+    const res = await fetch(`${base}/api/chat/__command__/focus`)
+    const body = await res.json()
+    assert.equal(res.status, 200)
+    assert.equal(body.focusProjectId, PROJECT_A)
+    assert.deepEqual(body.recentProjectStack, [])
+  })
+})
+
+test('real HTTP: GET /api/chat/__command__/focus degrades to an empty-but-well-formed object, never null, before any Command turn has set focus', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/chat/__command__/focus`)
+    const body = await res.json()
+    assert.equal(res.status, 200)
+    assert.equal(body.focusProjectId, null)
+    assert.deepEqual(body.recentProjectStack, [])
+  })
+})
+
 test('RESTART_DURABILITY: focus persists in the real, on-disk store, readable independently of any running server', async () => {
   await withServer(async (base) => {
     await chat(base, { projectId: null, message: `Let's work on ${PROJECT_A}.` })

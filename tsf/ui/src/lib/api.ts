@@ -45,6 +45,7 @@ import type {
   ChatAttachmentMeta,
   ChatMessage,
   ChatResponse,
+  CommandFocusResponse,
   Portfolio,
   ProjectCard,
   ProjectDetail,
@@ -169,6 +170,10 @@ export const api = {
     }),
   chatHistory: (projectId: string) =>
     request<ChatMessage[]>(`/chat/${encodeURIComponent(projectId)}`),
+  // Hands-Free Command: a read-back of the durable CURRENT FOCUS / RECENT
+  // PROJECT STACK, so the client can rehydrate "Talking about: <project>"
+  // on mount/reload -- mirrors ChatResponse's own focus fields.
+  commandFocus: () => request<CommandFocusResponse>('/chat/__command__/focus'),
   fleetStatus: () => request<FleetWorkStatusItem[]>('/fleet/status'),
   // GET /api/research[?projectId=] -- HQ's Active Research, Work's Research
   // filter, Project detail's "Research for this project".

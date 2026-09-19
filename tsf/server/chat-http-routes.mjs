@@ -946,6 +946,22 @@ export async function handleChatRoute(
     return true
   }
 
+  // GET /api/chat/__command__/focus -- Hands-Free Command + Project
+  // Manager V1: a read-back of the durable CURRENT FOCUS / RECENT
+  // PROJECT STACK (domain/command-conversation-focus.mjs's own output,
+  // persisted as opState.commandFocus), so the client can rehydrate
+  // "Talking about: <project>" on mount/reload -- the same real state a
+  // live turn's ChatResponse already carries, not independently derived.
+  if (
+    parts.length === 4 &&
+    parts[2] === '__command__' &&
+    parts[3] === 'focus' &&
+    req.method === 'GET'
+  ) {
+    json(res, 200, opState.commandFocus ?? { focusProjectId: null, recentProjectStack: [] })
+    return true
+  }
+
   // GET /api/chat/:projectId (history)
   if (parts.length === 3 && req.method === 'GET') {
     json(res, 200, opState.chatThreads[parts[2]] ?? [])

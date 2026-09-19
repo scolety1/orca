@@ -1,9 +1,27 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createElement, act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CommandConversationProvider, useCommandConversation } from './command-conversation-context'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+// Mocked so the GET /api/chat/__command__/focus rehydration test below can
+// control exactly what the "durable focus" read-back returns, without a
+// real server -- the OTHER tests in this file never touch these mocks'
+// return values, so their default (empty/no-op) resolution is harmless.
+const chatHistoryMock = vi.fn()
+const commandFocusMock = vi.fn()
+vi.mock('@/lib/api', () => ({
+  api: {
+    chatHistory: (...args: unknown[]) => chatHistoryMock(...args),
+    commandFocus: (...args: unknown[]) => commandFocusMock(...args)
+  }
+}))
+
+beforeEach(() => {
+  chatHistoryMock.mockReset().mockResolvedValue([])
+  commandFocusMock.mockReset().mockResolvedValue({ focusProjectId: null, recentProjectStack: [] })
+})
 
 // Full Command Mode's real, load-bearing property: the dock's floating
 // CommandPanel and the full-page /command CommandPanel are two SEPARATE
@@ -81,6 +99,31 @@ describe('CommandConversationProvider', () => {
     expect(container.querySelector('[data-testid="reader-focus"]')?.textContent).toBe('nwr')
     expect(container.querySelector('[data-testid="reader-stack"]')?.textContent).toBe('tsf')
     expect(container.querySelector('[data-testid="reader-hands-free"]')?.textContent).toBe('true')
+
+    act(() => root.unmount())
+    container.remove()
+  })
+
+  it('rehydrates CURRENT FOCUS / RECENT PROJECT STACK from GET /api/chat/__command__/focus on mount, surviving a reload', async () => {
+    commandFocusMock.mockResolvedValueOnce({ focusProjectId: 'nwr', recentProjectStack: ['tsf'] })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        createElement(
+          CommandConversationProvider,
+          null,
+          createElement(FocusReader, { testId: 'rehydrated' })
+        )
+      )
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="rehydrated-focus"]')?.textContent).toBe('nwr')
+    expect(container.querySelector('[data-testid="rehydrated-stack"]')?.textContent).toBe('tsf')
 
     act(() => root.unmount())
     container.remove()

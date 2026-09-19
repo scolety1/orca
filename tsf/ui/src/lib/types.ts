@@ -349,6 +349,11 @@ export type ChatResponse = {
   }[]
 }
 
+// The GET /api/chat/__command__/focus read-back -- same fields as
+// ChatResponse's own focus pair, for rehydrating on mount/reload. Always
+// an object (never null) -- an unset focus is { null, [] }, not absence.
+export type CommandFocusResponse = { focusProjectId: string | null; recentProjectStack: string[] }
+
 export type ChatAttachmentMeta = {
   name: string
   type: string
