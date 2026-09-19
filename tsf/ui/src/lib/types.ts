@@ -33,11 +33,7 @@ export type Health = {
   authority: string
 }
 
-export type ReleaseRef = {
-  head: string | null
-  tree: string | null
-  branch?: string | null
-}
+export type ReleaseRef = { head: string | null; tree: string | null; branch?: string | null }
 
 export type Release = {
   stable: ReleaseRef
