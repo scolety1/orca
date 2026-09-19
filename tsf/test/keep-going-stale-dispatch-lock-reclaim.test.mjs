@@ -76,21 +76,60 @@ test('reclaimExpiredDispatchLock refuses a still-genuinely-active (not yet expir
 // two SEPARATE `store.withRun` commits -- a crash (or a storage failure)
 // between them left a FRESH tickLock/dispatchAttempt durably persisted
 // with nothing to ever release it, recreating the exact permanent wedge
-// this module exists to fix. Proves the fix: a single injected storage
-// failure on the ONE remaining `withRun` call must leave the run in
-// EXACTLY its pre-attempt state -- never a half-claimed one.
-test('reclaimExpiredDispatchLock: a storage failure during the single atomic commit never leaves a half-claimed lock behind', async () => {
+// this module exists to fix.
+//
+// Real adversarial-review finding (round 2): the first version of this
+// test injected a failure on the FIRST withRun call, which the OLD,
+// vulnerable two-commit implementation also caught and reported
+// {reclaimed:false} for -- it never reached the actual crash window (after
+// a successful claim, before the release commits), so it would have
+// passed against the bug it claimed to prove fixed. This version asserts
+// withRun is called exactly ONCE (proving claim+release are the same
+// commit, not two), which only the atomic, single-mutation implementation
+// can satisfy.
+test('reclaimExpiredDispatchLock: claim and release happen inside exactly ONE store.withRun commit, closing the crash window between them', async () => {
+  const run = {
+    ...baseRun(),
+    tickLock: { kind: 'DISPATCH', claimedAt: '2026-08-20T04:56:00.000Z', timeoutMs: 2 * 60 * 1000 }
+  }
+  let current = run
+  let withRunCallCount = 0
+  const countingStore = {
+    readRun: () => current,
+    withRun: (_projectId, mutateFn) => {
+      withRunCallCount += 1
+      current = mutateFn(current)
+      return current
+    }
+  }
+  const result = await reclaimExpiredDispatchLock(PROJECT_ID, clock, countingStore)
+  assert.equal(result.reclaimed, true)
+  assert.equal(
+    withRunCallCount,
+    1,
+    'claim and release must be the same commit -- two separate commits reopens the crash window'
+  )
+  assert.equal(current.tickLock, null)
+  assert.equal(current.dispatchAttempt, null)
+})
+
+// Companion case: if that single commit itself fails (a real storage
+// failure, or a process crash before it lands), the real store's own
+// atomic-rename contract (verified against the REAL store in round 2)
+// guarantees the mutation was never applied at all -- proven here with a
+// fake store matching that same "all or nothing" contract.
+test('reclaimExpiredDispatchLock: a storage failure on that single commit leaves the run in exactly its pre-attempt state', async () => {
   const run = {
     ...baseRun(),
     tickLock: { kind: 'DISPATCH', claimedAt: '2026-08-20T04:56:00.000Z', timeoutMs: 2 * 60 * 1000 }
   }
   const originalTickLock = JSON.stringify(run.tickLock)
-  let current = run
+  const current = run
   const faultyStore = {
     readRun: () => current,
     withRun: () => {
-      // The real store's own contract: a failed commit never applies the
-      // mutation -- `current` is untouched by a throwing withRun call.
+      // The real store's own contract (server/data-store.mjs: write-temp +
+      // atomic rename): a failed commit never applies the mutation.
       throw new Error('simulated storage failure')
     }
   }

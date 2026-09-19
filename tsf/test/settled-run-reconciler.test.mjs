@@ -162,6 +162,40 @@ test('deriveWorktreePath honestly returns null (never a fabricated path) for nam
   }
 })
 
+// Real adversarial-review finding (round 2): `active`/`current` are real,
+// documented `--worktree` values (never filesystem paths); `new-child`/
+// `new-top-level` are worktree-creation directives, never a stable
+// identifier for an already-placed worktree. All four previously fell
+// through to "no prefix, no `::`, assume already a bare path", silently
+// mis-resolving to a literal (wrong) relative path.
+test('deriveWorktreePath honestly returns null for active/current/new-child/new-top-level -- these are never filesystem paths', () => {
+  for (const selector of ['active', 'current', 'new-child', 'new-top-level']) {
+    const run = withSettledWave(baseRun(), selector, clock().toISOString())
+    assert.equal(deriveWorktreePath(run), null, `expected null for ${selector}`)
+  }
+})
+
+// Real adversarial-review finding (round 2): the round-1 fix split on the
+// LAST `::`, but Orca core's own real grammar (src/shared/worktree-id.ts,
+// splitWorktreeIdForFilesystem) splits on the FIRST `::` and separately
+// strips a trailing `::workspace:<uuid>` folder-workspace-instance suffix.
+// Splitting on the last `::` instead silently corrupted this exact real
+// shape, deriving the workspace-instance suffix as the "path" rather than
+// the real folder path.
+test('deriveWorktreePath resolves a real folder-workspace composite id (id:<repo>::<path>::workspace:<uuid>) to the real folder path, not the workspace-instance suffix', () => {
+  const run = withSettledWave(
+    baseRun(),
+    'id:fake-repo-id::C:/some/folder/project::workspace:123e4567-e89b-12d3-a456-426614174000',
+    clock().toISOString()
+  )
+  assert.equal(deriveWorktreePath(run), 'C:/some/folder/project')
+})
+
+test('deriveWorktreePath splits an id: selector on the FIRST :: separator, not the last -- correct even if the path portion itself contains ::', () => {
+  const run = withSettledWave(baseRun(), 'id:fake-repo-id::/tmp/weird::path', clock().toISOString())
+  assert.equal(deriveWorktreePath(run), '/tmp/weird::path')
+})
+
 test('gatherWorktreeEvidence reports EVIDENCE_UNAVAILABLE (never a fabricated clean report) for an unresolvable name: selector', async () => {
   const run = withSettledWave(baseRun(), 'name:some-worktree', new Date().toISOString())
   const evidence = await gatherWorktreeEvidence(run)

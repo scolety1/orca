@@ -49,16 +49,38 @@ export function verificationVerdictPath(runId) {
 // makes CreateProcess report the child itself as not found, not the cwd).
 //
 // `id:<repoId>::<path>` and `path:<path>` are the only forms this can
-// honestly resolve to a real fs path without a live Orca CLI call (the
-// substring after Orca's own `::`, or after the `path:` prefix). Real
-// adversarial-review finding (round 1): `name:`/`branch:`/`issue:`/
-// `identity:` selectors name a worktree ORCA itself must resolve -- there
-// is no filesystem path derivable from the selector text alone, and
-// silently treating one as a literal local path would either fail
-// confusingly or, worse, coincidentally match an unrelated local path.
-// Returns null (unresolvable) for those rather than guessing. A bare
-// string with no recognized prefix and no `::` is assumed to already be a
-// real fs path (unchanged from before this normalization existed).
+// honestly resolve to a real fs path without a live Orca CLI call. Real
+// adversarial-review finding (round 2): the `id:` form's own real parsing
+// grammar (Orca core's src/shared/worktree-id.ts -- splitWorktreeIdForFilesystem)
+// splits on the FIRST `::`, never the last, then separately strips a
+// trailing `::workspace:<uuid>` folder-workspace-instance suffix from the
+// path half (a folder project can have multiple workspace sessions backed
+// by the same directory; their composite ids carry that suffix, but
+// filesystem callers need the real folder path). Splitting on the LAST
+// `::` instead -- this function's own round-1 approach -- silently
+// corrupted any real folder-workspace id (deriving the workspace-instance
+// suffix as the "path") and any POSIX path that happens to contain a
+// literal `::` substring (legal, if unusual). Mirrored here (not imported:
+// that file is Orca core TypeScript, a different package/build this plain
+// Node process cannot reach) rather than reinventing a different grammar.
+//
+// Real adversarial-review finding (round 2): `active`/`current` are real,
+// documented selector values (`orca orchestration worker-start --help`)
+// that are NOT filesystem paths -- bare words with no recognized prefix,
+// so the round-1 fallback ("no prefix, no `::` -> assume already a bare
+// path") silently mis-resolved them to a literal `./active`/`./current`
+// relative path. Added to the unresolvable set alongside `new-child`/
+// `new-top-level` (worktree-creation directives, never a stable identifier
+// for an already-placed worktree) for the same defensive reason.
+//
+// `name:`/`branch:`/`issue:`/`identity:` selectors name a worktree ORCA
+// itself must resolve -- there is no filesystem path derivable from the
+// selector text alone, and silently treating one as a literal local path
+// would either fail confusingly or, worse, coincidentally match an
+// unrelated local path. Returns null (unresolvable) for all of the above
+// rather than guessing. A bare string with no recognized prefix/value and
+// no `::` is assumed to already be a real fs path (unchanged from before
+// this normalization existed).
 //
 // Live-confirmed safe to also reuse for Orca's own `--worktree` argument on
 // a re-dispatch (buildVerificationWorkItem/buildContinuationWorkItem
@@ -79,19 +101,27 @@ export function verificationVerdictPath(runId) {
 // collide with an unrelated LOCAL path of the same shape rather than
 // failing outright, which is worth a real follow-up (host-aware git
 // evidence gathering) but out of scope for this fix.
-const RESOLVABLE_PREFIX_MARKER = '::'
+const ID_SELECTOR_MARKER = '::'
 const WORKTREE_PATH_PREFIX = 'path:'
 const UNRESOLVABLE_SELECTOR_PREFIXES = ['name:', 'branch:', 'issue:', 'identity:']
+const UNRESOLVABLE_SELECTOR_VALUES = new Set(['active', 'current', 'new-child', 'new-top-level'])
+// Mirrors Orca core's FOLDER_WORKSPACE_INSTANCE_SUFFIX (src/shared/worktree-id.ts).
+const FOLDER_WORKSPACE_INSTANCE_SUFFIX = /::workspace:[0-9a-f-]{36}$/
 
 function toFilesystemWorktreePath(worktreeIdentifier) {
-  const markerIndex = worktreeIdentifier.lastIndexOf(RESOLVABLE_PREFIX_MARKER)
+  const markerIndex = worktreeIdentifier.indexOf(ID_SELECTOR_MARKER)
   if (markerIndex !== -1) {
-    return worktreeIdentifier.slice(markerIndex + RESOLVABLE_PREFIX_MARKER.length)
+    return worktreeIdentifier
+      .slice(markerIndex + ID_SELECTOR_MARKER.length)
+      .replace(FOLDER_WORKSPACE_INSTANCE_SUFFIX, '')
   }
   if (worktreeIdentifier.startsWith(WORKTREE_PATH_PREFIX)) {
     return worktreeIdentifier.slice(WORKTREE_PATH_PREFIX.length)
   }
-  if (UNRESOLVABLE_SELECTOR_PREFIXES.some((prefix) => worktreeIdentifier.startsWith(prefix))) {
+  if (
+    UNRESOLVABLE_SELECTOR_VALUES.has(worktreeIdentifier) ||
+    UNRESOLVABLE_SELECTOR_PREFIXES.some((prefix) => worktreeIdentifier.startsWith(prefix))
+  ) {
     return null
   }
   return worktreeIdentifier
