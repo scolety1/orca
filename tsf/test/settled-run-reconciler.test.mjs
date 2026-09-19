@@ -232,6 +232,35 @@ test('deriveWorktreePath returns null (never throws) for a non-string, truthy it
   assert.equal(deriveWorktreePath(run), null)
 })
 
+// Real adversarial-review finding (round 5, P2): the first item scanned
+// having an unresolvable/malformed `worktree` (e.g. a workerTerminal-placed
+// item with a garbage non-string worktree field) used to make the whole
+// function give up, even when a LATER item in the same wave carries a
+// real, resolvable worktree. Falling through to the next candidate instead
+// of stopping at the first truthy-but-unresolvable one fixes this.
+test("deriveWorktreePath falls through to a later item's resolvable worktree when an earlier item's worktree is unresolvable", () => {
+  const run = {
+    ...baseRun(),
+    waves: [
+      {
+        digest: 'd1',
+        wavePlan: {
+          waveNumber: 1,
+          batches: [
+            [
+              { id: 'terminal-item', workerTerminal: 'term-1', worktree: { unexpected: 'object' } },
+              { id: 'path-item', worktree: 'path:C:/real/worktree' }
+            ]
+          ]
+        },
+        waveResult: { outcomes: [], settledAt: clock().toISOString() },
+        recordedAt: clock().toISOString()
+      }
+    ]
+  }
+  assert.equal(deriveWorktreePath(run), 'C:/real/worktree')
+})
+
 test('gatherWorktreeEvidence reports EVIDENCE_UNAVAILABLE (never a fabricated clean report) for an unresolvable name: selector', async () => {
   const run = withSettledWave(baseRun(), 'name:some-worktree', new Date().toISOString())
   const evidence = await gatherWorktreeEvidence(run)

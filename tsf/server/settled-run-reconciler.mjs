@@ -178,13 +178,23 @@ function toFilesystemWorktreePath(worktreeIdentifier) {
 // is more likely to have its evidence gathered against only one of them.
 // A real follow-up (aggregating evidence across every worktree a run's
 // waves reference) is out of scope for this fix chain.
+//
+// Real adversarial-review finding (round 5, P2): only skipping to the next
+// candidate once one resolves (rather than stopping at the first truthy-
+// but-unresolvable `item.worktree`, e.g. a malformed non-string value on a
+// workerTerminal-placed item) so a real, resolvable worktree recorded on a
+// LATER item in the same wave is not silently missed just because an
+// earlier item's own worktree field happened to be garbage.
 export function deriveWorktreePath(run) {
   for (let i = run.waves.length - 1; i >= 0; i -= 1) {
     const batches = run.waves[i]?.wavePlan?.batches ?? []
     for (const batch of batches) {
       for (const item of batch) {
         if (item.worktree) {
-          return toFilesystemWorktreePath(item.worktree)
+          const resolved = toFilesystemWorktreePath(item.worktree)
+          if (resolved) {
+            return resolved
+          }
         }
       }
     }
