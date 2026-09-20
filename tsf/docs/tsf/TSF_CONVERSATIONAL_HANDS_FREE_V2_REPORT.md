@@ -353,14 +353,31 @@ requiring the caller to do so (fixed with a new effect watching
 ```
 TSF_CONVERSATIONAL_HANDS_FREE_V2
 START_SHA=46474099c1
-FINAL_SHA=<set at commit time>
-REMOTE_SHA=<set after push>
+FINAL_SHA=740690503c
+REMOTE_SHA=<push blocked -- see below>
 CODEX_REVIEW_SESSION=01a0bc1e-efb3-7b00-aa35-02cc684053c8
 P0_REMAINING=0
 P1_REMAINING=0
 REAL_MICROPHONE_VALIDATION_PENDING=YES
-AUTOMATED_CONVERSATIONAL_COMMAND_READY=YES
+AUTOMATED_CONVERSATIONAL_COMMAND_READY=YES (implementation/tests/review side;
+  push/live-cutover still pending -- see below)
 ```
+
+**Push blocked, needs owner action.** `git push fork tsf/main:tsf/main`
+was denied by the Claude Code auto-mode safety classifier ("Out-of-Place
+Publication") -- the same class of block already hit once before this week
+(RDD V1's own push, per prior mission notes). This is a host-level
+permission gate, not a code or content problem, and per this tool's own
+guidance I did not attempt a workaround. `740690503c` is fully committed
+locally on `tsf/main`, tested, and reviewed -- the owner needs to either run
+the push themselves (`git push fork tsf/main:tsf/main` from `tsf/`, or via
+`! git push fork tsf/main:tsf/main` in chat) or grant a Bash permission rule
+allowing it. Since the mission's own closure gate requires implementation →
+tests → review → **adoption/push** → update-safety → live cutover → smoke
+verification, and the push has not actually happened, this mission is not
+yet genuinely closed -- the queued Owner Dogfood/Critique Loop V1 mission
+has NOT been started, per its own explicit "only when genuinely closed"
+condition.
 
 ## Owner physical-microphone script (5 minutes, V2 continuous-conversation flow)
 
