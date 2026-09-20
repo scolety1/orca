@@ -188,6 +188,24 @@ test('classifyRunActionVerb: a deliberative "is X ..., or should I <verb> it?" c
   assert.equal(classifyRunActionVerb('pause NWR or resume it'), 'PAUSE')
 })
 
+// REAL DOGFOOD FINDING (post-mission, P0): QUESTION_OPENER only catches a
+// true interrogative sentence structure -- a musing/deliberative STATEMENT
+// about possibly acting never opens with a WH-word or an inverted
+// auxiliary, so it evaded the guard entirely and the bare "pause it"/
+// "resume it" pronoun match fired as a genuine directive. Reproduced
+// directly before fixing: all 5 phrasings below mutated a real run
+// exactly like "pause it" itself.
+test('classifyRunActionVerb: a deliberative/musing STATEMENT (not a question) about possibly acting never mutates', () => {
+  assert.equal(classifyRunActionVerb('I wonder if we should pause it'), null)
+  assert.equal(classifyRunActionVerb("I'm not sure if we should resume it"), null)
+  assert.equal(classifyRunActionVerb('I guess we could pause it for now'), null)
+  assert.equal(classifyRunActionVerb('Maybe we should pause it'), null)
+  assert.equal(classifyRunActionVerb('Perhaps we should resume it'), null)
+  // A genuine directive is completely unaffected by the new guard.
+  assert.equal(classifyRunActionVerb('pause it'), 'PAUSE')
+  assert.equal(classifyRunActionVerb('go ahead and pause it'), 'PAUSE')
+})
+
 test('classifyContinueAction: RESUME for a real PAUSED run, DISPATCH otherwise (no run, or an ACTIVE run)', async () => {
   await seedPausedRun('proj-paused')
   await seedActiveRun('proj-active')

@@ -15,7 +15,11 @@ import {
 } from './keep-going-controller.mjs'
 import { withKeepGoingRun, readKeepGoingRun } from './keep-going-run-store.mjs'
 import { readProjectExecutionHold } from './project-execution-hold-store.mjs'
-import { bindOrchestrationRun, createDispatcherTerminal, replyToOrchestrationMessage } from '../adapters/orca-orchestration-bridge.mjs'
+import {
+  bindOrchestrationRun,
+  createDispatcherTerminal,
+  replyToOrchestrationMessage
+} from '../adapters/orca-orchestration-bridge.mjs'
 import { resolveSenderTerminal } from './keep-going-dispatch-loop.mjs'
 import { recordNeedsYouRelayOutcome } from '../domain/keep-going.mjs'
 
@@ -117,12 +121,23 @@ export async function resolveProjectNeedsYou(
     if (!senderTerminal.ok) {
       replyResult = senderTerminal
     } else if (escalation.orchestrationRunId) {
-      const bindResult = await bindOrchestrationRun({ id: escalation.orchestrationRunId, from: senderTerminal.handle })
+      const bindResult = await bindOrchestrationRun({
+        id: escalation.orchestrationRunId,
+        from: senderTerminal.handle
+      })
       replyResult = bindResult.ok
-        ? await replyToOrchestrationMessage({ id: escalation.messageId, body, run: escalation.orchestrationRunId })
+        ? await replyToOrchestrationMessage({
+            id: escalation.messageId,
+            body,
+            run: escalation.orchestrationRunId
+          })
         : bindResult
     } else {
-      replyResult = await replyToOrchestrationMessage({ id: escalation.messageId, body, run: escalation.orchestrationRunId })
+      replyResult = await replyToOrchestrationMessage({
+        id: escalation.messageId,
+        body,
+        run: escalation.orchestrationRunId
+      })
     }
     // Real Codex adversarial review finding: a relay failure (or a crash
     // between the resolve above and this call) previously left the
@@ -135,7 +150,11 @@ export async function resolveProjectNeedsYou(
       ? { relayedAt: clock().toISOString(), relayFailure: null }
       : {
           relayedAt: null,
-          relayFailure: { reason: replyResult.reason, detail: replyResult.detail, at: clock().toISOString() }
+          relayFailure: {
+            reason: replyResult.reason,
+            detail: replyResult.detail,
+            at: clock().toISOString()
+          }
         }
     if (!replyResult.ok) {
       console.error(
@@ -239,6 +258,19 @@ const NEGATION_OPENER = /^(?:please\s+)?(?:don'?t|do not|never|shouldn'?t|won'?t
 // separate clause) still correctly pauses NWR in its own first clause.
 const QUESTION_OPENER =
   /^(?:why|what|how|when|where|who|which)\b|^(?:did|do|does|is|are|was|were|would|could|should|can|will)\s+(?:you|it|that|this|he|she|they|i|we)\b/i
+// REAL DOGFOOD FINDING (post-mission, P0): QUESTION_OPENER only catches a
+// true interrogative sentence structure -- a musing/deliberative STATEMENT
+// about possibly acting ("I wonder if we should pause it", "Maybe we
+// should resume it", "I guess we could pause it for now") never opens with
+// a WH-word or an inverted auxiliary, so it evaded the guard entirely and
+// the bare "pause it"/"resume it" pronoun match below fired as a genuine
+// directive -- reproduced directly: all 4 phrasings above mutated a real
+// run exactly like "pause it" itself. Same narrow "clause OPENS WITH X"
+// convention as QUESTION_OPENER, only applied where the pronoun-only
+// branch already needs a non-directive guard (never the verb-initial
+// OPENER branch, which is an unambiguous imperative regardless).
+const DELIBERATIVE_STATEMENT_OPENER =
+  /^(?:i wonder if|i'?m not sure if|i am not sure if|i don'?t know if|i guess|i think|maybe|perhaps|possibly)\b/i
 const CLAUSE_OPENS_WITH = (verbs) => new RegExp(`^(?:please\\s+)?(?:${verbs})\\b`, 'i')
 const VERB_PLUS_PRONOUN = (verbs) =>
   new RegExp(`\\b(?:${verbs})\\s+(it|that|this|everything)\\b`, 'i')
@@ -264,9 +296,14 @@ function clauseMatchesAction(clause, opener, pronoun) {
     return true
   }
   // A bare object/pronoun match ("pause it") only counts as a directive
-  // when the clause isn't itself an obvious question -- "pause NWR" (the
-  // OPENER check above) is unaffected either way.
-  return pronoun.test(clause) && !QUESTION_OPENER.test(clause)
+  // when the clause isn't itself an obvious question or a deliberative
+  // musing statement -- "pause NWR" (the OPENER check above) is
+  // unaffected either way.
+  return (
+    pronoun.test(clause) &&
+    !QUESTION_OPENER.test(clause) &&
+    !DELIBERATIVE_STATEMENT_OPENER.test(clause)
+  )
 }
 
 // Returns 'PAUSE' | 'RESUME' | null. RESUME covers "resume"/"continue"/
