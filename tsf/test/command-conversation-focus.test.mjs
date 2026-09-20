@@ -44,6 +44,25 @@ test('isExplicitSwitchMessage / isGoBackMessage: a deliberative question is neve
   assert.equal(isExplicitSwitchMessage('Switch to TSF.'), true)
 })
 
+// REAL DOGFOOD FINDING (post-mission, P0, same bug class already fixed in
+// server/command-run-action-bridge.mjs's classifyRunActionVerb): a musing
+// STATEMENT never phrased as a question ("Maybe we should switch to X")
+// evaded DELIBERATIVE_QUESTION_PATTERN (which requires a trailing "?") and
+// silently moved focus exactly like a real directive.
+test('isExplicitSwitchMessage / isGoBackMessage: a musing statement (no question mark) is never treated as a genuine directive', () => {
+  assert.equal(isExplicitSwitchMessage('Maybe we should switch to NWR'), false)
+  assert.equal(isExplicitSwitchMessage('I wonder if we should focus on TSF instead'), false)
+  assert.equal(
+    isExplicitSwitchMessage('I guess we could talk about the landing page for now'),
+    false
+  )
+  assert.equal(isGoBackMessage('Maybe we should go back to the previous one'), false)
+  assert.equal(isGoBackMessage('I wonder if we should go back'), false)
+  // The un-guarded phrasings still work.
+  assert.equal(isExplicitSwitchMessage('Switch to NWR'), true)
+  assert.equal(isGoBackMessage('Go back'), true)
+})
+
 // REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): an explicit
 // prohibition ("Do not talk about B") previously matched the same as a
 // real directive, silently moving focus onto the very project the owner

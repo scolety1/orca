@@ -41,8 +41,26 @@ const DELIBERATIVE_QUESTION_PATTERN =
   /\b(?:should|could|would|can|may|might)\s+(?:i|we|you)\b[^.!]*\?/i
 const NEGATION_GUARD_PATTERN = /\b(?:do not|don'?t|never|stop)\b/i
 
+// REAL DOGFOOD FINDING (post-mission, P0, same bug class already fixed in
+// server/command-run-action-bridge.mjs's classifyRunActionVerb, commit
+// b9097ba9b5): DELIBERATIVE_QUESTION_PATTERN only catches a genuine
+// question (requires a trailing "?"), so a musing STATEMENT never phrased
+// as a question -- "Maybe we should switch to NWR", "I wonder if we
+// should go back", "I guess we could talk about the landing page for
+// now" -- evaded both guards and silently moved the durable Command
+// focus exactly like an unambiguous directive would. Anchored to the
+// START of the message (every real musing opener leads the sentence),
+// same narrow "clause/message OPENS WITH X" convention as that file's own
+// QUESTION_OPENER/DELIBERATIVE_STATEMENT_OPENER.
+const DELIBERATIVE_STATEMENT_OPENER =
+  /^(?:i wonder if|i'?m not sure if|i am not sure if|i don'?t know if|i guess|i think|maybe|perhaps|possibly)\b/i
+
 function isGuardedAgainst(message) {
-  return DELIBERATIVE_QUESTION_PATTERN.test(message) || NEGATION_GUARD_PATTERN.test(message)
+  return (
+    DELIBERATIVE_QUESTION_PATTERN.test(message) ||
+    NEGATION_GUARD_PATTERN.test(message) ||
+    DELIBERATIVE_STATEMENT_OPENER.test(message.trim())
+  )
 }
 
 // Real, narrow, conservative regex classifiers -- deliberately NOT reusing
