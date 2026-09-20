@@ -100,6 +100,26 @@ const IDIOMATIC_NON_NEGATION = /\bor not\b|\bno matter\b/gi
 // as an inquiry opener. Checked first so it always wins over the "?"/
 // opener rules below.
 const POLITE_REQUEST_MARKER = /\b(?:can|could|would|will)\s+you\b/i
+// REAL DOGFOOD FINDING (post-mission, P0, same bug class already fixed in
+// server/command-run-action-bridge.mjs's classifyRunActionVerb and
+// domain/command-conversation-focus.mjs's isExplicitSwitchMessage/
+// isGoBackMessage): every guard above requires either a genuine "?" or an
+// explicit negation -- a musing STATEMENT phrased as neither ("Maybe we
+// should pause NWR", "I guess we should put NWR on hold") fell through
+// every check to the final `return true`. Live-confirmed end to end via
+// domain/command-act-model.mjs's own finalIntentFor (this function's real
+// consumer for PAUSE/RESUME/EXTERNAL_WORK_HOLD/RELEASE_HOLD/KEEP_GOING/
+// ASSESS): "Maybe we should pause NWR" decomposed to a real, mutating
+// PAUSE intent, identical to the unambiguous "Pause NWR". Clause-scoped
+// (same convention as BARE_OPENER/TELL_ME_WHETHER below -- a musing
+// opener is a per-clause phenomenon, never borrowed from a sibling
+// clause) and checked early, alongside TELL_ME_WHETHER, so it wins even
+// over a polite "you" marker later in the same musing sentence ("I
+// wonder if you could pause NWR" reads as genuine uncertainty, not a real
+// request, matching this file's own stated bias toward a false NEGATIVE
+// over a false POSITIVE).
+const DELIBERATIVE_STATEMENT_OPENER =
+  /^(?:i wonder if|i'?m not sure if|i am not sure if|i don'?t know if|i guess|i think|maybe|perhaps|possibly)\b/i
 
 // Independent-review finding (dangerous-direction regression, caught before
 // adoption): splitting only on `.!?;\n` let an inquiry/prohibition earlier
@@ -166,6 +186,9 @@ export function isGenuineDirective(clause, sentence) {
   // where the same false positive would have actually executed PAUSE/
   // EXTERNAL_WORK_HOLD/etc. from a bare question.
   if (TELL_ME_WHETHER.test(clause)) {
+    return false
+  }
+  if (DELIBERATIVE_STATEMENT_OPENER.test(clause.trimStart())) {
     return false
   }
   if (POLITE_REQUEST_MARKER.test(sentence)) {

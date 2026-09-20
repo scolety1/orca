@@ -10,7 +10,10 @@
 // design this proves.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { classifyAdoptionCommandIntent, decomposeMultiActionFromActs } from '../domain/command-act-model.mjs'
+import {
+  classifyAdoptionCommandIntent,
+  decomposeMultiActionFromActs
+} from '../domain/command-act-model.mjs'
 import { decomposeMultiAction } from '../domain/command-multi-action-decomposition.mjs'
 
 const A = { id: 'proj-a', displayName: 'A' }
@@ -39,11 +42,17 @@ test('CASE-31 #1: "Adopt A -- actually, don\'t." => NO ADOPTION', () => {
 })
 
 test('CASE-31 #2: "Don\'t adopt A -- actually, go ahead." => adoption (unambiguously bound to the pending act)', () => {
-  assert.equal(classifyAdoptionCommandIntent("Don't adopt A — actually, go ahead.", [A]), 'EXECUTE_ADOPTION')
+  assert.equal(
+    classifyAdoptionCommandIntent("Don't adopt A — actually, go ahead.", [A]),
+    'EXECUTE_ADOPTION'
+  )
 })
 
-test('CASE-31 #3: quoted-then-retracted -- "I said \'adopt A\' earlier, but don\'t do that." => NO ADOPTION', () => {
-  assert.equal(classifyAdoptionCommandIntent("I said 'adopt A' earlier, but don't do that.", [A]), 'NOT_ADOPTION')
+test("CASE-31 #3: quoted-then-retracted -- \"I said 'adopt A' earlier, but don't do that.\" => NO ADOPTION", () => {
+  assert.equal(
+    classifyAdoptionCommandIntent("I said 'adopt A' earlier, but don't do that.", [A]),
+    'NOT_ADOPTION'
+  )
 })
 
 test('CASE-31 #4: "Don\'t adopt A; actually adopt B." => A NO / B YES (real decomposer targets)', () => {
@@ -53,12 +62,18 @@ test('CASE-31 #4: "Don\'t adopt A; actually adopt B." => A NO / B YES (real deco
   assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'), true)
 })
 
-test('CASE-31 #5: quoted assistant text grants no authority -- "Claude said \'adopt A\', but I don\'t want that." => NO ADOPTION', () => {
-  assert.equal(classifyAdoptionCommandIntent("Claude said 'adopt A', but I don't want that.", [A]), 'NOT_ADOPTION')
+test("CASE-31 #5: quoted assistant text grants no authority -- \"Claude said 'adopt A', but I don't want that.\" => NO ADOPTION", () => {
+  assert.equal(
+    classifyAdoptionCommandIntent("Claude said 'adopt A', but I don't want that.", [A]),
+    'NOT_ADOPTION'
+  )
 })
 
 test('CASE-31 #6: retracted hypothetical -- "I was going to say adopt it, but never mind." => NO ADOPTION', () => {
-  assert.equal(classifyAdoptionCommandIntent('I was going to say adopt it, but never mind.', [A]), 'NOT_ADOPTION')
+  assert.equal(
+    classifyAdoptionCommandIntent('I was going to say adopt it, but never mind.', [A]),
+    'NOT_ADOPTION'
+  )
 })
 
 // CASE-31 #7 ("Not that one -- adopt the other one.") is explicitly scoped
@@ -76,7 +91,10 @@ test('CASE-31 #9: "I don\'t think we shouldn\'t adopt it." => no consequential a
 })
 
 test('CASE-31 #10: "Hold off on adopting A; B is fine." => A not adopted, praise alone is not adoption for B', () => {
-  assert.equal(classifyAdoptionCommandIntent('Hold off on adopting A; B is fine.', [A]), 'NOT_ADOPTION')
+  assert.equal(
+    classifyAdoptionCommandIntent('Hold off on adopting A; B is fine.', [A]),
+    'NOT_ADOPTION'
+  )
   const entries = decompose('Hold off on adopting A; B is fine.')
   assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'), false)
 })
@@ -94,18 +112,36 @@ test('CASE-31 #11: "Don\'t adopt A yet, but adopt B." => A no / B yes', () => {
 // several -- one test group each).
 // ============================================================================
 
-for (const message of ['Pause A, adopt B.', 'Pause A, and adopt B.', 'Pause A but adopt B.', 'Pause A; adopt B.', 'Pause A. Adopt B.', 'Pause A, then adopt B.']) {
+for (const message of [
+  'Pause A, adopt B.',
+  'Pause A, and adopt B.',
+  'Pause A but adopt B.',
+  'Pause A; adopt B.',
+  'Pause A. Adopt B.',
+  'Pause A, then adopt B.'
+]) {
   test(`CASE-32: "${message}" => A pause only / B adopt only, never bled`, () => {
     const entries = decompose(message)
-    assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), false, 'PAUSE must never bleed ADOPT onto A')
-    assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'), true, 'B must still get its own real adopt')
+    assert.equal(
+      intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'),
+      false,
+      'PAUSE must never bleed ADOPT onto A'
+    )
+    assert.equal(
+      intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'),
+      true,
+      'B must still get its own real adopt'
+    )
   })
 }
 
 test('CASE-32: "Pause A, B, and C." => a bare target list shares ONE act, never invents cross-target adoption', () => {
   const entries = decompose('Pause A, B, and C.')
   assert.equal(new Set(entries.map((e) => e.target)).size, 3, 'every named target resolves')
-  assert.equal(entries.some((e) => e.intent.startsWith('ADOPT')), false)
+  assert.equal(
+    entries.some((e) => e.intent.startsWith('ADOPT')),
+    false
+  )
 })
 
 test('CASE-32: "Adopt A, not B." => A yes / B explicitly excluded', () => {
@@ -123,13 +159,23 @@ test('CASE-32: "Don\'t adopt A, adopt B." => A no / B yes', () => {
 
 test('CASE-32: "Keep A running, B paused." => no action bleed', () => {
   const entries = decompose('Keep A running, B paused.')
-  assert.equal(entries.some((e) => e.intent.startsWith('ADOPT')), false)
-  assert.equal(entries.some((e) => e.intent === 'START_KEEP_GOING'), false, '"keep...running" is not the "keep going" trigger')
+  assert.equal(
+    entries.some((e) => e.intent.startsWith('ADOPT')),
+    false
+  )
+  assert.equal(
+    entries.some((e) => e.intent === 'START_KEEP_GOING'),
+    false,
+    '"keep...running" is not the "keep going" trigger'
+  )
 })
 
 test('CASE-32: "Pause A, unless B finishes." => no invented conditional scheduling, no bleed', () => {
   const entries = decompose('Pause A, unless B finishes.')
-  assert.equal(entries.some((e) => e.intent.startsWith('ADOPT')), false)
+  assert.equal(
+    entries.some((e) => e.intent.startsWith('ADOPT')),
+    false
+  )
 })
 
 test('CASE-32: "Adopt A, if it is still verified." => adoption request still parses; execution-time revalidation is unaffected/out of scope here', () => {
@@ -147,7 +193,11 @@ test('CASE-32: "Pause A, adopt B, leave C alone." => A pause, B adopt, C protect
   const entries = decompose('Pause A, adopt B, leave C alone.')
   assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), false)
   assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'), true)
-  assert.equal(intentsFor('proj-c', entries).has('ADOPT_CANDIDATE_REPORT'), false, 'ABSOLUTELY NO ADOPT C')
+  assert.equal(
+    intentsFor('proj-c', entries).has('ADOPT_CANDIDATE_REPORT'),
+    false,
+    'ABSOLUTELY NO ADOPT C'
+  )
   assert.equal(intentsFor('proj-c', entries).has('EXTERNAL_WORK_HOLD'), true)
 })
 
@@ -223,11 +273,18 @@ test('P11: the real execution-time re-derivation (classifyAdoptionCommandIntent 
     for (const entry of entries.filter((e) => e.intent === 'ADOPT_CANDIDATE_DECLINED')) {
       const project = projectsById.get(entry.target)
       const recheck = classifyAdoptionCommandIntent(entry.rawClause, [project])
-      assert.notEqual(recheck, 'EXECUTE_ADOPTION', `${message} -- target ${entry.target}, rawClause=${JSON.stringify(entry.rawClause)}`)
+      assert.notEqual(
+        recheck,
+        'EXECUTE_ADOPTION',
+        `${message} -- target ${entry.target}, rawClause=${JSON.stringify(entry.rawClause)}`
+      )
       checked++
     }
   }
-  assert.ok(checked >= 6, `expected to have actually re-derived several real DECLINED entries, only checked ${checked}`)
+  assert.ok(
+    checked >= 6,
+    `expected to have actually re-derived several real DECLINED entries, only checked ${checked}`
+  )
 })
 
 // ============================================================================
@@ -245,7 +302,12 @@ test('P2: an unrelated target cannot inherit a consequential verb it was never p
 })
 
 test('P3: an excluded target never receives the excluded action, under either exclusion phrasing', () => {
-  for (const message of ['Adopt A, not B.', 'Adopt A, except B.', 'Adopt A, excluding B.', 'Adopt A, other than B.']) {
+  for (const message of [
+    'Adopt A, not B.',
+    'Adopt A, except B.',
+    'Adopt A, excluding B.',
+    'Adopt A, other than B.'
+  ]) {
     const entries = decompose(message)
     assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'), false, message)
   }
@@ -253,7 +315,10 @@ test('P3: an excluded target never receives the excluded action, under either ex
 
 test('P4: quoted/reported text cannot grant authority', () => {
   assert.equal(classifyAdoptionCommandIntent('"adopt A" was the old plan.', [A]), 'NOT_ADOPTION')
-  assert.equal(classifyAdoptionCommandIntent('I said adopt A.'.replace('adopt A', "'adopt A'"), [A]), 'NOT_ADOPTION')
+  assert.equal(
+    classifyAdoptionCommandIntent('I said adopt A.'.replace('adopt A', "'adopt A'"), [A]),
+    'NOT_ADOPTION'
+  )
 })
 
 test('P5: a later NEGATIVE current-owner act cancels an earlier POSITIVE one for the same act', () => {
@@ -261,13 +326,19 @@ test('P5: a later NEGATIVE current-owner act cancels an earlier POSITIVE one for
 })
 
 test('P6: a later POSITIVE current-owner act may supersede an earlier NEGATIVE one only when explicitly bound', () => {
-  assert.equal(classifyAdoptionCommandIntent("Don't adopt A — actually, go ahead.", [A]), 'EXECUTE_ADOPTION')
+  assert.equal(
+    classifyAdoptionCommandIntent("Don't adopt A — actually, go ahead.", [A]),
+    'EXECUTE_ADOPTION'
+  )
 })
 
 test('P7: reordering a target list preserves semantics', () => {
   const forward = decompose('Pause A, adopt B.')
   const reversed = decompose('Adopt B, pause A.')
-  assert.equal(intentsFor('proj-b', forward).has('ADOPT_CANDIDATE_REPORT'), intentsFor('proj-b', reversed).has('ADOPT_CANDIDATE_REPORT'))
+  assert.equal(
+    intentsFor('proj-b', forward).has('ADOPT_CANDIDATE_REPORT'),
+    intentsFor('proj-b', reversed).has('ADOPT_CANDIDATE_REPORT')
+  )
   assert.equal(intentsFor('proj-a', forward).has('ADOPT_CANDIDATE_REPORT'), false)
   assert.equal(intentsFor('proj-a', reversed).has('ADOPT_CANDIDATE_REPORT'), false)
 })
@@ -321,7 +392,10 @@ test('matrix: accept/approve verbs participate in the same boundary/target-scopi
 
 test('matrix: research/fix/cancel verbs are boundary-scoped without bleeding onto a co-mentioned target (disclosed gap, mapped to GENERAL)', () => {
   const entries = decompose('Research a gap in A. Fix B.')
-  assert.equal(entries.some((e) => e.intent.startsWith('ADOPT')), false)
+  assert.equal(
+    entries.some((e) => e.intent.startsWith('ADOPT')),
+    false
+  )
   assert.equal(intentsFor('proj-a', entries).size > 0, true)
   assert.equal(intentsFor('proj-b', entries).size > 0, true)
 })
@@ -343,7 +417,11 @@ test('REVIEW FINDING 1: exclusion after an earlier positive re-mention of the sa
 
 test('REVIEW FINDING 1b: a multi-target exclusion clause excludes EVERY named target, not just the first -- "Adopt A, B, C, and D, except B and C."', () => {
   const D = { id: 'proj-d', displayName: 'D' }
-  const entries = decomposeMultiActionFromActs('Adopt A, B, C, and D, except B and C.', [A, B, C, D], ALIASES)
+  const entries = decomposeMultiActionFromActs(
+    'Adopt A, B, C, and D, except B and C.',
+    [A, B, C, D],
+    ALIASES
+  )
   assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), true)
   assert.equal(intentsFor('proj-d', entries).has('ADOPT_CANDIDATE_REPORT'), true)
   assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'), false)
@@ -353,14 +431,24 @@ test('REVIEW FINDING 1b: a multi-target exclusion clause excludes EVERY named ta
 test('REVIEW FINDING 2: a project id that is a strict substring-prefix of another project\'s id never bleeds -- "foo-other needs serious work, adopt foo."', () => {
   const foo = { id: 'foo', displayName: 'Foo' }
   const fooOther = { id: 'foo-other', displayName: 'Foo-Other' }
-  const entries = decomposeMultiActionFromActs('foo-other needs serious work, adopt foo.', [foo, fooOther], ALIASES)
+  const entries = decomposeMultiActionFromActs(
+    'foo-other needs serious work, adopt foo.',
+    [foo, fooOther],
+    ALIASES
+  )
   assert.equal(intentsFor('foo', entries).has('ADOPT_CANDIDATE_REPORT'), true)
   assert.equal(intentsFor('foo-other', entries).has('ADOPT_CANDIDATE_REPORT'), false)
-  assert.equal(intentsFor('foo-other', entries).has('ASSESS_AND_UPGRADE'), true, 'the longer, more specific id must win the match, not bleed onto the shorter one')
+  assert.equal(
+    intentsFor('foo-other', entries).has('ASSESS_AND_UPGRADE'),
+    true,
+    'the longer, more specific id must win the match, not bleed onto the shorter one'
+  )
 })
 
 test('REVIEW FINDING 3: quoted text in "target-then-verb" word order still grants no authority -- \'"A, adopt it right now" is what the old draft said.\'', () => {
-  const entries = decompose('"A, adopt it right now" is what the old draft said. B needs serious work.')
+  const entries = decompose(
+    '"A, adopt it right now" is what the old draft said. B needs serious work.'
+  )
   assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), false)
   const aEntry = entriesFor('proj-a', entries)[0]
   if (aEntry) {
@@ -382,7 +470,7 @@ test('REVIEW FINDING 4: a correction marker never silently binds to an unrelated
   assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), false)
 })
 
-test('REVIEW FINDING 4b: a bare affirmation must not silently flip an unrelated, cross-segment target\'s own separate decline into a positive adoption', () => {
+test("REVIEW FINDING 4b: a bare affirmation must not silently flip an unrelated, cross-segment target's own separate decline into a positive adoption", () => {
   // Stronger repro than 4 above: both A and B are independently declined;
   // an unbounded "nearest preceding act by raw position" search would
   // wrongly bind "actually go ahead" to B (the nearest one) and flip it
@@ -395,7 +483,10 @@ test('REVIEW FINDING 4b: a bare affirmation must not silently flip an unrelated,
 })
 
 test('REVIEW FINDING 4 control: same-segment correction still works correctly (unaffected by the segment-bound fix)', () => {
-  assert.equal(classifyAdoptionCommandIntent("Don't adopt A -- actually, go ahead.", [A]), 'EXECUTE_ADOPTION')
+  assert.equal(
+    classifyAdoptionCommandIntent("Don't adopt A -- actually, go ahead.", [A]),
+    'EXECUTE_ADOPTION'
+  )
 })
 
 // ============================================================================
@@ -408,7 +499,7 @@ test('REVIEW FINDING 4 control: same-segment correction still works correctly (u
 // into one shared null-group zone).
 // ============================================================================
 
-test('REVIEW ROUND 2, FINDING 1: an unrelated PRECEDING null-group mention never inherits a LATER, unrelated mention\'s own compound verb phrase', () => {
+test("REVIEW ROUND 2, FINDING 1: an unrelated PRECEDING null-group mention never inherits a LATER, unrelated mention's own compound verb phrase", () => {
   const entries = decompose('A is fine, B needs serious work, hold off on adopting B.')
   assert.equal(intentsFor('proj-a', entries).has('EXTERNAL_WORK_HOLD'), false)
   assert.equal(intentsFor('proj-a', entries).has('ASSESS_AND_UPGRADE'), false)
@@ -420,18 +511,30 @@ test('REVIEW ROUND 2, FINDING 1: an unrelated PRECEDING null-group mention never
 test('REVIEW ROUND 2, FINDING 2: a genuine contiguous compound verb phrase for a NON-first mention keeps BOTH its verbs -- "Pause A, hold off on adopting B."', () => {
   const entries = decompose('Pause A, hold off on adopting B.')
   assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), false)
-  assert.equal(intentsFor('proj-b', entries).has('EXTERNAL_WORK_HOLD'), true, 'EXTERNAL_WORK_HOLD must not be silently dropped')
+  assert.equal(
+    intentsFor('proj-b', entries).has('EXTERNAL_WORK_HOLD'),
+    true,
+    'EXTERNAL_WORK_HOLD must not be silently dropped'
+  )
   assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_DECLINED'), true)
 })
 
 test('REVIEW ROUND 2, FINDING 2 (3-target variant): compound phrase + exclusion together, none of the three targets bleed into each other', () => {
   const D = { id: 'proj-d', displayName: 'D' }
-  const entries = decomposeMultiActionFromActs('Pause A, adopt B, hold off on adopting C, not D.', [A, B, C, D], ALIASES)
+  const entries = decomposeMultiActionFromActs(
+    'Pause A, adopt B, hold off on adopting C, not D.',
+    [A, B, C, D],
+    ALIASES
+  )
   assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), false)
   assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'), true)
   assert.equal(intentsFor('proj-c', entries).has('EXTERNAL_WORK_HOLD'), true)
   assert.equal(intentsFor('proj-c', entries).has('ADOPT_CANDIDATE_DECLINED'), true)
-  assert.equal(intentsFor('proj-d', entries).has('ADOPT_CANDIDATE_REPORT'), false, 'D is explicitly excluded from C\'s own adopt act, not a separate target of anything')
+  assert.equal(
+    intentsFor('proj-d', entries).has('ADOPT_CANDIDATE_REPORT'),
+    false,
+    "D is explicitly excluded from C's own adopt act, not a separate target of anything"
+  )
 })
 
 // Review round 2, FINDING 3 (MINOR, disclosed, NOT fixed this batch): a
@@ -448,14 +551,25 @@ test('REVIEW ROUND 2, FINDING 2 (3-target variant): compound phrase + exclusion 
 // Pinned here as the CURRENT (imperfect but safe) behavior so a future
 // batch's fix has a locked baseline to improve from, not a silent
 // regression risk.
-test('KNOWN DISCLOSED GAP (not fixed this batch, safe consequence): a bare-comma list continuation can absorb an unrelated later clause\'s own target -- pins current behavior', () => {
+test("KNOWN DISCLOSED GAP (not fixed this batch, safe consequence): a bare-comma list continuation can absorb an unrelated later clause's own target -- pins current behavior", () => {
   const entries = decompose('Adopt A, pause B, C needs serious work.')
   assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), true)
   // Current (imperfect) behavior: C gets swept into GENERAL via the same
   // list as B, rather than its own ASSESS_AND_UPGRADE -- never anything
   // consequential (GENERAL only), so safe, just imprecise.
-  assert.ok(intentsFor('proj-c', entries).size > 0, 'C must still resolve to SOME entry, never silently dropped')
-  assert.equal(entries.some((e) => e.target === 'proj-c' && (e.intent === 'ADOPT_CANDIDATE_REPORT' || e.intent === 'EXTERNAL_WORK_HOLD')), false, 'never a consequential intent for C from this ambiguity')
+  assert.ok(
+    intentsFor('proj-c', entries).size > 0,
+    'C must still resolve to SOME entry, never silently dropped'
+  )
+  assert.equal(
+    entries.some(
+      (e) =>
+        e.target === 'proj-c' &&
+        (e.intent === 'ADOPT_CANDIDATE_REPORT' || e.intent === 'EXTERNAL_WORK_HOLD')
+    ),
+    false,
+    'never a consequential intent for C from this ambiguity'
+  )
 })
 
 // ============================================================================
@@ -465,12 +579,20 @@ test('KNOWN DISCLOSED GAP (not fixed this batch, safe consequence): a bare-comma
 // negation triggers, both use the bare word "not").
 // ============================================================================
 
-test('SELF-REVIEW FINDING: an exclusion marker tied to an EARLIER target never leaks into a LATER, unrelated verb\'s own negation window', () => {
+test("SELF-REVIEW FINDING: an exclusion marker tied to an EARLIER target never leaks into a LATER, unrelated verb's own negation window", () => {
   const D = { id: 'proj-d', displayName: 'D' }
-  const entries = decomposeMultiActionFromActs('Adopt A and B, not B, hold off on adopting C, pause D.', [A, B, C, D], ALIASES)
+  const entries = decomposeMultiActionFromActs(
+    'Adopt A and B, not B, hold off on adopting C, pause D.',
+    [A, B, C, D],
+    ALIASES
+  )
   assert.equal(intentsFor('proj-a', entries).has('ADOPT_CANDIDATE_REPORT'), true)
   assert.equal(intentsFor('proj-b', entries).has('ADOPT_CANDIDATE_REPORT'), false)
-  assert.equal(intentsFor('proj-c', entries).has('EXTERNAL_WORK_HOLD'), true, 'the exclusion marker for B must never negate C\'s own genuine hold request')
+  assert.equal(
+    intentsFor('proj-c', entries).has('EXTERNAL_WORK_HOLD'),
+    true,
+    "the exclusion marker for B must never negate C's own genuine hold request"
+  )
   assert.equal(intentsFor('proj-c', entries).has('MULTI_ACTION_DECLINED'), false)
   assert.equal(intentsFor('proj-d', entries).has('ADOPT_CANDIDATE_REPORT'), false)
 })
@@ -493,8 +615,35 @@ test('REVIEW ROUND 4: a correction marker\'s own amendment text is bounded by th
 // ============================================================================
 
 test('backward compatibility: decomposeMultiAction (the public re-export) matches decomposeMultiActionFromActs for the same input', () => {
-  const message = "Pause A, adopt B, leave C alone."
+  const message = 'Pause A, adopt B, leave C alone.'
   const viaPublic = decomposeMultiAction(message, PROJECTS, ALIASES)
   const viaDirect = decomposeMultiActionFromActs(message, PROJECTS, ALIASES)
   assert.deepEqual(viaPublic, viaDirect)
+})
+
+// ============================================================================
+// REAL DOGFOOD FINDING (post-mission, P0, live-confirmed): finalIntentFor's
+// own isGenuineDirectiveAt reuse (chat-responder.mjs) required either a
+// genuine "?" or an explicit negation to treat a clause as non-directive --
+// a musing STATEMENT phrased as neither ("Maybe we should pause A") fell
+// through every guard and resolved to the SAME real, mutating PAUSE intent
+// as the unambiguous "Pause A", live-reproduced before the fix landed.
+// ============================================================================
+
+test('DOGFOOD FINDING: a musing statement with no question mark never authorizes a real action, same as an explicit question does', () => {
+  for (const message of [
+    'Maybe we should pause A',
+    'I guess we should pause A',
+    'Perhaps we should put A on hold',
+    'I think we should resume A'
+  ]) {
+    const entries = decompose(message)
+    assert.equal(
+      intentsFor('proj-a', entries).has('GENERAL'),
+      true,
+      `${message} must resolve to GENERAL, never a real action`
+    )
+  }
+  // The real, unambiguous directive is completely unaffected.
+  assert.equal(intentsFor('proj-a', decompose('Pause A')).has('PAUSE'), true)
 })
