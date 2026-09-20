@@ -35,6 +35,13 @@ import { executeAction } from './action-executor.mjs'
 import { synthesizeResearchSpecification } from './command-research-spec-synthesis.mjs'
 import { registerResearchCompletionWatch } from './command-research-completion-watch.mjs'
 import { shouldSuppressResearchCreation } from '../domain/parent-mission-intent-classification.mjs'
+import {
+  noMissionYetText,
+  ambiguousMissionText,
+  remainingGapNote,
+  describeMissionCompletion,
+  describeArtifacts
+} from './command-research-response-text.mjs'
 
 const PROVIDER_NAME_TO_ID = Object.freeze({ exa: EXA_PROVIDER_ID, parallel: PARALLEL_PROVIDER_ID })
 
@@ -165,7 +172,9 @@ const RESEARCH_INTENT_PATTERNS = [
 
 export function classifyResearchIntent(message) {
   for (const { id, test } of RESEARCH_INTENT_PATTERNS) {
-    if (test(message)) return id
+    if (test(message)) {
+      return id
+    }
   }
   return null
 }
@@ -224,12 +233,39 @@ function isFreeOnlyRequest(message) {
   )
 }
 
+// REAL DOGFOOD FINDING (post-mission, P0): this previously required only a
+// provider name AND a dollar figure to appear ANYWHERE in the message --
+// no authorizing verb at all. "Why did Exa charge us $50 last week?", "Exa's
+// pricing page says $50", and even "Don't authorize more than $50 for Exa"
+// (an explicit PROHIBITION) all classified as RESEARCH_PAID_GRANT and would
+// have granted real paid-spend authority via the SAME unconditional
+// grantResearchPaidApprovalDurable call this module's own header says must
+// only ever follow "the owner's own chat message explicitly naming a
+// provider and a spend ceiling" -- a casual mention was never that. Every
+// real/tested trigger phrase already uses "use" ("use Exa up to $50", "Use
+// Exa for this research up to $50"), so requiring an authorizing verb (and
+// refusing outright on an explicit negation) matches the only intended
+// shape while closing the false-positive gap.
+const GRANT_AUTHORIZATION_VERB_PATTERN = /\b(?:use|grant|approve|authorize|allow)\b/i
+const GRANT_NEGATION_GUARD_PATTERN =
+  /\b(?:do not|don'?t|never|shouldn'?t|should not|won'?t|refuse|decline|deny)\b/i
+
 function parsePaidGrant(message) {
+  if (
+    !GRANT_AUTHORIZATION_VERB_PATTERN.test(message) ||
+    GRANT_NEGATION_GUARD_PATTERN.test(message)
+  ) {
+    return null
+  }
   const providerMatch = message.match(/\b(exa|parallel)\b/i)
   const amountMatch = message.match(/\$\s?([\d,]+(?:\.\d+)?)/)
-  if (!providerMatch || !amountMatch) return null
+  if (!providerMatch || !amountMatch) {
+    return null
+  }
   const maxSpendUsd = Number(amountMatch[1].replace(/,/g, ''))
-  if (!Number.isFinite(maxSpendUsd) || maxSpendUsd <= 0) return null
+  if (!Number.isFinite(maxSpendUsd) || maxSpendUsd <= 0) {
+    return null
+  }
   return { providerId: PROVIDER_NAME_TO_ID[providerMatch[1].toLowerCase()], maxSpendUsd }
 }
 
@@ -241,14 +277,20 @@ const PRONOUN_ONLY_TOPIC = /^(this|it|that|the mission|the research|deeply)$/i
 // the caller falling back to the most-recently-touched mission.
 function extractResearchTopic(message) {
   let m = message.match(/\bbuild (?:me )?(?:a )?dataset\s+(?:of|for)\s+(.+)/i)
-  if (!m) m = message.match(/\bresearch\s+(.+)/i)
-  if (!m) return null
+  if (!m) {
+    m = message.match(/\bresearch\s+(.+)/i)
+  }
+  if (!m) {
+    return null
+  }
   const topic = m[1]
     .split(/,|\bbut\b|\bdeeply\b/i)[0]
     .trim()
     .replace(/[.?!]+$/, '')
     .trim()
-  if (!topic || PRONOUN_ONLY_TOPIC.test(topic)) return null
+  if (!topic || PRONOUN_ONLY_TOPIC.test(topic)) {
+    return null
+  }
   return topic
 }
 
@@ -272,7 +314,9 @@ function explicitMissionIdIn(message, opState) {
 
 function mostRecentMissionId(opState) {
   const missions = Object.values(opState.researchMissions ?? {})
-  if (missions.length === 0) return null
+  if (missions.length === 0) {
+    return null
+  }
   return missions.slice().sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0].id
 }
 
@@ -313,22 +357,21 @@ function lastReferencedMissionId(opState) {
 // conversational signal).
 function resolveMissionContext(message, opState) {
   const explicit = explicitMissionIdIn(message, opState)
-  if (explicit) return { missionId: explicit, ambiguous: false }
+  if (explicit) {
+    return { missionId: explicit, ambiguous: false }
+  }
   const contextual = lastReferencedMissionId(opState)
-  if (contextual) return { missionId: contextual, ambiguous: false }
+  if (contextual) {
+    return { missionId: contextual, ambiguous: false }
+  }
   const known = Object.keys(opState.researchMissions ?? {})
-  if (known.length === 1) return { missionId: known[0], ambiguous: false }
-  if (known.length > 1) return { missionId: null, ambiguous: true }
+  if (known.length === 1) {
+    return { missionId: known[0], ambiguous: false }
+  }
+  if (known.length > 1) {
+    return { missionId: null, ambiguous: true }
+  }
   return { missionId: null, ambiguous: false }
-}
-
-function noMissionYetText() {
-  return 'There\'s no research mission yet to talk about -- say what to research (e.g. "research 2019 NFL rookie WRs" or "build me a dataset of X") and I\'ll start a real, durable one.'
-}
-
-function ambiguousMissionText(opState) {
-  const ids = Object.keys(opState.researchMissions ?? {})
-  return `More than one research mission exists and it's not clear which one you mean (${ids.join(', ')}) -- name the one you're asking about.`
 }
 
 // Hands-on pilot round 3, Bug 1: mission creation only ever created the
@@ -367,103 +410,16 @@ async function attemptProgressAndRaisePaidRequestIfNeeded(missionId, { freeOnly,
   return { progress, remainingGap, paidRequestRaised }
 }
 
-// The remaining-gap clause shared by both the create and continue
-// responses -- grounded in the real numbers attemptProgressAndRaisePaidRequestIfNeeded
-// just produced, never a fixed string.
-function remainingGapNote({ remainingGap, paidRequestRaised, freeOnly }) {
-  if (remainingGap <= 0) {
-    return ''
-  }
-  if (paidRequestRaised) {
-    return ` ${remainingGap} field(s) have no free-path match -- I've raised a scoped paid-research approval request (Exa) for you to review; I will not spend anything without your explicit approval.`
-  }
-  if (freeOnly) {
-    return ` ${remainingGap} field(s) have no free-path match yet -- queued for autonomous free-path research; I'll only interrupt you if it needs owner input or paid access.`
-  }
-  return ` ${remainingGap} field(s) still have no free-path match (a paid-research approval request is already open for this mission).`
-}
-
-// Hands-on pilot round 3, Bug 4: "how do I know if it's done" must be
-// answered from the mission's OWN real completion model (phase, expected-
-// universe progress, verification/completeness, what COMPLETE actually
-// means for THIS mission, whether Tim needs to act) -- never a fixed
-// string. Every number below comes from computeCompletenessMetrics/
-// readResearchMissionStatus; only the surrounding sentence shape is
-// templated, matching the style of every other grounded response in this
-// file (e.g. the existing RESEARCH_STATUS handler).
-function describeMissionCompletion(missionId, status, completeness) {
-  const expectedCount = status.nodeCount
-  if (status.state === 'COMPLETE') {
-    return `**${missionId}** is COMPLETE -- all ${expectedCount} expected item(s) have sourced, verified data and the dataset is ready.`
-  }
-  const pct = (ratio) => (ratio == null ? null : Math.round(ratio * 100))
-  const fieldPct = pct(completeness.fieldCoverage)
-  const entityPct = pct(completeness.presentEntityCoverage)
-  const progressBits = []
-  if (entityPct != null) {
-    progressBits.push(`${entityPct}% of expected item(s) present`)
-  }
-  if (fieldPct != null) {
-    progressBits.push(`${fieldPct}% of requested fields resolved`)
-  }
-  const progressNote = progressBits.length > 0 ? `, ${progressBits.join(', ')}` : ''
-
-  const sentences = [
-    "It isn't done yet.",
-    `I'll mark it COMPLETE once all ${expectedCount} expected item(s) have sourced, verified values and the requested dataset artifact is produced.`,
-    `Right now it's ${status.phase} (mission state ${status.state}${progressNote}).`
-  ]
-  if (completeness.unresolvedConflictCount > 0) {
-    sentences.push(
-      `${completeness.unresolvedConflictCount} unresolved conflict(s) need your decision before it can finish.`
-    )
-  }
-  if (status.openNeedsYouCount > 0) {
-    sentences.push(
-      `${status.openNeedsYouCount} open item(s) need your input -- I've flagged those separately.`
-    )
-  } else {
-    sentences.push(
-      "You don't need to keep checking manually; TSF will continue it in the background."
-    )
-  }
-  return sentences.join(' ')
-}
-
-// Hands-on pilot round 3, Bug 3: an artifact request must reflect real
-// mission/artifact state -- never hallucinate output, never claim a
-// complete dataset that doesn't exist yet, and never silently report a
-// count of 0 due to reading a field that never existed (the real,
-// independently-found bug here: the prior version read
-// artifacts.canonicalFacts, a top-level field buildResearchProvenancePackage
-// never produces -- canonicalFacts only ever exists per node -- so the
-// reported count was always 0 regardless of real state).
-function describeArtifacts(missionId, artifacts, status) {
-  // buildResearchProvenancePackage (research-provenance.mjs) returns
-  // { packageBody, receipt } -- the real bug this fixes read
-  // artifacts.canonicalFacts directly, a field that never exists at
-  // either level (canonicalFacts only ever lives per node, nested inside
-  // packageBody.nodes), so the reported count was always 0.
-  const facts = artifacts.packageBody.nodes.flatMap((node) =>
-    node.canonicalFacts.map((f) => ({ ...f, entityLabel: node.targetEntity?.name ?? node.id }))
-  )
-  if (facts.length === 0) {
-    return `The research hasn't produced that artifact yet. It is currently ${status.phase} (${status.nodeCount} node(s), 0 verified fact(s) so far).`
-  }
-  const byEntity = new Map()
-  for (const fact of facts) {
-    if (!byEntity.has(fact.entityLabel)) {
-      byEntity.set(fact.entityLabel, [])
-    }
-    byEntity.get(fact.entityLabel).push(`${fact.fieldName}: ${JSON.stringify(fact.value)}`)
-  }
-  const lines = [...byEntity.entries()].map(
-    ([entity, fields]) => `- **${entity}** — ${fields.join(', ')}`
-  )
-  if (status.state === 'COMPLETE') {
-    return `Here's the completed dataset for **${missionId}**:\n${lines.join('\n')}`
-  }
-  return `Partial, independently verified results so far for **${missionId}** (not yet complete -- currently ${status.phase}):\n${lines.join('\n')}\n\nThis isn't the full dataset yet.`
+// Shared by every "no mission with this id" refusal below -- 4 identical
+// literals collapsed to one, both for DRY and to keep each call site a
+// single short, braced line.
+function missingMissionResult(intent, missionId) {
+  return result({
+    intent,
+    decisionClass: 'AUTO_DECIDE',
+    text: `I don't have a research mission called ${missionId}.`,
+    live: false
+  })
 }
 
 function result({ intent, decisionClass, text, live, researchMissionId = null }) {
@@ -513,7 +469,9 @@ export async function respondResearchCommand({
   contextProjectId = null
 }) {
   const intent = classifyResearchIntent(message)
-  if (!intent) return null // not a research-bridge message -- caller falls through
+  if (!intent) {
+    return null // not a research-bridge message -- caller falls through
+  }
 
   if (intent === 'RESEARCH_PAID_GRANT') {
     const grant = parsePaidGrant(message)
@@ -665,13 +623,9 @@ export async function respondResearchCommand({
     }
     if (intent === 'RESEARCH_STATUS') {
       const status = readResearchMissionStatus(missionId)
-      if (!status)
-        return result({
-          intent,
-          decisionClass: 'AUTO_DECIDE',
-          text: `I don't have a research mission called ${missionId}.`,
-          live: false
-        })
+      if (!status) {
+        return missingMissionResult(intent, missionId)
+      }
       const byStatus =
         Object.entries(status.nodesByStatus)
           .map(([k, v]) => `${v} ${k}`)
@@ -687,13 +641,9 @@ export async function respondResearchCommand({
     if (intent === 'RESEARCH_COMPLETENESS') {
       const completeness = readResearchMissionCompleteness(missionId, clock)
       const status = readResearchMissionStatus(missionId)
-      if (!completeness || !status)
-        return result({
-          intent,
-          decisionClass: 'AUTO_DECIDE',
-          text: `I don't have a research mission called ${missionId}.`,
-          live: false
-        })
+      if (!completeness || !status) {
+        return missingMissionResult(intent, missionId)
+      }
       return result({
         intent,
         decisionClass: 'AUTO_DECIDE',
@@ -704,13 +654,9 @@ export async function respondResearchCommand({
     }
     if (intent === 'RESEARCH_CONFLICTS') {
       const items = readResearchMissionReviewItems(missionId)
-      if (items == null)
-        return result({
-          intent,
-          decisionClass: 'AUTO_DECIDE',
-          text: `I don't have a research mission called ${missionId}.`,
-          live: false
-        })
+      if (items == null) {
+        return missingMissionResult(intent, missionId)
+      }
       const conflicts = items.filter((n) => n.category === 'UNRESOLVED_CONFLICT')
       const text =
         conflicts.length === 0
@@ -734,13 +680,9 @@ export async function respondResearchCommand({
     // facts and grounds the response in real mission state instead.
     const artifacts = readResearchMissionArtifacts(missionId, clock)
     const artifactStatus = readResearchMissionStatus(missionId)
-    if (!artifacts || !artifactStatus)
-      return result({
-        intent,
-        decisionClass: 'AUTO_DECIDE',
-        text: `I don't have a research mission called ${missionId}.`,
-        live: false
-      })
+    if (!artifacts || !artifactStatus) {
+      return missingMissionResult(intent, missionId)
+    }
     return result({
       intent,
       decisionClass: 'AUTO_DECIDE',
