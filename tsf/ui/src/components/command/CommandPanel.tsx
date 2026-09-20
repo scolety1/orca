@@ -156,6 +156,12 @@ export function CommandPanel({
   const viewportRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  // REAL DOGFOOD FINDING (post-mission, P2): re-enabling hands-free used to
+  // unconditionally re-force speakResponses to true, silently overriding an
+  // owner's own explicit "turn speech off" choice from this session. This
+  // ref is the actual "already turned off" memory the mission-default
+  // comment below always claimed to have.
+  const speakResponsesManuallyDisabledRef = useRef(false)
   useAutosizeTextarea(composerRef, draft, { minPx: 36, maxPx: 200 })
   // Conversational Hands-Free V2: handsFreeMode is passed straight through
   // to the generic voice layer, which now self-manages the whole continuous
@@ -452,7 +458,9 @@ export function CommandPanel({
               if (next) {
                 // Mission default: hands-free speaks replies unless the
                 // owner has already turned that off once this session.
-                setSpeakResponses(true)
+                if (!speakResponsesManuallyDisabledRef.current) {
+                  setSpeakResponses(true)
+                }
                 // REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed):
                 // turning hands-free on while idle never actually started
                 // listening -- the toggle showed "on" but the mic stayed
@@ -466,7 +474,10 @@ export function CommandPanel({
               }
             }}
             speakResponses={speakResponses}
-            onToggleSpeakResponses={() => setSpeakResponses(!speakResponses)}
+            onToggleSpeakResponses={() => {
+              speakResponsesManuallyDisabledRef.current = speakResponses
+              setSpeakResponses(!speakResponses)
+            }}
           />
           <Textarea
             ref={composerRef}
