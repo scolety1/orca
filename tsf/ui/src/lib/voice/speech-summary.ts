@@ -5,7 +5,15 @@
 // purpose-built spoken-summary field can bypass this entirely; this is the
 // safe, always-available default for a plain-text response.
 const MARKDOWN_EMPHASIS_PATTERN = /[*_`#]/g
-const SENTENCE_BOUNDARY_PATTERN = /(?<=[.!?])\s+/
+// REAL DOGFOOD FINDING (post-mission, P1): a real Command response is
+// often a bullet list with no terminal sentence punctuation per line
+// ("- **NWR** -- Execution hold\n- **TSF** -- ..."), pervasive across
+// server/command-*-bridge.mjs's own response text. Splitting only on
+// .!? treated the WHOLE list as one unsplittable "sentence" once it
+// exceeded maxLength, degrading to a raw character-count truncation that
+// could cut off mid-word/mid-item with no signal more content existed.
+// A newline is exactly as natural a spoken pause as sentence punctuation.
+const SENTENCE_BOUNDARY_PATTERN = /(?<=[.!?])\s+|\n+/
 
 export function summarizeForSpeech(text: string, maxLength = 200): string {
   const plain = text.replace(MARKDOWN_EMPHASIS_PATTERN, '').trim()
