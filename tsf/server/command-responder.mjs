@@ -47,6 +47,10 @@ import {
   respondNeedsYouAnswerCommand
 } from './command-needs-you-answer-bridge.mjs'
 import {
+  shouldRouteToFocusQueryBridge,
+  respondFocusQueryCommand
+} from './command-focus-query-bridge.mjs'
+import {
   classifyMultiActionEntries,
   classifySingleTargetHoldEntries,
   respondMultiActionCommand
@@ -207,6 +211,18 @@ export async function respondCommand({
       clock,
       aliases,
       deps: deps.needsYouAnswer ?? {}
+    })
+  }
+  // Conversational Hands-Free V2, Phase 9: checked early, same layer as the
+  // bridge above -- "what project are we talking about?" is a question
+  // about the CONVERSATION's own state (durable focus), never about fleet
+  // status/advisory guidance or a specific project's own detail, so it must
+  // never fall through to those and be misread as an unrouted question with
+  // no project named.
+  if (shouldRouteToFocusQueryBridge(message)) {
+    return respondFocusQueryCommand({
+      focusProjectId: opState.commandFocus?.focusProjectId ?? null,
+      projects
     })
   }
   // Phase 1 (UI_DOGFOOD_AGENT_V0), 1D: same reasoning as the research
