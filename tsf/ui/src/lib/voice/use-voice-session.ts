@@ -108,6 +108,11 @@ const RECOVERABLE_ERROR_CODES = new Set(['no-speech', 'network', 'aborted'])
 const MAX_CONSECUTIVE_START_FAILURES = 4
 const RESTART_BACKOFF_MS = [250, 600, 1200, 2500]
 const CLEAN_END_RESTART_DELAY_MS = 300
+// Real Web Speech no-speech timeouts take several real seconds; a session
+// that errors within this floor of its own onstart is essentially
+// guaranteed to be a real crash-loop (e.g. an immediate network failure),
+// never a normal silence timeout.
+const MIN_HEALTHY_SESSION_MS = 1500
 
 export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession {
   const { continuous = true, interimResults = true, lang, handsFreeMode = false } = options
@@ -125,6 +130,9 @@ export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession
   const explicitStopRef = useRef(false)
   const errorHandledRef = useRef(false)
   const consecutiveStartFailuresRef = useRef(0)
+  // 0 means "no onstart to credit since the last time this was consumed" --
+  // see onerror's own real Codex adversarial-review finding below.
+  const startedAtRef = useRef(0)
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startRef = useRef<() => void>(() => {})
   const speakingRef = useRef(false)
@@ -162,6 +170,19 @@ export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession
   }, [])
 
   const start = useCallback(() => {
+    // REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): a pending
+    // auto-restart timer (scheduled 300ms after a natural end, or after a
+    // backoff delay) was never cancelled by an explicit start() call --
+    // clicking the mic (or any other caller-driven start()) during that
+    // gap left the timer armed; it later fired, called start() AGAIN, and
+    // that second start() aborted the recognition instance THIS call just
+    // created, whose own onend then rescheduled yet another restart --
+    // a real abort/restart loop. Any call to start() -- manual or
+    // internal -- supersedes whatever was scheduled before it.
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = null
+    }
     if (!RecognitionCtor) {
       setError({
         code: 'UNSUPPORTED',
@@ -178,12 +199,21 @@ export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession
       setSpeaking(false)
       speakingRef.current = false
     }
-    explicitStopRef.current = false
+    // Real regression, caught by this file's own new test: aborting a
+    // PREVIOUS instance below fires ITS onend SYNCHRONOUSLY (matching many
+    // real engines) -- if explicitStopRef were already false at that
+    // point, that old onend would misread this as a natural end and
+    // schedule its OWN competing restart, racing this call's brand new
+    // instance. Marked deliberate here, before the abort; the new
+    // instance's own onend (attached below, its own separate closure)
+    // resets it back to false whenever IT actually needs to.
+    explicitStopRef.current = true
     // A fresh engine instance per start() -- several real browser
     // implementations refuse to restart a previously stopped/errored
     // instance; this is the simplest contract that works everywhere,
     // matching common real-world practice for this API.
     recognitionRef.current?.abort()
+    explicitStopRef.current = false
     const recognition = new RecognitionCtor()
     recognition.continuous = continuous
     recognition.interimResults = interimResults
@@ -223,11 +253,23 @@ export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession
       if (!handsFreeModeRef.current || explicitStopRef.current || !recoverable) {
         return
       }
-      // Only a run of CONSECUTIVE failures-to-start counts against the
-      // bounded budget below -- onstart (a genuinely healthy session)
-      // resets it, so a long, quiet hands-free conversation with many
-      // ordinary no-speech re-arm cycles never "runs out" of retries; only
-      // a real crash-loop (repeated immediate failures) does.
+      // REAL CODEX ADVERSARIAL-REVIEW FINDING (P1, fixed): resetting the
+      // failure budget on every onstart meant a session that starts fine
+      // and then IMMEDIATELY errors, repeating forever, retried at the
+      // shortest 250ms delay indefinitely and never reached the longer
+      // backoffs or the bounded give-up state -- onstart fired every
+      // single cycle, so the counter could never accumulate. Only a
+      // session that was genuinely alive for a real minimum duration
+      // before erroring counts as "healthy" now; startedAtRef is consumed
+      // (reset to 0) here so a later onstart-less failure (the engine
+      // fails before even starting) can never be miscredited from a much
+      // earlier successful start or a fake-timer-advanced stale value.
+      const trulyStarted = startedAtRef.current > 0
+      const aliveMs = trulyStarted ? Date.now() - startedAtRef.current : 0
+      startedAtRef.current = 0
+      if (trulyStarted && aliveMs >= MIN_HEALTHY_SESSION_MS) {
+        consecutiveStartFailuresRef.current = 0
+      }
       if (consecutiveStartFailuresRef.current >= MAX_CONSECUTIVE_START_FAILURES) {
         setError({
           code: event.error,
@@ -268,7 +310,7 @@ export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession
     }
     recognition.onstart = () => {
       setListening(true)
-      consecutiveStartFailuresRef.current = 0
+      startedAtRef.current = Date.now()
     }
     recognitionRef.current = recognition
     recognition.start()
@@ -313,6 +355,20 @@ export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession
         explicitStopRef.current = true
         recognitionRef.current.stop()
       }
+      // REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): speakingRef used
+      // to become true only inside the utterance's own onstart callback --
+      // real SpeechSynthesis.speak() QUEUES the utterance asynchronously,
+      // so there was a real window between this call and onstart where
+      // speakingRef was still false. A start() call landing in that window
+      // (an auto-restart, or the owner clicking the mic) saw
+      // speakingRef.current === false, so it did NOT treat itself as a
+      // barge-in and just began a fresh recognition session -- which then
+      // ran WHILE the queued speech actually started playing moments
+      // later, with no guard preventing TSF's own reply from being
+      // transcribed as user input. Setting this synchronously, before
+      // queueing, closes that window entirely.
+      setSpeaking(true)
+      speakingRef.current = true
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(text)
       const resumeAfterSpeech = () => {
@@ -321,10 +377,6 @@ export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession
         if (handsFreeModeRef.current) {
           scheduleRestart(CLEAN_END_RESTART_DELAY_MS)
         }
-      }
-      utterance.onstart = () => {
-        setSpeaking(true)
-        speakingRef.current = true
       }
       utterance.onend = resumeAfterSpeech
       utterance.onerror = resumeAfterSpeech

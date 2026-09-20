@@ -55,6 +55,7 @@ state) and sometimes a superseding `_FINAL_REPORT.md`/`_RECONCILIATION.md`
 - Astra Larger Benchmark V2: [design](ASTRA_LARGER_BENCHMARK_V2_DESIGN.md)
 - Hands-On Round 3 Research Continuity: [report](HANDS_ON_ROUND3_RESEARCH_CONTINUITY.md)
 - Hands-Free Command + Project Manager V1: [**final report**](TSF_HANDS_FREE_COMMAND_PROJECT_MANAGER_V1_REPORT.md)
+- Conversational Command + Continuous Hands-Free V2: [**final report**](TSF_CONVERSATIONAL_HANDS_FREE_V2_REPORT.md)
 
 ## `adoption-receipts/`
 

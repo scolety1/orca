@@ -418,5 +418,77 @@ describe('useVoiceSession', () => {
       void tts
       h.cleanup()
     })
+
+    // REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): a pending
+    // auto-restart timer was never cancelled by an explicit start() call --
+    // clicking the mic during that gap left BOTH the timer and a fresh
+    // start() racing, aborting the just-created recognition and
+    // re-scheduling yet another restart (a real abort/restart loop).
+    it('an explicit start() call during a pending scheduled restart cancels the pending timer -- no abort/restart loop', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      act(() => lastInstance!.onend?.()) // schedules a clean restart in 300ms
+      const instanceBeforeManualStart = lastInstance
+      act(() => h.session.start()) // the owner clicks the mic during the gap
+      const instanceAfterManualStart = lastInstance
+      // Advancing past the ORIGINAL 300ms restart delay must not abort the
+      // instance the manual start() just created, nor create a third one.
+      act(() => vi.advanceTimersByTime(1000))
+      h.rerender()
+      expect(instanceAfterManualStart).not.toBe(instanceBeforeManualStart)
+      expect(instanceAfterManualStart?.aborted).toBe(false)
+      expect(h.session.listening).toBe(true)
+      h.cleanup()
+    })
+
+    // REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): speakingRef used
+    // to become true only inside the utterance's own onstart -- real
+    // SpeechSynthesis.speak() queues asynchronously, so a start() call
+    // landing in the real gap between speak() and onstart saw
+    // speakingRef.current === false and did not treat itself as barge-in,
+    // starting a fresh recognition session that then ran WHILE the queued
+    // speech actually began playing moments later (a real self-
+    // transcription risk). This pins that the hook now reports
+    // `speaking: true` the SAME synchronous tick speak() is called, before
+    // any utterance lifecycle event has fired at all.
+    it('speaking becomes true synchronously the instant speak() is called, before the utterance queue even resolves', () => {
+      installFakeSpeechSynthesis()
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.speak('a reply'))
+      // No rerender/timer advance/utterance-event needed -- this must
+      // already be true purely from the speak() call itself.
+      h.rerender()
+      expect(h.session.speaking).toBe(true)
+      h.cleanup()
+    })
+
+    // REAL CODEX ADVERSARIAL-REVIEW FINDING (P1, fixed): resetting the
+    // failure budget on every onstart meant a session that starts fine and
+    // then IMMEDIATELY errors, repeating forever, retried at the shortest
+    // 250ms delay indefinitely and never reached the bounded give-up
+    // state, since onstart fired every single cycle.
+    it('a session that starts successfully but errors again almost immediately, repeating, still reaches the bounded give-up state', () => {
+      const h = makeHarness({ handsFreeMode: true })
+      act(() => h.session.start())
+      // Each cycle genuinely fires onstart (unlike the
+      // FakeSpeechRecognition.nextStartFails scenario), but errors again
+      // with NO real elapsed time in between -- exactly the review's own
+      // reproduction shape. Advancing by EXACTLY each scheduled backoff
+      // delay (never more) keeps the fake clock's own Date.now() reading
+      // right at each restart's own onstart moment, so the very next
+      // emitError sees a genuine ~0ms `aliveMs` -- advancing by any extra
+      // idle time here would be a test-harness artifact miscrediting the
+      // session as "alive" for time it never really used.
+      const backoffDelays = [250, 600, 1200, 2500]
+      for (const delay of backoffDelays) {
+        act(() => lastInstance!.emitError('network'))
+        act(() => vi.advanceTimersByTime(delay))
+      }
+      // The 5th consecutive immediate failure crosses the bounded budget.
+      act(() => lastInstance!.emitError('network'))
+      h.rerender()
+      expect(h.session.error?.recoverable).toBe(false)
+      h.cleanup()
+    })
   })
 })

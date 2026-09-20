@@ -18,27 +18,7 @@ import { summarizeForSpeech } from '@/lib/voice/speech-summary'
 import { CommandVoiceErrorBanner } from '@/components/command/CommandVoiceErrorBanner'
 import { useApi } from '@/lib/use-api'
 import { buildGlobalRunStatusItems, globalRunStatusLabel } from '@/lib/global-run-status'
-import { isResearchMissionWorkItem, type WorkSummary } from '@/lib/types'
-
-// Hands-Free Command + Project Manager V1: the focused project's own
-// display name, resolved from whatever real WorkSummary data the
-// background-work line below already fetches (never a second, dedicated
-// fetch just for a label) -- falls back to the bare id (still real,
-// informative) if the project isn't in any currently-fetched bucket
-// (e.g. a fully DONE/quiet project with no active/waiting/needsYou entry).
-function resolveFocusDisplayName(work: WorkSummary | null, focusProjectId: string): string {
-  if (!work) {
-    return focusProjectId
-  }
-  for (const bucket of [work.active, work.waiting, work.needsYou, work.verifying, work.queued]) {
-    for (const item of bucket) {
-      if (!isResearchMissionWorkItem(item) && item.id === focusProjectId) {
-        return item.displayName
-      }
-    }
-  }
-  return focusProjectId
-}
+import { resolveFocusDisplayName } from '@/lib/command-focus-display-name'
 
 // Memoized so typing in the composer (draft/attachments/selfRepair state,
 // all local to CommandPanel) never re-renders the transcript -- without
@@ -196,6 +176,19 @@ export function CommandPanel({
     scrollTranscriptToBottom(viewportRef.current)
   }, [messages, sending])
 
+  // REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): use-voice-session.ts's
+  // own documented contract says a caller must turn its hands-free toggle
+  // off when it sees `error.recoverable === false` -- CommandPanel never
+  // did, so the UI kept showing hands-free as "on" indefinitely after an
+  // unrecoverable provider error (permission denied, no microphone, or the
+  // bounded retry budget giving up), with no way to recover except
+  // manually toggling it off and on again.
+  useEffect(() => {
+    if (handsFreeMode && voice.error?.recoverable === false) {
+      setHandsFreeMode(false)
+    }
+  }, [voice.error, handsFreeMode, setHandsFreeMode])
+
   // Hands-Free Command + Project Manager V1: a voice-produced FINAL
   // transcript only ever becomes `draft` text -- this hook has zero
   // knowledge of Command/projects/actions, and the effect below is the one
@@ -289,6 +282,16 @@ export function CommandPanel({
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach Command right now.')
+      // REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): this catch block
+      // used to leave hands-free mode permanently idle after ANY single API
+      // error -- voice.cancel() above already stopped recognition before
+      // the request, and only the SUCCESS branch above ever resumed it.
+      // One real request failure (a transient network blip, a 500) meant
+      // the mic never came back on its own, even though the toggle still
+      // showed hands-free as "on."
+      if (handsFreeMode && voice.supported) {
+        voice.start()
+      }
     } finally {
       setSending(false)
     }
@@ -450,6 +453,14 @@ export function CommandPanel({
                 // Mission default: hands-free speaks replies unless the
                 // owner has already turned that off once this session.
                 setSpeakResponses(true)
+                // REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed):
+                // turning hands-free on while idle never actually started
+                // listening -- the toggle showed "on" but the mic stayed
+                // off until the owner also clicked the mic button
+                // separately.
+                if (voice.supported && !voice.listening) {
+                  voice.start()
+                }
               } else {
                 voice.cancel()
               }

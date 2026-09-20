@@ -42,6 +42,30 @@ const REFUSAL_TEXT = {
 //   project, same as an explicit turn target would be).
 // aliases: loadProjectAliases()'s output, threaded through like every other
 //   bridge (avoids a second, redundant re-parse for the same request).
+// Real Codex adversarial-review finding (P0): a Needs-You answer's own
+// free-text ANSWER content ("...with password remediation") was scanned
+// by resolveProjectsFromText for a project reference exactly like the
+// rest of the message -- if the answer happens to contain words that
+// coincidentally match a real, different project's own name, it was
+// wrongly treated as an explicit project reference, resolving (and
+// mutating) the WRONG project's question instead of the one actually
+// named or focused. Reproduced: focus is HouseOS, HouseOS and a real
+// `password-remediation` project each have one open item, and "Answer the
+// question with password remediation" resolved and answered
+// password-remediation's item instead of HouseOS's. Only the portion of
+// the message BEFORE a real answer-content marker is ever scanned for a
+// project name now -- text after it is the owner's own answer, never
+// project-targeting language. The canonical phrasings ("Answer the NWR
+// question with option two", "Answer that with option two") are
+// unaffected -- the project name/back-reference always comes BEFORE
+// "with" in every real example this mission and its own tests use.
+const ANSWER_CONTENT_MARKER = /\b(?:with|saying|that'?s|that\s+it'?s|that\s+it\s+is)\b/i
+
+function targetingPortion(message) {
+  const match = ANSWER_CONTENT_MARKER.exec(message)
+  return match ? message.slice(0, match.index) : message
+}
+
 export async function respondNeedsYouAnswerCommand({
   message,
   projects,
@@ -51,7 +75,7 @@ export async function respondNeedsYouAnswerCommand({
   aliases,
   deps = {}
 }) {
-  const resolution = resolveProjectsFromText(message, projects, { aliases })
+  const resolution = resolveProjectsFromText(targetingPortion(message), projects, { aliases })
   const turnTargetProjectIds = resolution.matches
     .filter((m) => m.matchedOn !== 'fuzzy')
     .map((m) => m.project.id)

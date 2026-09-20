@@ -26,6 +26,19 @@ test('shouldRouteToFocusQueryBridge does not match an ordinary project-status qu
   assert.equal(shouldRouteToFocusQueryBridge("What's running right now?"), false)
 })
 
+// REAL CODEX ADVERSARIAL-REVIEW FINDING (P1, fixed): the pattern was
+// originally unanchored, so it matched a focus-query PHRASE embedded
+// inside a longer compound message and returned before real intent/
+// action classification ever ran -- silently discarding a genuine,
+// dispatch-worthy trailing clause.
+test('shouldRouteToFocusQueryBridge never matches a focus-query phrase embedded in a longer compound message', () => {
+  assert.equal(shouldRouteToFocusQueryBridge('What are we working on, and then fix it'), false)
+  assert.equal(
+    shouldRouteToFocusQueryBridge('What project are we talking about, also pause it'),
+    false
+  )
+})
+
 test("respondFocusQueryCommand answers with the real focused project's display name", () => {
   const result = respondFocusQueryCommand({ focusProjectId: 'nwr', projects: PROJECTS })
   assert.match(result.text, /Niners-War-Room/)

@@ -12,11 +12,19 @@
 // command-conversation-focus.mjs's own EXPLICIT_SWITCH_PATTERN), checked
 // early alongside this codebase's other command-*-bridge.mjs modules --
 // never guesses when there's genuinely no focus yet.
+// REAL CODEX ADVERSARIAL-REVIEW FINDING (P1, fixed): this was originally
+// unanchored (a bare `.test()` substring search), so it matched INSIDE a
+// longer compound message too -- "What are we working on, and then fix
+// it" was classified as a pure focus query and returned before intent/
+// action classification ever ran, silently discarding the real,
+// dispatch-worthy second clause. Anchored to the WHOLE message now (only
+// trailing whitespace/a single "?" tolerated) -- a genuine focus-only
+// question, never a fragment of a longer, compound one.
 const FOCUS_QUERY_PATTERN =
-  /\bwhat\s+project\s+(?:are\s+we|is\s+this)\b|\bwhich\s+project\s+(?:are\s+we|is\s+this)\b|\bwhat\s+are\s+we\s+(?:talking|working)\s+(?:about|on)\b/i
+  /^(?:what|which)\s+project\s+(?:are\s+we\s+(?:talking|working)\s+(?:about|on)|is\s+this)\s*\??$|^what\s+are\s+we\s+(?:talking|working)\s+(?:about|on)\s*\??$/i
 
 export function shouldRouteToFocusQueryBridge(message) {
-  return FOCUS_QUERY_PATTERN.test(message)
+  return FOCUS_QUERY_PATTERN.test(message.trim())
 }
 
 // focusProjectId: opState.commandFocus?.focusProjectId ?? null -- the

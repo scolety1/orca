@@ -107,6 +107,36 @@ test('conversational resolution: ambiguity (no named project, no focus, multiple
   assert.deepEqual(readKeepGoingRun(PROJECT_D.id).needsYou, beforeD.needsYou)
 })
 
+// REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): the answer's own
+// free-text content ("with password remediation") was scanned for a
+// project reference exactly like the rest of the message -- since a real
+// project happened to be named "password-remediation", this resolved and
+// answered THAT project's item instead of the actually-focused one.
+test("conversational resolution (P0, fixed): the answer's own free-text content is never scanned for a project reference -- resolves via focus, not the answer text", async () => {
+  const HOUSEOS = { id: 'houseos', displayName: 'HouseOS' }
+  const PASSWORD_REMEDIATION = { id: 'password-remediation', displayName: 'Password-Remediation' }
+  await seedRunWithOpenQuestion(HOUSEOS.id, 'Which security approach?')
+  await seedRunWithOpenQuestion(PASSWORD_REMEDIATION.id, 'Which release?')
+  const opState = loadState()
+  const result = await respondNeedsYouAnswerCommand({
+    message: 'Answer the question with password remediation',
+    projects: [HOUSEOS, PASSWORD_REMEDIATION],
+    opState,
+    focusProjectId: HOUSEOS.id,
+    clock
+  })
+  assert.match(result.text, /Got it/)
+  const houseosRun = readKeepGoingRun(HOUSEOS.id)
+  const resolved = houseosRun.needsYou.find((n) => n.question === 'Which security approach?')
+  assert.ok(resolved.resolvedAt, "HouseOS's own focused question must be the one resolved")
+  assert.match(resolved.resolution, /password remediation/)
+  const otherRun = readKeepGoingRun(PASSWORD_REMEDIATION.id)
+  assert.ok(
+    !otherRun.needsYou.find((n) => n.question === 'Which release?').resolvedAt,
+    'the unrelated project whose name only coincidentally appeared in the answer text must stay untouched'
+  )
+})
+
 test('conversational resolution: a NEEDS_YOU_ANSWER-shaped message never fabricates a resolution -- it only ever acts on a real, already-open item it can unambiguously identify', async () => {
   // "Yes, authorize it" is real NEEDS_YOU_ANSWER phrasing, but a message
   // that is ALSO independently consequential (push/deploy/credentials/money)

@@ -15,6 +15,15 @@ export function summarizeForSpeech(text: string, maxLength = 200): string {
   const sentences = plain.split(SENTENCE_BOUNDARY_PATTERN)
   let result = ''
   for (const sentence of sentences) {
+    // REAL CODEX ADVERSARIAL-REVIEW FINDING (P1, fixed): this overflow
+    // check only ever broke when `result` was already non-empty, so a
+    // single FIRST sentence longer than maxLength on its own was accepted
+    // in full -- the cap was not actually a cap. A pure 500-character
+    // one-sentence probe returned all 500 characters against the default
+    // 200 limit.
+    if (!result && sentence.length > maxLength) {
+      return sentence.slice(0, maxLength).trim()
+    }
     const next = result ? `${result} ${sentence}` : sentence
     if (next.length > maxLength && result) {
       break

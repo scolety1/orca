@@ -188,19 +188,19 @@ test('MISRECOGNITION SAFETY: an unambiguous short name resolves to exactly the r
   })
 })
 
-// REAL FINDING (P2, pre-existing project-name-resolver.mjs behavior, not
-// introduced by this mission): when project B's display name has project
-// A's display name as a literal PREFIX (VOICE-ALPHA / VOICE-ALPHA-TWO),
-// resolveProjectsFromText matches BOTH whenever B's full name is spoken,
-// because A's name is also a literal substring of the message. This is
-// safe (nextCommandFocus's own decision table refuses to move focus on
-// more than one turn target -- confirmed below, no wrong-project action
-// is possible) but is real friction: an owner can never address the
-// longer-named project by its own full, correct name in one turn. Logged
-// here as a real, reproduced dogfood finding, not fixed -- it lives in
-// pre-existing shared resolver code well outside this mission's own diff,
-// and the mission's own instructions say fix only P0/P1 automatically.
-test("MISRECOGNITION SAFETY: a name that is a real prefix of another project's name is genuinely ambiguous, and NO ACTION is taken (a real, logged P2 finding, not a P0/P1)", async () => {
+// UPDATED (Conversational Hands-Free V2, Codex adversarial-review
+// finding, real fix): a project whose display name is a literal PREFIX of
+// another project's display name (VOICE-ALPHA / VOICE-ALPHA-TWO) used to
+// resolve BOTH whenever the longer name was spoken, since the shorter
+// name is also a literal substring of the message -- this was previously
+// logged as a disclosed, unfixed P2 (safe -- nextCommandFocus never
+// guessed a switch out of the resulting ambiguity -- but real friction).
+// project-name-resolver.mjs now applies a real "longest-specific-match-
+// wins" rule (a shorter match's own phrase that is a literal substring of
+// a different project's own longer matched phrase is dropped) -- so the
+// longer, more specific, and clearly-intended name now resolves cleanly
+// on its own, with no correction turn needed.
+test('MISRECOGNITION SAFETY (fixed): the longer of two prefix-colliding project names resolves cleanly and unambiguously to itself', async () => {
   seedDisposableProject('voice-alpha-7q9', 'VOICE-ALPHA')
   const alphaTwo = seedDisposableProject('voice-alpha-two-4m2', 'VOICE-ALPHA-TWO')
   await withServer(async (base) => {
@@ -211,39 +211,26 @@ test("MISRECOGNITION SAFETY: a name that is a real prefix of another project's n
     assert.equal(result.status, 200)
     assert.equal(
       result.body.focusProjectId,
-      null,
-      "two turn targets (the prefix collision) must never resolve to a silent guess -- NO ACTION TAKEN, matching the mission's own safety requirement"
+      alphaTwo.id,
+      "the longer, more specific name must win outright -- the shorter project's own incidental substring match is shadowed, never a silent guess between the two"
     )
-
-    // The exact, full, correct name -- alone, with no other project name
-    // in the same message -- corrects cleanly to a single exact match.
-    // This is the real, working correction path (spoken shorthand like
-    // "Alpha Two" alone stays FUZZY-only and, correctly, still never
-    // moves focus -- see the next test).
-    const corrected = await chat(base, {
-      projectId: null,
-      message: 'No, I meant VOICE-ALPHA.'
-    })
-    assert.equal(corrected.status, 200)
-    assert.equal(
-      corrected.body.focusProjectId,
-      'voice-alpha-7q9',
-      'an unambiguous exact-match correction must resolve and move focus'
-    )
-    void alphaTwo
   })
 })
 
 test('CORRECTION FLOW SAFETY: natural spoken shorthand for the longer project ("Alpha Two") is fuzzy-only and correctly never moves focus by itself -- never a guessed wrong-project switch', async () => {
-  seedDisposableProject('voice-alpha-7q9', 'VOICE-ALPHA')
+  const alpha = seedDisposableProject('voice-alpha-7q9', 'VOICE-ALPHA')
   const alphaTwo = seedDisposableProject('voice-alpha-two-4m2', 'VOICE-ALPHA-TWO')
   await withServer(async (base) => {
-    const before = (await (await fetch(`${base}/api/chat/__command__/focus`)).json()).focusProjectId
+    // Explicit, known starting focus -- this file's tests share state, and
+    // an earlier test may have already left focus sitting on alphaTwo
+    // itself (via a real, correct exact match), which would make the
+    // "never guessed its way onto alphaTwo" assertion below meaningless.
+    await chat(base, { projectId: null, message: `Let's work on ${alpha.displayName}.` })
     const result = await chat(base, { projectId: null, message: 'No, I meant Alpha Two.' })
     assert.equal(result.status, 200)
     assert.equal(
       result.body.focusProjectId,
-      before,
+      alpha.id,
       'a fuzzy-only match (natural shorthand, not the exact registered name) must never drive a focus switch -- fail closed, never guess, focus stays exactly what it was'
     )
     assert.notEqual(

@@ -148,8 +148,15 @@ function splitClauses(message) {
 // project whose name collides with a common infra/tool term would otherwise
 // need another copy-pasted special case) -- extend this set, not the
 // matching logic, when a new collision is found.
+// Real Codex adversarial-review finding: "Ask TSF/Orca to fix NWR" -- a
+// real, plausible way an operator addresses the system itself before
+// naming an actual target -- bypassed this pattern entirely (only
+// use/using/via/through/with/run(ning) were covered) and resolved
+// tsf-orca as a real dispatch target alongside NWR. "Ask"/"tell"/"have"/
+// "get" are the same class of delegation verb, addressing TSF/Orca AS the
+// system being asked to do something, not naming it as a real target.
 const INFRA_MENTION_PATTERN =
-  /\b(?:use|using|via|through|with|run(?:ning)?(?: it| this)?(?: in| on| through)?)\s+(?:the\s+)?tsf\W{0,3}(?:and\s+|\+\s*)?orca\b/i
+  /\b(?:use|using|via|through|with|run(?:ning)?(?: it| this)?(?: in| on| through)?|ask|tell|have|get)\s+(?:the\s+)?tsf\W{0,3}(?:and\s+|\+\s*)?orca\b/i
 const INFRA_SENSITIVE_PROJECT_IDS = new Set(['tsf-orca'])
 
 // Command target-resolution blocker (live hands-on finding): "whats the
@@ -294,7 +301,12 @@ export function resolveProjectsFromText(message, projects, options = {}) {
         // were never reachable by that phrasing in the first place, which
         // is why the original infra check only needed to guard the fuzzy
         // path).
-        clauseMatch = { matchedOn: 'id', confidence: 1, matchedPhrase: project.id }
+        clauseMatch = {
+          matchedOn: 'id',
+          confidence: 1,
+          matchedPhrase: project.id,
+          viaNormalized: true
+        }
         excluded = isExcludedNearNormalized(clause, project.id)
       } else if (
         normalizedNamePattern &&
@@ -304,7 +316,8 @@ export function resolveProjectsFromText(message, projects, options = {}) {
         clauseMatch = {
           matchedOn: 'displayName',
           confidence: 0.95,
-          matchedPhrase: project.displayName
+          matchedPhrase: project.displayName,
+          viaNormalized: true
         }
         excluded = isExcludedNearNormalized(clause, project.displayName)
       } else if (!(infraSensitive && INFRA_MENTION_PATTERN.test(clause))) {
@@ -390,9 +403,53 @@ export function resolveProjectsFromText(message, projects, options = {}) {
     }
   }
 
+  // Real Codex adversarial-review findings, both about `exact` collecting
+  // more than one genuinely-real project match from a single message when
+  // it shouldn't:
+  //
+  // Rule 1 -- longest-specific-match-wins: a SHORTER match's own matched
+  // phrase that is a literal substring of a DIFFERENT project's own longer
+  // matched phrase in this same result (e.g. the "tsf" alias's own phrase
+  // is a substring of the real, live "TSF UI Capability Check" project's
+  // own displayName match; "VOICE-ALPHA" is a substring of
+  // "VOICE-ALPHA-TWO") is almost always an artifact of a short alias/id/
+  // normalized-name happening to be a prefix/substring of a different,
+  // more specific real project's own longer name -- never a genuine
+  // second target. The shorter one is dropped entirely.
+  //
+  // Rule 2 -- a normalized-tier match (viaNormalized -- reconstructed from
+  // punctuation-stripped comparison, e.g. "password remediation" matching
+  // the real `password-remediation` project inside "Fix HouseOS password
+  // remediation flow") that CO-OCCURS with ANY other project's real match
+  // (judged after Rule 1) is demoted out of `exact` -- a normalized match
+  // is a genuinely weaker signal than a literal id/displayName/alias hit,
+  // too easily ordinary descriptive prose rather than a real second
+  // target, once the message already names a different project through a
+  // stronger signal. A SOLE normalized match (no other project mentioned
+  // at all) is unaffected -- this only guards co-occurrence.
+  const shadowedByLongerMatch = new Set()
+  for (let i = 0; i < exact.length; i += 1) {
+    for (let j = 0; j < exact.length; j += 1) {
+      if (i === j || exact[i].project.id === exact[j].project.id) {
+        continue
+      }
+      const shorter = exact[i].matchedPhrase.toLowerCase()
+      const longer = exact[j].matchedPhrase.toLowerCase()
+      if (shorter.length < longer.length && longer.includes(shorter)) {
+        shadowedByLongerMatch.add(i)
+      }
+    }
+  }
+  const afterRule1 = exact.filter((_, idx) => !shadowedByLongerMatch.has(idx))
+  const exactResolved = afterRule1
+    .filter(
+      (m) => !m.viaNormalized || !afterRule1.some((other) => other.project.id !== m.project.id)
+    )
+    .map(({ viaNormalized: _viaNormalized, ...rest }) => rest)
+
   // Resolution contract: exact/alias always outranks fuzzy. Ambiguous only
   // when there's no exact signal at all and more than one fuzzy candidate.
-  const ambiguous = exact.length === 0 && fuzzy.length > 1
+  const ambiguous = exactResolved.length === 0 && fuzzy.length > 1
 
   // Command target-resolution blocker fix: previously ANY fuzzy match rode
   // along in `matches` alongside a confident exact/alias match (only the
@@ -406,8 +463,8 @@ export function resolveProjectsFromText(message, projects, options = {}) {
   // alongside a confident target. Preserved for diagnostics rather than
   // silently discarded, so a mis-resolution stays provable in tests/dev
   // tooling without cluttering the operator-facing response.
-  const droppedFuzzy = exact.length > 0 ? fuzzy : []
-  const matches = exact.length > 0 ? exact : [...exact, ...fuzzy]
+  const droppedFuzzy = exactResolved.length > 0 ? fuzzy : []
+  const matches = exactResolved.length > 0 ? exactResolved : [...exactResolved, ...fuzzy]
 
   return {
     matches,

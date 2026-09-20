@@ -96,3 +96,59 @@ test('an unrelated real project is never dragged in by the new normalized-name t
   const { matches } = resolveProjectsFromText("let's work on TSF", REAL_PROJECTS)
   assert.deepEqual(ids(matches), ['tsf-orca'])
 })
+
+// REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): a normalized-tier
+// match ("password remediation" -> the real `password-remediation`
+// project) that co-occurs with a DIFFERENT project's own stronger,
+// literal match ("HouseOS") in the same message was silently trusted at
+// full exact confidence, resolving BOTH as real dispatch targets -- even
+// though "password remediation flow" reads at least as plausibly as
+// ordinary descriptive prose about a FEATURE, not a second named project.
+test("CODEX FINDING (P0, fixed): a normalized match co-occurring with a different project's real match is demoted, never silently treated as a second real target", () => {
+  const projects = [
+    { id: 'houseos', displayName: 'HouseOS' },
+    { id: 'password-remediation', displayName: 'Password-Remediation' }
+  ]
+  const { matches } = resolveProjectsFromText('Fix HouseOS password remediation flow', projects)
+  assert.deepEqual(
+    ids(matches),
+    ['houseos'],
+    "password-remediation's own normalized-only match must be demoted once HouseOS is already named via a real, stronger signal"
+  )
+})
+
+test('CODEX FINDING (bonus, confirms the guard is narrow): a SOLE normalized match, with no other project named at all, is unaffected and stays fully trusted', () => {
+  const projects = [{ id: 'password-remediation', displayName: 'Password-Remediation' }]
+  const { matches } = resolveProjectsFromText(
+    "let's discuss password remediation for the current app",
+    projects
+  )
+  assert.deepEqual(ids(matches), ['password-remediation'])
+})
+
+// REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): "Ask TSF/Orca to fix
+// NWR" bypassed INFRA_MENTION_PATTERN (only use/using/via/through/with/
+// run(ning) were covered, not "ask") and resolved tsf-orca as a real
+// second dispatch target alongside NWR -- "ask/tell/have/get TSF/Orca to
+// ..." addresses the system itself, exactly the class of phrasing this
+// guard exists for.
+test('CODEX FINDING (P0, fixed): "Ask TSF/Orca to fix NWR" addresses the system, not a real second target -- only NWR resolves', () => {
+  const { matches } = resolveProjectsFromText('Ask TSF/Orca to fix NWR', REAL_PROJECTS)
+  assert.deepEqual(ids(matches), ['niners-war-room'])
+})
+
+// REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, fixed): the new short "tsf"
+// alias collided with the real, live, always-present TSF UI fixture
+// project (`tsf-ui-capability-check`, displayName "TSF UI Capability
+// Check", which literally starts with "TSF") -- "fix TSF UI Capability
+// Check" resolved BOTH tsf-orca (via the alias) and the fixture project
+// as real dispatch targets. The longest-specific-match-wins rule fixes
+// this the same way it fixes the VOICE-ALPHA/VOICE-ALPHA-TWO case.
+test('CODEX FINDING (P0, fixed): the short "tsf" alias never shadows the real, longer "TSF UI Capability Check" project it collides with', () => {
+  const projects = [
+    { id: 'tsf-orca', displayName: 'TSF_ORCA' },
+    { id: 'tsf-ui-capability-check', displayName: 'TSF UI Capability Check' }
+  ]
+  const { matches } = resolveProjectsFromText('fix TSF UI Capability Check', projects)
+  assert.deepEqual(ids(matches), ['tsf-ui-capability-check'])
+})
