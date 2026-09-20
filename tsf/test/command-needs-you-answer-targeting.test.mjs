@@ -71,6 +71,23 @@ test('resolveNeedsYouAnswerTarget: no named project, focus set but the focused p
   assert.equal(result.reason, 'AMBIGUOUS')
 })
 
+// REAL DOGFOOD FINDING (post-mission, P2): the focused project itself has
+// ZERO open items (a real open item exists only on some other, unmentioned
+// project) previously fell through to the same AMBIGUOUS refusal as the
+// genuinely-ambiguous "multiple candidates" case above -- "I'm not sure
+// which question you mean" is misleading when there is no real candidate
+// on the focused project to be ambiguous between at all.
+test('resolveNeedsYouAnswerTarget: no named project, focus set but the focused project has ZERO open items -- refuses as NO_MATCH, not AMBIGUOUS', () => {
+  const result = resolveNeedsYouAnswerTarget('Answer the question with option two.', {
+    openItems: [item('a', 'other-project')],
+    turnTargetProjectIds: [],
+    mentionedProjectIds: [],
+    focusProjectId: 'nwr'
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'NO_MATCH')
+})
+
 // REAL DOGFOOD FINDING (round 1, P0, Codex-confirmed): TWO exact project
 // names in the same message previously collapsed into the SAME branch as
 // "zero named" (both produced namedProjectId === null), silently falling

@@ -69,6 +69,15 @@ export function resolveNeedsYouAnswerTarget(
     if (candidates.length === 1) {
       return { ok: true, item: candidates[0] }
     }
+    // REAL DOGFOOD FINDING (post-mission, P2): zero open items on the
+    // focused project (even while a real open item exists on some OTHER,
+    // unmentioned project) previously fell through to AMBIGUOUS -- "I'm not
+    // sure which question you mean" is false when there is no real
+    // candidate to be ambiguous BETWEEN. Only >1 candidate on the focus
+    // project ITSELF (a genuine same-project ambiguity) stays AMBIGUOUS.
+    if (candidates.length === 0) {
+      return { ok: false, reason: 'NO_MATCH' }
+    }
   }
   return { ok: false, reason: 'AMBIGUOUS' }
 }
