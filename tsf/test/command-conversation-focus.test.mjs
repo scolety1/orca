@@ -370,7 +370,8 @@ test('isExplicitSwitchMessage: a causative-imperative direct request moves focus
 // UNANCHORED trigger phrases, which then fired mid-sentence inside real
 // questions, musings, reported/historical speech, and retractions using
 // vocabulary not yet in RETRACTION_MARKER_PATTERN. Restoring "have" (with
-// a narrow, message-start, non-"?"-ending positive exception for the
+// a narrow, message-start positive exception -- no "?" ANYWHERE in the
+// message, not just non-trailing, see round 3 below -- for the
 // unambiguous "have X become/be THE project/focus" shape) and anchoring
 // the two new trigger phrases to the message START closes all of these
 // without reopening the original P1.
@@ -433,4 +434,90 @@ test('isExplicitSwitchMessage: DISCLOSED residual -- a message-leading "make/set
     isExplicitSwitchMessage('Set NWR as the current project field in the test fixture.'),
     true
   )
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
+// adversarial-review finding): round 2's own "have" exception design was
+// itself flawed in two ways this fixes: (1) CAUSATIVE_IMPERATIVE_PATTERN
+// was wired ONLY as a guard exception, never as an actual trigger -- "Have
+// NWR become the current project." (no separate "focus on" substring to
+// coincidentally match EXPLICIT_SWITCH_PATTERN) wrongly stayed refused;
+// (2) the "no trailing ?" check only looked at the very last character, so
+// a real question ending "?!" or with no punctuation at all slipped past
+// it. Checking for "?" ANYWHERE in the message (not just at the end)
+// closes the "?!" gap; the fully punctuation-free case remains a
+// disclosed, accepted residual -- surface-identical to the genuine
+// causative imperative without punctuation, an irreducible ambiguity for
+// a bounded pattern, not a bug.
+test('isExplicitSwitchMessage: a causative-imperative "have" directive fires even without the coincidental "focus on" substring, and a "?" anywhere in the message (not just at the end) still guards a real question', () => {
+  // DIRECT -- the pattern is now a real trigger, not just a guard
+  // exception, so these fire even with no separate switch-trigger word.
+  assert.equal(isExplicitSwitchMessage('Have NWR become the current project.'), true)
+  assert.equal(isExplicitSwitchMessage('Have NWR be the focus.'), true)
+  // QUESTION -- "?!" and mid-message "?" are still real question evidence,
+  // not just a "?" at the literal last character.
+  assert.equal(isExplicitSwitchMessage('Have API Docs become the project we focus on yet?!'), false)
+  assert.equal(
+    isExplicitSwitchMessage('Have API Docs become the project we focus on before we go back?!'),
+    false
+  )
+  assert.equal(
+    isGoBackMessage('Have API Docs become the project we focus on before we go back?!'),
+    false
+  )
+})
+
+// Disclosed, not fixed: without ANY punctuation, a "have"-led question
+// about a plural/generic-sounding subject and the genuine causative
+// imperative are surface-identical -- no bounded pattern can tell them
+// apart from word order alone. Same P1-severity ambiguity the first
+// closure round found, now precisely scoped instead of papered over by a
+// fragile end-of-string check.
+test('isExplicitSwitchMessage: DISCLOSED residual -- a fully punctuation-free "have" question about a plural/generic-sounding subject is indistinguishable from a causative imperative', () => {
+  assert.equal(isExplicitSwitchMessage('Have API Docs become the project we focus on yet'), true)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
+// adversarial-review finding): CAUSATIVE_TRIGGER_PATTERN's literal
+// message-start anchor was too rigid -- "Please make NWR the focus.",
+// "Okay, make NWR the focus." both wrongly failed to match. A bounded,
+// optional polite/filler lead-in closes this without reopening any of
+// round 2's fixed false positives (a QUESTION/MUSING opener like "Would
+// Alice..."/"One idea is to..." still isn't one of these specific
+// lead-ins).
+test('isExplicitSwitchMessage: a bounded polite/filler lead-in ("please", "okay,") before "make X the focus"/"set X as the project" still moves focus', () => {
+  assert.equal(isExplicitSwitchMessage('Please make NWR the focus.'), true)
+  assert.equal(isExplicitSwitchMessage('Please set NWR as the current project.'), true)
+  assert.equal(isExplicitSwitchMessage('Okay, make NWR the focus.'), true)
+  // A genuine question/musing opener is still never treated as a lead-in.
+  assert.equal(isExplicitSwitchMessage('Would Alice make NWR the focus?'), false)
+  assert.equal(isExplicitSwitchMessage('One idea is to make NWR the focus.'), false)
+})
+
+// Disclosed, not fixed: DELIBERATIVE_QUESTION_PATTERN has no polite-
+// request carve-out at all (unlike SUBJECT_INVERSION_QUESTION_OPENER,
+// which POLITE_SWITCH_REQUEST_PATTERN already excepts) -- a PRE-EXISTING
+// gap that identically affects the original "switch" trigger, not
+// something this closure introduced or is scoped to fix.
+test('isExplicitSwitchMessage: DISCLOSED residual (pre-existing, not caused by this closure) -- a polite "could you <verb> X?" WITH a literal "?" is guarded as a deliberative question for every trigger verb, old and new alike', () => {
+  assert.equal(isExplicitSwitchMessage('Could you make NWR the focus?'), false)
+  assert.equal(isExplicitSwitchMessage('Could you switch to NWR?'), false)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
+// adversarial-review finding): the round-2 "wait, no" retraction addition
+// overmatched -- a bare `\b` after "no" is satisfied just as well by a
+// following "longer"/"more" as by a sentence end, so "Please wait no
+// longer." and "We can wait no more." (ordinary, non-retraction
+// sentences) both wrongly read as retractions, suppressing real actions
+// (PAUSE, a paid-research grant) across every consumer of the shared
+// RETRACTION_MARKER_PATTERN. A negative lookahead excludes exactly the
+// two continuations that turn "wait no" into an ordinary "don't keep
+// waiting" statement. "actually, no" is also added as one more real
+// retraction phrasing (same category as "wait, no").
+test('isExplicitSwitchMessage: "wait no longer"/"wait no more" are never treated as a retraction, but "wait, no"/"actually, no" still are', () => {
+  assert.equal(isExplicitSwitchMessage('Please wait no longer, switch to NWR.'), true)
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no.'), false)
+  assert.equal(isExplicitSwitchMessage('Set NWR as the current project -- actually, no.'), false)
+  assert.equal(isExplicitSwitchMessage('Make NWR the focus. Actually, no.'), false)
 })

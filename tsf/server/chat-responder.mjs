@@ -115,13 +115,23 @@ export const REPORTED_SPEECH_MARKER =
 // rather than each maintaining an independent copy.
 // DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 2 (real Codex
 // adversarial-review finding): "wait, no" (reversed word order from the
-// existing "no wait") and "leave it unchanged"/"leave it as is"/"keep it
-// as is" were real retraction phrasings this pattern didn't cover yet --
-// found via command-conversation-focus.mjs's new causative-imperative
-// triggers, which (unlike this file's older trigger phrasings) are common
-// enough to naturally invite a quick spoken correction right after them.
+// existing "no wait"), "actually, no", and "leave it unchanged"/"leave it
+// as is"/"keep it as is" were real retraction phrasings this pattern
+// didn't cover yet -- found via command-conversation-focus.mjs's new
+// causative-imperative triggers, which (unlike this file's older trigger
+// phrasings) are common enough to naturally invite a quick spoken
+// correction right after them.
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
+// adversarial-review finding): the naive "wait, no" addition above
+// overmatched -- "Please wait no longer.", "We can wait no more." both
+// wrongly read as retractions (a plain \b after "no" is satisfied by the
+// following space, same as it would be before "longer"/"more"). A
+// negative lookahead excludes exactly the two continuations that turn
+// "wait no" from a retraction into an ordinary "don't keep waiting"
+// statement, without narrowing the retraction match itself.
 export const RETRACTION_MARKER_PATTERN =
-  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|wait\s*,?\s*no|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
+  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|wait\s*,?\s*no(?!\s*(?:longer|more))|actually,?\s*no|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 2 (P0, real Codex adversarial-
 // review finding): DELIBERATIVE_STATEMENT_OPENER is message/clause-START
 // anchored, so a hedge phrased mid-sentence ("We may want to switch to

@@ -57,8 +57,20 @@ const EXPLICIT_SWITCH_PATTERN =
 // folded back into EXPLICIT_SWITCH_PATTERN) specifically so it stays
 // anchored -- mixing an anchored and an unanchored alternative inside one
 // alternation is easy to get wrong on a future edit.
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
+// adversarial-review finding): anchoring to the LITERAL first character
+// was too rigid -- "Please make NWR the focus.", "Okay, make NWR the
+// focus." both wrongly failed to match. A bounded, optional polite/filler
+// lead-in (the same "please"/"okay/ok," vocabulary this file's other
+// guards already recognize, plus the "could/can/would/will you (please)"
+// shape POLITE_SWITCH_REQUEST_PATTERN already treats as a genuine
+// request-to-act) is allowed before the trigger without reopening the
+// original unanchored exposure -- a QUESTION or MUSING opener ("Would
+// Alice...", "One idea is to...") still isn't one of these specific
+// bounded lead-ins, so none of round 2's fixed false positives return.
 const CAUSATIVE_TRIGGER_PATTERN =
-  /^\s*(?:make\s+\S+(?:\s+\S+){0,3}\s+the\s+(?:project|focus)|set\s+\S+(?:\s+\S+){0,3}\s+as\s+the\s+(?:current\s+)?project)\b/i
+  /^\s*(?:(?:please|okay|ok)[,\s]+)*(?:(?:could|can|would|will)\s+you\s+(?:please\s+)?)?(?:make\s+\S+(?:\s+\S+){0,3}\s+the\s+(?:project|focus)|set\s+\S+(?:\s+\S+){0,3}\s+as\s+the\s+(?:current\s+)?project)\b/i
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
 
 // REAL DOGFOOD FINDING (round 1, P1 x2, Codex-confirmed): neither pattern
@@ -119,12 +131,28 @@ const NAMED_SUBJECT_QUESTION_PATTERN =
 // "the project"/"the focus" -- only the causative-imperative reading does
 // that ("Have NWR become THE PROJECT..."). Message-start anchored (the
 // causative-imperative reading is always the whole message's own
-// instruction, never an embedded clause) and excludes a trailing "?" (a
-// real, if oddly-phrased, question keeps the discipline this file already
-// applies elsewhere: a literal "?" is never itself proof of a genuine
-// question, but combined with the "the project/focus" completion it is
-// -- see "Have API Docs become the project we focus on next?", a real,
-// plausible question about a plural-sounding project name).
+// instruction, never an embedded clause).
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
+// adversarial-review finding): round 2's own "no trailing ?" carve-out
+// was itself unsafe -- it only checked the LAST character, so "Have API
+// Docs become the project we focus on yet?!" (a real question ending in
+// "?!") and any punctuation-free spoken question of this exact shape
+// both slipped through as if they were directives. A real question about
+// a plural/generic-sounding subject ("Have API Docs become the
+// project...?") and the genuine causative imperative ("Have NWR become
+// the project...") are surface-IDENTICAL without punctuation -- no
+// bounded pattern can tell them apart from word order alone. Checking
+// for a "?" ANYWHERE in the message (not just the last character) closes
+// the "?!"/mid-message-"?" gap; the fully punctuation-free case is left
+// as a disclosed, accepted residual (same P1-severity, irreducible
+// ambiguity the first closure round already found, now precisely scoped
+// rather than papered over by a fragile end-of-string check). This
+// pattern is also a real TRIGGER in isExplicitSwitchMessage below, not
+// only a guard exception -- round 2 wired it as an exception ONLY, so
+// "Have NWR become the current project." (no separate "focus on"
+// substring to coincidentally match EXPLICIT_SWITCH_PATTERN) wrongly
+// stayed refused.
 const CAUSATIVE_IMPERATIVE_PATTERN =
   /^\s*have\s+\S+(?:\s+\S+){0,3}\s+(?:become|be)\s+the\s+(?:current\s+)?(?:project|focus)\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
@@ -140,8 +168,14 @@ const CAUSATIVE_IMPERATIVE_PATTERN =
 // request, correctly refused today). Requiring the switch-trigger verb to
 // immediately follow "you" targets exactly the polite-REQUEST-TO-ACT
 // shape the finding was about, without reopening that regression.
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
+// adversarial-review finding): "make"/"set" added to this same verb list
+// -- "Could you make NWR the focus?" was wrongly refused, guarded by
+// SUBJECT_INVERSION_QUESTION_OPENER's "could you" branch with no
+// exception, exactly the same bug class round 3 (of the original
+// closure) already fixed for switch/focus/work/talk/discuss.
 const POLITE_SWITCH_REQUEST_PATTERN =
-  /\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:switch|focus|work|talk|discuss)\b/i
+  /\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:switch|focus|work|talk|discuss|make|set)\b/i
 
 // REAL DOGFOOD FINDING (post-mission, P0, same bug class already fixed in
 // server/command-run-action-bridge.mjs's classifyRunActionVerb, commit
@@ -171,7 +205,7 @@ function isGuardedAgainst(message) {
     COPULA_QUESTION_OPENER.test(trimmed) ||
     (!POLITE_SWITCH_REQUEST_PATTERN.test(trimmed) &&
       SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed)) ||
-    ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || /\?\s*$/.test(trimmed)) &&
+    ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || trimmed.includes('?')) &&
       NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed)) ||
     REPORTED_SPEECH_MARKER.test(trimmed) ||
     RETRACTION_MARKER_PATTERN.test(trimmed) ||
@@ -183,9 +217,12 @@ function isGuardedAgainst(message) {
 // chat-responder.mjs's own intent array: a false positive here silently
 // moves focus, so this stays a small, separate, easily-audited surface.
 export function isExplicitSwitchMessage(message) {
+  const trimmed = message.trim()
   return (
     !isGuardedAgainst(message) &&
-    (EXPLICIT_SWITCH_PATTERN.test(message) || CAUSATIVE_TRIGGER_PATTERN.test(message.trim()))
+    (EXPLICIT_SWITCH_PATTERN.test(message) ||
+      CAUSATIVE_TRIGGER_PATTERN.test(trimmed) ||
+      CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed))
   )
 }
 
