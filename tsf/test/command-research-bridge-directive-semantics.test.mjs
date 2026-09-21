@@ -51,3 +51,37 @@ test('classifyResearchIntent: a question or reported-speech sentence naming a pr
   assert.equal(classifyResearchIntent('Use Exa for this research up to $50'), 'RESEARCH_PAID_GRANT')
   assert.equal(classifyResearchIntent('Can you use Exa up to $20'), 'RESEARCH_PAID_GRANT')
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (real Codex adversarial-review
+// finding): two more real gaps survived round 2. (1) No retraction check
+// existed at all -- a grant retracted in the same message still granted.
+// (2) MESSAGE_START_MODAL_QUESTION only excluded an immediately-following
+// "you", so a real, legitimate polite request with a different subject
+// ("the team", "our research agent") was wrongly refused as a question.
+test('classifyResearchIntent: a retracted grant is never RESEARCH_PAID_GRANT', () => {
+  assert.notEqual(classifyResearchIntent('Use Exa up to $50, scratch that.'), 'RESEARCH_PAID_GRANT')
+  assert.notEqual(
+    classifyResearchIntent('Use Parallel up to $20 -- never mind.'),
+    'RESEARCH_PAID_GRANT'
+  )
+})
+
+test('classifyResearchIntent: a polite request with a non-"you" subject still grants', () => {
+  assert.equal(
+    classifyResearchIntent('Could the team please use Exa up to $50'),
+    'RESEARCH_PAID_GRANT'
+  )
+  assert.equal(
+    classifyResearchIntent('Would our research agent please use Parallel up to $25'),
+    'RESEARCH_PAID_GRANT'
+  )
+  // The "please" carve-out must never reopen the genuine-question cases
+  // round 2 already closed.
+  for (const message of [
+    'Would Exa use a $50 budget efficiently',
+    'Should our team use Exa if it costs $50',
+    'Can Exa use a $50 budget for this'
+  ]) {
+    assert.notEqual(classifyResearchIntent(message), 'RESEARCH_PAID_GRANT', message)
+  }
+})
