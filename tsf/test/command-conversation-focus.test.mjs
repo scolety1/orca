@@ -593,3 +593,82 @@ test('isExplicitSwitchMessage / isGoBackMessage: "wait no further"/"wait, no one
   assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no'), false)
   assert.equal(isExplicitSwitchMessage('Set NWR as the current project -- actually, no.'), false)
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 5 (real Codex
+// adversarial-review finding): round 4's punctuation-immediately-after-
+// "no" rule was too strict -- "Wait, no -- reconsider." (a SPACE before
+// the dash, the conventional way to type this) and "Switch to NWR (wait,
+// no)" (a closing paren) both wrongly failed to match as retractions. Two
+// separate rules for two separate typing conventions fix this: with a
+// space before it, any punctuation (including a single "-") is a real
+// pause; with no space, a single "-" stays excluded (ambiguous with a
+// hyphenated word like "no-one") but a double-dash, em dash, or ellipsis
+// is not.
+test('isExplicitSwitchMessage / isGoBackMessage: a retraction with a SPACE before its closing punctuation, or a parenthetical/ellipsis form, is still recognized', () => {
+  assert.equal(
+    isExplicitSwitchMessage('Switch to NWR -- wait, no -- actually let us stay on TSF.'),
+    false
+  )
+  assert.equal(isGoBackMessage('Go back -- wait, no -- keep the current focus.'), false)
+  assert.equal(isExplicitSwitchMessage('Switch to NWR (wait, no)'), false)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 5 (real Codex
+// adversarial-review finding): a hyphenated continuation word directly
+// after "no" with no space ("no-one", "no-good") must NOT be read as a
+// retraction -- the single "-" there is a hyphenated compound word, not a
+// pause, and the real action after it must still execute.
+test('isExplicitSwitchMessage: "no-one"/similar hyphenated continuations right after "wait"/"actually, no" are never treated as a retraction', () => {
+  assert.equal(isExplicitSwitchMessage('Wait no-one else is coming; switch to NWR now.'), true)
+  assert.equal(isExplicitSwitchMessage('Actually, no-one objected; switch to NWR now.'), true)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 5 (real Codex
+// adversarial-review finding): round 4's subject-span word-class fix
+// (`[A-Za-z0-9'-]+`) stopped the span from crossing a semicolon, but a
+// real Codex review found it was nowhere near enough -- a bare "--"
+// still counts as one "word" (both chars are in the allowed class), a
+// newline is ordinary whitespace, and the extremely common "make
+// sure ..."/"make absolutely sure ..." idiom can still consume 2-3
+// filler words before coincidentally reaching an unrelated later "the
+// project"/"the focus": "Could you make sure to archive the project
+// notes for NWR", "Will you make sure NWR keeps the focus on quality",
+// "Please make sure to check NWR\nThe project is stable.", "Please make
+// sure to check NWR-- the project is stable.", "Please make absolutely
+// sure -- the project is stable." all wrongly fired. Chasing each
+// specific punctuation/idiom shape individually was never going to
+// converge -- the real, structural fix is shrinking the subject span
+// itself: neither required DIRECT example, nor any existing test, needs
+// more than a 2-word project name with this specific "make X the.../set
+// X as..." trigger shape, and 2 words is never enough room for a "make
+// sure to archive ..." idiom (always 3+ filler words) to reach a
+// coincidental "the project/focus" at all.
+test('isExplicitSwitchMessage / isGoBackMessage: the common "make/be sure ..." idiom, a clause-crossing dash/newline, and any other 3+-word filler span between "make"/"set" and "the project/focus" never fires', () => {
+  for (const m of [
+    'Could you make sure to archive the project notes for NWR',
+    'Will you make sure NWR keeps the focus on quality',
+    'Please make sure to check NWR\nThe project is stable.',
+    'Please make sure to check NWR-- the project is stable.',
+    'Please make absolutely sure -- the project is stable.'
+  ]) {
+    assert.equal(isExplicitSwitchMessage(m), false, m)
+  }
+  // A genuine 1-2-word project name is completely unaffected.
+  assert.equal(isExplicitSwitchMessage("Make NWR the project we're focused on."), true)
+  assert.equal(isExplicitSwitchMessage('Have API Docs become the project we focus on next.'), true)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 5 (real Codex
+// adversarial-review finding): the subject-word class was ASCII-only
+// (`[A-Za-z0-9'-]`), but a real project's display name is an arbitrary
+// folder basename with no ASCII restriction (server/onboarding.mjs) --
+// "Make Café the focus.", "Make O'Brien the project." (curly apostrophe),
+// and "Make TSF_ORCA the focus." (underscore) all wrongly failed to
+// match a real, unambiguous directive. Now Unicode-aware (`\p{L}`/`\p{N}`
+// plus "_" and both straight/curly apostrophes).
+test('isExplicitSwitchMessage: a project name with a non-ASCII letter, a curly apostrophe, or an underscore is recognized the same as any other name', () => {
+  assert.equal(isExplicitSwitchMessage('Make Café the focus.'), true)
+  assert.equal(isExplicitSwitchMessage("Make O'Brien the project."), true)
+  assert.equal(isExplicitSwitchMessage('Make O’Brien the project.'), true)
+  assert.equal(isExplicitSwitchMessage('Make TSF_ORCA the focus.'), true)
+})

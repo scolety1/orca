@@ -133,20 +133,35 @@ export const REPORTED_SPEECH_MARKER =
 // waiting" -- the last one because the lookahead was only ever added to
 // the "wait, no" alternative, never to "actually, no").
 //
-// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (real Codex
-// adversarial-review finding): a word-by-word blocklist can never be
-// complete -- there's an unbounded set of words that can follow "wait,
-// no"/"actually, no" without it being a retraction ("further", "one",
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (now superseded, see
+// round 5 below): a word-by-word blocklist can never be complete --
+// there's an unbounded set of words that can follow "wait, no"/
+// "actually, no" without it being a retraction ("further", "one",
 // "problem", "doubt", ...). The real, structural difference is what
-// FOLLOWS "no": a genuine retraction is followed by a pause (sentence-
-// ending punctuation, a comma, a dash, or the end of the message);
-// a continuing clause ("no longer", "no one else...") is followed
-// directly by more words with just a space. Requiring "no" to be
-// followed by punctuation or the end of the message (not "space then a
-// word character") replaces the blocklist with this one structural rule,
-// applied identically to both "wait, no" and "actually, no".
+// FOLLOWS "no": a genuine retraction is followed by a pause; a continuing
+// clause ("no longer", "no one else...") is followed directly by more
+// words with just a space. Requiring "no" to be followed IMMEDIATELY by
+// punctuation or the end of the message replaced the blocklist with that
+// rule -- but a real Codex review found it too strict in the other
+// direction: "Wait, no -- reconsider." (a SPACE before the dash, the
+// conventional way to type this) and "Switch to NWR (wait, no)" (a
+// closing paren) both wrongly failed to match, since the lookahead
+// required punctuation immediately after "no" with no space allowed.
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 5 (real Codex
+// adversarial-review finding): the fix isn't "require punctuation right
+// after no" OR "allow whitespace then anything" (the latter reopens
+// "wait, no one else..." via the space before "one"). It's two separate
+// rules for two separate typing conventions: (1) with a space before it,
+// ANY punctuation (including a single "-") is a real pause -- nobody
+// types "no -one" as a hyphenated word; (2) with NO space (punctuation
+// touching "no" directly), a single "-" is ambiguous with a hyphenated
+// continuation word ("no-one", "no-good") and is excluded, but a genuine
+// terminal mark, a double-dash "--", an em dash, or an ellipsis is not
+// (nobody hyphenates "one" as "no--one" or "no…one"). This closes the
+// spaced-dash/parenthetical gap without reopening "no-one".
 export const RETRACTION_MARKER_PATTERN =
-  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|(?:wait\s*,?\s*no|actually,?\s*no)(?=[.,!?;:\-—]|\s*$)|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
+  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|(?:wait\s*,?\s*no|actually,?\s*no)(?=\s+[.,!?;:)\-—]|\s*(?:[.,!?;:)]|--+|—|…|\.\.\.)|\s*$)|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 2 (P0, real Codex adversarial-
 // review finding): DELIBERATIVE_STATEMENT_OPENER is message/clause-START
 // anchored, so a hedge phrased mid-sentence ("We may want to switch to

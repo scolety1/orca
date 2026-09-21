@@ -70,19 +70,49 @@ const EXPLICIT_SWITCH_PATTERN =
 // Alice...", "One idea is to...") still isn't one of these specific
 // bounded lead-ins, so none of round 2's fixed false positives return.
 //
-// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (real Codex
-// adversarial-review finding): the subject-capture span used `\S+`, which
-// matches ANY non-whitespace run -- including a word ending in punctuation
-// like "NWR;". That let the pattern cross a real clause boundary and
-// match across two unrelated clauses: "Please make sure to check NWR;
-// the project is stable." was read as "make [sure to check NWR;] the
-// project", a false positive. Restricting each subject word to
-// `[A-Za-z0-9'-]+` (real word characters, no embedded clause-ending
-// punctuation) makes the span stop at a semicolon/comma/period the same
-// way a real project name never would, closing this without narrowing
-// genuine multi-word project names at all.
-const CAUSATIVE_TRIGGER_PATTERN =
-  /^\s*(?:(?:please|okay|ok)[,\s]+)*(?:(?:could|can|would|will)\s+you\s+(?:please\s+)?)?(?:make\s+[A-Za-z0-9'-]+(?:\s+[A-Za-z0-9'-]+){0,3}\s+the\s+(?:project|focus)|set\s+[A-Za-z0-9'-]+(?:\s+[A-Za-z0-9'-]+){0,3}\s+as\s+the\s+(?:current\s+)?project)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (now superseded, see
+// round 5 below): the subject-capture span used `\S+`, which matches ANY
+// non-whitespace run -- including a word ending in punctuation like
+// "NWR;". That let the pattern cross a real clause boundary: "Please
+// make sure to check NWR; the project is stable." was read as "make
+// [sure to check NWR;] the project". Restricting each subject word to
+// `[A-Za-z0-9'-]+` fixed that specific case, but a real Codex review
+// found it was nowhere near enough -- a bare double-dash ("--") or a
+// newline both still slip through as an accepted "word" or separator,
+// and a common English idiom ("make sure ...", "make absolutely sure
+// ...") can still consume 2-3 filler words before coincidentally
+// reaching a real "the project"/"the focus" later in an unrelated
+// sentence: "Could you make sure to archive the project notes for NWR",
+// "Will you make sure NWR keeps the focus on quality" both wrongly fired.
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 5 (real Codex
+// adversarial-review finding): chasing individual punctuation/idiom
+// shapes was never going to converge -- there's no bounded list of ways
+// 2-4 filler words can coincidentally bridge "make"/"set" to an unrelated
+// later "the project/focus". The real fix is structural: shrink the
+// subject span itself. Neither required DIRECT example ("Make NWR the
+// project...", "Set TSF as the current project.") nor any existing test
+// needs more than a 2-word project name with this specific trigger shape
+// (multi-word names like "API Docs"/"Niners War Room" are only ever
+// required with the "focus on"/causative-"have" trigger shapes, which
+// don't have this collision risk). Capping the span at 1-2 words removes
+// the room for a "make sure to archive ..." idiom (always 3+ filler
+// words) to ever reach a coincidental "the project/focus" at all, closing
+// the whole class rather than one shape of it. Each word must also START
+// with a letter/digit/underscore (not a bare "-"/"--"), so a lone dash
+// can never count as a "word" of the subject. The word class itself is
+// now Unicode-aware (`\p{L}`/`\p{N}` with the `u` flag, plus "_" and both
+// straight/curly apostrophes) -- project display names are arbitrary
+// folder basenames with no ASCII restriction (server/onboarding.mjs), so
+// the previous ASCII-only class wrongly refused real names like "Café",
+// "O'Brien"/"O'Brien" (curly apostrophe), or "TSF_ORCA" (underscore).
+const CAUSATIVE_SUBJECT_WORD = "(?=[\\p{L}\\p{N}_])[\\p{L}\\p{N}_'’-]+"
+const CAUSATIVE_TRIGGER_PATTERN = new RegExp(
+  `^\\s*(?:(?:please|okay|ok)[,\\s]+)*(?:(?:could|can|would|will)\\s+you\\s+(?:please\\s+)?)?` +
+    `(?:make\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+the\\s+(?:project|focus)` +
+    `|set\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+as\\s+the\\s+(?:current\\s+)?project)\\b`,
+  'iu'
+)
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
 
 // REAL DOGFOOD FINDING (round 1, P1 x2, Codex-confirmed): neither pattern
@@ -164,9 +194,10 @@ const NAMED_SUBJECT_QUESTION_PATTERN =
 // only a guard exception -- round 2 wired it as an exception ONLY, so
 // "Have NWR become the current project." (no separate "focus on"
 // substring to coincidentally match EXPLICIT_SWITCH_PATTERN) wrongly
-// stayed refused. Same `[A-Za-z0-9'-]+` word-class restriction as
-// CAUSATIVE_TRIGGER_PATTERN's own round-4 fix (see there for why) applied
-// to the subject span here too, for the same clause-boundary reason.
+// stayed refused. Same `CAUSATIVE_SUBJECT_WORD` span-shrink and Unicode-
+// aware word class as CAUSATIVE_TRIGGER_PATTERN's own round-5 fix (see
+// there for why) applied to the subject span here too, for the identical
+// clause-boundary-crossing and non-ASCII-name reasons.
 //
 // Disclosed, not fixed (same category as CAUSATIVE_TRIGGER_PATTERN's own
 // disclosed residual): "Have NWR be the focus of the quarterly report."
@@ -174,8 +205,10 @@ const NAMED_SUBJECT_QUESTION_PATTERN =
 // different sense of "focus" (the report's own focus, not Command's),
 // which is real semantic/referential ambiguity no bounded pattern can
 // resolve, not a bug in this specific pattern.
-const CAUSATIVE_IMPERATIVE_PATTERN =
-  /^\s*have\s+[A-Za-z0-9'-]+(?:\s+[A-Za-z0-9'-]+){0,3}\s+(?:become|be)\s+the\s+(?:current\s+)?(?:project|focus)\b/i
+const CAUSATIVE_IMPERATIVE_PATTERN = new RegExp(
+  `^\\s*have\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+(?:become|be)\\s+the\\s+(?:current\\s+)?(?:project|focus)\\b`,
+  'iu'
+)
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
 // will YOU" branch (added round 1 for the punctuation-free-question fix)
