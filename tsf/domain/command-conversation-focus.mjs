@@ -14,7 +14,10 @@ import { isoNow } from './canonical.mjs'
 import {
   DELIBERATIVE_STATEMENT_OPENER,
   COPULA_QUESTION_OPENER,
-  SUBJECT_INVERSION_QUESTION_OPENER
+  SUBJECT_INVERSION_QUESTION_OPENER,
+  REPORTED_SPEECH_MARKER,
+  RETRACTION_MARKER_PATTERN,
+  MID_SENTENCE_HEDGE_MARKER
 } from '../server/chat-responder.mjs'
 
 export const RECENT_PROJECT_STACK_CAP = 8
@@ -44,7 +47,25 @@ const GO_BACK_PATTERN = /\bgo\s+back\b/i
 // silently moves without a genuine directive).
 const DELIBERATIVE_QUESTION_PATTERN =
   /\b(?:should|could|would|can|may|might)\s+(?:i|we|you)\b[^.!]*\?/i
-const NEGATION_GUARD_PATTERN = /\b(?:do not|don'?t|never|stop)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1, round 2 (real Codex adversarial-review
+// finding): "shouldn't we switch to NWR" (contraction), "no need to
+// switch to NWR", "I refuse to switch to NWR" all evaded this narrower
+// vocabulary and moved real focus.
+const NEGATION_GUARD_PATTERN =
+  /\b(?:do not|don'?t|never|stop|shouldn'?t|couldn'?t|wouldn'?t|no\s+need\s+to|refuse(?:d|s)?\s+to)\b/i
+// A named-project (not pronoun) subject-inversion question -- "should NWR
+// be the project we focus on", "would NWR make sense to switch to", "do
+// the notes say switch to NWR", "has NWR become the project we should
+// focus on". COPULA_QUESTION_OPENER/SUBJECT_INVERSION_QUESTION_OPENER
+// only cover a PRONOUN subject (is it/should we); this file has no
+// project catalog at classification time to name-match against, so this
+// checks the STRUCTURAL shape instead -- modal/aux opener, 1-4 words
+// (room for a multi-word project name), then a copula-ish verb
+// (be/become/make sense/say). Real directives ("Switch to NWR") never
+// start with one of these modals at all, so this can never reintroduce
+// a false negative on the genuine trigger phrasings.
+const NAMED_SUBJECT_QUESTION_PATTERN =
+  /^\s*(?:should|could|would|has|have|do|does|did)\s+\S+(?:\s+\S+){0,3}\s+(?:be|become|make\s+sense|say)\b/i
 
 // REAL DOGFOOD FINDING (post-mission, P0, same bug class already fixed in
 // server/command-run-action-bridge.mjs's classifyRunActionVerb, commit
@@ -72,7 +93,11 @@ function isGuardedAgainst(message) {
     NEGATION_GUARD_PATTERN.test(message) ||
     DELIBERATIVE_STATEMENT_OPENER.test(trimmed) ||
     COPULA_QUESTION_OPENER.test(trimmed) ||
-    SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed)
+    SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed) ||
+    NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed) ||
+    REPORTED_SPEECH_MARKER.test(trimmed) ||
+    RETRACTION_MARKER_PATTERN.test(trimmed) ||
+    MID_SENTENCE_HEDGE_MARKER.test(trimmed)
   )
 }
 

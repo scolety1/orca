@@ -63,6 +63,44 @@ test('isExplicitSwitchMessage / isGoBackMessage: a musing statement (no question
   assert.equal(isGoBackMessage('Go back'), true)
 })
 
+// DIRECTIVE SEMANTICS CLOSURE V1, round 2 (real Codex adversarial-review
+// finding): the round-1 fix above only caught a musing opener at message
+// START -- mid-sentence hedges, named-project (not pronoun) questions,
+// contraction/"no need to"/"refuse to" negation, reported speech, and a
+// retraction all still moved real Command focus.
+test('isExplicitSwitchMessage: mid-sentence hedges, named-subject questions, broader negation, reported speech, and retraction are never treated as a genuine directive', () => {
+  for (const m of [
+    'We may want to switch to NWR',
+    'It seems like we should focus on NWR',
+    'My hunch is we should talk about NWR',
+    'As for NWR I think we should switch to it',
+    "If it were up to me we'd switch to NWR",
+    'We should probably discuss NWR',
+    'should NWR be the project we focus on',
+    'could NWR be what we focus on',
+    'would NWR make sense to switch to',
+    'do the notes say switch to NWR',
+    'has NWR become the project we should focus on',
+    "shouldn't we switch to NWR",
+    'no need to switch to NWR',
+    'I refuse to switch to NWR',
+    'Claude suggested we switch to NWR',
+    'The report recommends we focus on NWR',
+    'The plan calls for us to discuss NWR',
+    'The assistant advised me to switch to NWR',
+    'Switch to NWR -- cancel that',
+    'Switch to NWR -- forget it',
+    'Switch to NWR -- disregard that',
+    'Switch to NWR -- strike that',
+    'Switch to NWR -- I take that back'
+  ]) {
+    assert.equal(isExplicitSwitchMessage(m), false, m)
+  }
+  // The real trigger phrasings must still work.
+  assert.equal(isExplicitSwitchMessage('Switch to NWR'), true)
+  assert.equal(isExplicitSwitchMessage("Let's work on NWR"), true)
+})
+
 // REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): an explicit
 // prohibition ("Do not talk about B") previously matched the same as a
 // real directive, silently moving focus onto the very project the owner

@@ -100,7 +100,23 @@ export const REPORTED_SPEECH_MARKER =
 // grant classifiers, which have the identical architecture) to reuse
 // rather than each maintaining an independent copy.
 export const RETRACTION_MARKER_PATTERN =
-  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait)\b/i
+  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|cancel\s+that)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1, round 2 (P0, real Codex adversarial-
+// review finding): DELIBERATIVE_STATEMENT_OPENER is message/clause-START
+// anchored, so a hedge phrased mid-sentence ("We may want to switch to
+// NWR", "As for NWR I think we should switch to it") or with different
+// vocabulary than its own bounded opener list ("It seems like we should
+// focus on NWR", "My hunch is we should talk about NWR", "If it were up
+// to me we'd switch to NWR", "We should probably discuss NWR") evaded it
+// entirely on server/command-needs-you-answer-bridge.mjs and domain/
+// command-conversation-focus.mjs (both whole-message classifiers with no
+// clause-splitting of their own, unlike isGenuineDirective below). A
+// small, disclosed, bounded set of the specific hedge shapes actually
+// demonstrated to reach a real mutation -- same "narrow, easily-audited
+// list, not a general hedge parser" discipline as DELIBERATIVE_STATEMENT_
+// OPENER itself.
+export const MID_SENTENCE_HEDGE_MARKER =
+  /\bmay want to\b|\bit seems(?:\s+like)?\b|\bmy hunch\b|\bif it were up to me\b|\bshould probably\b|\bi think we should\b/i
 // Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
 // V1, Batch 5): the hand-picked negator list here had the exact same
 // "-n't" contraction-family gap as domain/command-adoption-execution.mjs's

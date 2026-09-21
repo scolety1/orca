@@ -16,7 +16,12 @@
 // the real, unmodified executeAction -- it cannot invent a target, bypass a
 // hold, or answer a TIM_REQUIRED refusal (those never create a Needs-You
 // item in the first place).
-import { classifyIntent, DELIBERATIVE_STATEMENT_OPENER } from './chat-responder.mjs'
+import {
+  classifyIntent,
+  isGenuineDirective,
+  RETRACTION_MARKER_PATTERN,
+  MID_SENTENCE_HEDGE_MARKER
+} from './chat-responder.mjs'
 import { resolveProjectsFromText } from './project-name-resolver.mjs'
 import { fleetNeedsYouStatus } from '../domain/fleet-work-status.mjs'
 import { resolveNeedsYouAnswerTarget } from '../domain/command-needs-you-answer-targeting.mjs'
@@ -31,17 +36,28 @@ export function shouldRouteToNeedsYouAnswerBridge(message) {
 // two" / "yes, authorize it") with no directive-vs-musing guard at all --
 // unlike every other consequential path in this codebase, this bridge
 // never called isGenuineDirective (or any equivalent) before resolving
-// and mutating. Reproduced directly: "I wonder if we should just answer
-// the question with option two" and "Maybe we should answer that with
-// option two" both classified identically to the real, unambiguous
-// "answer the question with option two" and would have resolved (and
-// mutated) a real open item purely because the musing text happened to
-// contain the trigger vocabulary. This is the SAME RESOLVE_NEEDS_YOU
-// mechanism research-paid-approval grants ride on (this file's own header
-// above), so it is exactly the money-adjacent surface this closure pass
-// is about, not a cosmetic gap.
-function isDeliberativeMusing(message) {
-  return DELIBERATIVE_STATEMENT_OPENER.test(message.trim())
+// and mutating. This is the SAME RESOLVE_NEEDS_YOU mechanism research-
+// paid-approval grants ride on (this file's own header above), so it is
+// exactly the money-adjacent surface this closure pass is about, not a
+// cosmetic gap.
+//
+// Round 2 (real Codex adversarial-review finding): the original fix here
+// (a bare DELIBERATIVE_STATEMENT_OPENER check) only caught a musing
+// opener at message START -- a genuine question ("Should we answer the
+// NWR question with option two"), reported speech ("Claude suggested we
+// answer..."), negation ("Do not answer..."), a retraction ("...no wait
+// never mind"), or a mid-sentence hedge ("We may want to answer...") all
+// still resolved and mutated a real open item. Reuses isGenuineDirective
+// (the shared, comprehensive judgment) plus the two whole-message
+// signals it doesn't cover (retraction, mid-sentence hedges) instead of
+// maintaining a second, narrower copy of the same taxonomy.
+function isNonDirectiveContext(message) {
+  const trimmed = message.trim()
+  return (
+    !isGenuineDirective(trimmed, trimmed) ||
+    RETRACTION_MARKER_PATTERN.test(trimmed) ||
+    MID_SENTENCE_HEDGE_MARKER.test(trimmed)
+  )
 }
 
 const REFUSAL_TEXT = {
@@ -95,7 +111,7 @@ export async function respondNeedsYouAnswerCommand({
   aliases,
   deps = {}
 }) {
-  if (isDeliberativeMusing(message)) {
+  if (isNonDirectiveContext(message)) {
     return {
       intent: 'NEEDS_YOU_ANSWER',
       decisionClass: 'AUTO_DECIDE',

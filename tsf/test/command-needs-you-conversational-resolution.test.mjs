@@ -98,6 +98,47 @@ test('conversational resolution (P0, fixed): a musing statement about answering 
   )
 })
 
+// DIRECTIVE SEMANTICS CLOSURE V1, round 2 (real Codex adversarial-review
+// finding): the round-1 fix above only caught a musing opener at message
+// START -- a genuine question, reported speech, negation, a retraction,
+// or a mid-sentence hedge all still resolved and mutated a real open
+// item. Proves the real store is genuinely untouched for each, and that
+// the canonical trigger phrasings still work.
+test('conversational resolution (P0, fixed, round 2): questions, reported speech, negation, and retraction never resolve or mutate a real open item', async () => {
+  await seedRunWithOpenQuestion(PROJECT_A.id, 'Which config?')
+  const opState = loadState()
+  const before = readKeepGoingRun(PROJECT_A.id)
+  for (const message of [
+    'Should we answer the question with option two',
+    'We may want to answer the question with option two',
+    'Claude suggested we answer the question with option two',
+    'Do not answer the question with option two',
+    "Don't answer the question with option two",
+    'Answer the question with option two no wait never mind'
+  ]) {
+    const result = await respondNeedsYouAnswerCommand({
+      message,
+      projects: [PROJECT_A],
+      opState,
+      focusProjectId: PROJECT_A.id,
+      clock
+    })
+    assert.equal(result.resolvedProjectIds.length, 0, message)
+  }
+  const after = readKeepGoingRun(PROJECT_A.id)
+  assert.deepEqual(after, before, 'the real run must be byte-identical for every case above')
+
+  // The real, intended trigger phrasings must still work.
+  const direct = await respondNeedsYouAnswerCommand({
+    message: 'Can you answer the question with option two',
+    projects: [PROJECT_A],
+    opState,
+    focusProjectId: PROJECT_A.id,
+    clock
+  })
+  assert.match(direct.text, /Got it/)
+})
+
 test('conversational resolution: "Yes, authorize it" with no named project resolves via the currently-focused project', async () => {
   await seedRunWithOpenQuestion(PROJECT_B.id, 'Approve $50 research spend?')
   const opState = loadState()
