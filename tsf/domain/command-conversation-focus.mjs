@@ -106,11 +106,38 @@ const EXPLICIT_SWITCH_PATTERN =
 // folder basenames with no ASCII restriction (server/onboarding.mjs), so
 // the previous ASCII-only class wrongly refused real names like "Café",
 // "O'Brien"/"O'Brien" (curly apostrophe), or "TSF_ORCA" (underscore).
-const CAUSATIVE_SUBJECT_WORD = "(?=[\\p{L}\\p{N}_])[\\p{L}\\p{N}_'’-]+"
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): round 5's 2-word cap still wasn't enough
+// -- even a SINGLE filler word ("sure") sits right before "the project"
+// in ordinary English ("make sure the project notes..."), so no word
+// count can ever exclude it; "absolutely sure" is exactly 2 words; "set
+// NWR aside" captures "aside" as the 2nd subject word before "as the
+// project" continues an unrelated later clause. Chasing individual
+// filler words was never going to converge (English has an unbounded
+// supply: sure, certain, positive, ready, aside, straight, free, ...).
+// The real, convergent fix constrains the OTHER side instead: what
+// legitimately follows "the project"/"the focus". In every genuine
+// directive (required or already in this file's tests), "the
+// project/focus" is either the end of the message or immediately
+// followed by one short, bounded completion describing focus itself
+// ("we're focused on", "we focus on next"). In EVERY false positive this
+// review (and the prior one) found, "the project/focus" is followed by
+// MORE unrelated clause content ("notes for NWR are archived",
+// "continues", "field in the test fixture", "of the report, not...").
+// Requiring the message to actually END at (or just after) "the
+// project/focus" closes the whole class of filler-word collisions at
+// once, and as a welcome side effect also resolves the two previously-
+// disclosed "unrelated sense of focus/project" referential-ambiguity
+// residuals (see the test file) -- an ambiguous message now defaults to
+// NOT moving focus, the safer direction per this codebase's own stated
+// bias.
+const CAUSATIVE_SUBJECT_WORD = "(?:-(?=[\\p{L}\\p{N}_])|[\\p{L}\\p{N}_])[\\p{L}\\p{N}\\p{M}_'’-]*"
+const CAUSATIVE_TRAILING_CONTINUATION =
+  "(?:\\s+we'?re\\s+focus(?:ed|ing)\\s+on(?:\\s+next)?" +
+  '|\\s+we\\s+are\\s+focus(?:ed|ing)\\s+on(?:\\s+next)?' +
+  '|\\s+we\\s+focus\\s+on(?:\\s+next)?)?[.!]?\\s*$'
 const CAUSATIVE_TRIGGER_PATTERN = new RegExp(
-  `^\\s*(?:(?:please|okay|ok)[,\\s]+)*(?:(?:could|can|would|will)\\s+you\\s+(?:please\\s+)?)?` +
-    `(?:make\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+the\\s+(?:project|focus)` +
-    `|set\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+as\\s+the\\s+(?:current\\s+)?project)\\b`,
+  `^\\s*(?:(?:please|okay|ok)[,\\s]+)*(?:(?:could|can|would|will)\\s+you\\s+(?:please\\s+)?)?(?:make\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+the\\s+(?:project|focus)|set\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+as\\s+the\\s+(?:current\\s+)?project)${CAUSATIVE_TRAILING_CONTINUATION}`,
   'iu'
 )
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
@@ -199,14 +226,15 @@ const NAMED_SUBJECT_QUESTION_PATTERN =
 // there for why) applied to the subject span here too, for the identical
 // clause-boundary-crossing and non-ASCII-name reasons.
 //
-// Disclosed, not fixed (same category as CAUSATIVE_TRIGGER_PATTERN's own
-// disclosed residual): "Have NWR be the focus of the quarterly report."
-// still reads as a directive -- the REST of the sentence names a
-// different sense of "focus" (the report's own focus, not Command's),
-// which is real semantic/referential ambiguity no bounded pattern can
-// resolve, not a bug in this specific pattern.
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6: same
+// CAUSATIVE_TRAILING_CONTINUATION requirement as CAUSATIVE_TRIGGER_PATTERN's
+// own round-6 fix (see there for the full reasoning) applied here too --
+// "Have NWR be the focus of the quarterly report." (previously a
+// disclosed, accepted residual) is now correctly resolved to NOT a
+// directive, since "of the quarterly report" isn't one of the bounded
+// completions and the message doesn't end at "the focus".
 const CAUSATIVE_IMPERATIVE_PATTERN = new RegExp(
-  `^\\s*have\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+(?:become|be)\\s+the\\s+(?:current\\s+)?(?:project|focus)\\b`,
+  `^\\s*have\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+(?:become|be)\\s+the\\s+(?:current\\s+)?(?:project|focus)${CAUSATIVE_TRAILING_CONTINUATION}`,
   'iu'
 )
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-

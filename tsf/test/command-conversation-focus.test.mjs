@@ -417,23 +417,31 @@ test('isExplicitSwitchMessage: "make X the focus"/"set X as the project" only fi
   assert.equal(isExplicitSwitchMessage('Set TSF as the current project.'), true)
 })
 
-// Disclosed, not fixed (deliberate scope boundary): a message-start "make
-// X the project/focus"/"set X as the project" whose REST of the sentence
-// clarifies a DIFFERENT sense of "focus"/"project" entirely (a document's
-// own structure, a data-fixture field) still reads as a directive here.
-// Distinguishing this from the genuine-directive case would require real
-// semantic understanding of what "focus"/"project" refers to, not a
-// bounded pattern -- out of scope for this closure, same as the prior
-// round's disclosed whole-message-scope residual.
-test('isExplicitSwitchMessage: DISCLOSED residual -- a message-leading "make/set" trigger whose rest of sentence is about an unrelated sense of "focus"/"project" still reads as a directive', () => {
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): previously disclosed as an accepted,
+// unfixable residual -- a message-start "make X the project/focus"/"set
+// X as the project" whose REST of the sentence clarifies a DIFFERENT
+// sense of "focus"/"project" entirely. Round 6's structural fix
+// (requiring "the project/focus" to actually end the message, or be
+// immediately followed only by a bounded "we're focused on"/"we focus on
+// next" completion) resolves this as a welcome side effect: "of the
+// report, not the Command conversation"/"field in the test fixture" are
+// neither the message end nor one of the bounded completions, so these
+// now correctly do NOT move focus.
+test('isExplicitSwitchMessage: a message-leading "make/set" trigger whose rest of sentence is about an unrelated sense of "focus"/"project" is correctly NOT treated as a directive', () => {
   assert.equal(
     isExplicitSwitchMessage('Make NWR the focus of the report, not the Command conversation.'),
-    true
+    false
   )
   assert.equal(
     isExplicitSwitchMessage('Set NWR as the current project field in the test fixture.'),
-    true
+    false
   )
+  // The genuine directive shape (message ends at "the project/focus", or
+  // continues only with the bounded "we're focused on" completion) is
+  // completely unaffected.
+  assert.equal(isExplicitSwitchMessage("Make NWR the project we're focused on."), true)
+  assert.equal(isExplicitSwitchMessage('Set TSF as the current project.'), true)
 })
 
 // DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
@@ -467,14 +475,23 @@ test('isExplicitSwitchMessage: a causative-imperative "have" directive fires eve
   )
 })
 
-// Disclosed, not fixed: without ANY punctuation, a "have"-led question
-// about a plural/generic-sounding subject and the genuine causative
-// imperative are surface-identical -- no bounded pattern can tell them
-// apart from word order alone. Same P1-severity ambiguity the first
-// closure round found, now precisely scoped instead of papered over by a
-// fragile end-of-string check.
-test('isExplicitSwitchMessage: DISCLOSED residual -- a fully punctuation-free "have" question about a plural/generic-sounding subject is indistinguishable from a causative imperative', () => {
-  assert.equal(isExplicitSwitchMessage('Have API Docs become the project we focus on yet'), true)
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): previously disclosed as an accepted
+// residual -- without ANY punctuation, a "have"-led question about a
+// plural/generic-sounding subject and the genuine causative imperative
+// are surface-identical, so this used to default to `true` (a directive).
+// Round 6's structural completion requirement changes the default: "we
+// focus on YET" isn't one of the bounded completions ("we're focused
+// on"/"we focus on next"), so this now correctly defaults to `false` --
+// the safer direction per this codebase's own stated false-negative-over-
+// false-positive bias, resolving the ambiguity safely instead of merely
+// disclosing it.
+test('isExplicitSwitchMessage: a fully punctuation-free "have" question about a plural/generic-sounding subject safely defaults to NOT a directive', () => {
+  assert.equal(isExplicitSwitchMessage('Have API Docs become the project we focus on yet'), false)
+  // The genuine punctuation-free DIRECT form (round-1 required example)
+  // is completely unaffected -- "next", not "yet", is one of the bounded
+  // completions.
+  assert.equal(isExplicitSwitchMessage('have nwr become the project we focus on next'), true)
 })
 
 // DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
@@ -562,13 +579,19 @@ test('isExplicitSwitchMessage / isGoBackMessage: a polite "could/would/will you 
   assert.equal(isGoBackMessage('Will you make sure we go back after lunch'), false)
 })
 
-// Disclosed, not fixed: same category as the already-disclosed make/set
-// residual -- "Have NWR be the focus of the quarterly report." leads with
-// the causative-imperative trigger shape, but the REST of the sentence
-// names a different sense of "focus" (the report's own, not Command's).
-// Real referential ambiguity, not a bounded-pattern bug.
-test('isExplicitSwitchMessage: DISCLOSED residual -- "have" leading the message with an unrelated sense of "focus"/"project" later in the sentence still reads as a directive', () => {
-  assert.equal(isExplicitSwitchMessage('Have NWR be the focus of the quarterly report.'), true)
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): previously disclosed as an accepted
+// residual, same category as the make/set one above -- "Have NWR be the
+// focus of the quarterly report." leads with the causative-imperative
+// trigger shape, but the REST of the sentence names a different sense of
+// "focus" (the report's own, not Command's). Round 6's structural
+// completion requirement resolves this the same way: "of the quarterly
+// report" isn't the message end or a bounded completion, so this now
+// correctly does NOT move focus.
+test('isExplicitSwitchMessage: "have" leading the message with an unrelated sense of "focus"/"project" later in the sentence is correctly NOT treated as a directive', () => {
+  assert.equal(isExplicitSwitchMessage('Have NWR be the focus of the quarterly report.'), false)
+  // The genuine directive shape is completely unaffected.
+  assert.equal(isExplicitSwitchMessage('Have NWR be the focus.'), true)
 })
 
 // DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (real Codex
@@ -671,4 +694,65 @@ test('isExplicitSwitchMessage: a project name with a non-ASCII letter, a curly a
   assert.equal(isExplicitSwitchMessage("Make O'Brien the project."), true)
   assert.equal(isExplicitSwitchMessage('Make O’Brien the project.'), true)
   assert.equal(isExplicitSwitchMessage('Make TSF_ORCA the focus.'), true)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): round 5's word-count cap still wasn't
+// enough -- even a SINGLE filler word ("sure") sits directly before "the
+// project" in ordinary English ("make sure the project notes..."), so no
+// word count can ever exclude it; "absolutely sure" is exactly 2 words;
+// "set NWR aside" captures "aside" as the 2nd subject word before "as the
+// project" continues an unrelated later clause. Chasing individual
+// filler words was never going to converge. The real, convergent fix
+// constrains the OTHER side: requiring the message to actually END at
+// (or just after) "the project/focus", not merely pass through it on the
+// way to an unrelated later clause.
+test('isExplicitSwitchMessage: the common "make/be sure"/"set X aside" idioms -- where a SINGLE filler word already sits directly before "the project/focus" -- never fire, because the message continues with unrelated content afterward', () => {
+  for (const m of [
+    'Make absolutely sure the project notes for NWR are archived.',
+    'Could you make sure the project notes for NWR are archived.',
+    'Set NWR aside as the project continues.',
+    'Make absolutely sure the project notes for NWR are archived -- wait, no – ignore that.'
+  ]) {
+    assert.equal(isExplicitSwitchMessage(m), false, m)
+  }
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): a bare "--" still counted as one "word" of
+// the subject span (both chars are in the allowed class), letting the
+// trigger reach an unrelated "the project" via a 1-word "notes--" span.
+// The round-6 trailing-completion requirement closes this as a side
+// effect, without needing yet another character-class carve-out.
+test('isExplicitSwitchMessage: a subject word ending in an attached double-dash still cannot bridge to an unrelated later clause', () => {
+  assert.equal(isExplicitSwitchMessage('Make notes-- the project NWR needs them.'), false)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): the Unicode word class omitted combining
+// marks (Unicode category Mn) -- a name typed with a decomposed accent
+// ("e" + a separate combining acute accent, rather than the single
+// precomposed "é" character) or written in a script that uses combining
+// marks for consonant clusters (Tamil) both wrongly failed to match. Also
+// fixed: a project name that itself STARTS with a hyphen (an unusual but
+// real folder basename per server/onboarding.mjs) -- "-NWR" -- now
+// matches too, via a bounded exception that still requires an
+// alphanumeric character to immediately follow the leading hyphen (so a
+// bare "-"/"--" still can never count as a word on its own).
+test('isExplicitSwitchMessage: a project name using combining-mark accents, a non-Latin script, or a leading hyphen is recognized the same as any other name', () => {
+  assert.equal(isExplicitSwitchMessage('Make Café the focus.'), true)
+  assert.equal(isExplicitSwitchMessage('Make தமிழ் the focus.'), true)
+  assert.equal(isExplicitSwitchMessage('Make -NWR the focus.'), true)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): round 5's retraction punctuation set was
+// an incomplete allowlist -- an en dash ("–", U+2013, distinct from the
+// em dash "—" already covered) and an opening parenthesis were both
+// missing, so a spaced en-dash retraction or a parenthetical one still
+// wrongly failed to retract.
+test('isExplicitSwitchMessage / isGoBackMessage: an en-dash-separated or parenthetical retraction is still recognized', () => {
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no – keep TSF.'), false)
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no (keep TSF).'), false)
+  assert.equal(isGoBackMessage('Go back -- actually, no – stay here.'), false)
 })

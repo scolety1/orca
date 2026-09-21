@@ -160,8 +160,17 @@ export const REPORTED_SPEECH_MARKER =
 // terminal mark, a double-dash "--", an em dash, or an ellipsis is not
 // (nobody hyphenates "one" as "no--one" or "no…one"). This closes the
 // spaced-dash/parenthetical gap without reopening "no-one".
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
+// adversarial-review finding): round 5's punctuation set was an
+// incomplete allowlist, not the "any punctuation" it was meant to be --
+// an en dash ("–", U+2013, distinct from the em dash "—" already
+// covered) and an opening parenthesis were both missing, so "Wait, no –
+// reconsider." and "Switch to NWR (wait, no)" still wrongly failed to
+// retract. Both added to the spaced and (where unambiguous, i.e. the en
+// dash) unspaced punctuation sets.
 export const RETRACTION_MARKER_PATTERN =
-  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|(?:wait\s*,?\s*no|actually,?\s*no)(?=\s+[.,!?;:)\-—]|\s*(?:[.,!?;:)]|--+|—|…|\.\.\.)|\s*$)|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
+  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|(?:wait\s*,?\s*no|actually,?\s*no)(?=\s+[.,!?;:()\-–—]|\s*(?:[.,!?;:()]|--+|–|—|…|\.\.\.)|\s*$)|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 2 (P0, real Codex adversarial-
 // review finding): DELIBERATIVE_STATEMENT_OPENER is message/clause-START
 // anchored, so a hedge phrased mid-sentence ("We may want to switch to
