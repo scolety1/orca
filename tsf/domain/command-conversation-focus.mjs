@@ -143,8 +143,21 @@ const CAUSATIVE_TRAILING_CONTINUATION =
   "(?:\\s+we['’]?re\\s+focus(?:ed|ing)\\s+on(?:\\s+next)?" +
   '|\\s+we\\s+are\\s+focus(?:ed|ing)\\s+on(?:\\s+next)?' +
   '|\\s+we\\s+focus\\s+on(?:\\s+next)?)?[.!]?\\s*$'
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding, disposable-
+// state rant scenario): "actually" -- an extremely common, natural way
+// to lead into a spoken self-correction/afterthought directive ("actually
+// make NWR the focus", "actually, have NWR become the current project")
+// -- was missing from this lead-in list, so a message starting with it
+// failed to match the trigger AT ALL, not just the guard. Added to the
+// SAME bounded filler list as "please"/"okay"/"ok". Shared between both
+// causative patterns below (round 6-7 only added a lead-in to
+// CAUSATIVE_TRIGGER_PATTERN; CAUSATIVE_IMPERATIVE_PATTERN never had one
+// at all -- "Please have NWR become the current project." had this exact
+// gap too, closed here for consistency).
+const CAUSATIVE_LEAD_IN =
+  '(?:(?:please|okay|ok|actually)[,\\s]+)*(?:(?:could|can|would|will)\\s+you\\s+(?:please\\s+)?)?'
 const CAUSATIVE_TRIGGER_PATTERN = new RegExp(
-  `^\\s*(?:(?:please|okay|ok)[,\\s]+)*(?:(?:could|can|would|will)\\s+you\\s+(?:please\\s+)?)?(?:make\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+the\\s+(?:project|focus)|set\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+as\\s+the\\s+(?:current\\s+)?project)${CAUSATIVE_TRAILING_CONTINUATION}`,
+  `^\\s*${CAUSATIVE_LEAD_IN}(?:make\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+the\\s+(?:project|focus)|set\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+as\\s+the\\s+(?:current\\s+)?project)${CAUSATIVE_TRAILING_CONTINUATION}`,
   'iu'
 )
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
@@ -241,7 +254,7 @@ const NAMED_SUBJECT_QUESTION_PATTERN =
 // directive, since "of the quarterly report" isn't one of the bounded
 // completions and the message doesn't end at "the focus".
 const CAUSATIVE_IMPERATIVE_PATTERN = new RegExp(
-  `^\\s*have\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+(?:become|be)\\s+the\\s+(?:current\\s+)?(?:project|focus)${CAUSATIVE_TRAILING_CONTINUATION}`,
+  `^\\s*${CAUSATIVE_LEAD_IN}have\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+(?:become|be)\\s+the\\s+(?:current\\s+)?(?:project|focus)${CAUSATIVE_TRAILING_CONTINUATION}`,
   'iu'
 )
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
@@ -295,6 +308,25 @@ const POLITE_SWITCH_REQUEST_PATTERN =
 // SUBJECT_INVERSION_QUESTION_OPENER (also imported from chat-responder.mjs
 // -- same fix as that file's own isGenuineDirective) close this the same
 // punctuation-independent way.
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding, disposable-
+// state rant scenario): "switch to Alpha -- no wait, I meant Beta" is one
+// of the MOST natural real spoken self-corrections there is -- and this
+// file already has a dedicated, bounded-safe mechanism for exactly this
+// shape ("I meant X", added for real dogfood round 1's own "misrecognized
+// turn" finding, see EXPLICIT_SWITCH_PATTERN above). But "no wait" is
+// ALSO a real retraction marker, and the message-wide RETRACTION_MARKER_PATTERN
+// guard ran first and unconditionally, silently defeating the very
+// correction mechanism built to handle this. "I meant X" is a POSITIVE
+// completion of intent, not an abandonment -- when it's present, the
+// message is a correction, not a full retraction, and the guard should
+// step aside. Safe to except broadly (not just for "no wait" specifically)
+// because the actual mutation safety here was never this guard alone --
+// EXPLICIT_SWITCH_PATTERN's own "I meant" trigger still requires the
+// caller's OWN separate exact-target-resolution to have found exactly one
+// project in the same message before anything can actually move (see that
+// pattern's own comment), so loosening this guard can never manufacture a
+// switch out of ambiguity.
+const MEANT_CORRECTION_PATTERN = /\bI\s+meant\b/i
 function isGuardedAgainst(message) {
   const trimmed = message.trim()
   return (
@@ -308,7 +340,7 @@ function isGuardedAgainst(message) {
     ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || trimmed.includes('?')) &&
       NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed)) ||
     REPORTED_SPEECH_MARKER.test(trimmed) ||
-    RETRACTION_MARKER_PATTERN.test(trimmed) ||
+    (!MEANT_CORRECTION_PATTERN.test(trimmed) && RETRACTION_MARKER_PATTERN.test(trimmed)) ||
     MID_SENTENCE_HEDGE_MARKER.test(trimmed)
   )
 }
@@ -324,6 +356,44 @@ export function isExplicitSwitchMessage(message) {
       CAUSATIVE_TRIGGER_PATTERN.test(trimmed) ||
       CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed))
   )
+}
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding, disposable-
+// state rant scenario): "switch to Alpha -- no wait, I meant Beta" names
+// BOTH projects by exact match, so the caller's own turn-target
+// resolution correctly finds TWO exact matches -- and nextCommandFocus's
+// own "never guess a switch out of ambiguity" rule (exactly right for
+// genuine ambiguity, e.g. "let's talk about Alpha and Beta") then
+// silently refuses to switch at all, defeating the correction. "I meant
+// X" unambiguously names the intended target: the LAST exact match whose
+// own matched phrase appears at or after "I meant" in the message. This
+// narrows an ambiguous multi-match turn-target list to that single
+// corrected id -- ONLY when the correction phrase is present and exactly
+// one candidate can be identified this way -- so it can never invent a
+// target out of genuine ambiguity; an inconclusive case (neither matched
+// phrase appears after "I meant") returns null and the caller's original,
+// conservative multi-match handling is unaffected.
+export function correctedSwitchTarget(message, exactMatches) {
+  if (!MEANT_CORRECTION_PATTERN.test(message) || !Array.isArray(exactMatches)) {
+    return null
+  }
+  const meantMatch = message.match(MEANT_CORRECTION_PATTERN)
+  const meantIndex = meantMatch.index
+  const lower = message.toLowerCase()
+  let bestId = null
+  let bestIndex = -1
+  for (const match of exactMatches) {
+    const phrase = (match.matchedPhrase ?? '').toLowerCase()
+    if (!phrase) {
+      continue
+    }
+    const index = lower.lastIndexOf(phrase)
+    if (index >= meantIndex && index > bestIndex) {
+      bestId = match.project.id
+      bestIndex = index
+    }
+  }
+  return bestId
 }
 
 export function isGoBackMessage(message) {

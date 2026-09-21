@@ -4,6 +4,7 @@ import {
   nextCommandFocus,
   isExplicitSwitchMessage,
   isGoBackMessage,
+  correctedSwitchTarget,
   RECENT_PROJECT_STACK_CAP
 } from '../domain/command-conversation-focus.mjs'
 
@@ -838,5 +839,74 @@ test('isExplicitSwitchMessage: DISCLOSED residual (pre-existing, not caused by t
   assert.equal(
     isExplicitSwitchMessage('Switch to NWR because we focus on next week, not now.'),
     true
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding, disposable-
+// state rant scenario): "actually" -- an extremely common, natural way to
+// lead into a spoken self-correction/afterthought directive -- was
+// missing from CAUSATIVE_TRIGGER_PATTERN's bounded lead-in list, so
+// "actually make NWR the focus" failed to match the trigger at ALL, not
+// just the guard. CAUSATIVE_IMPERATIVE_PATTERN ("have X become/be the
+// project/focus") never had lead-in support at all -- "Please have NWR
+// become the current project." had this exact gap too. Both now share
+// the same bounded lead-in list.
+test('isExplicitSwitchMessage: "actually" is a recognized lead-in filler before "make X the.../set X as.../have X become..." the same way "please"/"okay" already are', () => {
+  assert.equal(isExplicitSwitchMessage('actually make NWR the focus'), true)
+  assert.equal(isExplicitSwitchMessage('actually set TSF as the current project'), true)
+  assert.equal(isExplicitSwitchMessage('actually have NWR become the current project'), true)
+  assert.equal(isExplicitSwitchMessage('Please have NWR become the current project.'), true)
+  // "Actually, could you make NWR the focus?" hits the same pre-existing,
+  // already-disclosed DELIBERATIVE_QUESTION_PATTERN gap (no polite carve-
+  // out at all, applies identically to every trigger verb old and new) --
+  // not something this lead-in addition caused or is in scope to fix.
+  assert.equal(isExplicitSwitchMessage('Actually, could you make NWR the focus?'), false)
+  // A genuine musing/question still isn't fooled by the wider lead-in.
+  assert.equal(isExplicitSwitchMessage('Actually, I wonder if NWR should become the focus.'), false)
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding, disposable-
+// state rant scenario): "switch to Alpha -- no wait, I meant Beta" is one
+// of the most natural real spoken self-corrections there is. "no wait"
+// is ALSO a real retraction marker, and the message-wide
+// RETRACTION_MARKER_PATTERN guard ran first and unconditionally,
+// silently defeating the dedicated "I meant X" correction mechanism this
+// file already has for exactly this shape. "I meant X" is a POSITIVE
+// completion of intent, not an abandonment.
+test('isExplicitSwitchMessage: "no wait, I meant X" is a genuine self-correction, never fully suppressed by the retraction guard', () => {
+  assert.equal(isExplicitSwitchMessage('switch to NWR -- no wait, I meant TSF'), true)
+  // A genuine full retraction with no correction still retracts.
+  assert.equal(isExplicitSwitchMessage('switch to NWR -- no wait, never mind'), false)
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding): naming
+// BOTH the wrong and the corrected project in one message produces two
+// exact turn-target matches, which the caller's own "never guess a
+// switch out of ambiguity" rule (correctly!) refuses to pick between on
+// its own -- correctedSwitchTarget narrows that to the one project
+// actually named after "I meant", and ONLY when that's unambiguous.
+test('correctedSwitchTarget: narrows a multi-exact-match list to the project named after "I meant", and only when unambiguous', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Beta', [alpha, beta]),
+    'beta'
+  )
+  // No "I meant" present at all -- never guesses.
+  assert.equal(correctedSwitchTarget('talk about Alpha and Beta', [alpha, beta]), null)
+  // "I meant" naming the one exact match already found -- safe to
+  // confirm (not invent); the real caller only reaches this helper with
+  // 0 or 2+ exact matches in practice (a single match short-circuits
+  // earlier), but the helper itself has no reason to refuse this case.
+  assert.equal(correctedSwitchTarget('I meant Alpha', [alpha]), 'alpha')
+  // Neither matched phrase actually appears after "I meant" -- genuinely
+  // inconclusive, must not guess.
+  assert.equal(
+    correctedSwitchTarget('Alpha and Beta are both relevant here, I meant to say that', [
+      alpha,
+      beta
+    ]),
+    null
   )
 })

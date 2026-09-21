@@ -27,7 +27,8 @@ import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import {
   nextCommandFocus,
   isExplicitSwitchMessage,
-  isGoBackMessage
+  isGoBackMessage,
+  correctedSwitchTarget
 } from '../domain/command-conversation-focus.mjs'
 import { buildProjectManagerSnapshot } from '../domain/project-manager-snapshot.mjs'
 import { respondNeedsYouAnswerCommand } from './command-needs-you-answer-bridge.mjs'
@@ -279,9 +280,8 @@ export async function handleChatRoute(
       const resolution = resolveProjectsFromText(message, projects, {
         aliases: commandAliases
       })
-      commandTurnTargetIds = resolution.matches
-        .filter((m) => m.matchedOn !== 'fuzzy')
-        .map((m) => m.project.id)
+      const exactMatches = resolution.matches.filter((m) => m.matchedOn !== 'fuzzy')
+      commandTurnTargetIds = exactMatches.map((m) => m.project.id)
       const contextFallbackProject =
         resolution.matches.length === 0
           ? await resolveRouteContextFallback({
@@ -343,10 +343,23 @@ export async function handleChatRoute(
             resultItems: commandResult.resultItems ?? []
           }
         ].slice(-200)
+        // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding): a
+        // self-correction naming BOTH the wrong and the corrected project
+        // in one message ("switch to Alpha -- no wait, I meant Beta")
+        // produces two exact turn targets here, which nextCommandFocus's
+        // own ambiguity-safety would otherwise refuse to pick between --
+        // correct for genuine ambiguity, wrong for a genuine correction.
+        // correctedSwitchTarget narrows to the one project actually named
+        // after "I meant" ONLY when that's unambiguous; otherwise it
+        // returns null and this falls through to the original,
+        // conservative multi-target list unchanged.
+        const correctedTarget = correctedSwitchTarget(message, exactMatches)
         const newCommandFocus = nextCommandFocus(
           freshState.commandFocus,
           {
-            turnTargetProjectIds: commandTurnTargetIds ?? [],
+            turnTargetProjectIds: correctedTarget
+              ? [correctedTarget]
+              : (commandTurnTargetIds ?? []),
             decisionClass: commandResult.decisionClass,
             isExplicitSwitch: isExplicitSwitchMessage(message),
             isGoBack: isGoBackMessage(message)
