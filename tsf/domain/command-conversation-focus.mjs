@@ -292,6 +292,26 @@ const CAUSATIVE_IMPERATIVE_SHAPE_PATTERN = new RegExp(
 // itself (rather than a second, separately-maintained vocabulary copy)
 // keeps this in sync with every other guard in this file that recognizes
 // a retraction.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 6 (real Codex adversarial-
+// review findings against the round-5 version of this function): (1) the
+// leading-punctuation strip only covered ASCII punctuation, so an em
+// dash/en dash/ellipsis right after the shape ("the focus—no wait,
+// I meant Beta") never reached the `retraction.index === 0` check at
+// all -- broadened to the same Unicode dash/ellipsis characters this
+// file's own retraction/en-dash tests elsewhere already cover. (2) an
+// immediately-adjacent retraction marker was trusted even when a SECOND,
+// FULL retraction (e.g. "leave it unchanged") followed it, itself
+// followed by an entirely separate sentence containing an unrelated "I
+// meant X" ("...-- no wait, leave it unchanged. In the report, I meant
+// Beta.") -- correctedSwitchTarget's own last-"I meant"-in-the-message
+// search then picked up that unrelated later correction. Now also
+// requires the "I meant" MEANT_CORRECTION_PATTERN itself finds to occur
+// before the first real sentence boundary (a ".", "!", or "?" followed
+// by whitespace or message-end) after the retraction marker -- "never
+// mind, I meant Beta" (comma, no sentence break) still resolves; "no
+// wait, leave it unchanged. In the report, I meant Beta." (a full
+// sentence break before the unrelated "I meant") correctly refuses.
 function hasSafeCausativeImperativeCorrectionShape(trimmed) {
   const match = CAUSATIVE_IMPERATIVE_SHAPE_PATTERN.exec(trimmed)
   if (!match) {
@@ -301,9 +321,18 @@ function hasSafeCausativeImperativeCorrectionShape(trimmed) {
   if (tail.trim() === '') {
     return true
   }
-  const strippedTail = tail.replace(/^[\s.,!;:?-]+/u, '')
+  const strippedTail = tail.replace(/^[\s.,!;:?…—–-]+/u, '')
   const retraction = RETRACTION_MARKER_PATTERN.exec(strippedTail)
-  return retraction !== null && retraction.index === 0
+  if (retraction === null || retraction.index !== 0) {
+    return false
+  }
+  const afterRetraction = strippedTail.slice(retraction[0].length)
+  const meant = MEANT_CORRECTION_PATTERN.exec(afterRetraction)
+  if (meant === null) {
+    return false
+  }
+  const sentenceBoundary = /[.!?](?:\s|$)/.exec(afterRetraction)
+  return sentenceBoundary === null || meant.index < sentenceBoundary.index
 }
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
@@ -436,7 +465,8 @@ const MEANT_CORRECTION_PATTERN = /\bI\s+meant\b/i
 // different entry point.
 //
 // This version (round 5, final): the causative-imperative check is now a
-// PREDICATE FUNCTION over the trimmed message, not a bare RegExp. The default (used by isGuardedAgainst/isExplicitSwitchMessage/
+// PREDICATE FUNCTION over the trimmed message, not a bare RegExp. The
+// default (used by isGuardedAgainst/isExplicitSwitchMessage/
 // isGoBackMessage, unchanged from before round 5) tests the FULL,
 // trailing-continuation-requiring CAUSATIVE_IMPERATIVE_PATTERN, exactly
 // as conservative as ever. verifiedCorrectionTarget below passes
@@ -460,6 +490,16 @@ const MEANT_CORRECTION_PATTERN = /\bI\s+meant\b/i
 // exception below it, and stayed wrongly refused. The SAME
 // causativeException predicate now exempts this guard too, exactly
 // mirroring how CAUSATIVE_TRIGGER_PATTERN already does for make/set.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 6 (real Codex adversarial-
+// review finding): NEGATION_GUARD_PATTERN had no causativeException
+// exemption at all -- "never" is both part of NEGATION_GUARD_PATTERN's
+// own vocabulary AND part of RETRACTION_MARKER_PATTERN's "never mind"
+// retraction phrase, so "Have Alpha become the focus -- never mind, I
+// meant Beta" (a genuine, immediately-adjacent correction per
+// hasSafeCausativeImperativeCorrectionShape above) still tripped this
+// separate, unconditional branch and stayed wrongly refused. Exempted
+// the same way as the other two causative-aware branches.
 function isGuardedByNonRetraction(
   message,
   hasCausativeImperativeException = (trimmed) => CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed)
@@ -468,7 +508,7 @@ function isGuardedByNonRetraction(
   const causativeException = hasCausativeImperativeException(trimmed)
   return (
     DELIBERATIVE_QUESTION_PATTERN.test(message) ||
-    NEGATION_GUARD_PATTERN.test(message) ||
+    (!causativeException && NEGATION_GUARD_PATTERN.test(message)) ||
     DELIBERATIVE_STATEMENT_OPENER.test(trimmed) ||
     COPULA_QUESTION_OPENER.test(trimmed) ||
     (!POLITE_SWITCH_REQUEST_PATTERN.test(trimmed) &&
@@ -624,14 +664,37 @@ export function correctedSwitchTarget(message, exactMatches) {
   )
   const rawRest = message.slice(anchorEnd).replace(/^[,\s]*/, '')
   // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 (real Codex adversarial-
-  // review finding, second follow-up pass): only a SINGLE leading
-  // disfluency was ever stripped -- "I meant well, uh, Beta" (two
-  // stacked, equally common fillers) left "uh, Beta" behind, which never
-  // matches a bare "Beta" candidate. Repeating the same bounded,
-  // whole-word-only filler group handles any number of stacked
-  // disfluencies without widening the vocabulary itself.
-  const strippedRest = rawRest.replace(/^(?:(?:uh|um|er|well)(?![\p{L}\p{N}_])[,\s]*)*/iu, '')
-  const solo = rawRest.match(soloPattern) ?? strippedRest.match(soloPattern)
+  // review finding, second follow-up pass, superseded by round 6 below):
+  // only a SINGLE leading disfluency was ever stripped -- "I meant well,
+  // uh, Beta" (two stacked, equally common fillers) left "uh, Beta"
+  // behind, which never matches a bare "Beta" candidate.
+  //
+  // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 6 (real Codex adversarial-
+  // review finding): unconditionally stripping ALL repeating fillers in
+  // one pass introduced a new regression -- "well"/"uh"/"um"/"er" are
+  // BOTH the recognized filler vocabulary AND, per this function's own
+  // literal-first design, potentially the real corrected name itself.
+  // "I meant uh, Well" (only "Well" a real candidate) stripped "uh" AND
+  // then "well" in the same pass, leaving nothing to match. Trying each
+  // strip DEPTH in increasing order (0 strips, then 1, then 2, ...) and
+  // taking the FIRST one that matches a real candidate generalizes the
+  // existing literal-first preference to any number of leading fillers:
+  // a real candidate is always matched before this ever strips it as a
+  // filler too.
+  let solo = null
+  let restVariant = rawRest
+  const leadingDisfluency = /^(?:uh|um|er|well)(?![\p{L}\p{N}_])[,\s]*/iu
+  for (;;) {
+    solo = restVariant.match(soloPattern)
+    if (solo) {
+      break
+    }
+    const stripped = leadingDisfluency.exec(restVariant)
+    if (!stripped) {
+      break
+    }
+    restVariant = restVariant.slice(stripped[0].length)
+  }
   if (!solo || solo[2]) {
     return null
   }

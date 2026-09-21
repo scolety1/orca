@@ -314,3 +314,98 @@ test('correctedSwitchTarget: "and/or" tolerates internal whitespace, and any num
     'beta'
   )
 })
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 6 (real Codex adversarial-
+// review finding, P0): NEGATION_GUARD_PATTERN had no causativeException
+// exemption at all -- "never" is both part of its own vocabulary AND
+// part of RETRACTION_MARKER_PATTERN's "never mind" retraction phrase, so
+// a genuine, immediately-adjacent "never mind, I meant X" correction
+// still tripped this separate, unconditional guard branch.
+test('verifiedCorrectionTarget: "never mind, I meant X" resolves -- NEGATION_GUARD_PATTERN no longer blocks a genuine adjacent correction', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the focus -- never mind, I meant Beta', [
+      alpha,
+      beta
+    ]),
+    'beta'
+  )
+  // An unrelated negation with no causative-correction shape at all is
+  // completely unaffected.
+  assert.equal(isExplicitSwitchMessage("Don't switch to NWR"), false)
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 6 (real Codex adversarial-
+// review finding, P0): the leading-punctuation strip in
+// hasSafeCausativeImperativeCorrectionShape only covered ASCII
+// punctuation, so an em dash/en dash/ellipsis right after the causative
+// shape never reached the immediate-retraction check at all.
+test('verifiedCorrectionTarget: an em dash, en dash, or ellipsis directly after the causative shape is recognized the same as "--"', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the focus—no wait, I meant Beta', [alpha, beta]),
+    'beta'
+  )
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the focus–no wait, I meant Beta', [alpha, beta]),
+    'beta'
+  )
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the focus…no wait, I meant Beta', [alpha, beta]),
+    'beta'
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 6 (real Codex adversarial-
+// review finding, P1, a regression in round 5's own multi-disfluency
+// fix): unconditionally stripping ALL repeating leading fillers in one
+// pass could strip the real corrected name too, when that name is
+// itself one of the recognized filler words ("uh, Well" stripped BOTH
+// "uh" and "well", leaving nothing to match). Trying each strip depth in
+// increasing order and taking the first real match fixes this without
+// reopening the original multi-disfluency case.
+test('correctedSwitchTarget: a stacked disfluency never strips a literal filler-named real candidate it precedes', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const well = { project: { id: 'well' }, matchedPhrase: 'Well', matchedOn: 'displayName' }
+  const wellKnown = {
+    project: { id: 'well-known' },
+    matchedPhrase: 'Well-known',
+    matchedOn: 'displayName'
+  }
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant uh, um, Well', [alpha, well]),
+    'well'
+  )
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant uh, Well-known', [alpha, wellKnown]),
+    'well-known'
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 6 (real Codex adversarial-
+// review finding, P1): an immediately-adjacent retraction was trusted
+// even when it was itself a FULL retraction ("leave it unchanged")
+// followed by an entirely separate sentence containing an unrelated "I
+// meant X" -- correctedSwitchTarget's own last-"I meant"-in-the-message
+// search then picked up that unrelated later correction across the
+// sentence boundary. hasSafeCausativeImperativeCorrectionShape now also
+// requires "I meant" to occur before the first real sentence boundary
+// after the retraction marker.
+test('verifiedCorrectionTarget: a full retraction followed by an unrelated "I meant X" in a LATER sentence never resolves', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait, leave it unchanged. In the report, I meant Beta.',
+      [alpha, beta]
+    ),
+    null
+  )
+  // The genuine, same-clause correction shape is unaffected.
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the focus -- no wait, I meant Beta', [alpha, beta]),
+    'beta'
+  )
+})
