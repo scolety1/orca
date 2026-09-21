@@ -76,6 +76,48 @@ test('CASE-31 #6: retracted hypothetical -- "I was going to say adopt it, but ne
   )
 })
 
+// DIRECTIVE SEMANTICS CLOSURE V1 (P0): "actually, never mind" (no
+// following content, unlike CASE-31 #1's "actually, don't") previously
+// executed a real PAUSE -- CORRECTION_MARKER_RE's own "never mind" match
+// terminated the "actually" amendment's own amendText before any content,
+// so the amendText-inspection logic saw an empty string (zero negation,
+// zero affirmation) and silently left the prior act's polarity untouched.
+// "never mind"/"scratch that" are themselves the full retraction, not
+// mere boundary markers for something else's amendment text.
+test('DIRECTIVE SEMANTICS CLOSURE V1: a directive retracted by "actually, never mind" (no explicit negation word) never executes', () => {
+  for (const message of [
+    'Pause A -- actually, never mind.',
+    'Pause A, never mind.',
+    'Pause A, scratch that.'
+  ]) {
+    const entries = decompose(message)
+    assert.equal(intentsFor('proj-a', entries).has('PAUSE'), false, message)
+    assert.equal(intentsFor('proj-a', entries).has('MULTI_ACTION_DECLINED'), true, message)
+  }
+  // The two-marker "actually, don't" case (CASE-31 #1's own shape, applied
+  // to a non-adoption verb) must keep working identically.
+  const entries = decompose('Pause A -- actually, do not.')
+  assert.equal(intentsFor('proj-a', entries).has('PAUSE'), false)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1 (P0): REPORTED_SPEECH_OPENER only
+// recognized the literal verb "said" -- "The report says to pause A."
+// (present tense) and "Claude reported that we should pause A." both
+// produced a real, executable PAUSE act despite being reported speech,
+// not a current-owner directive.
+test('DIRECTIVE SEMANTICS CLOSURE V1: reported speech without the verb "said" never executes', () => {
+  for (const message of [
+    'The report says to pause A.',
+    'Claude reported that we should pause A.'
+  ]) {
+    const entries = decompose(message)
+    assert.equal(intentsFor('proj-a', entries).has('PAUSE'), false, message)
+  }
+  // The real, intended trigger phrasing must still work.
+  const entries = decompose('Pause A.')
+  assert.equal(intentsFor('proj-a', entries).has('PAUSE'), true)
+})
+
 // CASE-31 #7 ("Not that one -- adopt the other one.") is explicitly scoped
 // OUT of this module -- it belongs to domain/command-referent-resolution.mjs's
 // own EXCLUDE_INTENT_PATTERN + prior-turn-item resolution (see the CASE-31/

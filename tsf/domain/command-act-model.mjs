@@ -61,112 +61,26 @@ export const NOT_CONTRACTION_SOURCE =
 export const NEGATION_TRIGGER_SOURCE = `(?:do not|${NOT_CONTRACTION_SOURCE}|never|won['’]?t|refuse(?:d|s)?\\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\\s+on)?|pass on|not(?!\\s+sure\\b)|no|can['’]?t|cannot)`
 
 // ============================================================================
-// Provenance pre-pass: quote / reported-speech / retracted-hypothetical
-// span detection (CASE-31's core fix). Generalizes the golden-path eval's
-// already-tested Property D ("a quoted command is not itself the owner's
-// directive") into a reusable primitive instead of a test-only assertion.
+// Provenance pre-pass (quote / reported-speech / retracted-hypothetical
+// span detection, CASE-31's core fix) -- extracted to command-act-model-
+// provenance.mjs purely to stay under this repo's max-lines budget. Re-
+// exported here unchanged so every existing caller/import keeps working.
 // ============================================================================
-
-// Double-quote pairs are unambiguous. Single-quote pairs are heuristic
-// (English apostrophes in contractions/possessives vastly outnumber
-// genuine quotation use) -- an opening single-quote is one preceded by
-// start-of-string/whitespace/opening-punctuation and NOT immediately
-// followed by whitespace; verified empirically against every contraction
-// this codebase's own negation vocabulary already recognizes (don't,
-// isn't, wouldn't, etc.) to confirm none are misread as quote-opens.
-function findQuoteSpans(message) {
-  const spans = []
-  const doubleRe = /"([^"]*)"/g
-  let m
-  while ((m = doubleRe.exec(message))) {
-    spans.push([m.index, m.index + m[0].length])
-  }
-  const singleOpenRe = /(^|[\s([{])'(\S[^']*)'/g
-  while ((m = singleOpenRe.exec(message))) {
-    const openAt = m.index + m[1].length
-    spans.push([openAt, openAt + 1 + m[2].length + 1])
-  }
-  return spans
-}
-
-// Reported-speech WITHOUT quote marks ("Claude suggested to adopt A") --
-// a narrower safety net beyond quote detection; bounded to the rest of
-// the current sentence (next hard boundary or end of string) since this
-// module has no sentence list yet at pre-pass time -- a conservative,
-// generously-sized bound, tightened by the quote-span check above
-// whenever quotes ARE present (the common case).
-const REPORTED_SPEECH_OPENER = /\b(?:i|you|claude|the (?:plan|assistant))\s+said\b/gi
-function findReportedSpeechSpans(message) {
-  const spans = []
-  let m
-  REPORTED_SPEECH_OPENER.lastIndex = 0
-  while ((m = REPORTED_SPEECH_OPENER.exec(message))) {
-    const restStart = m.index + m[0].length
-    const boundaryMatch = /[.!?;\n]/.exec(message.slice(restStart))
-    const restEnd = boundaryMatch ? restStart + boundaryMatch.index : message.length
-    spans.push([restStart, restEnd])
-  }
-  return spans
-}
-
-// "I was going to say X, but never mind" / "I was thinking of saying X" /
-// "I almost said X" -- a retracted or merely-hypothetical statement of
-// intent, never itself a current instruction. Bounded to the next
-// correction marker or hard boundary (whichever comes first) -- so "I was
-// going to say adopt it, but never mind" excludes "adopt it" (ends at
-// "but"), matching the CORRECTION_MARKER_SOURCE below.
-const RETRACTED_HYPOTHETICAL_OPENER =
-  /\bi\s+(?:was\s+going\s+to\s+say|was\s+thinking\s+(?:of|about)\s+saying|almost\s+said)\b/gi
-export const CORRECTION_MARKER_SOURCE =
-  '(?:actually|wait|scratch that|i mean|on second thought|but never mind|never mind)'
-function findRetractedHypotheticalSpans(message) {
-  const spans = []
-  let m
-  RETRACTED_HYPOTHETICAL_OPENER.lastIndex = 0
-  while ((m = RETRACTED_HYPOTHETICAL_OPENER.exec(message))) {
-    const restStart = m.index + m[0].length
-    const rest = message.slice(restStart)
-    const correctionMatch = new RegExp(`[.!?;\\n]|\\b${CORRECTION_MARKER_SOURCE}\\b`, 'i').exec(
-      rest
-    )
-    const restEnd = correctionMatch ? restStart + correctionMatch.index : message.length
-    spans.push([restStart, restEnd])
-  }
-  return spans
-}
-
-function buildExcludedSpans(message) {
-  const quoted = findQuoteSpans(message).map((s) => ({ span: s, provenance: 'QUOTED_OR_REPORTED' }))
-  const reported = findReportedSpeechSpans(message).map((s) => ({
-    span: s,
-    provenance: 'QUOTED_OR_REPORTED'
-  }))
-  const hypothetical = findRetractedHypotheticalSpans(message).map((s) => ({
-    span: s,
-    provenance: 'RETRACTED_HYPOTHETICAL'
-  }))
-  return [...quoted, ...reported, ...hypothetical]
-}
-
-// A position is "excluded" (never counts as CURRENT_OWNER_STATEMENT) if it
-// falls inside any provenance span. Returns the provenance label of the
-// FIRST containing span, or null if the position is not excluded.
-function provenanceAt(excludedSpans, index) {
-  for (const { span, provenance } of excludedSpans) {
-    if (index >= span[0] && index < span[1]) {
-      return provenance
-    }
-  }
-  return null
-}
-
 export {
   buildExcludedSpans,
   provenanceAt,
   findQuoteSpans,
   findReportedSpeechSpans,
-  findRetractedHypotheticalSpans
-}
+  findRetractedHypotheticalSpans,
+  CORRECTION_MARKER_SOURCE,
+  BARE_RETRACTION_MARKER_SOURCE
+} from './command-act-model-provenance.mjs'
+import {
+  buildExcludedSpans,
+  provenanceAt,
+  CORRECTION_MARKER_SOURCE,
+  BARE_RETRACTION_MARKER_SOURCE
+} from './command-act-model-provenance.mjs'
 
 // ============================================================================
 // Adoption verb recognition -- MOVED here (canonical home) from domain/
@@ -182,12 +96,11 @@ export const ADOPTION_CANDIDATE_NOUN_SOURCE = 'candidate|run|mission|adoption'
 export const ARTICLE_SOURCE = 'the|a|an|my|your|his|her|our|their|its'
 
 function acceptApproveObjectMatchesAllowlist(after, projects) {
-  if (
-    new RegExp(
-      `^(?:\\s+(?:${ARTICLE_SOURCE}))?(?:\\s+\\S+){0,2}?\\s+(?:${ADOPTION_CANDIDATE_NOUN_SOURCE})\\b`,
-      'i'
-    ).test(after)
-  ) {
+  const candidateRe = new RegExp(
+    `^(?:\\s+(?:${ARTICLE_SOURCE}))?(?:\\s+\\S+){0,2}?\\s+(?:${ADOPTION_CANDIDATE_NOUN_SOURCE})\\b`,
+    'i'
+  )
+  if (candidateRe.test(after)) {
     return true
   }
   for (const project of projects) {
@@ -195,14 +108,14 @@ function acceptApproveObjectMatchesAllowlist(after, projects) {
       continue
     }
     for (const name of [project.id, project.displayName]) {
-      if (
-        typeof name === 'string' &&
-        name.trim() &&
-        new RegExp(
-          `^(?:\\s+(?:${ARTICLE_SOURCE}))?\\s+${escapeRegExpToken(name.trim())}\\b`,
-          'i'
-        ).test(after)
-      ) {
+      if (typeof name !== 'string' || !name.trim()) {
+        continue
+      }
+      const nameRe = new RegExp(
+        `^(?:\\s+(?:${ARTICLE_SOURCE}))?\\s+${escapeRegExpToken(name.trim())}\\b`,
+        'i'
+      )
+      if (nameRe.test(after)) {
         return true
       }
     }
@@ -387,6 +300,30 @@ function applyCorrectionAmendments(acts, message, excludedSpans, projects, segme
     if (provenanceAt(excludedSpans, markerStart)) {
       continue
     }
+    const lowerBound = segments
+      ? (segments.find((s) => markerStart >= s.start && markerStart <= s.end)?.start ?? 0)
+      : 0
+    const target = acts
+      .toReversed()
+      .find((a) => a.span[1] <= markerStart && a.span[1] >= lowerBound)
+    if (!target) {
+      continue
+    }
+    // DIRECTIVE SEMANTICS CLOSURE V1 (P0): "scratch that"/"never mind" are
+    // the FULL retraction on their own -- unlike "actually"/"wait"/etc,
+    // nothing meaningful ever follows them, so the amendText-inspection
+    // logic below always saw an empty/boundary-truncated amendText (the
+    // marker's own word "never mind" IS the very next CORRECTION_MARKER_RE
+    // match, terminating amendText before any content) and silently did
+    // nothing, leaving a retracted directive ("Pause NWR -- actually,
+    // never mind.") fully executable. Checked before, not instead of, the
+    // opener logic below, so "actually, never mind" (2 marker matches)
+    // still negates on the "never mind" match even though its own
+    // "actually" match harmlessly no-ops first.
+    if (new RegExp(`^${BARE_RETRACTION_MARKER_SOURCE}$`, 'i').test(m[0])) {
+      target.polarity = 'NEGATIVE'
+      continue
+    }
     const afterStart = markerStart + m[0].length
     const rest = message.slice(afterStart)
     // Independent-review finding (SHOULD-FIX, round 4, real, live-
@@ -415,15 +352,6 @@ function applyCorrectionAmendments(acts, message, excludedSpans, projects, segme
     if (negCount >= 1 && hasAffirmation) {
       continue
     } // genuinely ambiguous -- fail safe
-    const lowerBound = segments
-      ? (segments.find((s) => markerStart >= s.start && markerStart <= s.end)?.start ?? 0)
-      : 0
-    const target = acts
-      .toReversed()
-      .find((a) => a.span[1] <= markerStart && a.span[1] >= lowerBound)
-    if (!target) {
-      continue
-    }
     if (negCount === 1) {
       target.polarity = 'NEGATIVE'
     } else if (negCount === 0 && hasAffirmation) {
@@ -504,6 +432,13 @@ const STATUS_QUERY_SOURCE = "(?:status|what'?s\\s+(?:going\\s+on|happening)|how'
 // (server/command-multi-action-bridge.mjs's handleEntry safely no-ops/
 // reports status for GENERAL), never a silently invented destructive
 // intent.
+// Pre-UI Productization V1, Priority 2: RELEASE_HOLD's "release hold" was
+// recognized syntactically but wired to ZERO real execution anywhere in
+// the codebase (existingMultiActionIntent was GENERAL, a real, confirmed
+// gap). Broadened its source pattern to also match "release the hold"/
+// "release that hold" (a bare, article-free "release hold" reads
+// unnaturally to a real operator) and wired to a real, distinct intent,
+// mirroring EXTERNAL_WORK_HOLD's own pattern exactly.
 const VERB_REGISTRY = [
   {
     id: 'EXTERNAL_WORK_HOLD',
@@ -559,14 +494,6 @@ const VERB_REGISTRY = [
     existingMultiActionIntent: 'GENERAL',
     negatedMultiActionIntent: 'GENERAL'
   },
-  // Pre-UI Productization V1, Priority 2: "release hold" was recognized
-  // syntactically but wired to ZERO real execution anywhere in the
-  // codebase (existingMultiActionIntent was GENERAL, a real, confirmed
-  // gap -- see the disclosed-gap comment above). Broadened the source
-  // pattern to also match "release the hold"/"release that hold" (a
-  // bare, article-free "release hold" reads unnaturally to a real
-  // operator) and wired to a real, distinct intent, mirroring
-  // EXTERNAL_WORK_HOLD's own pattern exactly.
   {
     id: 'RELEASE_HOLD',
     source: 'release\\s+(?:the\\s+|that\\s+)?hold\\w*',
