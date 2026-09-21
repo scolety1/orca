@@ -22,7 +22,11 @@ import {
 } from '../adapters/orca-orchestration-bridge.mjs'
 import { resolveSenderTerminal } from './keep-going-dispatch-loop.mjs'
 import { recordNeedsYouRelayOutcome } from '../domain/keep-going.mjs'
-import { DELIBERATIVE_STATEMENT_OPENER } from './chat-responder.mjs'
+import {
+  DELIBERATIVE_STATEMENT_OPENER,
+  RETRACTION_MARKER_PATTERN,
+  REPORTED_SPEECH_MARKER
+} from './chat-responder.mjs'
 
 // Mirrors keep-going-http-routes.mjs's own mutateThroughStore exactly (not
 // exported there, so duplicated rather than reaching across a route file
@@ -308,11 +312,32 @@ function clauseMatchesAction(clause, opener, pronoun) {
   )
 }
 
+// REAL CODEX ADVERSARIAL-REVIEW FINDING (P0, Directive Semantics Closure
+// V1, round 2): a retraction ("Pause NWR -- never mind.", "Pause NWR,
+// scratch that.") or a reported-speech marker ("Claude suggested we pause
+// it") reached a real PAUSE via this classifier -- unlike domain/command-
+// act-model.mjs's own newly-fixed retraction/reported-speech handling
+// (commit 322a633cb8), which this file's own header explains is
+// DELIBERATELY not reused here (command-responder.mjs's single-project
+// path calls this function directly, never the multi-action decomposer).
+// A retraction marker can land in the SAME clause as the verb ("--" is
+// not a clause boundary below) or a separate, later clause (split on
+// ","), and either way must suppress the classification: this file has
+// exactly one real action to classify per message, so a message-wide
+// check (not per-clause, unlike DELIBERATIVE_STATEMENT_OPENER above) is
+// the correct granularity here. Checked before any clause-level logic
+// runs, mirroring how the shared patterns are used in chat-responder.mjs.
+const RUN_ACTION_RETRACTION_OR_REPORTED = (message) =>
+  RETRACTION_MARKER_PATTERN.test(message) || REPORTED_SPEECH_MARKER.test(message)
+
 // Returns 'PAUSE' | 'RESUME' | null. RESUME covers "resume"/"continue"/
 // "rerun"/"retry" -- classifyContinueAction (called by the caller once a real
 // project is identified) is what decides whether "continue"/"resume"
 // actually means resuming a paused run or dispatching fresh work.
 export function classifyRunActionVerb(message) {
+  if (RUN_ACTION_RETRACTION_OR_REPORTED(message)) {
+    return null
+  }
   for (const clause of splitIntoClauses(message)) {
     if (clauseMatchesAction(clause, PAUSE_OPENER, PAUSE_PRONOUN)) {
       return 'PAUSE'
