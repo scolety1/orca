@@ -31,8 +31,17 @@ export const RECENT_PROJECT_STACK_CAP = 8
 // message, so this can never manufacture a target out of nothing -- it
 // only widens which phrasings are TRUSTED to act on a target already
 // found by that separate, stricter, unaffected mechanism.
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure (real Codex adversarial-
+// review finding): "Make NWR the project we're focused on." and "Set TSF
+// as the current project." are real, unambiguous causative-imperative
+// switch directives (the mission's own required DIRECT examples) that
+// matched none of the existing trigger phrasings at all. Added as two
+// more bounded phrase shapes to this SAME existing trigger list -- never
+// a bare "make"/"set" keyword (which would false-positive on unrelated
+// text like "make sure to check NWR") -- each requires its own full
+// "make X the project/focus" / "set X as the (current) project" shape.
 const EXPLICIT_SWITCH_PATTERN =
-  /\b(?:switch(?:\s+(?:to|over to))?|let'?s work on|focus on|talk about|discuss|I meant)\b/i
+  /\b(?:switch(?:\s+(?:to|over to))?|let'?s work on|focus on|talk about|discuss|I meant|make\s+\S+(?:\s+\S+){0,3}\s+the\s+(?:project|focus)|set\s+\S+(?:\s+\S+){0,3}\s+as\s+the\s+(?:current\s+)?project)\b/i
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
 
 // REAL DOGFOOD FINDING (round 1, P1 x2, Codex-confirmed): neither pattern
@@ -68,8 +77,22 @@ const NEGATION_GUARD_PATTERN =
 // review finding): "can"/"will" were missing from the modal list --
 // "Can NWR be the project we focus on"/"Will NWR be the project we focus
 // on" both still moved real focus.
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure (real Codex adversarial-
+// review finding): "have" removed from this list -- every subject this
+// pattern ever sees is a project name (always grammatically 3rd-person
+// singular, since this file has no project catalog to check number
+// against, only the structural shape). "HAS NWR become...?" is a
+// grammatical present-perfect QUESTION (singular subject correctly
+// agrees with "has"); "HAVE NWR become...", with the same singular
+// subject, is UNGRAMMATICAL as a question (subject-verb agreement
+// violation -- would need "has") and can only be read as a causative
+// IMPERATIVE ("Have [object] [do something]", like "Have him call me" --
+// imperative mood doesn't conjugate for the object's number). "has" stays
+// (a real question opener for this domain's always-singular subjects);
+// "have" is removed (never a real question here, only ever a directive).
 const NAMED_SUBJECT_QUESTION_PATTERN =
-  /^\s*(?:should|could|would|can|will|has|have|do|does|did)\s+\S+(?:\s+\S+){0,3}\s+(?:be|become|make\s+sense|say)\b/i
+  /^\s*(?:should|could|would|can|will|has|do|does|did)\s+\S+(?:\s+\S+){0,3}\s+(?:be|become|make\s+sense|say)\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
 // will YOU" branch (added round 1 for the punctuation-free-question fix)

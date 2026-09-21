@@ -318,3 +318,44 @@ test('isExplicitSwitchMessage: a polite "could/can you switch" request moves foc
   assert.equal(isExplicitSwitchMessage('Can you switch to NWR'), true)
   assert.equal(isExplicitSwitchMessage('Could you tell me whether we should switch to NWR'), false)
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure (real Codex adversarial-
+// review finding): "Have NWR become the project we focus on next." is a
+// real causative-imperative directive (matches "Have X do Y" -- English's
+// own imperative-mood construction, like "Have him call me"), but was
+// wrongly refused: NAMED_SUBJECT_QUESTION_PATTERN's "have" modal treated
+// it identically to a genuine question. Every subject this pattern sees
+// is a project name (always grammatically singular) -- "HAS NWR
+// become...?" correctly agrees with a singular subject as a real
+// question; "HAVE NWR become..." does NOT (a real subject-verb-agreement
+// violation as a question, only valid as an imperative), so "have" alone
+// was removed from the modal list. "Make NWR the project we're focused
+// on."/"Set TSF as the current project." are two more real causative-
+// imperative trigger shapes added to EXPLICIT_SWITCH_PATTERN itself
+// (never a bare "make"/"set" keyword -- each requires its own full
+// "make X the project/focus"/"set X as the (current) project" shape, so
+// unrelated text like "make sure to check NWR" is unaffected).
+test('isExplicitSwitchMessage: a causative-imperative direct request moves focus; the same shape as a question/musing/reported/retracted/punctuation-free form does not', () => {
+  // DIRECT -- must move focus.
+  assert.equal(isExplicitSwitchMessage('Have NWR become the project we focus on next.'), true)
+  assert.equal(isExplicitSwitchMessage("Make NWR the project we're focused on."), true)
+  assert.equal(isExplicitSwitchMessage('Set TSF as the current project.'), true)
+  // QUESTION -- must not.
+  assert.equal(isExplicitSwitchMessage('Can NWR become the project we focus on next?'), false)
+  assert.equal(isExplicitSwitchMessage('Should NWR become our focus?'), false)
+  assert.equal(isExplicitSwitchMessage('Has NWR become the project we focus on next?'), false)
+  // MUSING -- must not.
+  assert.equal(isExplicitSwitchMessage('I wonder if NWR should become the focus.'), false)
+  assert.equal(isExplicitSwitchMessage('Maybe NWR should be the focus.'), false)
+  // REPORTED -- must not.
+  assert.equal(isExplicitSwitchMessage('Tim said NWR should become the focus.'), false)
+  // RETRACTED -- must not.
+  assert.equal(isExplicitSwitchMessage('Make NWR the focus -- never mind.'), false)
+  // Punctuation-free speech transcript -- direct still fires, question still doesn't.
+  assert.equal(isExplicitSwitchMessage('have nwr become the project we focus on next'), true)
+  assert.equal(isExplicitSwitchMessage('should nwr become our focus'), false)
+  // Unrelated "make"/"set"/"have" phrasings must never false-positive.
+  assert.equal(isExplicitSwitchMessage('Make sure to check NWR before you leave.'), false)
+  assert.equal(isExplicitSwitchMessage('Set up the NWR environment first.'), false)
+  assert.equal(isExplicitSwitchMessage('Have you checked NWR yet?'), false)
+})
