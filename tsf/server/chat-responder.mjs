@@ -54,8 +54,53 @@ const TIM_REQUIRED_PATTERNS = [
 // interrogative in structure regardless of punctuation, so it stays
 // unconditional.
 const BARE_OPENER = /^\s*(?:is|are|was|would|will|should|could|can|what|why|when|whether|how)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1 (P0, real Codex adversarial-review
+// finding): this previously required the literal word "whether" and only
+// recognized 5 verbs -- "can you tell me IF we should pause it" (uses
+// "if", not "whether") and "could you advise whether/can you check
+// whether/will you say whether we should pause it" (advise/check/say
+// aren't in the verb list) all fell through to POLITE_REQUEST_MARKER's
+// own unconditional "can/could/would/will you" -> true, reaching a real
+// PAUSE. "if" added alongside "whether" as an equally genuine information-
+// request marker (still requires one of these verbs present too, so a
+// genuine conditional directive like "deploy it if the tests pass" is
+// unaffected -- no verb from this list appears there).
 const TELL_ME_WHETHER =
-  /\b(?:tell me|let me know|explain|assess|evaluate|prepare)\b[\s\S]*\bwhether\b/i
+  /\b(?:tell me|let me know|explain|assess|evaluate|prepare|recommend|advise|check|say|suggest)\b[\s\S]*\b(?:whether|if)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1 (P0, real Codex adversarial-review
+// finding): isGenuineDirective had ZERO reported-speech awareness --
+// unlike domain/command-act-model.mjs's own separate, span-based
+// provenance system (which command-act-model.mjs's OWN decomposition
+// already excludes reported speech from), this function's clause/sentence
+// shape has no position tracking, so "Claude suggested we pause it" /
+// "The report recommends you pause it" reached a real PAUSE via this
+// function's own `return true` default. A simple whole-clause check
+// (not position-aware, unlike the span-based version) is the correct
+// granularity here -- this function already judges one clause at a time.
+// Same reporting-verb vocabulary as command-act-model-provenance.mjs's own
+// REPORTED_SPEECH_OPENER (kept independently, not imported: that module is
+// domain-layer and position/span-based, a different shape entirely from
+// this server-layer, clause-string-based check -- see that file's own
+// disclosed exclusion of "mentioned"/"noted", deliberately not repeated
+// here either, for the identical reason).
+export const REPORTED_SPEECH_MARKER =
+  /\b(?:i|you|claude|the\s+(?:plan|assistant|report))\s+(?:said|says|reported|reports|suggested|suggests|recommends?|recommended|advises?|advised|instructs?|instructed|calls?\s+for|called\s+for)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1 (P0, real Codex adversarial-review
+// finding): a retraction/correction marker ANYWHERE in a whole message,
+// for the classifiers below that (unlike domain/command-act-model.mjs's
+// own span-based provenance system) judge one flat message/clause string
+// with no position tracking -- "Pause NWR -- forget it"/"...disregard
+// that"/"...strike that"/"...I take that back"/"...no wait" all reached a
+// real mutation via server/command-run-action-bridge.mjs's own,
+// completely separate classifyRunActionVerb (which command-act-model.mjs's
+// own newly-fixed retraction handling never reaches for an ordinary
+// single-project message -- command-responder.mjs's single-project path
+// uses classifyRunActionVerb directly, not the multi-action decomposer).
+// Exported for that file (and the Needs-You-answer/focus-switch/paid-
+// grant classifiers, which have the identical architecture) to reuse
+// rather than each maintaining an independent copy.
+export const RETRACTION_MARKER_PATTERN =
+  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait)\b/i
 // Fuzzing finding (Full Conversational Control Plane Exhaustive Gauntlet
 // V1, Batch 5): the hand-picked negator list here had the exact same
 // "-n't" contraction-family gap as domain/command-adoption-execution.mjs's
@@ -91,7 +136,10 @@ const PROHIBITION_MARKERS = new RegExp(
 // instead of TIM_REQUIRED. Stripped before the prohibition test, not added
 // as a separate branch, so a clause whose ONLY negation-looking text is one
 // of these idioms correctly falls through to the real directive check.
-const IDIOMATIC_NON_NEGATION = /\bor not\b|\bno matter\b/gi
+// "not only" added alongside the existing idioms (DIRECTIVE SEMANTICS
+// CLOSURE V1, P1, real Codex adversarial-review finding) -- same fix
+// applied to domain/command-act-model.mjs's own independent copy.
+const IDIOMATIC_NON_NEGATION = /\bor not\b|\bno matter\b|\bnot only\b/gi
 // "Can/could/would/will YOU ...?" is English's own standard polite-request
 // form ("can you push this to production?" means "please push this"), not
 // a genuine inquiry about the action's safety/advisability — independent-
@@ -224,6 +272,9 @@ export function isGenuineDirective(clause, sentence) {
     return false
   }
   if (DELIBERATIVE_STATEMENT_OPENER.test(clause.trimStart())) {
+    return false
+  }
+  if (REPORTED_SPEECH_MARKER.test(clause)) {
     return false
   }
   if (POLITE_REQUEST_MARKER.test(sentence)) {

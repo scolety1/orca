@@ -180,8 +180,13 @@ const ADOPTION_NEGATION_PATTERN = new RegExp(
   `\\b(?:do not|${NOT_CONTRACTION_SOURCE}|never|won['’]?t|refuse(?:d|s)?\\s+to|avoid|reject(?:ed|ing|s)?|rather not|hold off(?:\\s+on)?|pass on|not(?!\\s+sure\\b)|no|can['’]?t|cannot)\\b[\\s\\S]{0,60}?\\b(?:adopt|accept|approve)\\w*\\b`,
   'i'
 )
+// DIRECTIVE SEMANTICS CLOSURE V1 (P1, real Codex adversarial-review
+// finding): "not only pause NWR but also put it on hold" wrongly declined
+// the pause -- bare "not" (via NEGATION_TRIGGER_SOURCE's own `not(?!\s+
+// sure\b)` alternative) matched inside the "not only ... but also" idiom,
+// which means "in addition to," never negates the clause it opens.
 const IDIOMATIC_NON_NEGATION =
-  /\bnever\s+mind\b|\bno\s+rush\b|\bnot\s+gonna\s+lie\b|\bno\s+worries\b|\bno\s+reason\s+not\s+to\b/gi
+  /\bnever\s+mind\b|\bno\s+rush\b|\bnot\s+gonna\s+lie\b|\bno\s+worries\b|\bno\s+reason\s+not\s+to\b|\bnot\s+only\b/gi
 export function negatesAdoptionVerb(text) {
   const withoutIdioms = String(text ?? '').replace(IDIOMATIC_NON_NEGATION, ' ')
   return ADOPTION_NEGATION_PATTERN.test(withoutIdioms)

@@ -83,23 +83,25 @@ test('golden-path eval: Property C -- adding "please" does not change authority 
   assert.equal(classifyDecision(pairs[0], intentA), 'TIM_REQUIRED')
 })
 
-// Property D: quoted commands do not become current owner commands.
+// Property D: quoted/reported commands do not become current owner
+// commands. DIRECTIVE SEMANTICS CLOSURE V1: this assertion's own prior
+// comment said "this assertion exists so a future fix flips it
+// deliberately, not by accident" -- that fix landed (isGenuineDirective's
+// new REPORTED_SPEECH_MARKER, added after a real Codex adversarial-review
+// finding that "Claude suggested we pause it"-shaped messages reached a
+// real mutation). This message's own "Claude said ..." opener is now
+// correctly recognized as reported speech: GENERAL/AUTO_DECIDE (a safe,
+// read-only, non-dispatching classification), not the previous
+// TIM_REQUIRED fail-safe-by-accident refusal.
 test("golden-path eval: Property D -- a quoted command inside a message is not itself the owner's directive", () => {
   const message = 'Claude said "deploy it" earlier, but I am just telling you what it said.'
-  // The word "deploy" appears only inside a quotation -- this must not be
-  // read as the OWNER directing deployment right now. This is a real,
-  // disclosed limitation (isConsequentialDirective has no quote-awareness),
-  // captured here as a property test with an honest current-behavior
-  // assertion, not silently skipped.
   const intent = classifyIntent(message)
   const decisionClass = classifyDecision(message, intent)
-  // Documented current behavior: bare keyword matching does not
-  // distinguish quoted from owner-issued text. This assertion exists so a
-  // future fix flips it deliberately, not by accident.
+  assert.equal(intent, 'GENERAL')
   assert.equal(
     decisionClass,
-    'TIM_REQUIRED',
-    'DISCLOSED GAP: quoted commands are not yet distinguished from owner directives -- fails safe (refuses) rather than executing, but the refusal wording may misdescribe context; tracked, not silently ignored'
+    'AUTO_DECIDE',
+    'quoted/reported speech must never reach a consequential decision class'
   )
 })
 
@@ -434,4 +436,44 @@ test('golden-path eval: Batch 6 -- punctuation-free subject-inversion questions 
     [],
     `${failures.length} of ${checked} punctuation-free questions were wrongly treated as directives`
   )
+})
+
+// ---------------------------------------------------------------------
+// DIRECTIVE SEMANTICS CLOSURE V1, round 2: real Codex adversarial-review
+// findings against the Batch 6 fixes above. Each case here was live-
+// reproduced by that review against the real functions before this fix
+// landed.
+// ---------------------------------------------------------------------
+
+test('golden-path eval: Batch 7 -- an information request using "if" or a broader verb than "tell me...whether" is never a directive', () => {
+  for (const m of [
+    'Regarding NWR can you tell me if we should pause it',
+    'Regarding NWR could you advise whether we should pause it',
+    'Regarding NWR can you check whether we should pause it',
+    'Regarding NWR will you say whether we should pause it'
+  ]) {
+    assert.equal(isGenuineDirective(m, m), false, m)
+  }
+  // The narrower, already-supported forms stay correct.
+  assert.equal(isGenuineDirective('Could you tell me whether I should pause NWR', 'x'), false)
+})
+
+test('golden-path eval: Batch 7 -- reported speech (a verb other than "said") is never a directive', () => {
+  for (const m of [
+    'Regarding NWR Claude suggested we pause it',
+    'The report recommends you pause it for NWR',
+    'The plan calls for us to discuss NWR'
+  ]) {
+    assert.equal(isGenuineDirective(m, m), false, m)
+  }
+})
+
+test('golden-path eval: Batch 7 -- "not only X but also Y" never suppresses the genuine directive X', () => {
+  const entries = decomposeMultiAction(
+    'not only pause NWR but also put NWR on hold',
+    [project('nwr', 'NWR')],
+    aliases
+  )
+  const pauseEntry = entries.find((e) => e.intent === 'PAUSE')
+  assert.ok(pauseEntry, 'the "not only" idiom must never be read as negating the pause')
 })
