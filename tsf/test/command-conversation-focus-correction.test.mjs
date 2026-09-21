@@ -409,3 +409,91 @@ test('verifiedCorrectionTarget: a full retraction followed by an unrelated "I me
     'beta'
   )
 })
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 7 (real Codex adversarial-
+// review finding, P0): round 6's NEGATION_GUARD_PATTERN exemption was a
+// blanket "skip the whole guard whenever causativeException is true" --
+// safe for SUBJECT_INVERSION_QUESTION_OPENER/NAMED_SUBJECT_QUESTION_PATTERN
+// (both anchored to how the message OPENS), but NEGATION_GUARD_PATTERN
+// searches the WHOLE, unanchored message, so it also hid a completely
+// independent, later negation. isGuardedByNonRetraction now strips only
+// the matched RETRACTION_MARKER_PATTERN text itself before testing for
+// negation, so "never" inside "never mind" never reaches the test, while
+// an unrelated "don't switch yet" elsewhere in the same message still
+// does.
+test('verifiedCorrectionTarget: an independent negation elsewhere in the message still refuses, even alongside a genuine adjacent correction', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget(
+      "Have Alpha become the focus -- no wait, I meant Beta, but don't switch yet.",
+      [alpha, beta]
+    ),
+    null
+  )
+  assert.equal(
+    verifiedCorrectionTarget(
+      "Have Alpha become the focus -- never mind, I meant Beta, but don't switch yet.",
+      [alpha, beta]
+    ),
+    null
+  )
+  // The genuine correction, with no extra negation, is unaffected.
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the focus -- never mind, I meant Beta', [
+      alpha,
+      beta
+    ]),
+    'beta'
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 7 (real Codex adversarial-
+// review finding, P1): hasSafeCausativeImperativeCorrectionShape
+// validated only the FIRST "I meant" after the retraction against the
+// sentence boundary, while correctedSwitchTarget always resolves against
+// the LAST "I meant" anywhere in its own search window -- "-- no wait, I
+// meant Gamma. In the report, I meant Beta." validated the safe, FIRST
+// occurrence (Gamma), while the actual resolved target was the LATER,
+// unrelated "I meant Beta" the boundary check never examined. Now finds
+// the LAST occurrence too, mirroring correctedSwitchTarget exactly.
+test('verifiedCorrectionTarget: the sentence-boundary safety check validates the SAME "I meant" occurrence that actually gets resolved', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  const gamma = { project: { id: 'gamma' }, matchedPhrase: 'Gamma', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait, I meant Gamma. In the report, I meant Beta.',
+      [alpha, beta, gamma]
+    ),
+    null
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 7 (real Codex adversarial-
+// review finding, P1): the sentence-boundary regex treated ANY ". "/
+// "! "/"? " as a real sentence end, so a short abbreviation period ("the
+// v. 2 notes, I meant Beta.") was wrongly treated as a sentence boundary
+// and refused a genuine correction -- a false negative. Now also
+// requires what follows the punctuation to be an uppercase letter (or
+// the string end), a bounded heuristic rather than an unbounded
+// abbreviation-vocabulary chase.
+test('verifiedCorrectionTarget: an abbreviation-style period is never mistaken for a real sentence boundary', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait, after checking the v. 2 notes, I meant Beta.',
+      [alpha, beta]
+    ),
+    'beta'
+  )
+  // A real sentence boundary (followed by a capital letter) still refuses.
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait, leave it unchanged. In the report, I meant Beta.',
+      [alpha, beta]
+    ),
+    null
+  )
+})

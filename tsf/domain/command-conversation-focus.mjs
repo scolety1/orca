@@ -312,6 +312,28 @@ const CAUSATIVE_IMPERATIVE_SHAPE_PATTERN = new RegExp(
 // mind, I meant Beta" (comma, no sentence break) still resolves; "no
 // wait, leave it unchanged. In the report, I meant Beta." (a full
 // sentence break before the unrelated "I meant") correctly refuses.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 7 (real Codex adversarial-
+// review findings against the round-6 version of this function): (1)
+// this function's own MEANT_CORRECTION_PATTERN.exec() finds only the
+// FIRST "I meant" after the retraction, but correctedSwitchTarget
+// (correctly, by its own established design) always resolves against
+// the LAST "I meant" anywhere in its own search window -- "-- no wait, I
+// meant Gamma. In the report, I meant Beta." validated the FIRST
+// occurrence (Gamma, safely before any sentence boundary) as safe, while
+// correctedSwitchTarget actually resolved the LATER, unrelated "I meant
+// Beta" the boundary check never looked at. Now finds the LAST
+// occurrence within afterRetraction too, mirroring
+// correctedSwitchTarget's own anchor search exactly, so both functions
+// always agree on WHICH "I meant" is being validated. (2) the sentence-
+// boundary regex treated ANY ". "/"! "/"? " as a real sentence end, so a
+// short abbreviation period ("the v. 2 notes, I meant Beta.") was wrongly
+// treated as a sentence boundary and refused a genuine correction (a
+// false negative). Now also requires what follows the punctuation to be
+// an uppercase letter (or the string end) -- a common, bounded heuristic
+// for a real sentence break, not an unbounded abbreviation vocabulary
+// chase. A decimal number ("2.0") was already unaffected either way (no
+// whitespace after the period at all).
 function hasSafeCausativeImperativeCorrectionShape(trimmed) {
   const match = CAUSATIVE_IMPERATIVE_SHAPE_PATTERN.exec(trimmed)
   if (!match) {
@@ -327,12 +349,17 @@ function hasSafeCausativeImperativeCorrectionShape(trimmed) {
     return false
   }
   const afterRetraction = strippedTail.slice(retraction[0].length)
-  const meant = MEANT_CORRECTION_PATTERN.exec(afterRetraction)
-  if (meant === null) {
+  const meantPattern = new RegExp(MEANT_CORRECTION_PATTERN.source, 'gi')
+  let meantIndex = -1
+  let found
+  while ((found = meantPattern.exec(afterRetraction))) {
+    meantIndex = found.index
+  }
+  if (meantIndex === -1) {
     return false
   }
-  const sentenceBoundary = /[.!?](?:\s|$)/.exec(afterRetraction)
-  return sentenceBoundary === null || meant.index < sentenceBoundary.index
+  const sentenceBoundary = /[.!?](?:\s+\p{Lu}|\s*$)/u.exec(afterRetraction)
+  return sentenceBoundary === null || meantIndex < sentenceBoundary.index
 }
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
@@ -492,23 +519,45 @@ const MEANT_CORRECTION_PATTERN = /\bI\s+meant\b/i
 // mirroring how CAUSATIVE_TRIGGER_PATTERN already does for make/set.
 //
 // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 6 (real Codex adversarial-
-// review finding): NEGATION_GUARD_PATTERN had no causativeException
-// exemption at all -- "never" is both part of NEGATION_GUARD_PATTERN's
-// own vocabulary AND part of RETRACTION_MARKER_PATTERN's "never mind"
-// retraction phrase, so "Have Alpha become the focus -- never mind, I
-// meant Beta" (a genuine, immediately-adjacent correction per
-// hasSafeCausativeImperativeCorrectionShape above) still tripped this
-// separate, unconditional branch and stayed wrongly refused. Exempted
-// the same way as the other two causative-aware branches.
+// review finding, superseded by round 7 below): NEGATION_GUARD_PATTERN
+// had no exemption at all -- "never" is both part of its own vocabulary
+// AND part of RETRACTION_MARKER_PATTERN's "never mind" retraction
+// phrase, so "Have Alpha become the focus -- never mind, I meant Beta"
+// (a genuine, immediately-adjacent correction) still tripped this
+// separate, unconditional branch and stayed wrongly refused. Round 6's
+// own fix exempted the WHOLE guard via causativeException, the same way
+// as the other two causative-aware branches.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 7 (real Codex adversarial-
+// review finding): that blanket exemption was unsafe -- unlike
+// SUBJECT_INVERSION_QUESTION_OPENER/NAMED_SUBJECT_QUESTION_PATTERN
+// (both anchored to how the message OPENS, so a prefix-shape validation
+// is the right kind of exemption for them), NEGATION_GUARD_PATTERN
+// searches the WHOLE, unanchored message. Exempting it entirely
+// whenever the OPENING validated as a safe causative correction also
+// hid a completely independent, later negation: "Have Alpha become the
+// focus -- no wait, I meant Beta, but don't switch yet." wrongly
+// resolved and could move focus, even though "don't switch yet" is a
+// real, separate prohibition the guard exists to catch. The fix is
+// narrower and doesn't need causativeException at all here: strip out
+// just the RETRACTION_MARKER_PATTERN text itself (e.g. "never mind")
+// before testing for negation, so the "never" that's part of a
+// retraction phrase never reaches the negation test, while any
+// OTHER, independent negation elsewhere in the message (like "don't
+// switch yet") still does.
 function isGuardedByNonRetraction(
   message,
   hasCausativeImperativeException = (trimmed) => CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed)
 ) {
   const trimmed = message.trim()
   const causativeException = hasCausativeImperativeException(trimmed)
+  const messageWithoutRetractionMarkers = message.replace(
+    new RegExp(RETRACTION_MARKER_PATTERN.source, 'gi'),
+    ' '
+  )
   return (
     DELIBERATIVE_QUESTION_PATTERN.test(message) ||
-    (!causativeException && NEGATION_GUARD_PATTERN.test(message)) ||
+    NEGATION_GUARD_PATTERN.test(messageWithoutRetractionMarkers) ||
     DELIBERATIVE_STATEMENT_OPENER.test(trimmed) ||
     COPULA_QUESTION_OPENER.test(trimmed) ||
     (!POLITE_SWITCH_REQUEST_PATTERN.test(trimmed) &&
