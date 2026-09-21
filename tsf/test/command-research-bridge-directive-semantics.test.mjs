@@ -23,3 +23,31 @@ test('classifyResearchIntent: a musing statement containing the authorizing verb
   // The real, intended trigger phrasing must still work.
   assert.equal(classifyResearchIntent('Use Exa up to $20'), 'RESEARCH_PAID_GRANT')
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, round 2 (real Codex adversarial-review
+// finding): the fix above was still insufficient -- a genuine question or
+// reported-speech sentence naming a provider and a dollar amount still
+// granted real spend, since there is no later directive check once
+// RESEARCH_PAID_GRANT fires. Fixed by requiring
+// isGenuineDirective(message, message) plus two narrow, file-local
+// supplements (a message-start modal question, and "we/i may" as an
+// additional discussion opener not in the shared DELIBERATIVE_STATEMENT_
+// OPENER vocabulary).
+test('classifyResearchIntent: a question or reported-speech sentence naming a provider and an amount is never RESEARCH_PAID_GRANT', () => {
+  for (const message of [
+    'Would Exa use a $50 budget efficiently',
+    'Should our team use Exa if it costs $50',
+    'We may use Exa but what does the $50 price include',
+    'The plan recommends we use Parallel for the $50 trial',
+    'Please explain whether to use Exa at $50',
+    'Do you recommend I use Parallel for $50',
+    'Can Exa use a $50 budget for this'
+  ]) {
+    assert.notEqual(classifyResearchIntent(message), 'RESEARCH_PAID_GRANT', message)
+  }
+  // The real, intended trigger phrasings -- including the polite-request
+  // variant, which must not be caught by the new message-start-modal
+  // check -- still work.
+  assert.equal(classifyResearchIntent('Use Exa for this research up to $50'), 'RESEARCH_PAID_GRANT')
+  assert.equal(classifyResearchIntent('Can you use Exa up to $20'), 'RESEARCH_PAID_GRANT')
+})

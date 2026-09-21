@@ -35,7 +35,7 @@ import { executeAction } from './action-executor.mjs'
 import { synthesizeResearchSpecification } from './command-research-spec-synthesis.mjs'
 import { registerResearchCompletionWatch } from './command-research-completion-watch.mjs'
 import { shouldSuppressResearchCreation } from '../domain/parent-mission-intent-classification.mjs'
-import { DELIBERATIVE_STATEMENT_OPENER } from './chat-responder.mjs'
+import { DELIBERATIVE_STATEMENT_OPENER, isGenuineDirective } from './chat-responder.mjs'
 import {
   noMissionYetText,
   ambiguousMissionText,
@@ -251,19 +251,66 @@ const GRANT_AUTHORIZATION_VERB_PATTERN = /\b(?:use|grant|approve|authorize|allow
 const GRANT_NEGATION_GUARD_PATTERN =
   /\b(?:do not|don'?t|never|shouldn'?t|should not|won'?t|refuse|decline|deny)\b/i
 
-// DIRECTIVE SEMANTICS CLOSURE V1 (P0): the authorizing-verb fix above was
-// still insufficient on its own -- "I wonder if we should use Exa up to
-// $20" contains "use" (the required verb) and no negation, so it still
-// classified as RESEARCH_PAID_GRANT and would have granted real spend
-// despite the leading musing opener. DELIBERATIVE_STATEMENT_OPENER
-// (imported from chat-responder.mjs, the one canonical musing-opener
-// vocabulary this closure pass consolidated every consequential
-// classifier onto) closes it the same way as every sibling fix.
+// DIRECTIVE SEMANTICS CLOSURE V1 round 2 (P0, real Codex adversarial-
+// review finding): the round-1 fix (DELIBERATIVE_STATEMENT_OPENER at
+// message start) was still insufficient -- a real question or reported-
+// speech sentence mentioning a provider and a dollar amount still
+// classified as RESEARCH_PAID_GRANT: "Would Exa use a $50 budget
+// efficiently", "The plan recommends we use Parallel for the $50 trial",
+// "Please explain whether to use Exa at $50", "Do you recommend I use
+// Parallel for $50", "Can Exa use a $50 budget for this". There is no
+// later directive check once this classification fires -- it proceeds
+// straight to grantResearchPaidApprovalDurable.
+//
+// Fixed by requiring isGenuineDirective(message, message) === true as an
+// ADDITIONAL condition -- the one shared canonical judgment (now handling
+// TELL_ME_WHETHER/POLITE_REQUEST_MARKER/REPORTED_SPEECH_MARKER/
+// COPULA_QUESTION_OPENER/SUBJECT_INVERSION_QUESTION_OPENER/"?" all in one
+// call) rather than re-deriving each of those checks independently here,
+// per this closure mission's own "consolidate into the existing shared
+// primitive" instruction. Verified this alone closes 3 of the 7 review
+// cases (reported speech, "explain whether", "do you recommend") without
+// affecting the real trigger phrasings ("Use Exa up to $20").
+//
+// isGenuineDirective's own punctuation-independent question patterns
+// require a PRONOUN subject (deliberately, to avoid reintroducing the
+// BUG-08 "...and will deploy after that" danger case in the CLAUSE-
+// fragment contexts those patterns were designed for) -- so a message
+// with a NAMED subject instead of a pronoun ("Would Exa use...", "Should
+// our team use...", "Can Exa use...") still passed. This file never
+// splits a message into fragments (parsePaidGrant always sees the WHOLE,
+// original message), so that danger case cannot occur here -- a modal
+// literally at the very start of the whole message is unambiguously a
+// question in English regardless of what subject follows (a declarative
+// statement never opens with a bare modal: "Would Exa..." cannot be
+// rephrased as a command without reordering to "Exa, ..."). Checked
+// locally, not added to the shared, widely-reused
+// SUBJECT_INVERSION_QUESTION_OPENER, to avoid changing behavior for its
+// other callers (command-run-action-bridge.mjs's clause-fragment context,
+// where the pronoun requirement IS load-bearing).
+// Excludes an immediately-following "you" (negative lookahead): "Can you
+// use Exa up to $20" is a real, legitimate polite-request grant phrasing
+// -- isGenuineDirective already correctly returns true for it via
+// POLITE_REQUEST_MARKER, and this check must never override that with a
+// false "it's a question" verdict.
+const MESSAGE_START_MODAL_QUESTION =
+  /^\s*(?:would|should|could|can|will|might|may|do|does|did|is|are|was|were|has|have|had)\b(?!\s+you\b)/i
+// "We may"/"I may" is not in the shared DELIBERATIVE_STATEMENT_OPENER
+// vocabulary (i wonder if/i'm not sure if/i am not sure if/i don't know
+// if/i guess/i think/maybe/perhaps/possibly) -- "We may use Exa but what
+// does the $50 price include" needs this file's own narrow supplement
+// rather than broadening that shared, widely-reused constant for every
+// other caller.
+const MAY_DISCUSSION_OPENER = /^\s*(?:we|i)\s+may\b/i
 function parsePaidGrant(message) {
+  const trimmed = message.trim()
   if (
     !GRANT_AUTHORIZATION_VERB_PATTERN.test(message) ||
     GRANT_NEGATION_GUARD_PATTERN.test(message) ||
-    DELIBERATIVE_STATEMENT_OPENER.test(message.trim())
+    DELIBERATIVE_STATEMENT_OPENER.test(trimmed) ||
+    MESSAGE_START_MODAL_QUESTION.test(trimmed) ||
+    MAY_DISCUSSION_OPENER.test(trimmed) ||
+    !isGenuineDirective(message, message)
   ) {
     return null
   }
