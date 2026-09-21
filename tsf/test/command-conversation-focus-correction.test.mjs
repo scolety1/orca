@@ -197,3 +197,120 @@ test('verifiedCorrectionTarget: a causative-imperative correction resolves even 
   // never leak into isExplicitSwitchMessage's own general guard.
   assert.equal(isExplicitSwitchMessage('Have API Docs become the project we focus on yet'), false)
 })
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 follow-up (real Codex
+// adversarial-review findings against round 5's own fix, Findings 1/2):
+// trusting CAUSATIVE_IMPERATIVE_SHAPE_PATTERN's match alone (with no
+// check on what follows it) ignored ALL trailing content, not just a
+// correction suffix -- "Have Alpha be the focus OF THE QUARTERLY REPORT
+// -- no wait, I meant Beta" (an instruction about a report's subject,
+// not Command focus) and the disclosed punctuation-free-question
+// residual PLUS an unrelated correction both wrongly resolved.
+// verifiedCorrectionTarget now only trusts the shape match when a
+// retraction marker begins IMMEDIATELY after it (nothing but whitespace/
+// punctuation in between) -- an intervening clause, even one that
+// contains a retraction marker further along, correctly stays refused.
+test('verifiedCorrectionTarget: a causative-imperative shape match is only trusted when a retraction marker begins IMMEDIATELY after it, never when unrelated content intervenes', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  const apiDocs = {
+    project: { id: 'api-docs' },
+    matchedPhrase: 'API Docs',
+    matchedOn: 'displayName'
+  }
+  const releaseNotes = {
+    project: { id: 'release-notes' },
+    matchedPhrase: 'Release Notes',
+    matchedOn: 'displayName'
+  }
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha be the focus of the quarterly report -- no wait, I meant Beta',
+      [alpha, beta]
+    ),
+    null
+  )
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the project owner -- no wait, I meant Beta', [
+      alpha,
+      beta
+    ]),
+    null
+  )
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have API Docs become the project we focus on yet -- no wait, I meant Release Notes',
+      [apiDocs, releaseNotes]
+    ),
+    null
+  )
+  // The genuine, immediately-adjacent correction shape still resolves.
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the focus -- no wait, I meant Beta', [alpha, beta]),
+    'beta'
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 follow-up (real Codex
+// adversarial-review finding, Finding 3, pre-existing): the
+// SUBJECT_INVERSION_QUESTION_OPENER guard's own polite-request exemption
+// covered POLITE_SWITCH_REQUEST_PATTERN's verb list and
+// CAUSATIVE_TRIGGER_PATTERN (make/set), but never the "have" causative
+// pattern -- "Could you have Alpha become the focus -- no wait, I meant
+// Beta" tripped this guard before ever reaching the causative-imperative
+// exception, and stayed wrongly refused.
+test('verifiedCorrectionTarget: a polite "Could/Can/Would/Will you have..." causative correction resolves, without reopening the "tell me whether" information-request guard', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget('Could you have Alpha become the focus -- no wait, I meant Beta', [
+      alpha,
+      beta
+    ]),
+    'beta'
+  )
+  assert.equal(
+    verifiedCorrectionTarget('Would you have Alpha become the focus -- no wait, I meant Beta', [
+      alpha,
+      beta
+    ]),
+    'beta'
+  )
+  assert.equal(isExplicitSwitchMessage('Could you tell me whether we should switch to NWR'), false)
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 follow-up (real Codex
+// adversarial-review findings, Findings 4 and 6): "and/or" with internal
+// whitespace ("and/ or", "and /or") wasn't recognized as the same
+// conjunction token, silently dropping the ambiguity; and only a SINGLE
+// leading disfluency was ever stripped, so two stacked, equally common
+// fillers ("well, uh, Beta") left an unmatchable remainder behind.
+test('correctedSwitchTarget: "and/or" tolerates internal whitespace, and any number of stacked disfluencies are stripped', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  const releaseNotes = {
+    project: { id: 'release-notes' },
+    matchedPhrase: 'Release Notes',
+    matchedOn: 'displayName'
+  }
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Beta and/ or Release Notes', [
+      alpha,
+      beta,
+      releaseNotes
+    ]),
+    null
+  )
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Beta and /or Release Notes', [
+      alpha,
+      beta,
+      releaseNotes
+    ]),
+    null
+  )
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant well, uh, Beta', [alpha, beta]),
+    'beta'
+  )
+})
