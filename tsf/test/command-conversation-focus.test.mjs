@@ -874,9 +874,12 @@ test('isExplicitSwitchMessage: "actually" is a recognized lead-in filler before 
 // silently defeating the dedicated "I meant X" correction mechanism this
 // file already has for exactly this shape. "I meant X" is a POSITIVE
 // completion of intent, not an abandonment.
-test('isExplicitSwitchMessage: "no wait, I meant X" is a genuine self-correction, never fully suppressed by the retraction guard', () => {
-  assert.equal(isExplicitSwitchMessage('switch to NWR -- no wait, I meant TSF'), true)
-  // A genuine full retraction with no correction still retracts.
+// Superseded by round 3 (see the "a retraction marker ALWAYS guards on
+// its own" test below) -- isExplicitSwitchMessage alone is now fully
+// conservative again; the genuine-correction override moved to the
+// caller (server/chat-http-routes.mjs), which has the real exactMatches
+// data this file deliberately never does.
+test('isExplicitSwitchMessage: a full retraction with no correction still retracts', () => {
   assert.equal(isExplicitSwitchMessage('switch to NWR -- no wait, never mind'), false)
 })
 
@@ -1008,8 +1011,39 @@ test('isExplicitSwitchMessage / isGoBackMessage: an unrelated later "I meant to 
     isExplicitSwitchMessage('switch to Alpha -- no wait, I meant for Beta to be checked'),
     false
   )
-  // The genuine name-correction shape still works.
-  assert.equal(isExplicitSwitchMessage('switch to Alpha -- no wait, I meant Beta'), true)
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 3 (real Codex adversarial-
+// review finding): round 2's own MEANT_NAME_CORRECTION_PATTERN exclusion
+// list ("to"/"that"/"for") was itself an unbounded chase -- "I meant I'd
+// ask...", "I meant we should...", "I meant like..." all slip past a
+// finite blocklist the same way "make sure"/"make certain" slipped past
+// an earlier finite blocklist attempt for the causative trigger. Text
+// alone can never reliably tell a genuine name correction from an
+// unrelated later clause that happens to contain "I meant" -- but the
+// real exactMatches data can. isGuardedAgainst's retraction check is now
+// back to fully conservative (a retraction marker ALWAYS blocks
+// isExplicitSwitchMessage/isGoBackMessage on their own, full stop); the
+// "was this actually a verified correction" decision now lives entirely
+// in server/chat-http-routes.mjs, which has the real exactMatches this
+// file deliberately never does, ORing correctedSwitchTarget's own
+// verified, non-null result into isExplicitSwitch. See
+// test/tsf-owner-rant-dogfood-v1.test.mjs for the real end-to-end proof
+// that "switch to Alpha -- no wait, I meant Beta" still moves focus via
+// that caller-side override.
+test('isExplicitSwitchMessage: a retraction marker ALWAYS guards on its own (no text-only "I meant" exception any more) -- the genuine-correction override lives in the caller, not here', () => {
+  assert.equal(isExplicitSwitchMessage('switch to Alpha -- no wait, I meant Beta'), false)
+  assert.equal(
+    isExplicitSwitchMessage("switch to Alpha -- actually, no; I meant I'd ask about Beta"),
+    false
+  )
+  assert.equal(
+    isExplicitSwitchMessage('switch to Alpha -- actually, no; I meant we should check Beta'),
+    false
+  )
+  // No retraction marker at all -- the pre-existing, original "I meant X"
+  // trigger (real dogfood round 1) still works completely unaffected.
+  assert.equal(isExplicitSwitchMessage('No, I meant VOICE-ALPHA.'), true)
 })
 
 // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-

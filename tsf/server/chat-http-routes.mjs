@@ -27,9 +27,9 @@ import { loadProjectAliases } from '../domain/project-aliases.mjs'
 import {
   nextCommandFocus,
   isExplicitSwitchMessage,
-  isGoBackMessage,
-  correctedTurnTargetIds
+  isGoBackMessage
 } from '../domain/command-conversation-focus.mjs'
+import { resolveCommandTurnTargets } from './command-turn-target-correction.mjs'
 import { buildProjectManagerSnapshot } from '../domain/project-manager-snapshot.mjs'
 import { respondNeedsYouAnswerCommand } from './command-needs-you-answer-bridge.mjs'
 import { keepGoingRunFor } from './keep-going-controller.mjs'
@@ -263,7 +263,12 @@ export async function handleChatRoute(
     // EXACT (never fuzzy) turn-target project ids for THIS message, set by
     // the resolution below when isCommandScope -- feeds nextCommandFocus at
     // whichever save site actually runs. Stays null for a genuine Planner
-    // Chat request, where focus must never move.
+    // Chat request, where focus must never move. Its own `.corrected`
+    // (TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 3) ORs a real, DATA-
+    // VERIFIED "I meant X" correction into isExplicitSwitch at both save
+    // sites below -- see command-turn-target-correction.mjs's own comment
+    // for why that verification can only happen here, never in
+    // isExplicitSwitchMessage's own text-only, catalog-free guard.
     let commandTurnTargetIds = null
     // Adversarial-review finding: a falsy check treated an explicit
     // empty-string projectId identically to Command's genuine null/
@@ -280,17 +285,12 @@ export async function handleChatRoute(
       const resolution = resolveProjectsFromText(message, projects, {
         aliases: commandAliases
       })
-      // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding): a
-      // self-correction naming BOTH the wrong and the corrected project in
-      // one message ("switch to Alpha -- no wait, I meant Beta") produces
-      // two exact matches here, which nextCommandFocus's own ambiguity
-      // safety correctly refuses to pick between on its own -- right for
-      // genuine ambiguity, wrong for a genuine correction.
-      // correctedTurnTargetIds narrows this to the one project actually
-      // named after "I meant", ONLY when that's unambiguous; otherwise the
-      // original multi-match list passes through unchanged.
-      const exactMatches = resolution.matches.filter((m) => m.matchedOn !== 'fuzzy')
-      commandTurnTargetIds = correctedTurnTargetIds(message, exactMatches)
+      // See command-turn-target-correction.mjs -- a self-correction naming
+      // BOTH the wrong and the corrected project ("switch to Alpha -- no
+      // wait, I meant Beta") produces two exact matches here, which
+      // nextCommandFocus's own ambiguity safety correctly refuses to pick
+      // between on its own; this resolves the real, data-verified target.
+      commandTurnTargetIds = resolveCommandTurnTargets(message, resolution)
       const contextFallbackProject =
         resolution.matches.length === 0
           ? await resolveRouteContextFallback({
@@ -357,7 +357,7 @@ export async function handleChatRoute(
           {
             turnTargetProjectIds: commandTurnTargetIds ?? [],
             decisionClass: commandResult.decisionClass,
-            isExplicitSwitch: isExplicitSwitchMessage(message),
+            isExplicitSwitch: isExplicitSwitchMessage(message) || commandTurnTargetIds?.corrected,
             isGoBack: isGoBackMessage(message)
           },
           () => new Date()
@@ -953,7 +953,7 @@ export async function handleChatRoute(
           {
             turnTargetProjectIds: commandTurnTargetIds ?? [],
             decisionClass: result.decisionClass,
-            isExplicitSwitch: isExplicitSwitchMessage(message),
+            isExplicitSwitch: isExplicitSwitchMessage(message) || commandTurnTargetIds?.corrected,
             isGoBack: isGoBackMessage(message)
           },
           () => new Date()

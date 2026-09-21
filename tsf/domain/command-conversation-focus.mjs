@@ -308,6 +308,12 @@ const POLITE_SWITCH_REQUEST_PATTERN =
 // SUBJECT_INVERSION_QUESTION_OPENER (also imported from chat-responder.mjs
 // -- same fix as that file's own isGenuineDirective) close this the same
 // punctuation-independent way.
+// Bare detector -- "I meant" appearing anywhere at all, with no attempt
+// to judge from text alone whether it's a genuine name correction (see
+// correctedSwitchTarget's own comment below for why two earlier attempts
+// at that judgment both failed real review). Used only as a search
+// anchor and as a fallback-safety signal, never as a guard exception.
+const MEANT_CORRECTION_PATTERN = /\bI\s+meant\b/i
 // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding, disposable-
 // state rant scenario): "switch to Alpha -- no wait, I meant Beta" is one
 // of the MOST natural real spoken self-corrections there is -- and this
@@ -321,18 +327,27 @@ const POLITE_SWITCH_REQUEST_PATTERN =
 // message is a correction, not a full retraction, and the guard should
 // step aside.
 //
-// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
-// review finding): excepting on bare "I meant" presence was too broad --
-// "switch to Alpha -- actually, no; I meant to ask whether Beta is
-// done" is a GENUINE retraction (the switch really was undone) with an
-// entirely unrelated "I meant to ask..." STATEMENT later in the same
-// message, not a name correction; the exception wrongly let it through.
-// A real self-correction is always "I meant <NAME>", never "I meant to
-// <VERB>..."/"I meant that ..."/"I meant for ...". Requiring "I meant"
-// NOT be immediately followed by one of these verb-phrase continuations
-// is what actually distinguishes a genuine correction from an unrelated
-// later clause that merely happens to contain the words "I meant".
-const MEANT_NAME_CORRECTION_PATTERN = /\bI\s+meant\s+(?!to\b|that\b|for\b)/i
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 3 (real Codex adversarial-
+// review finding): round 2's exclusion-list approach (excluding "I meant
+// to/that/for...") was itself an unbounded chase -- "I meant I'd ask...",
+// "I meant we should...", "I meant like...", "I meant um to..." all slip
+// past a finite word blocklist the exact same way "make sure"/"make
+// certain"/"make ready" slipped past this file's OWN earlier finite-
+// blocklist attempt for the causative trigger (see CAUSATIVE_SUBJECT_WORD's
+// own history above) -- a finite list can never exclude an unbounded set
+// of English continuations. Text alone can never reliably tell a genuine
+// name correction from an unrelated later clause that happens to contain
+// "I meant" -- but exactMatches (the REAL candidate names) can: a name
+// correction is data-verifiable, structural text-pattern-matching isn't.
+// This guard reverts to the ORIGINAL, fully conservative behavior (a
+// retraction marker ALWAYS blocks isExplicitSwitchMessage/isGoBackMessage,
+// full stop) -- the "was this actually a resolved correction, not a
+// retraction" decision now lives entirely in the caller
+// (server/chat-http-routes.mjs), which has the real exactMatches data
+// this file deliberately never does, ORing correctedSwitchTarget's own
+// verified, non-null result into isExplicitSwitch. See
+// correctedSwitchTarget's own comment below for how it stays safe
+// without a word-exclusion list at all.
 function isGuardedAgainst(message) {
   const trimmed = message.trim()
   return (
@@ -346,7 +361,7 @@ function isGuardedAgainst(message) {
     ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || trimmed.includes('?')) &&
       NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed)) ||
     REPORTED_SPEECH_MARKER.test(trimmed) ||
-    (!MEANT_NAME_CORRECTION_PATTERN.test(trimmed) && RETRACTION_MARKER_PATTERN.test(trimmed)) ||
+    RETRACTION_MARKER_PATTERN.test(trimmed) ||
     MID_SENTENCE_HEDGE_MARKER.test(trimmed)
   )
 }
@@ -372,30 +387,31 @@ export function isExplicitSwitchMessage(message) {
 // genuine ambiguity, e.g. "let's talk about Alpha and Beta") then
 // silently refuses to switch at all, defeating the correction.
 //
-// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
-// review finding): round 1's "last matched phrase anywhere at or after
-// I meant" search was unbounded and plain-substring -- "switch to Alpha
-// -- no wait, I meant Beta, and compare it with Gamma" wrongly picked
-// Gamma (the LATER, unrelated mention) over the actually-intended Beta;
-// "switch to Art -- ... I meant Beta, so let us start now" could even
-// match "Art" INSIDE "start" (no word boundary). Redesigned: anchor on
-// the LAST valid "I meant <NAME>" occurrence (never "I meant to/that/
-// for...", see MEANT_NAME_CORRECTION_PATTERN -- so an unrelated later
-// "I meant to ask..." can never anchor a correction at all), then search
-// ONLY the bounded window from right after that anchor to the next
-// clause boundary (comma/period/semicolon/colon/!/?/dash) or the message
-// end -- never the whole rest of the message -- using word-boundary-
-// aware matching. Returns the single corrected id ONLY when the
-// correction phrase is present and EXACTLY ONE candidate's own matched
-// phrase appears within that bounded window (multiple candidates in the
-// window, e.g. "I meant Beta or Gamma", is genuine ambiguity -- null, not
-// a guess); null when inconclusive lets the caller fall back to its own
-// original, conservative resolution.
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 3 (real Codex adversarial-
+// review finding, replacing two prior failed attempts): rounds 1 and 2
+// both tried to bound "what counts as the corrected name" with TEXT-ONLY
+// heuristics -- an unbounded search window (round 1) and a finite verb-
+// phrase exclusion list (round 2) -- and each was found unsafe by a real
+// review, because text alone can never distinguish a genuine name
+// correction from an unrelated later clause that merely contains "I
+// meant" (an ASCII-only `\b` was also found to wrongly admit a name as a
+// substring of an unrelated Unicode word, e.g. "Art" inside "Artículos").
+// The fix that actually converges: stop guessing from text structure and
+// require the corrected name to appear IMMEDIATELY (module a small,
+// bounded set of spoken disfluencies -- ","/"uh"/"um"/"well") after the
+// LAST "I meant" in the message, matched directly against the REAL
+// candidate names in exactMatches with Unicode-aware, not just ASCII,
+// word boundaries (`(?<![\p{L}\p{N}_])...(?![\p{L}\p{N}_])`, `u` flag).
+// Immediate anchoring alone would also lose genuine ambiguity detection
+// ("I meant Beta or Gamma"), so ONE optional "or/and <second candidate
+// name>" continuation is allowed right after the first candidate --
+// if a second REAL candidate appears there too, that's genuine
+// ambiguity (null, never a guess), not a license to search further.
 export function correctedSwitchTarget(message, exactMatches) {
   if (!Array.isArray(exactMatches) || exactMatches.length === 0) {
     return null
   }
-  const anchorPattern = new RegExp(MEANT_NAME_CORRECTION_PATTERN.source, 'gi')
+  const anchorPattern = new RegExp(MEANT_CORRECTION_PATTERN.source, 'gi')
   let anchorEnd = -1
   let found
   while ((found = anchorPattern.exec(message))) {
@@ -404,23 +420,26 @@ export function correctedSwitchTarget(message, exactMatches) {
   if (anchorEnd === -1) {
     return null
   }
-  const rest = message.slice(anchorEnd)
-  const clauseEndMatch = rest.match(/[.,;:!?]|--|[–—]/)
-  const window = clauseEndMatch ? rest.slice(0, clauseEndMatch.index) : rest
-  let bestId = null
-  let matchCount = 0
-  for (const match of exactMatches) {
-    const phrase = match.matchedPhrase
-    if (!phrase) {
-      continue
-    }
-    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    if (new RegExp(`\\b${escaped}\\b`, 'i').test(window)) {
-      matchCount += 1
-      bestId = match.project.id
-    }
+  const rest = message.slice(anchorEnd).replace(/^[,\s]*(?:uh|um|well)?[,\s]*/i, '')
+  const named = exactMatches.filter((m) => m.matchedPhrase)
+  if (named.length === 0) {
+    return null
   }
-  return matchCount === 1 ? bestId : null
+  const alternation = named
+    .map((m) => m.matchedPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')
+  const boundary = '(?:(?![\\p{L}\\p{N}_])|$)'
+  const soloPattern = new RegExp(
+    `^(${alternation})${boundary}(?:\\s*,?\\s*(?:or|and)\\s+(${alternation})${boundary})?`,
+    'iu'
+  )
+  const solo = rest.match(soloPattern)
+  if (!solo || solo[2]) {
+    return null
+  }
+  const matchedLower = solo[1].toLowerCase()
+  const winner = named.find((m) => m.matchedPhrase.toLowerCase() === matchedLower)
+  return winner ? winner.project.id : null
 }
 
 // Same correction as correctedSwitchTarget above, but returns the FULL
@@ -439,9 +458,24 @@ export function correctedSwitchTarget(message, exactMatches) {
 // correctly returns null (the corrected name isn't among exactMatches),
 // but falling back to the RAW exactMatches would execute exactly the
 // target the owner just retracted. When the message contains BOTH a
-// retraction marker and a genuine (even if unresolved) name-correction
-// attempt, the pre-retraction exactMatches are never a safe fallback --
+// retraction marker and ANY "I meant" occurrence at all (round 3: no
+// longer restricted to a name-shaped one -- MEANT_CORRECTION_PATTERN is
+// now the same bare detector correctedSwitchTarget's own anchor search
+// uses), the pre-retraction exactMatches are never a safe fallback --
 // refuse instead of guessing.
+//
+// Disclosed, not fixed (a real Codex review finding, but the SAME
+// already-accepted, message-wide-vs-clause-scoped architectural residual
+// this whole file's retraction/reported-speech/hedge guards have all
+// shared since the original Directive Semantics Closure V1 mission): an
+// UNRELATED earlier "actually, no, I meant the other file" followed by a
+// genuinely separate LATER real directive ("switch to Alpha") in the
+// SAME message can suppress that later directive too, because this
+// (like isGuardedAgainst above) reasons about the whole message, not
+// per-clause. A false NEGATIVE (a real directive doesn't execute), the
+// safe direction this codebase is deliberately biased toward everywhere
+// else -- not re-architected here for the same reason clause-splitting
+// was rejected throughout the rest of this file's history.
 export function correctedTurnTargetIds(message, exactMatches) {
   if (!Array.isArray(exactMatches)) {
     return []
@@ -450,7 +484,7 @@ export function correctedTurnTargetIds(message, exactMatches) {
   if (corrected) {
     return [corrected]
   }
-  if (MEANT_NAME_CORRECTION_PATTERN.test(message) && RETRACTION_MARKER_PATTERN.test(message)) {
+  if (MEANT_CORRECTION_PATTERN.test(message) && RETRACTION_MARKER_PATTERN.test(message)) {
     return []
   }
   return exactMatches.map((m) => m.project.id)
