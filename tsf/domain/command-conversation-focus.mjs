@@ -366,34 +366,38 @@ export function isExplicitSwitchMessage(message) {
 // genuine ambiguity, e.g. "let's talk about Alpha and Beta") then
 // silently refuses to switch at all, defeating the correction. "I meant
 // X" unambiguously names the intended target: the LAST exact match whose
-// own matched phrase appears at or after "I meant" in the message. This
-// narrows an ambiguous multi-match turn-target list to that single
-// corrected id -- ONLY when the correction phrase is present and exactly
-// one candidate can be identified this way -- so it can never invent a
-// target out of genuine ambiguity; an inconclusive case (neither matched
-// phrase appears after "I meant") returns null and the caller's original,
-// conservative multi-match handling is unaffected.
+// own matched phrase appears at or after "I meant" in the message.
+// Returns the single corrected id -- ONLY when the correction phrase is
+// present and exactly one candidate can be identified this way, so it
+// can never invent a target out of genuine ambiguity -- or null when
+// inconclusive (neither matched phrase appears after "I meant"), letting
+// the caller fall back to its own original, conservative resolution.
 export function correctedSwitchTarget(message, exactMatches) {
   if (!MEANT_CORRECTION_PATTERN.test(message) || !Array.isArray(exactMatches)) {
     return null
   }
-  const meantMatch = message.match(MEANT_CORRECTION_PATTERN)
-  const meantIndex = meantMatch.index
+  const meantIndex = message.match(MEANT_CORRECTION_PATTERN).index
   const lower = message.toLowerCase()
   let bestId = null
   let bestIndex = -1
   for (const match of exactMatches) {
     const phrase = (match.matchedPhrase ?? '').toLowerCase()
-    if (!phrase) {
-      continue
-    }
-    const index = lower.lastIndexOf(phrase)
+    const index = phrase ? lower.lastIndexOf(phrase) : -1
     if (index >= meantIndex && index > bestIndex) {
       bestId = match.project.id
       bestIndex = index
     }
   }
   return bestId
+}
+
+// Same correction as correctedSwitchTarget above, but returns the FULL
+// turn-target id list a caller should use directly -- the single
+// corrected id when found, otherwise exactMatches's own ids unchanged.
+// Saves every caller from re-deriving the same fallback ternary.
+export function correctedTurnTargetIds(message, exactMatches) {
+  const corrected = correctedSwitchTarget(message, exactMatches)
+  return corrected ? [corrected] : exactMatches.map((m) => m.project.id)
 }
 
 export function isGoBackMessage(message) {

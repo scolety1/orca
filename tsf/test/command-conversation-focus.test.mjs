@@ -5,6 +5,7 @@ import {
   isExplicitSwitchMessage,
   isGoBackMessage,
   correctedSwitchTarget,
+  correctedTurnTargetIds,
   RECENT_PROJECT_STACK_CAP
 } from '../domain/command-conversation-focus.mjs'
 
@@ -909,4 +910,21 @@ test('correctedSwitchTarget: narrows a multi-exact-match list to the project nam
     ]),
     null
   )
+})
+
+// correctedTurnTargetIds is the actual entry point server/chat-http-routes.mjs
+// uses -- bakes correctedSwitchTarget's own fallback-to-full-list ternary
+// in, so every caller gets a ready-to-use turn-target id list directly.
+test('correctedTurnTargetIds: returns the single corrected id when unambiguous, otherwise the full exact-match list unchanged', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+
+  assert.deepEqual(
+    correctedTurnTargetIds('switch to Alpha -- no wait, I meant Beta', [alpha, beta]),
+    ['beta']
+  )
+  assert.deepEqual(correctedTurnTargetIds('talk about Alpha and Beta', [alpha, beta]), [
+    'alpha',
+    'beta'
+  ])
 })

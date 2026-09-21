@@ -28,7 +28,7 @@ import {
   nextCommandFocus,
   isExplicitSwitchMessage,
   isGoBackMessage,
-  correctedSwitchTarget
+  correctedTurnTargetIds
 } from '../domain/command-conversation-focus.mjs'
 import { buildProjectManagerSnapshot } from '../domain/project-manager-snapshot.mjs'
 import { respondNeedsYouAnswerCommand } from './command-needs-you-answer-bridge.mjs'
@@ -280,8 +280,17 @@ export async function handleChatRoute(
       const resolution = resolveProjectsFromText(message, projects, {
         aliases: commandAliases
       })
+      // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding): a
+      // self-correction naming BOTH the wrong and the corrected project in
+      // one message ("switch to Alpha -- no wait, I meant Beta") produces
+      // two exact matches here, which nextCommandFocus's own ambiguity
+      // safety correctly refuses to pick between on its own -- right for
+      // genuine ambiguity, wrong for a genuine correction.
+      // correctedTurnTargetIds narrows this to the one project actually
+      // named after "I meant", ONLY when that's unambiguous; otherwise the
+      // original multi-match list passes through unchanged.
       const exactMatches = resolution.matches.filter((m) => m.matchedOn !== 'fuzzy')
-      commandTurnTargetIds = exactMatches.map((m) => m.project.id)
+      commandTurnTargetIds = correctedTurnTargetIds(message, exactMatches)
       const contextFallbackProject =
         resolution.matches.length === 0
           ? await resolveRouteContextFallback({
@@ -343,23 +352,10 @@ export async function handleChatRoute(
             resultItems: commandResult.resultItems ?? []
           }
         ].slice(-200)
-        // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 (real dogfood finding): a
-        // self-correction naming BOTH the wrong and the corrected project
-        // in one message ("switch to Alpha -- no wait, I meant Beta")
-        // produces two exact turn targets here, which nextCommandFocus's
-        // own ambiguity-safety would otherwise refuse to pick between --
-        // correct for genuine ambiguity, wrong for a genuine correction.
-        // correctedSwitchTarget narrows to the one project actually named
-        // after "I meant" ONLY when that's unambiguous; otherwise it
-        // returns null and this falls through to the original,
-        // conservative multi-target list unchanged.
-        const correctedTarget = correctedSwitchTarget(message, exactMatches)
         const newCommandFocus = nextCommandFocus(
           freshState.commandFocus,
           {
-            turnTargetProjectIds: correctedTarget
-              ? [correctedTarget]
-              : (commandTurnTargetIds ?? []),
+            turnTargetProjectIds: commandTurnTargetIds ?? [],
             decisionClass: commandResult.decisionClass,
             isExplicitSwitch: isExplicitSwitchMessage(message),
             isGoBack: isGoBackMessage(message)
