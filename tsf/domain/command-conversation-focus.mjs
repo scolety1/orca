@@ -348,7 +348,18 @@ const MEANT_CORRECTION_PATTERN = /\bI\s+meant\b/i
 // verified, non-null result into isExplicitSwitch. See
 // correctedSwitchTarget's own comment below for how it stays safe
 // without a word-exclusion list at all.
-function isGuardedAgainst(message) {
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 4 (real Codex adversarial-
+// review finding): split out from isGuardedAgainst -- every guard EXCEPT
+// the retraction check. The caller-side correction override (see
+// isRetractionCorrectable below) must except ONLY the retraction guard,
+// never any of the others -- round 3's own `.corrected` override ORed
+// blindly over isExplicitSwitchMessage's WHOLE guarded result, so it
+// silently bypassed reported-speech ("I said I meant Beta." -- reported
+// speech, not a directive), question (SUBJECT_INVERSION_QUESTION_OPENER:
+// "Did I say switch to Alpha -- no wait, I meant Beta?"), negation, and
+// hedge guards too, any time "I meant X" happened to resolve. A genuine
+// correction can only ever except the ONE guard it's meant to except.
+function isGuardedByNonRetraction(message) {
   const trimmed = message.trim()
   return (
     DELIBERATIVE_QUESTION_PATTERN.test(message) ||
@@ -361,9 +372,11 @@ function isGuardedAgainst(message) {
     ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || trimmed.includes('?')) &&
       NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed)) ||
     REPORTED_SPEECH_MARKER.test(trimmed) ||
-    RETRACTION_MARKER_PATTERN.test(trimmed) ||
     MID_SENTENCE_HEDGE_MARKER.test(trimmed)
   )
+}
+function isGuardedAgainst(message) {
+  return isGuardedByNonRetraction(message) || RETRACTION_MARKER_PATTERN.test(message.trim())
 }
 
 // Real, narrow, conservative regex classifiers -- deliberately NOT reusing
@@ -387,26 +400,49 @@ export function isExplicitSwitchMessage(message) {
 // genuine ambiguity, e.g. "let's talk about Alpha and Beta") then
 // silently refuses to switch at all, defeating the correction.
 //
-// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 3 (real Codex adversarial-
-// review finding, replacing two prior failed attempts): rounds 1 and 2
-// both tried to bound "what counts as the corrected name" with TEXT-ONLY
-// heuristics -- an unbounded search window (round 1) and a finite verb-
-// phrase exclusion list (round 2) -- and each was found unsafe by a real
-// review, because text alone can never distinguish a genuine name
-// correction from an unrelated later clause that merely contains "I
-// meant" (an ASCII-only `\b` was also found to wrongly admit a name as a
-// substring of an unrelated Unicode word, e.g. "Art" inside "Artículos").
-// The fix that actually converges: stop guessing from text structure and
-// require the corrected name to appear IMMEDIATELY (module a small,
-// bounded set of spoken disfluencies -- ","/"uh"/"um"/"well") after the
-// LAST "I meant" in the message, matched directly against the REAL
-// candidate names in exactMatches with Unicode-aware, not just ASCII,
-// word boundaries (`(?<![\p{L}\p{N}_])...(?![\p{L}\p{N}_])`, `u` flag).
-// Immediate anchoring alone would also lose genuine ambiguity detection
-// ("I meant Beta or Gamma"), so ONE optional "or/and <second candidate
-// name>" continuation is allowed right after the first candidate --
-// if a second REAL candidate appears there too, that's genuine
-// ambiguity (null, never a guess), not a license to search further.
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 3 (replacing two prior
+// failed attempts): rounds 1 and 2 both tried to bound "what counts as
+// the corrected name" with TEXT-ONLY heuristics -- an unbounded search
+// window (round 1) and a finite verb-phrase exclusion list (round 2) --
+// and each was found unsafe, because text alone can never distinguish a
+// genuine name correction from an unrelated later clause that merely
+// contains "I meant". The fix that actually converges: stop guessing
+// from text structure and require the corrected name to appear
+// IMMEDIATELY (module a small, bounded set of spoken disfluencies) after
+// the LAST "I meant" in the message, matched directly against the REAL
+// candidate names in exactMatches with Unicode-aware word boundaries.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 4 (real Codex adversarial-
+// review finding, four more real bugs in round 3's own implementation):
+// (1) the disfluency strip had no word boundary after "well"/"uh"/"um",
+//     so it chopped the FRONT off an unrelated real name -- "I meant
+//     Wellness" lost "Well" and failed to match "wellness" at all (a
+//     real false negative), while "I meant Wellspring" (with only
+//     "spring" as a real candidate) lost "Well" and WRONGLY matched
+//     "spring" (an unsafe false positive) -- now requires "well"/"uh"/
+//     "um" to be a whole word (not immediately followed by another
+//     letter/digit) before stripping it.
+// (2) the match boundary excluded only `\p{L}\p{N}_`, not the hyphen/
+//     apostrophe/combining-mark characters this file's own
+//     CAUSATIVE_SUBJECT_WORD already treats as name-continuing -- "I
+//     meant Alpha-Two" (only "Alpha" a real candidate) wrongly matched
+//     "Alpha" as if it were the WHOLE name, ignoring the "-Two" that
+//     makes it a different, unresolved name. Now excludes the same
+//     character set CAUSATIVE_SUBJECT_WORD does.
+// (3) the "or/and <second candidate>" ambiguity check required the
+//     second candidate immediately after "or"/"and" with zero words in
+//     between, so "I meant Beta or the Gamma project"/"...or maybe
+//     Gamma"/"...and also Gamma" all silently dropped the second
+//     candidate and wrongly resolved to Beta alone. Now allows up to 2
+//     filler words between the conjunction and the second candidate
+//     (mirroring this file's own established 1-2-word bounded-span
+//     convention elsewhere) without reopening the unbounded-search
+//     problem an unrelated LATER mention exploited in round 2 (that
+//     still requires 3+ intervening words and stays correctly excluded).
+// (4) two real projects can share the exact same display name/alias (no
+//     uniqueness invariant enforces otherwise) -- resolving to whichever
+//     one happened to sort first was an arbitrary, silent guess between
+//     two real, different destinations. Now treated as ambiguity too.
 export function correctedSwitchTarget(message, exactMatches) {
   if (!Array.isArray(exactMatches) || exactMatches.length === 0) {
     return null
@@ -420,7 +456,9 @@ export function correctedSwitchTarget(message, exactMatches) {
   if (anchorEnd === -1) {
     return null
   }
-  const rest = message.slice(anchorEnd).replace(/^[,\s]*(?:uh|um|well)?[,\s]*/i, '')
+  const rest = message
+    .slice(anchorEnd)
+    .replace(/^[,\s]*(?:(?:uh|um|well)(?![\p{L}\p{N}_]))?[,\s]*/iu, '')
   const named = exactMatches.filter((m) => m.matchedPhrase)
   if (named.length === 0) {
     return null
@@ -428,9 +466,9 @@ export function correctedSwitchTarget(message, exactMatches) {
   const alternation = named
     .map((m) => m.matchedPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('|')
-  const boundary = '(?:(?![\\p{L}\\p{N}_])|$)'
+  const boundary = "(?:(?![\\p{L}\\p{N}\\p{M}_'’-])|$)"
   const soloPattern = new RegExp(
-    `^(${alternation})${boundary}(?:\\s*,?\\s*(?:or|and)\\s+(${alternation})${boundary})?`,
+    `^(${alternation})${boundary}(?:\\s*,?\\s*(?:or|and)\\s+(?:\\S+\\s+){0,2}(${alternation})${boundary})?`,
     'iu'
   )
   const solo = rest.match(soloPattern)
@@ -438,12 +476,33 @@ export function correctedSwitchTarget(message, exactMatches) {
     return null
   }
   const matchedLower = solo[1].toLowerCase()
-  const winner = named.find((m) => m.matchedPhrase.toLowerCase() === matchedLower)
-  return winner ? winner.project.id : null
+  const winners = named.filter((m) => m.matchedPhrase.toLowerCase() === matchedLower)
+  return winners.length === 1 ? winners[0].project.id : null
 }
 
-// Same correction as correctedSwitchTarget above, but returns the FULL
-// turn-target id list a caller should use directly -- the single
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 4 (real Codex adversarial-
+// review finding, the most serious of the round): round 3's `.corrected`
+// override (in server/command-turn-target-correction.mjs) ORed
+// correctedSwitchTarget's own result directly over isExplicitSwitchMessage,
+// which bypassed EVERY OTHER guard, not just retraction -- "I said I
+// meant Beta." (reported speech, not a directive) and "Did I say switch
+// to Alpha -- no wait, I meant Beta?" (a genuine question) both wrongly
+// moved focus, since correctedSwitchTarget itself has no guard awareness
+// at all. A verified correction must still respect every OTHER guard
+// (question/reported-speech/negation/hedge) -- it only ever excepts the
+// ONE guard (retraction) it exists to except. Used by BOTH
+// correctedTurnTargetIds below and the caller's own isExplicitSwitch
+// override, so this is the ONE place either consumer's correction can
+// ever come from.
+export function verifiedCorrectionTarget(message, exactMatches) {
+  if (isGuardedByNonRetraction(message)) {
+    return null
+  }
+  return correctedSwitchTarget(message, exactMatches)
+}
+
+// Same correction as verifiedCorrectionTarget above, but returns the
+// FULL turn-target id list a caller should use directly -- the single
 // corrected id when found, otherwise exactMatches's own ids unchanged.
 // Saves every caller from re-deriving the same fallback ternary.
 //
@@ -454,7 +513,7 @@ export function correctedSwitchTarget(message, exactMatches) {
 // the resolver's own co-occurrence rule drops from the exact-match list,
 // so exactMatches here is only [alpha]) or "switch to Alpha-Two -- no
 // wait, I meant Alpha" (the resolver's own longest-match rule drops
-// "Alpha" once "Alpha-Two" is present). In both, correctedSwitchTarget
+// "Alpha" once "Alpha-Two" is present). In both, verifiedCorrectionTarget
 // correctly returns null (the corrected name isn't among exactMatches),
 // but falling back to the RAW exactMatches would execute exactly the
 // target the owner just retracted. When the message contains BOTH a
@@ -480,7 +539,7 @@ export function correctedTurnTargetIds(message, exactMatches) {
   if (!Array.isArray(exactMatches)) {
     return []
   }
-  const corrected = correctedSwitchTarget(message, exactMatches)
+  const corrected = verifiedCorrectionTarget(message, exactMatches)
   if (corrected) {
     return [corrected]
   }

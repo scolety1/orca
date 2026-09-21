@@ -5,11 +5,14 @@
 // and the single-exact-match short-circuit), and this is the one place
 // with access to both resolution.matches and the domain's own correction
 // logic. See domain/command-conversation-focus.mjs's own
-// correctedSwitchTarget/correctedTurnTargetIds for why a genuine
+// verifiedCorrectionTarget/correctedTurnTargetIds for why a genuine
 // correction can only ever be verified against the real exactMatches,
-// never guessed from message text alone.
+// never guessed from message text alone -- and (round 4) why it must
+// ALSO respect every other guard (question/reported-speech/negation/
+// hedge), never just override them because "I meant X" happened to
+// resolve to a real name.
 import {
-  correctedSwitchTarget,
+  verifiedCorrectionTarget,
   correctedTurnTargetIds
 } from '../domain/command-conversation-focus.mjs'
 
@@ -21,6 +24,6 @@ export function resolveCommandTurnTargets(message, resolution) {
   // still just works, JSON.stringify still only serializes the indexed
   // elements) while still being able to ask "was this actually a
   // verified correction" wherever it's needed.
-  ids.corrected = correctedSwitchTarget(message, exactMatches) !== null
+  ids.corrected = verifiedCorrectionTarget(message, exactMatches) !== null
   return ids
 }

@@ -1078,3 +1078,11 @@ test('correctedSwitchTarget / correctedTurnTargetIds: a non-array exactMatches i
   assert.equal(correctedSwitchTarget('I meant Beta', null), null)
   assert.deepEqual(correctedTurnTargetIds('I meant Beta', null), [])
 })
+
+// Round 4's own new tests (verifiedCorrectionTarget's guard-scoping fix,
+// the "or"/"and" filler tolerance, the "well"/"uh"/"um" whole-word fix,
+// the partial-compound-name boundary fix, and the duplicate-display-name
+// ambiguity fix) live in the sibling file
+// test/command-conversation-focus-correction.test.mjs -- this file was
+// already at its line budget (.test.mjs gets no exemption from the
+// generic .mjs cap, a disclosed pre-existing gap).
