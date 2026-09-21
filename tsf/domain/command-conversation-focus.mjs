@@ -11,6 +11,11 @@
 // EXACT turn-target match (never fuzzy) can move focus, mirroring
 // project-name-resolver.mjs's own dispatch-safety discipline.
 import { isoNow } from './canonical.mjs'
+import {
+  DELIBERATIVE_STATEMENT_OPENER,
+  COPULA_QUESTION_OPENER,
+  SUBJECT_INVERSION_QUESTION_OPENER
+} from '../server/chat-responder.mjs'
 
 export const RECENT_PROJECT_STACK_CAP = 8
 
@@ -48,18 +53,26 @@ const NEGATION_GUARD_PATTERN = /\b(?:do not|don'?t|never|stop)\b/i
 // as a question -- "Maybe we should switch to NWR", "I wonder if we
 // should go back", "I guess we could talk about the landing page for
 // now" -- evaded both guards and silently moved the durable Command
-// focus exactly like an unambiguous directive would. Anchored to the
-// START of the message (every real musing opener leads the sentence),
-// same narrow "clause/message OPENS WITH X" convention as that file's own
-// QUESTION_OPENER/DELIBERATIVE_STATEMENT_OPENER.
-const DELIBERATIVE_STATEMENT_OPENER =
-  /^(?:i wonder if|i'?m not sure if|i am not sure if|i don'?t know if|i guess|i think|maybe|perhaps|possibly)\b/i
-
+// focus exactly like an unambiguous directive would. DIRECTIVE SEMANTICS
+// CLOSURE V1: DELIBERATIVE_STATEMENT_OPENER is now imported from
+// server/chat-responder.mjs, the one canonical musing-opener vocabulary
+// every consequential classifier in this codebase shares (was an
+// independently-maintained copy here).
+//
+// The SAME "?"-required gap also affected DELIBERATIVE_QUESTION_PATTERN
+// itself: "should we switch to NWR" (spoken, no punctuation) evaded it
+// too, since [^.!]*\? requires a literal "?". COPULA_QUESTION_OPENER/
+// SUBJECT_INVERSION_QUESTION_OPENER (also imported from chat-responder.mjs
+// -- same fix as that file's own isGenuineDirective) close this the same
+// punctuation-independent way.
 function isGuardedAgainst(message) {
+  const trimmed = message.trim()
   return (
     DELIBERATIVE_QUESTION_PATTERN.test(message) ||
     NEGATION_GUARD_PATTERN.test(message) ||
-    DELIBERATIVE_STATEMENT_OPENER.test(message.trim())
+    DELIBERATIVE_STATEMENT_OPENER.test(trimmed) ||
+    COPULA_QUESTION_OPENER.test(trimmed) ||
+    SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed)
   )
 }
 

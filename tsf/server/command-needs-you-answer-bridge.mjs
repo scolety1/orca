@@ -16,7 +16,7 @@
 // the real, unmodified executeAction -- it cannot invent a target, bypass a
 // hold, or answer a TIM_REQUIRED refusal (those never create a Needs-You
 // item in the first place).
-import { classifyIntent } from './chat-responder.mjs'
+import { classifyIntent, DELIBERATIVE_STATEMENT_OPENER } from './chat-responder.mjs'
 import { resolveProjectsFromText } from './project-name-resolver.mjs'
 import { fleetNeedsYouStatus } from '../domain/fleet-work-status.mjs'
 import { resolveNeedsYouAnswerTarget } from '../domain/command-needs-you-answer-targeting.mjs'
@@ -26,11 +26,31 @@ export function shouldRouteToNeedsYouAnswerBridge(message) {
   return classifyIntent(message) === 'NEEDS_YOU_ANSWER'
 }
 
+// DIRECTIVE SEMANTICS CLOSURE V1 (P0): classifyIntent's NEEDS_YOU_ANSWER
+// pattern is pure vocabulary matching ("answer ... question" / "option
+// two" / "yes, authorize it") with no directive-vs-musing guard at all --
+// unlike every other consequential path in this codebase, this bridge
+// never called isGenuineDirective (or any equivalent) before resolving
+// and mutating. Reproduced directly: "I wonder if we should just answer
+// the question with option two" and "Maybe we should answer that with
+// option two" both classified identically to the real, unambiguous
+// "answer the question with option two" and would have resolved (and
+// mutated) a real open item purely because the musing text happened to
+// contain the trigger vocabulary. This is the SAME RESOLVE_NEEDS_YOU
+// mechanism research-paid-approval grants ride on (this file's own header
+// above), so it is exactly the money-adjacent surface this closure pass
+// is about, not a cosmetic gap.
+function isDeliberativeMusing(message) {
+  return DELIBERATIVE_STATEMENT_OPENER.test(message.trim())
+}
+
 const REFUSAL_TEXT = {
   NONE_OPEN: "Nothing needs your input right now -- there's no open question to answer.",
   AMBIGUOUS:
     "I'm not sure which open question you mean -- name the project it's for (or answer from that project's own chat).",
-  NO_MATCH: "I couldn't find an open question for that project -- nothing was resolved."
+  NO_MATCH: "I couldn't find an open question for that project -- nothing was resolved.",
+  DELIBERATIVE:
+    "Sounds like you're still deciding -- say it as a direct answer (e.g. \"answer with option two\") when you're ready and I'll record it."
 }
 
 // message: the real user text ("Answer the NWR question with option two.",
@@ -75,6 +95,17 @@ export async function respondNeedsYouAnswerCommand({
   aliases,
   deps = {}
 }) {
+  if (isDeliberativeMusing(message)) {
+    return {
+      intent: 'NEEDS_YOU_ANSWER',
+      decisionClass: 'AUTO_DECIDE',
+      text: REFUSAL_TEXT.DELIBERATIVE,
+      plannerRole: 'PLANNER_DEEP',
+      providerLabel: 'PLANNER_DEEP · Needs You answer refused -- DELIBERATIVE',
+      live: false,
+      resolvedProjectIds: []
+    }
+  }
   const resolution = resolveProjectsFromText(targetingPortion(message), projects, { aliases })
   const turnTargetProjectIds = resolution.matches
     .filter((m) => m.matchedOn !== 'fuzzy')

@@ -118,8 +118,43 @@ const POLITE_REQUEST_MARKER = /\b(?:can|could|would|will)\s+you\b/i
 // wonder if you could pause NWR" reads as genuine uncertainty, not a real
 // request, matching this file's own stated bias toward a false NEGATIVE
 // over a false POSITIVE).
-const DELIBERATIVE_STATEMENT_OPENER =
+// DIRECTIVE SEMANTICS CLOSURE V1: exported so it's the ONE canonical
+// musing/deliberative-opener vocabulary every consequential classifier in
+// this codebase shares, instead of the 3 independently-maintained copies
+// that already existed before this pass (server/command-run-action-
+// bridge.mjs's classifyRunActionVerb, domain/command-conversation-focus.mjs's
+// isExplicitSwitchMessage/isGoBackMessage, and this function itself) --
+// same reasoning already applied to PROHIBITION_MARKERS/
+// NOT_CONTRACTION_SOURCE's own negation vocabulary above ("so all three
+// negation checks in this codebase share one vocabulary instead of three
+// independently-drifting ones").
+export const DELIBERATIVE_STATEMENT_OPENER =
   /^(?:i wonder if|i'?m not sure if|i am not sure if|i don'?t know if|i guess|i think|maybe|perhaps|possibly)\b/i
+// See the SUBJECT_INVERSION_QUESTION_OPENER call site (below, inside
+// isGenuineDirective) for why this exists and what it fixes. Split into
+// two tiers by how safely each can be recognized without a "?":
+// COPULA_QUESTION_OPENER (is/are/was/were) is unconditional -- English
+// structurally cannot form an imperative directive starting with a bare
+// copula ("Is deploy the app" is not a valid command in any register), so
+// there is no possible false-positive direction to guard against, unlike
+// the modal openers below. Real gap this closes: VERB_REGISTRY's own
+// PAUSE entry (domain/command-act-model.mjs) matches "pause\w*", which
+// matches "paused" too -- "is nwr paused" (spoken, no punctuation)
+// reached this function as a bare clause with no recognized pronoun
+// subject and fell through to `return true` before this addition.
+// Exported alongside SUBJECT_INVERSION_QUESTION_OPENER: domain/command-
+// conversation-focus.mjs's own DELIBERATIVE_QUESTION_PATTERN had the exact
+// same "?"-required gap for focus-switch phrasing ("should we switch to
+// NWR", spoken, no punctuation) -- same fix, same shared constants.
+export const COPULA_QUESTION_OPENER = /^\s*(?:is|are|was|were)\b/i
+// The remaining modal auxiliaries (do/does/did/should/could/would/can/
+// will/may/might/has/have/had) CAN legitimately open a subjectless,
+// elided-subject directive continuation from an "and"-split (the BUG-08
+// danger case, "...and will deploy after that") -- unlike the copula
+// above, these are safe to treat as a punctuation-free question ONLY when
+// immediately followed by an actual subject pronoun (never bare).
+export const SUBJECT_INVERSION_QUESTION_OPENER =
+  /^\s*(?:do|does|did|should|could|would|can|will|may|might|has|have|had)\s+(?:i|we|you|it|this|that|they|he|she)\b/i
 
 // Independent-review finding (dangerous-direction regression, caught before
 // adoption): splitting only on `.!?;\n` let an inquiry/prohibition earlier
@@ -195,6 +230,33 @@ export function isGenuineDirective(clause, sentence) {
     return true
   }
   if (/\?/.test(clause)) {
+    return false
+  }
+  // DIRECTIVE SEMANTICS CLOSURE V1 (P0, real, voice-critical): every check
+  // above (and BARE_OPENER just below) ultimately requires a literal "?"
+  // somewhere -- but a real voice transcript (Web Speech API and similar)
+  // routinely contains NO punctuation at all. "should we resume tsf"/"is
+  // nwr paused"/"did you pause it" fell through every guard to the final
+  // `return true`, live-confirmed via command-act-model.mjs's real
+  // decomposition path exactly like the DELIBERATIVE_STATEMENT_OPENER gap
+  // above. Fixed with the one unambiguous, punctuation-independent signal
+  // of a genuine question in English: subject-AUXILIARY INVERSION -- the
+  // opener is immediately followed by a subject pronoun (is/are/was/were/
+  // do/does/did/should/could/would/can/will/may/might/has/have/had + i/we/
+  // you/it/this/that/they/he/she). This is deliberately narrower than
+  // BARE_OPENER below (which also fires on "why"/"what"/"when"/"how" with
+  // no pronoun requirement, but only when a "?" exists elsewhere in the
+  // sentence): a declarative, subject-elided directive fragment from an
+  // "and"-split ("...and will deploy after that", the exact BUG-08 danger
+  // case just above) is NEVER followed by one of these pronouns -- "will"
+  // is followed by the verb "deploy", not "we"/"it"/etc -- so this can
+  // never reintroduce that regression. Checked unconditionally (no "?"
+  // dependency at all), same clause-scoped, punctuation-independent
+  // discipline as DELIBERATIVE_STATEMENT_OPENER above.
+  if (
+    COPULA_QUESTION_OPENER.test(clause.trimStart()) ||
+    SUBJECT_INVERSION_QUESTION_OPENER.test(clause.trimStart())
+  ) {
     return false
   }
   // BUG-08 independent-verification finding (real, reproduced): a bare

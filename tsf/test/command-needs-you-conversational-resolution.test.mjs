@@ -67,6 +67,37 @@ test('conversational resolution: a named project with its own single open item r
   assert.match(resolvedEntry.resolution, /option two/)
 })
 
+// DIRECTIVE SEMANTICS CLOSURE V1 (P0): classifyIntent's NEEDS_YOU_ANSWER
+// pattern had no directive-vs-musing guard -- a musing statement
+// containing the trigger vocabulary ("answer ... question with option
+// two") resolved and mutated a real open item exactly like an
+// unambiguous answer. Proves the real store is genuinely untouched, not
+// just that the classifier returns a refusal shape.
+test('conversational resolution (P0, fixed): a musing statement about answering never resolves or mutates a real open item', async () => {
+  await seedRunWithOpenQuestion(PROJECT_A.id, 'Which config?')
+  const opState = loadState()
+  const before = readKeepGoingRun(PROJECT_A.id)
+  for (const message of [
+    'I wonder if we should just answer the question with option two',
+    'Maybe we should answer that with option two'
+  ]) {
+    const result = await respondNeedsYouAnswerCommand({
+      message,
+      projects: [PROJECT_A],
+      opState,
+      focusProjectId: PROJECT_A.id,
+      clock
+    })
+    assert.match(result.text, /still deciding/)
+  }
+  const after = readKeepGoingRun(PROJECT_A.id)
+  assert.deepEqual(
+    after,
+    before,
+    'the real run must be byte-identical -- no mutation from musing text'
+  )
+})
+
 test('conversational resolution: "Yes, authorize it" with no named project resolves via the currently-focused project', async () => {
   await seedRunWithOpenQuestion(PROJECT_B.id, 'Approve $50 research spend?')
   const opState = loadState()

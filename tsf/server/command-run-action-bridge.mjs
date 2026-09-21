@@ -22,6 +22,7 @@ import {
 } from '../adapters/orca-orchestration-bridge.mjs'
 import { resolveSenderTerminal } from './keep-going-dispatch-loop.mjs'
 import { recordNeedsYouRelayOutcome } from '../domain/keep-going.mjs'
+import { DELIBERATIVE_STATEMENT_OPENER } from './chat-responder.mjs'
 
 // Mirrors keep-going-http-routes.mjs's own mutateThroughStore exactly (not
 // exported there, so duplicated rather than reaching across a route file
@@ -269,8 +270,9 @@ const QUESTION_OPENER =
 // convention as QUESTION_OPENER, only applied where the pronoun-only
 // branch already needs a non-directive guard (never the verb-initial
 // OPENER branch, which is an unambiguous imperative regardless).
-const DELIBERATIVE_STATEMENT_OPENER =
-  /^(?:i wonder if|i'?m not sure if|i am not sure if|i don'?t know if|i guess|i think|maybe|perhaps|possibly)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1: imported from chat-responder.mjs, the
+// one canonical musing-opener vocabulary every consequential classifier in
+// this codebase now shares (was an independently-maintained copy here).
 const CLAUSE_OPENS_WITH = (verbs) => new RegExp(`^(?:please\\s+)?(?:${verbs})\\b`, 'i')
 const VERB_PLUS_PRONOUN = (verbs) =>
   new RegExp(`\\b(?:${verbs})\\s+(it|that|this|everything)\\b`, 'i')

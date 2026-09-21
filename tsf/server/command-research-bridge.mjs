@@ -35,6 +35,7 @@ import { executeAction } from './action-executor.mjs'
 import { synthesizeResearchSpecification } from './command-research-spec-synthesis.mjs'
 import { registerResearchCompletionWatch } from './command-research-completion-watch.mjs'
 import { shouldSuppressResearchCreation } from '../domain/parent-mission-intent-classification.mjs'
+import { DELIBERATIVE_STATEMENT_OPENER } from './chat-responder.mjs'
 import {
   noMissionYetText,
   ambiguousMissionText,
@@ -250,10 +251,19 @@ const GRANT_AUTHORIZATION_VERB_PATTERN = /\b(?:use|grant|approve|authorize|allow
 const GRANT_NEGATION_GUARD_PATTERN =
   /\b(?:do not|don'?t|never|shouldn'?t|should not|won'?t|refuse|decline|deny)\b/i
 
+// DIRECTIVE SEMANTICS CLOSURE V1 (P0): the authorizing-verb fix above was
+// still insufficient on its own -- "I wonder if we should use Exa up to
+// $20" contains "use" (the required verb) and no negation, so it still
+// classified as RESEARCH_PAID_GRANT and would have granted real spend
+// despite the leading musing opener. DELIBERATIVE_STATEMENT_OPENER
+// (imported from chat-responder.mjs, the one canonical musing-opener
+// vocabulary this closure pass consolidated every consequential
+// classifier onto) closes it the same way as every sibling fix.
 function parsePaidGrant(message) {
   if (
     !GRANT_AUTHORIZATION_VERB_PATTERN.test(message) ||
-    GRANT_NEGATION_GUARD_PATTERN.test(message)
+    GRANT_NEGATION_GUARD_PATTERN.test(message) ||
+    DELIBERATIVE_STATEMENT_OPENER.test(message.trim())
   ) {
     return null
   }
@@ -438,6 +448,40 @@ function result({ intent, decisionClass, text, live, researchMissionId = null })
   }
 }
 
+// Collapses the same 9-line "resolve mission context, refuse honestly on
+// ambiguity or no-mission" sequence that used to be duplicated verbatim at
+// every one of the 5 intent branches below (RESEARCH_PAID_GRANT/
+// PAID_ADVISORY/CANCEL/COMPLETION_WATCH_REQUEST/status-family) into one
+// shared call. { ok: false, response } is a real respondResearchCommand
+// return value the caller returns directly; { ok: true, missionId } is the
+// resolved id to proceed with.
+function resolveMissionIdOrRefusal(message, opState, intent) {
+  const missionContext = resolveMissionContext(message, opState)
+  if (missionContext.ambiguous) {
+    return {
+      ok: false,
+      response: result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: ambiguousMissionText(opState),
+        live: false
+      })
+    }
+  }
+  if (!missionContext.missionId) {
+    return {
+      ok: false,
+      response: result({
+        intent,
+        decisionClass: 'AUTO_DECIDE',
+        text: noMissionYetText(),
+        live: false
+      })
+    }
+  }
+  return { ok: true, missionId: missionContext.missionId }
+}
+
 // `contextProjectId` (optional): when this message came from a project-
 // scoped surface (Project detail's "Research for this project", threaded
 // from the SAME real project id the chat route already resolved -- see
@@ -475,19 +519,11 @@ export async function respondResearchCommand({
 
   if (intent === 'RESEARCH_PAID_GRANT') {
     const grant = parsePaidGrant(message)
-    const missionContext = resolveMissionContext(message, opState)
-    if (missionContext.ambiguous) {
-      return result({
-        intent,
-        decisionClass: 'AUTO_DECIDE',
-        text: ambiguousMissionText(opState),
-        live: false
-      })
+    const resolved = resolveMissionIdOrRefusal(message, opState, intent)
+    if (!resolved.ok) {
+      return resolved.response
     }
-    const missionId = missionContext.missionId
-    if (!missionId) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
-    }
+    const missionId = resolved.missionId
     await grantResearchPaidApprovalDurable(
       missionId,
       {
@@ -513,19 +549,11 @@ export async function respondResearchCommand({
     // $ amount, and Command's own initiative during a continue cycle,
     // requestResearchPaidApprovalDurable below). This branch never
     // mutates mission state at all.
-    const missionContext = resolveMissionContext(message, opState)
-    if (missionContext.ambiguous) {
-      return result({
-        intent,
-        decisionClass: 'AUTO_DECIDE',
-        text: ambiguousMissionText(opState),
-        live: false
-      })
+    const resolved = resolveMissionIdOrRefusal(message, opState, intent)
+    if (!resolved.ok) {
+      return resolved.response
     }
-    const missionId = missionContext.missionId
-    if (!missionId) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
-    }
+    const missionId = resolved.missionId
     const openItems = readResearchMissionReviewItems(missionId) ?? []
     const openPaidRequest = openItems.find((n) => n.category === 'PAID_PROVIDER_APPROVAL_REQUIRED')
     const text = openPaidRequest
@@ -541,19 +569,11 @@ export async function respondResearchCommand({
   }
 
   if (intent === 'RESEARCH_CANCEL') {
-    const missionContext = resolveMissionContext(message, opState)
-    if (missionContext.ambiguous) {
-      return result({
-        intent,
-        decisionClass: 'AUTO_DECIDE',
-        text: ambiguousMissionText(opState),
-        live: false
-      })
+    const resolved = resolveMissionIdOrRefusal(message, opState, intent)
+    if (!resolved.ok) {
+      return resolved.response
     }
-    const missionId = missionContext.missionId
-    if (!missionId) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
-    }
+    const missionId = resolved.missionId
     const actionResult = await executeAction({
       type: 'CANCEL_RESEARCH',
       target: missionId,
@@ -579,19 +599,11 @@ export async function respondResearchCommand({
   }
 
   if (intent === 'RESEARCH_COMPLETION_WATCH_REQUEST') {
-    const missionContext = resolveMissionContext(message, opState)
-    if (missionContext.ambiguous) {
-      return result({
-        intent,
-        decisionClass: 'AUTO_DECIDE',
-        text: ambiguousMissionText(opState),
-        live: false
-      })
+    const resolved = resolveMissionIdOrRefusal(message, opState, intent)
+    if (!resolved.ok) {
+      return resolved.response
     }
-    const missionId = missionContext.missionId
-    if (!missionId) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
-    }
+    const missionId = resolved.missionId
     const text = await registerResearchCompletionWatch(missionId, message, clock)
     return result({
       intent,
@@ -608,19 +620,11 @@ export async function respondResearchCommand({
     intent === 'RESEARCH_COMPLETENESS' ||
     intent === 'RESEARCH_CONFLICTS'
   ) {
-    const missionContext = resolveMissionContext(message, opState)
-    if (missionContext.ambiguous) {
-      return result({
-        intent,
-        decisionClass: 'AUTO_DECIDE',
-        text: ambiguousMissionText(opState),
-        live: false
-      })
+    const resolved = resolveMissionIdOrRefusal(message, opState, intent)
+    if (!resolved.ok) {
+      return resolved.response
     }
-    const missionId = missionContext.missionId
-    if (!missionId) {
-      return result({ intent, decisionClass: 'AUTO_DECIDE', text: noMissionYetText(), live: false })
-    }
+    const missionId = resolved.missionId
     if (intent === 'RESEARCH_STATUS') {
       const status = readResearchMissionStatus(missionId)
       if (!status) {
