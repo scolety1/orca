@@ -928,3 +928,119 @@ test('correctedTurnTargetIds: returns the single corrected id when unambiguous, 
     'beta'
   ])
 })
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
+// review finding): round 1's "last matched phrase anywhere at or after
+// I meant" search picked whichever candidate happened to be mentioned
+// LATEST in the message, even an unrelated later mention entirely
+// unconnected to the correction -- "switch to Alpha -- no wait, I meant
+// Beta, and compare it with Gamma" wrongly picked Gamma over the
+// actually-intended Beta. Bounding the search to the clause right after
+// "I meant" (up to the next comma/period/dash/etc.) fixes this; genuine
+// ambiguity WITHIN that same bounded clause ("I meant Beta or Gamma")
+// still correctly returns null, never a guess.
+test('correctedSwitchTarget: only searches the bounded clause right after "I meant", never an unrelated later mention in the same message', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  const gamma = { project: { id: 'gamma' }, matchedPhrase: 'Gamma', matchedOn: 'displayName' }
+
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Beta, and compare it with Gamma', [
+      alpha,
+      beta,
+      gamma
+    ]),
+    'beta'
+  )
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Beta or Gamma', [
+      alpha,
+      beta,
+      gamma
+    ]),
+    null
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
+// review finding): round 1's plain `String.lastIndexOf` substring search
+// could match a project name INSIDE an unrelated later word -- "switch
+// to Art -- no wait, I meant Beta, so let us start now" could match
+// "Art" inside "start". Word-boundary-aware matching (plus the same
+// clause-bounding above, which independently also closes this specific
+// case) fixes it.
+test('correctedSwitchTarget: matches a project name as a whole word, never as a substring inside an unrelated later word', () => {
+  const art = { project: { id: 'art' }, matchedPhrase: 'Art', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    correctedSwitchTarget('switch to Art -- no wait, I meant Beta, so let us start now', [
+      art,
+      beta
+    ]),
+    'beta'
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
+// review finding): the round-1 retraction-guard exception fired on bare
+// "I meant" presence anywhere in the message -- "switch to Alpha --
+// actually, no; I meant to ask whether Beta is done" is a GENUINE
+// retraction (the switch really was undone) with an entirely unrelated
+// "I meant to ask..." STATEMENT later in the same message, not a name
+// correction, and the exception wrongly let it through, silently
+// switching to Beta despite the explicit retraction. A real self-
+// correction is always "I meant <NAME>", never "I meant to <VERB>..."/
+// "I meant that ..."/"I meant for ...".
+test('isExplicitSwitchMessage / isGoBackMessage: an unrelated later "I meant to VERB..."/"I meant that..."/"I meant for..." statement never disables a genuine retraction', () => {
+  assert.equal(
+    isExplicitSwitchMessage('switch to Alpha -- actually, no; I meant to ask whether Beta is done'),
+    false
+  )
+  assert.equal(
+    isGoBackMessage('go back -- actually, no; I meant to ask whether Beta is done'),
+    false
+  )
+  assert.equal(
+    isExplicitSwitchMessage('switch to Alpha -- no wait, I meant that Beta should be checked'),
+    false
+  )
+  assert.equal(
+    isExplicitSwitchMessage('switch to Alpha -- no wait, I meant for Beta to be checked'),
+    false
+  )
+  // The genuine name-correction shape still works.
+  assert.equal(isExplicitSwitchMessage('switch to Alpha -- no wait, I meant Beta'), true)
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
+// review finding): when a genuine name-correction is ATTEMPTED ("I meant
+// X") but X doesn't resolve to any exact match -- because the resolver's
+// own co-occurrence rule dropped a longer real name ("TSF Orca") down to
+// fuzzy-only, or its longest-match rule removed a shorter overlapping
+// name ("Alpha" once "Alpha-Two" is present) -- falling back to the
+// UNCORRECTED exactMatches would execute exactly the target the owner
+// just retracted. When the message also contains a retraction marker,
+// this must refuse (empty turn targets) rather than guess.
+test('correctedTurnTargetIds: a name-correction that fails to resolve to any exact match never falls back to the retracted target', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const alphaTwo = {
+    project: { id: 'alpha-two' },
+    matchedPhrase: 'Alpha-Two',
+    matchedOn: 'displayName'
+  }
+  assert.deepEqual(
+    correctedTurnTargetIds('switch to Alpha -- no wait, I meant TSF Orca', [alpha]),
+    []
+  )
+  assert.deepEqual(
+    correctedTurnTargetIds('switch to Alpha-Two -- no wait, I meant Alpha', [alphaTwo]),
+    []
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
+// review finding): non-array exactMatches must never throw.
+test('correctedSwitchTarget / correctedTurnTargetIds: a non-array exactMatches is handled safely, never throws', () => {
+  assert.equal(correctedSwitchTarget('I meant Beta', null), null)
+  assert.deepEqual(correctedTurnTargetIds('I meant Beta', null), [])
+})

@@ -319,14 +319,20 @@ const POLITE_SWITCH_REQUEST_PATTERN =
 // correction mechanism built to handle this. "I meant X" is a POSITIVE
 // completion of intent, not an abandonment -- when it's present, the
 // message is a correction, not a full retraction, and the guard should
-// step aside. Safe to except broadly (not just for "no wait" specifically)
-// because the actual mutation safety here was never this guard alone --
-// EXPLICIT_SWITCH_PATTERN's own "I meant" trigger still requires the
-// caller's OWN separate exact-target-resolution to have found exactly one
-// project in the same message before anything can actually move (see that
-// pattern's own comment), so loosening this guard can never manufacture a
-// switch out of ambiguity.
-const MEANT_CORRECTION_PATTERN = /\bI\s+meant\b/i
+// step aside.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
+// review finding): excepting on bare "I meant" presence was too broad --
+// "switch to Alpha -- actually, no; I meant to ask whether Beta is
+// done" is a GENUINE retraction (the switch really was undone) with an
+// entirely unrelated "I meant to ask..." STATEMENT later in the same
+// message, not a name correction; the exception wrongly let it through.
+// A real self-correction is always "I meant <NAME>", never "I meant to
+// <VERB>..."/"I meant that ..."/"I meant for ...". Requiring "I meant"
+// NOT be immediately followed by one of these verb-phrase continuations
+// is what actually distinguishes a genuine correction from an unrelated
+// later clause that merely happens to contain the words "I meant".
+const MEANT_NAME_CORRECTION_PATTERN = /\bI\s+meant\s+(?!to\b|that\b|for\b)/i
 function isGuardedAgainst(message) {
   const trimmed = message.trim()
   return (
@@ -340,7 +346,7 @@ function isGuardedAgainst(message) {
     ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || trimmed.includes('?')) &&
       NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed)) ||
     REPORTED_SPEECH_MARKER.test(trimmed) ||
-    (!MEANT_CORRECTION_PATTERN.test(trimmed) && RETRACTION_MARKER_PATTERN.test(trimmed)) ||
+    (!MEANT_NAME_CORRECTION_PATTERN.test(trimmed) && RETRACTION_MARKER_PATTERN.test(trimmed)) ||
     MID_SENTENCE_HEDGE_MARKER.test(trimmed)
   )
 }
@@ -364,40 +370,90 @@ export function isExplicitSwitchMessage(message) {
 // resolution correctly finds TWO exact matches -- and nextCommandFocus's
 // own "never guess a switch out of ambiguity" rule (exactly right for
 // genuine ambiguity, e.g. "let's talk about Alpha and Beta") then
-// silently refuses to switch at all, defeating the correction. "I meant
-// X" unambiguously names the intended target: the LAST exact match whose
-// own matched phrase appears at or after "I meant" in the message.
-// Returns the single corrected id -- ONLY when the correction phrase is
-// present and exactly one candidate can be identified this way, so it
-// can never invent a target out of genuine ambiguity -- or null when
-// inconclusive (neither matched phrase appears after "I meant"), letting
-// the caller fall back to its own original, conservative resolution.
+// silently refuses to switch at all, defeating the correction.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
+// review finding): round 1's "last matched phrase anywhere at or after
+// I meant" search was unbounded and plain-substring -- "switch to Alpha
+// -- no wait, I meant Beta, and compare it with Gamma" wrongly picked
+// Gamma (the LATER, unrelated mention) over the actually-intended Beta;
+// "switch to Art -- ... I meant Beta, so let us start now" could even
+// match "Art" INSIDE "start" (no word boundary). Redesigned: anchor on
+// the LAST valid "I meant <NAME>" occurrence (never "I meant to/that/
+// for...", see MEANT_NAME_CORRECTION_PATTERN -- so an unrelated later
+// "I meant to ask..." can never anchor a correction at all), then search
+// ONLY the bounded window from right after that anchor to the next
+// clause boundary (comma/period/semicolon/colon/!/?/dash) or the message
+// end -- never the whole rest of the message -- using word-boundary-
+// aware matching. Returns the single corrected id ONLY when the
+// correction phrase is present and EXACTLY ONE candidate's own matched
+// phrase appears within that bounded window (multiple candidates in the
+// window, e.g. "I meant Beta or Gamma", is genuine ambiguity -- null, not
+// a guess); null when inconclusive lets the caller fall back to its own
+// original, conservative resolution.
 export function correctedSwitchTarget(message, exactMatches) {
-  if (!MEANT_CORRECTION_PATTERN.test(message) || !Array.isArray(exactMatches)) {
+  if (!Array.isArray(exactMatches) || exactMatches.length === 0) {
     return null
   }
-  const meantIndex = message.match(MEANT_CORRECTION_PATTERN).index
-  const lower = message.toLowerCase()
+  const anchorPattern = new RegExp(MEANT_NAME_CORRECTION_PATTERN.source, 'gi')
+  let anchorEnd = -1
+  let found
+  while ((found = anchorPattern.exec(message))) {
+    anchorEnd = found.index + found[0].length
+  }
+  if (anchorEnd === -1) {
+    return null
+  }
+  const rest = message.slice(anchorEnd)
+  const clauseEndMatch = rest.match(/[.,;:!?]|--|[–—]/)
+  const window = clauseEndMatch ? rest.slice(0, clauseEndMatch.index) : rest
   let bestId = null
-  let bestIndex = -1
+  let matchCount = 0
   for (const match of exactMatches) {
-    const phrase = (match.matchedPhrase ?? '').toLowerCase()
-    const index = phrase ? lower.lastIndexOf(phrase) : -1
-    if (index >= meantIndex && index > bestIndex) {
+    const phrase = match.matchedPhrase
+    if (!phrase) {
+      continue
+    }
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(window)) {
+      matchCount += 1
       bestId = match.project.id
-      bestIndex = index
     }
   }
-  return bestId
+  return matchCount === 1 ? bestId : null
 }
 
 // Same correction as correctedSwitchTarget above, but returns the FULL
 // turn-target id list a caller should use directly -- the single
 // corrected id when found, otherwise exactMatches's own ids unchanged.
 // Saves every caller from re-deriving the same fallback ternary.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 2 (real Codex adversarial-
+// review finding): falling back to exactMatches unconditionally was
+// unsafe when a genuine name-correction was ATTEMPTED but didn't resolve
+// -- "switch to Alpha -- no wait, I meant TSF Orca" (a real project name
+// the resolver's own co-occurrence rule drops from the exact-match list,
+// so exactMatches here is only [alpha]) or "switch to Alpha-Two -- no
+// wait, I meant Alpha" (the resolver's own longest-match rule drops
+// "Alpha" once "Alpha-Two" is present). In both, correctedSwitchTarget
+// correctly returns null (the corrected name isn't among exactMatches),
+// but falling back to the RAW exactMatches would execute exactly the
+// target the owner just retracted. When the message contains BOTH a
+// retraction marker and a genuine (even if unresolved) name-correction
+// attempt, the pre-retraction exactMatches are never a safe fallback --
+// refuse instead of guessing.
 export function correctedTurnTargetIds(message, exactMatches) {
+  if (!Array.isArray(exactMatches)) {
+    return []
+  }
   const corrected = correctedSwitchTarget(message, exactMatches)
-  return corrected ? [corrected] : exactMatches.map((m) => m.project.id)
+  if (corrected) {
+    return [corrected]
+  }
+  if (MEANT_NAME_CORRECTION_PATTERN.test(message) && RETRACTION_MARKER_PATTERN.test(message)) {
+    return []
+  }
+  return exactMatches.map((m) => m.project.id)
 }
 
 export function isGoBackMessage(message) {
