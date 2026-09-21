@@ -69,8 +69,20 @@ const EXPLICIT_SWITCH_PATTERN =
 // original unanchored exposure -- a QUESTION or MUSING opener ("Would
 // Alice...", "One idea is to...") still isn't one of these specific
 // bounded lead-ins, so none of round 2's fixed false positives return.
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (real Codex
+// adversarial-review finding): the subject-capture span used `\S+`, which
+// matches ANY non-whitespace run -- including a word ending in punctuation
+// like "NWR;". That let the pattern cross a real clause boundary and
+// match across two unrelated clauses: "Please make sure to check NWR;
+// the project is stable." was read as "make [sure to check NWR;] the
+// project", a false positive. Restricting each subject word to
+// `[A-Za-z0-9'-]+` (real word characters, no embedded clause-ending
+// punctuation) makes the span stop at a semicolon/comma/period the same
+// way a real project name never would, closing this without narrowing
+// genuine multi-word project names at all.
 const CAUSATIVE_TRIGGER_PATTERN =
-  /^\s*(?:(?:please|okay|ok)[,\s]+)*(?:(?:could|can|would|will)\s+you\s+(?:please\s+)?)?(?:make\s+\S+(?:\s+\S+){0,3}\s+the\s+(?:project|focus)|set\s+\S+(?:\s+\S+){0,3}\s+as\s+the\s+(?:current\s+)?project)\b/i
+  /^\s*(?:(?:please|okay|ok)[,\s]+)*(?:(?:could|can|would|will)\s+you\s+(?:please\s+)?)?(?:make\s+[A-Za-z0-9'-]+(?:\s+[A-Za-z0-9'-]+){0,3}\s+the\s+(?:project|focus)|set\s+[A-Za-z0-9'-]+(?:\s+[A-Za-z0-9'-]+){0,3}\s+as\s+the\s+(?:current\s+)?project)\b/i
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
 
 // REAL DOGFOOD FINDING (round 1, P1 x2, Codex-confirmed): neither pattern
@@ -152,9 +164,18 @@ const NAMED_SUBJECT_QUESTION_PATTERN =
 // only a guard exception -- round 2 wired it as an exception ONLY, so
 // "Have NWR become the current project." (no separate "focus on"
 // substring to coincidentally match EXPLICIT_SWITCH_PATTERN) wrongly
-// stayed refused.
+// stayed refused. Same `[A-Za-z0-9'-]+` word-class restriction as
+// CAUSATIVE_TRIGGER_PATTERN's own round-4 fix (see there for why) applied
+// to the subject span here too, for the same clause-boundary reason.
+//
+// Disclosed, not fixed (same category as CAUSATIVE_TRIGGER_PATTERN's own
+// disclosed residual): "Have NWR be the focus of the quarterly report."
+// still reads as a directive -- the REST of the sentence names a
+// different sense of "focus" (the report's own focus, not Command's),
+// which is real semantic/referential ambiguity no bounded pattern can
+// resolve, not a bug in this specific pattern.
 const CAUSATIVE_IMPERATIVE_PATTERN =
-  /^\s*have\s+\S+(?:\s+\S+){0,3}\s+(?:become|be)\s+the\s+(?:current\s+)?(?:project|focus)\b/i
+  /^\s*have\s+[A-Za-z0-9'-]+(?:\s+[A-Za-z0-9'-]+){0,3}\s+(?:become|be)\s+the\s+(?:current\s+)?(?:project|focus)\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
 // will YOU" branch (added round 1 for the punctuation-free-question fix)
@@ -168,14 +189,24 @@ const CAUSATIVE_IMPERATIVE_PATTERN =
 // request, correctly refused today). Requiring the switch-trigger verb to
 // immediately follow "you" targets exactly the polite-REQUEST-TO-ACT
 // shape the finding was about, without reopening that regression.
-// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
-// adversarial-review finding): "make"/"set" added to this same verb list
-// -- "Could you make NWR the focus?" was wrongly refused, guarded by
-// SUBJECT_INVERSION_QUESTION_OPENER's "could you" branch with no
-// exception, exactly the same bug class round 3 (of the original
-// closure) already fixed for switch/focus/work/talk/discuss.
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (now reverted, see
+// below): "make"/"set" were added as two more BARE verbs to this list to
+// fix "Could you make NWR the focus?" being wrongly refused. A real Codex
+// review proved this too permissive: "make"/"set" (unlike switch/focus/
+// work/talk/discuss) are common general-purpose verbs, so the bare-verb
+// match excepted the SUBJECT_INVERSION_QUESTION_OPENER guard for ANY
+// "could/can/would/will you make/set ..." regardless of what follows --
+// "Could you set a reminder to focus on NWR tomorrow" and "Will you make
+// sure we go back after lunch" both wrongly moved focus/went back, since
+// the guard was excepted even though neither is actually about switching.
+// isGuardedAgainst below now excepts the SUBJECT_INVERSION_QUESTION_OPENER
+// guard via CAUSATIVE_TRIGGER_PATTERN itself instead, for the make/set
+// case specifically -- that pattern already requires the FULL "make X the
+// project/focus"/"set X as the (current) project" shape (including this
+// same polite lead-in), so it can never wrongly except an unrelated
+// "make sure .../set a reminder ..." the way a bare verb match can.
 const POLITE_SWITCH_REQUEST_PATTERN =
-  /\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:switch|focus|work|talk|discuss|make|set)\b/i
+  /\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:switch|focus|work|talk|discuss)\b/i
 
 // REAL DOGFOOD FINDING (post-mission, P0, same bug class already fixed in
 // server/command-run-action-bridge.mjs's classifyRunActionVerb, commit
@@ -204,6 +235,7 @@ function isGuardedAgainst(message) {
     DELIBERATIVE_STATEMENT_OPENER.test(trimmed) ||
     COPULA_QUESTION_OPENER.test(trimmed) ||
     (!POLITE_SWITCH_REQUEST_PATTERN.test(trimmed) &&
+      !CAUSATIVE_TRIGGER_PATTERN.test(trimmed) &&
       SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed)) ||
     ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || trimmed.includes('?')) &&
       NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed)) ||

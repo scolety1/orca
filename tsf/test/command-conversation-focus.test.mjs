@@ -521,3 +521,75 @@ test('isExplicitSwitchMessage: "wait no longer"/"wait no more" are never treated
   assert.equal(isExplicitSwitchMessage('Set NWR as the current project -- actually, no.'), false)
   assert.equal(isExplicitSwitchMessage('Make NWR the focus. Actually, no.'), false)
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (real Codex
+// adversarial-review finding): round 3's subject-capture span (`\S+`)
+// matched ANY non-whitespace run, including a word ending in punctuation
+// like "NWR;" -- letting the pattern cross a real clause boundary and
+// read "Please make sure to check NWR; the project is stable." as "make
+// [sure to check NWR;] the project", a false positive neither the
+// original unanchored trigger nor any prior round exercised. Restricting
+// each subject word to real word characters (no embedded clause-ending
+// punctuation) stops the span at the semicolon the same way a real
+// project name never would.
+test('isExplicitSwitchMessage: the subject span between "make"/"set"/"have" and "the project/focus" never crosses a real clause boundary', () => {
+  assert.equal(
+    isExplicitSwitchMessage('Please make sure to check NWR; the project is stable.'),
+    false
+  )
+  // The real trigger phrasings, including multi-word project names, are
+  // completely unaffected.
+  assert.equal(isExplicitSwitchMessage('Please make NWR the focus.'), true)
+  assert.equal(isExplicitSwitchMessage("Make NWR the project we're focused on."), true)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (real Codex
+// adversarial-review finding): round 3 added bare "make"/"set" to
+// POLITE_SWITCH_REQUEST_PATTERN's verb list to except "Could you make NWR
+// the focus?" from the SUBJECT_INVERSION_QUESTION_OPENER guard -- but
+// unlike switch/focus/work/talk/discuss, "make"/"set" are common general-
+// purpose verbs, so the bare-verb match excepted the guard for ANY
+// "could/can/would/will you make/set ...", not just the genuine causative
+// trigger shape: "Could you set a reminder to focus on NWR tomorrow" and
+// "Will you make sure we go back after lunch" both wrongly moved
+// focus/went back. Reverted; the guard is now excepted via
+// CAUSATIVE_TRIGGER_PATTERN itself (which already requires the FULL
+// "make X the project/focus"/"set X as the project" shape), so an
+// unrelated "make sure .../set a reminder ..." can never wrongly except
+// the guard.
+test('isExplicitSwitchMessage / isGoBackMessage: a polite "could/would/will you make/set ..." request only bypasses the question guard for the genuine causative-switch shape, never an unrelated use of "make"/"set"', () => {
+  assert.equal(isExplicitSwitchMessage('Could you set a reminder to focus on NWR tomorrow'), false)
+  assert.equal(isGoBackMessage('Will you make sure we go back after lunch'), false)
+})
+
+// Disclosed, not fixed: same category as the already-disclosed make/set
+// residual -- "Have NWR be the focus of the quarterly report." leads with
+// the causative-imperative trigger shape, but the REST of the sentence
+// names a different sense of "focus" (the report's own, not Command's).
+// Real referential ambiguity, not a bounded-pattern bug.
+test('isExplicitSwitchMessage: DISCLOSED residual -- "have" leading the message with an unrelated sense of "focus"/"project" later in the sentence still reads as a directive', () => {
+  assert.equal(isExplicitSwitchMessage('Have NWR be the focus of the quarterly report.'), true)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (real Codex
+// adversarial-review finding): round 3's negative-lookahead blocklist
+// approach for "wait, no"/"actually, no" could never be complete -- there
+// is an unbounded set of words that can follow "no" without it being a
+// retraction ("further", "one", "problem", ...), and the lookahead was
+// also only ever applied to "wait, no", never to "actually, no" (so
+// "Actually, no more waiting" still wrongly retracted). Replaced with a
+// structural rule instead of a word list: a genuine retraction is
+// followed by a pause (punctuation or the end of the message), while a
+// continuing clause is followed directly by more words after just a
+// space -- applied identically to both phrasings.
+test('isExplicitSwitchMessage / isGoBackMessage: "wait no further"/"wait, no one..."/"actually, no more..." are never treated as a retraction -- the real action after them still executes', () => {
+  assert.equal(isExplicitSwitchMessage('Wait no further; switch to NWR now.'), true)
+  assert.equal(isGoBackMessage('Wait no further; go back to NWR now.'), true)
+  assert.equal(isExplicitSwitchMessage('Wait, no one else is coming—switch to NWR now.'), true)
+  assert.equal(isExplicitSwitchMessage('Actually, no more waiting—switch to NWR now.'), true)
+  // The real retraction phrasings (followed by a pause or the end of the
+  // message) are still recognized.
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no.'), false)
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no'), false)
+  assert.equal(isExplicitSwitchMessage('Set NWR as the current project -- actually, no.'), false)
+})

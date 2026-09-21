@@ -122,16 +122,31 @@ export const REPORTED_SPEECH_MARKER =
 // phrasings) are common enough to naturally invite a quick spoken
 // correction right after them.
 //
-// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (real Codex
-// adversarial-review finding): the naive "wait, no" addition above
-// overmatched -- "Please wait no longer.", "We can wait no more." both
-// wrongly read as retractions (a plain \b after "no" is satisfied by the
-// following space, same as it would be before "longer"/"more"). A
-// negative lookahead excludes exactly the two continuations that turn
-// "wait no" from a retraction into an ordinary "don't keep waiting"
-// statement, without narrowing the retraction match itself.
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 3 (now superseded, see
+// round 4 below): the naive "wait, no" addition above overmatched --
+// "Please wait no longer.", "We can wait no more." both wrongly read as
+// retractions (a plain \b after "no" is satisfied by the following space,
+// same as it would be before "longer"/"more"). A negative lookahead
+// excluding "longer"/"more" fixed those two cases, but a real Codex
+// review found the same overmatch under different continuation words
+// ("wait no further", "wait, no one else is coming", "actually, no more
+// waiting" -- the last one because the lookahead was only ever added to
+// the "wait, no" alternative, never to "actually, no").
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 4 (real Codex
+// adversarial-review finding): a word-by-word blocklist can never be
+// complete -- there's an unbounded set of words that can follow "wait,
+// no"/"actually, no" without it being a retraction ("further", "one",
+// "problem", "doubt", ...). The real, structural difference is what
+// FOLLOWS "no": a genuine retraction is followed by a pause (sentence-
+// ending punctuation, a comma, a dash, or the end of the message);
+// a continuing clause ("no longer", "no one else...") is followed
+// directly by more words with just a space. Requiring "no" to be
+// followed by punctuation or the end of the message (not "space then a
+// word character") replaces the blocklist with this one structural rule,
+// applied identically to both "wait, no" and "actually, no".
 export const RETRACTION_MARKER_PATTERN =
-  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|wait\s*,?\s*no(?!\s*(?:longer|more))|actually,?\s*no|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
+  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|(?:wait\s*,?\s*no|actually,?\s*no)(?=[.,!?;:\-—]|\s*$)|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 2 (P0, real Codex adversarial-
 // review finding): DELIBERATIVE_STATEMENT_OPENER is message/clause-START
 // anchored, so a hedge phrased mid-sentence ("We may want to switch to
