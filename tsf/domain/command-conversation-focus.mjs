@@ -257,6 +257,25 @@ const CAUSATIVE_IMPERATIVE_PATTERN = new RegExp(
   `^\\s*${CAUSATIVE_LEAD_IN}have\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+(?:become|be)\\s+the\\s+(?:current\\s+)?(?:project|focus)${CAUSATIVE_TRAILING_CONTINUATION}`,
   'iu'
 )
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 (real Codex adversarial-
+// review finding): NAMED_SUBJECT_QUESTION_PATTERN's own guard-exception
+// below requires the FULL CAUSATIVE_IMPERATIVE_PATTERN (with its trailing-
+// continuation requirement) to match -- but appending a real "I meant X"
+// self-correction ("Have Alpha become the focus -- no wait, I meant
+// Beta") breaks that trailing-continuation requirement (there's more text
+// after "the focus" than the bounded completion allows), so the guard
+// wrongly re-applied and refused an otherwise-genuine causative-
+// imperative correction. This SHAPE-only variant (same subject/copula/
+// completion match, no trailing-continuation requirement) is passed by
+// verifiedCorrectionTarget ONLY, as isGuardedByNonRetraction's optional
+// causativeImperativePattern override -- see that function's own comment
+// for why relaxing this for EVERY caller (the first attempt at this fix)
+// reopened a different, already-disclosed P1-closure residual, and why
+// scoping the relaxation to the correction path alone is safe.
+const CAUSATIVE_IMPERATIVE_SHAPE_PATTERN = new RegExp(
+  `^\\s*${CAUSATIVE_LEAD_IN}have\\s+${CAUSATIVE_SUBJECT_WORD}(?:\\s+${CAUSATIVE_SUBJECT_WORD}){0,1}\\s+(?:become|be)\\s+the\\s+(?:current\\s+)?(?:project|focus)\\b`,
+  'iu'
+)
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
 // will YOU" branch (added round 1 for the punctuation-free-question fix)
@@ -359,7 +378,38 @@ const MEANT_CORRECTION_PATTERN = /\bI\s+meant\b/i
 // "Did I say switch to Alpha -- no wait, I meant Beta?"), negation, and
 // hedge guards too, any time "I meant X" happened to resolve. A genuine
 // correction can only ever except the ONE guard it's meant to except.
-function isGuardedByNonRetraction(message) {
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 (real Codex adversarial-
+// review finding, and a self-caught regression while fixing it): Finding 3
+// needed the causative-imperative guard-exception to fire WITHOUT
+// requiring CAUSATIVE_IMPERATIVE_PATTERN's own trailing-continuation to
+// reach message-end, since a real "-- no wait, I meant X" suffix always
+// breaks that requirement ("Have Alpha become the focus -- no wait, I
+// meant Beta" wrongly stayed refused). But swapping the FULL pattern for
+// CAUSATIVE_IMPERATIVE_SHAPE_PATTERN in this shared function reopened the
+// P1-closure round-6 disclosed residual it was built to protect: a fully
+// punctuation-free "have" question about a plural/generic subject
+// ("Have API Docs become the project we focus on yet") has no "?" and no
+// retraction marker either, so relaxing the exception here for EVERY
+// caller (not just correction) let NAMED_SUBJECT_QUESTION_PATTERN's guard
+// go inert, and EXPLICIT_SWITCH_PATTERN's own unrelated, unanchored
+// "focus on" match then wrongly fired. The two needs are only in tension
+// for a message that ALSO contains a genuine "I meant" correction anchor
+// -- which is exactly the one case correctedSwitchTarget itself already
+// requires before it can ever return non-null. Parameterizing which
+// causative-imperative pattern feeds the exception keeps
+// isGuardedByNonRetraction's own default (the FULL, trailing-continuation-
+// requiring pattern) exactly as conservative as before round 5 for every
+// existing caller (isGuardedAgainst, isExplicitSwitchMessage,
+// isGoBackMessage), while verifiedCorrectionTarget below opts into the
+// relaxed SHAPE-only variant only for its own correction-scoped check --
+// where an unrelated punctuation-free question can never slip through
+// anyway, because correctedSwitchTarget still refuses unless a real
+// "I meant" anchor is present.
+function isGuardedByNonRetraction(
+  message,
+  causativeImperativePattern = CAUSATIVE_IMPERATIVE_PATTERN
+) {
   const trimmed = message.trim()
   return (
     DELIBERATIVE_QUESTION_PATTERN.test(message) ||
@@ -369,7 +419,7 @@ function isGuardedByNonRetraction(message) {
     (!POLITE_SWITCH_REQUEST_PATTERN.test(trimmed) &&
       !CAUSATIVE_TRIGGER_PATTERN.test(trimmed) &&
       SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed)) ||
-    ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || trimmed.includes('?')) &&
+    ((!causativeImperativePattern.test(trimmed) || trimmed.includes('?')) &&
       NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed)) ||
     REPORTED_SPEECH_MARKER.test(trimmed) ||
     MID_SENTENCE_HEDGE_MARKER.test(trimmed)
@@ -443,6 +493,44 @@ export function isExplicitSwitchMessage(message) {
 //     uniqueness invariant enforces otherwise) -- resolving to whichever
 //     one happened to sort first was an arbitrary, silent guess between
 //     two real, different destinations. Now treated as ambiguity too.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 (real Codex adversarial-
+// review finding, three more real bugs): (1) the match boundary's hyphen
+// exclusion made ANY hyphen name-continuing, including "--" used as
+// ordinary sentence-pause punctuation elsewhere in this exact file ("I
+// meant Alpha--that's the one" wrongly refused to match "Alpha") -- a
+// SINGLE hyphen not followed by another hyphen still continues a name
+// (the genuine "Alpha-Two" case), but "--" (or more) no longer does,
+// matching how this file's own retraction/trailing-continuation patterns
+// already treat "--" as punctuation, not name text. (2) "and/or" (a
+// single, extremely common compound token) wasn't recognized as a
+// conjunction at all, so "I meant Beta and/or Gamma" wrongly resolved to
+// Beta alone; added as an explicit alternative. (3) "I meant Well" (where
+// "Well" is itself the intended, real corrected name) always had "Well"
+// stripped as a disfluency first, even with nothing left over to
+// disambiguate it from -- now tried WITHOUT any disfluency-stripping
+// first, and only falls back to the disfluency-stripped interpretation
+// if the literal, unstripped text doesn't already resolve to a real
+// candidate; this also fixes "I meant Well-known" the same way, and
+// requires no special-casing beyond preferring the literal reading. "er"
+// added to the recognized disfluency list (same bounded, common-
+// filler-word class as "uh"/"um"/"well").
+//
+// Disclosed, not fixed (real Codex review findings, but genuinely
+// unbounded to chase further): a disfluency word that ALSO happens to be
+// the exact name of a different real project ("I meant, like, Beta"
+// where a project is literally named "Like") is irreducibly ambiguous
+// without real semantic understanding -- resolves to the literal name
+// match, the same defensible "prefer the literal reading" choice used
+// for "Well" above. A possessive suffix on a real name ("I meant Alpha's
+// project") is indistinguishable from a genuinely apostrophe'd compound
+// name ("O'Brien") by this pattern -- both look identical to a bounded
+// regex; refusing to guess (a false negative) is the safe direction this
+// codebase is deliberately biased toward everywhere else. Ellipsis- or
+// dash-joined conjunctions with no surrounding whitespace ("or...
+// Gamma", "or—maybe—Gamma") remain unrecognized -- unusual typographic
+// styles unlikely from real typed or voice input, unlike the single,
+// well-justified "and/or" token added above.
 export function correctedSwitchTarget(message, exactMatches) {
   if (!Array.isArray(exactMatches) || exactMatches.length === 0) {
     return null
@@ -456,9 +544,6 @@ export function correctedSwitchTarget(message, exactMatches) {
   if (anchorEnd === -1) {
     return null
   }
-  const rest = message
-    .slice(anchorEnd)
-    .replace(/^[,\s]*(?:(?:uh|um|well)(?![\p{L}\p{N}_]))?[,\s]*/iu, '')
   const named = exactMatches.filter((m) => m.matchedPhrase)
   if (named.length === 0) {
     return null
@@ -466,12 +551,14 @@ export function correctedSwitchTarget(message, exactMatches) {
   const alternation = named
     .map((m) => m.matchedPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('|')
-  const boundary = "(?:(?![\\p{L}\\p{N}\\p{M}_'’-])|$)"
+  const boundary = "(?:(?![\\p{L}\\p{N}\\p{M}_'’]|-(?!-))|$)"
   const soloPattern = new RegExp(
-    `^(${alternation})${boundary}(?:\\s*,?\\s*(?:or|and)\\s+(?:\\S+\\s+){0,2}(${alternation})${boundary})?`,
+    `^(${alternation})${boundary}(?:\\s*,?\\s*(?:and\\/or|or|and)\\s+(?:\\S+\\s+){0,2}(${alternation})${boundary})?`,
     'iu'
   )
-  const solo = rest.match(soloPattern)
+  const rawRest = message.slice(anchorEnd).replace(/^[,\s]*/, '')
+  const strippedRest = rawRest.replace(/^(?:(?:uh|um|er|well)(?![\p{L}\p{N}_]))?[,\s]*/iu, '')
+  const solo = rawRest.match(soloPattern) ?? strippedRest.match(soloPattern)
   if (!solo || solo[2]) {
     return null
   }
@@ -495,7 +582,7 @@ export function correctedSwitchTarget(message, exactMatches) {
 // override, so this is the ONE place either consumer's correction can
 // ever come from.
 export function verifiedCorrectionTarget(message, exactMatches) {
-  if (isGuardedByNonRetraction(message)) {
+  if (isGuardedByNonRetraction(message, CAUSATIVE_IMPERATIVE_SHAPE_PATTERN)) {
     return null
   }
   return correctedSwitchTarget(message, exactMatches)

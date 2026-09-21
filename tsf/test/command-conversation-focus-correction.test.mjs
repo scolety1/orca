@@ -9,7 +9,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   correctedSwitchTarget,
-  verifiedCorrectionTarget
+  verifiedCorrectionTarget,
+  isExplicitSwitchMessage
 } from '../domain/command-conversation-focus.mjs'
 
 // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 4 (real Codex adversarial-
@@ -134,4 +135,65 @@ test('correctedSwitchTarget: two different real projects sharing the same matche
     correctedSwitchTarget('switch to Alpha -- no wait, I meant Atlas', [alpha, atlasA, atlasB]),
     null
   )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 (real Codex adversarial-
+// review findings). Covers: "and/or" recognized as a conjunction; "--"
+// treated as punctuation (not a name-continuing hyphen) so it correctly
+// terminates a match; the literal-first two-pass match so "I meant Well"/
+// "I meant Well-known" resolve directly instead of always stripping
+// "well" as a disfluency first; and the guard-scoping fix (this session's
+// own regression, caught by the pre-existing disclosed-residual test at
+// command-conversation-focus.test.mjs) confirming the relaxed causative-
+// imperative guard exception used by verifiedCorrectionTarget stays
+// scoped to the correction path only, never leaking into
+// isExplicitSwitchMessage's own general guard.
+test('correctedSwitchTarget: round 5 findings -- and/or conjunction, double-hyphen punctuation, literal "Well" preferred over disfluency-stripping', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  const gamma = { project: { id: 'gamma' }, matchedPhrase: 'Gamma', matchedOn: 'displayName' }
+  const well = { project: { id: 'well' }, matchedPhrase: 'Well', matchedOn: 'displayName' }
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Beta and/or Gamma', [
+      alpha,
+      beta,
+      gamma
+    ]),
+    null
+  )
+  assert.equal(
+    correctedSwitchTarget("switch to Beta -- no wait, I meant Alpha--that's the one", [
+      beta,
+      alpha
+    ]),
+    'alpha'
+  )
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Well', [alpha, well]),
+    'well'
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 (real Codex adversarial-
+// review finding, Finding 3): the causative-imperative guard exception
+// (NAMED_SUBJECT_QUESTION_PATTERN's own carve-out) requires
+// CAUSATIVE_IMPERATIVE_PATTERN's trailing-continuation to reach message-
+// end -- which a real "-- no wait, I meant X" suffix always breaks, so
+// "Have Alpha become the focus -- no wait, I meant Beta" wrongly stayed
+// refused. verifiedCorrectionTarget now passes a SHAPE-only variant of
+// that pattern (no trailing-continuation requirement) for its own guard
+// check -- scoped there only, so the disclosed P1-closure residual this
+// would otherwise reopen (a fully punctuation-free "have" question about
+// a plural/generic subject) stays refused via isExplicitSwitchMessage's
+// own unrelated, still-conservative default.
+test('verifiedCorrectionTarget: a causative-imperative correction resolves even though the "-- no wait, I meant X" suffix breaks the trailing-continuation requirement', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget('Have Alpha become the focus -- no wait, I meant Beta', [alpha, beta]),
+    'beta'
+  )
+  // The relaxation must stay scoped to the correction path -- it must
+  // never leak into isExplicitSwitchMessage's own general guard.
+  assert.equal(isExplicitSwitchMessage('Have API Docs become the project we focus on yet'), false)
 })
