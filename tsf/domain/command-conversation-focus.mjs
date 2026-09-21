@@ -314,26 +314,62 @@ const CAUSATIVE_IMPERATIVE_SHAPE_PATTERN = new RegExp(
 // sentence break before the unrelated "I meant") correctly refuses.
 //
 // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 7 (real Codex adversarial-
-// review findings against the round-6 version of this function): (1)
-// this function's own MEANT_CORRECTION_PATTERN.exec() finds only the
-// FIRST "I meant" after the retraction, but correctedSwitchTarget
-// (correctly, by its own established design) always resolves against
-// the LAST "I meant" anywhere in its own search window -- "-- no wait, I
-// meant Gamma. In the report, I meant Beta." validated the FIRST
-// occurrence (Gamma, safely before any sentence boundary) as safe, while
-// correctedSwitchTarget actually resolved the LATER, unrelated "I meant
-// Beta" the boundary check never looked at. Now finds the LAST
-// occurrence within afterRetraction too, mirroring
-// correctedSwitchTarget's own anchor search exactly, so both functions
-// always agree on WHICH "I meant" is being validated. (2) the sentence-
-// boundary regex treated ANY ". "/"! "/"? " as a real sentence end, so a
-// short abbreviation period ("the v. 2 notes, I meant Beta.") was wrongly
-// treated as a sentence boundary and refused a genuine correction (a
-// false negative). Now also requires what follows the punctuation to be
-// an uppercase letter (or the string end) -- a common, bounded heuristic
-// for a real sentence break, not an unbounded abbreviation vocabulary
-// chase. A decimal number ("2.0") was already unaffected either way (no
-// whitespace after the period at all).
+// review findings against the round-6 version of this function, now
+// superseded by round 8 below): (1) this function's own
+// MEANT_CORRECTION_PATTERN.exec() found only the FIRST "I meant" after
+// the retraction, but correctedSwitchTarget always resolves against the
+// LAST -- fixed by finding the last occurrence here too. (2) treating
+// ANY ". "/"! "/"? " as a sentence boundary wrongly refused a genuine
+// correction after an abbreviation period -- fixed with an uppercase-
+// letter heuristic.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 8 (real Codex adversarial-
+// review findings): round 7's whole "sentence boundary" MODEL was
+// itself wrong, not just its heuristic -- "Have Alpha become the focus
+// -- no wait, keep it unchanged. Actually, no -- I meant Beta." is a
+// genuine, real correction (the owner retracts a FULL retraction with a
+// SECOND retraction, then corrects), and it crosses a real sentence
+// boundary between "unchanged." and "Actually" -- proving a genuine
+// correction can legitimately be arbitrarily far from the shape's own
+// adjacent retraction, chained through further retractions. Distance
+// from the shape was never the right signal. What actually distinguishes
+// this GENUINE case from the unrelated "...leave it unchanged. In the
+// report, I meant Beta." case (round 6 finding 4) is much simpler: is
+// the LAST "I meant" (the one correctedSwitchTarget will actually use)
+// itself IMMEDIATELY preceded by SOME retraction marker (only
+// whitespace/punctuation in between) -- ANY retraction marker anywhere
+// in the message, not necessarily the SAME one already matched right
+// after the shape? "Actually, no --" sits directly before "I meant
+// Beta" (a real retraction marker, immediately adjacent) -- safe. "In
+// the report, " sits directly before "I meant Beta" in the OTHER case --
+// not a retraction marker at all -- unsafe. An EMPTY gap (nothing but
+// punctuation/whitespace between the FIRST retraction and "I meant", the
+// canonical shape) is its own always-safe case, same as before.
+//
+// This alone, though, reopened round 7's own abbreviation-period fix:
+// "-- no wait, after checking the v. 2 notes, I meant Beta." has ORDINARY
+// PROSE (no retraction marker at all) directly before "I meant" -- but
+// unlike the round-6-finding-4 case, that prose never crosses a REAL
+// sentence boundary (the only period is "v. 2", an abbreviation, not a
+// sentence end) -- it's one single, uninterrupted correction clause. The
+// "must end with a retraction marker" requirement is therefore only
+// applied when a REAL sentence boundary occurs somewhere before "I
+// meant" -- no real boundary at all means it's still one clause, and
+// stays safe regardless of what the trailing text is (the same trust the
+// canonical, no-boundary-at-all shape has always had).
+//
+// Round 7's own "uppercase letter after the punctuation" heuristic for
+// telling a real sentence boundary from an abbreviation period was
+// ITSELF too narrow -- a real sentence can continue in lowercase too
+// (informal writing, a spoken transcript, a quote mark, a bullet/
+// newline), and round 8's own adversarial review reproduced this exact
+// gap ("-- no wait. in the report, I meant Beta." wrongly resolved,
+// since lowercase "in" isn't `\p{Lu}`). What actually marks "v. 2" as an
+// abbreviation rather than a sentence end is that the period is followed
+// by a DIGIT, not by whether the following letter happens to be
+// capitalized -- version/section-style abbreviations ("v. 2", "no. 5",
+// "ch. 3") are a narrow, well-defined, common convention; capitalization
+// is not a reliable signal for "did a new sentence start" at all.
 function hasSafeCausativeImperativeCorrectionShape(trimmed) {
   const match = CAUSATIVE_IMPERATIVE_SHAPE_PATTERN.exec(trimmed)
   if (!match) {
@@ -358,8 +394,28 @@ function hasSafeCausativeImperativeCorrectionShape(trimmed) {
   if (meantIndex === -1) {
     return false
   }
-  const sentenceBoundary = /[.!?](?:\s+\p{Lu}|\s*$)/u.exec(afterRetraction)
-  return sentenceBoundary === null || meantIndex < sentenceBoundary.index
+  const beforeMeant = afterRetraction.slice(0, meantIndex)
+  if (!/[.!?](?:\s+(?!\d)|\s*$)/u.test(beforeMeant)) {
+    return true
+  }
+  const beforeMeantStripped = beforeMeant.replace(/[\s.,!;:?…—–-]+$/u, '')
+  return beforeMeantStripped === '' || endsWithRetractionMarker(beforeMeantStripped)
+}
+// Whether `text` ends with a real RETRACTION_MARKER_PATTERN match (i.e.
+// the match reaches all the way to the string's end) -- used above to
+// confirm a retraction marker sits directly before the resolved "I
+// meant", not merely somewhere earlier in an unrelated clause.
+function endsWithRetractionMarker(text) {
+  const pattern = new RegExp(RETRACTION_MARKER_PATTERN.source, 'gi')
+  let lastEnd = -1
+  let found
+  while ((found = pattern.exec(text))) {
+    lastEnd = found.index + found[0].length
+    if (pattern.lastIndex === found.index) {
+      pattern.lastIndex += 1
+    }
+  }
+  return lastEnd === text.length
 }
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
@@ -711,7 +767,8 @@ export function correctedSwitchTarget(message, exactMatches) {
     `^(${alternation})${boundary}(?:\\s*,?\\s*(?:and\\s*\\/\\s*or|or|and)\\s+(?:\\S+\\s+){0,2}(${alternation})${boundary})?`,
     'iu'
   )
-  const rawRest = message.slice(anchorEnd).replace(/^[,\s]*/, '')
+  const leadingStrip = message.slice(anchorEnd).match(/^[,\s]*/)[0]
+  const rawRest = message.slice(anchorEnd + leadingStrip.length)
   // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 5 (real Codex adversarial-
   // review finding, second follow-up pass, superseded by round 6 below):
   // only a SINGLE leading disfluency was ever stripped -- "I meant well,
@@ -732,6 +789,7 @@ export function correctedSwitchTarget(message, exactMatches) {
   // filler too.
   let solo = null
   let restVariant = rawRest
+  let restVariantOffset = anchorEnd + leadingStrip.length
   const leadingDisfluency = /^(?:uh|um|er|well)(?![\p{L}\p{N}_])[,\s]*/iu
   for (;;) {
     solo = restVariant.match(soloPattern)
@@ -743,8 +801,27 @@ export function correctedSwitchTarget(message, exactMatches) {
       break
     }
     restVariant = restVariant.slice(stripped[0].length)
+    restVariantOffset += stripped[0].length
   }
   if (!solo || solo[2]) {
+    return null
+  }
+  // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 8 (real Codex adversarial-
+  // review finding, P0): a correction that resolved cleanly could still
+  // be retracted LATER in the same message with nothing to redeem it --
+  // "switch to Alpha -- no wait, I meant Beta. Never mind." wrongly
+  // resolved to Beta, ignoring the trailing "Never mind." that abandons
+  // the whole thing. Reproduced with all 12 RETRACTION_MARKER_PATTERN
+  // vocabulary words placed directly after the resolved name. This is
+  // the ONE place that check can live for every caller of
+  // correctedSwitchTarget, including the plain "switch to X" shape that
+  // never goes through hasSafeCausativeImperativeCorrectionShape at all
+  // -- a trailing retraction ANYWHERE after the resolved name refuses,
+  // the same message-wide-not-clause-scoped bias this file's other
+  // guards already use (a contrived, unrelated "never mind" about
+  // something else much later in the same message would also refuse
+  // here; a false negative, the safe direction this codebase prefers).
+  if (RETRACTION_MARKER_PATTERN.test(message.slice(restVariantOffset + solo[0].length))) {
     return null
   }
   const matchedLower = solo[1].toLowerCase()

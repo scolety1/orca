@@ -471,13 +471,15 @@ test('verifiedCorrectionTarget: the sentence-boundary safety check validates the
 })
 
 // TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 7 (real Codex adversarial-
-// review finding, P1): the sentence-boundary regex treated ANY ". "/
-// "! "/"? " as a real sentence end, so a short abbreviation period ("the
-// v. 2 notes, I meant Beta.") was wrongly treated as a sentence boundary
-// and refused a genuine correction -- a false negative. Now also
-// requires what follows the punctuation to be an uppercase letter (or
-// the string end), a bounded heuristic rather than an unbounded
-// abbreviation-vocabulary chase.
+// review finding, P1, refined by round 8): the sentence-boundary regex
+// treated ANY ". "/"! "/"? " as a real sentence end, so a short
+// abbreviation period ("the v. 2 notes, I meant Beta.") was wrongly
+// treated as a sentence boundary and refused a genuine correction -- a
+// false negative. A real sentence boundary is now distinguished from an
+// abbreviation period by whether a DIGIT immediately follows the
+// punctuation+whitespace ("v. 2" is not a boundary; "unchanged. In" is)
+// -- round 8's own review found the original "uppercase letter" version
+// of this heuristic too narrow (see the test below).
 test('verifiedCorrectionTarget: an abbreviation-style period is never mistaken for a real sentence boundary', () => {
   const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
   const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
@@ -495,5 +497,119 @@ test('verifiedCorrectionTarget: an abbreviation-style period is never mistaken f
       [alpha, beta]
     ),
     null
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 8 (real Codex adversarial-
+// review finding, P0): a correction that resolved cleanly could still be
+// abandoned by a LATER retraction with nothing to redeem it --
+// "switch to Alpha -- no wait, I meant Beta. Never mind." wrongly
+// resolved to Beta, ignoring the trailing "Never mind." correctedSwitchTarget
+// now refuses whenever ANY retraction marker follows the resolved name
+// anywhere later in the message -- reproduced with all 12
+// RETRACTION_MARKER_PATTERN vocabulary words placed directly after the
+// target. This lives in correctedSwitchTarget itself (not the causative-
+// shape-specific guard function) since the plain "switch to X" shape
+// never goes through that function at all.
+test('correctedSwitchTarget: a trailing retraction anywhere after the resolved target invalidates the correction', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  const gamma = { project: { id: 'gamma' }, matchedPhrase: 'Gamma', matchedOn: 'displayName' }
+  for (const marker of [
+    'never mind',
+    'scratch that',
+    'forget it',
+    'disregard that',
+    'strike that',
+    'take that back',
+    'no wait',
+    'wait no',
+    'actually no',
+    'cancel that',
+    'leave it unchanged',
+    'keep it unchanged'
+  ]) {
+    assert.equal(
+      correctedSwitchTarget(`switch to Alpha -- no wait, I meant Beta. ${marker}.`, [alpha, beta]),
+      null,
+      `trailing "${marker}" should invalidate the correction`
+    )
+  }
+  // The genuine, no-trailing-retraction correction (including round 2's
+  // own "unrelated later mention" fix, which has no retraction marker at
+  // all) is unaffected.
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Beta', [alpha, beta]),
+    'beta'
+  )
+  assert.equal(
+    correctedSwitchTarget('switch to Alpha -- no wait, I meant Beta, and compare it with Gamma', [
+      alpha,
+      beta,
+      gamma
+    ]),
+    'beta'
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 8 (real Codex adversarial-
+// review finding, P0): round 7's "uppercase letter after the
+// punctuation" heuristic for a real sentence boundary was too narrow --
+// a genuine new, unrelated sentence can continue in lowercase too
+// (informal writing, a spoken transcript, a quote mark, a bullet), and
+// each of these wrongly resolved under round 7's own heuristic.
+test('verifiedCorrectionTarget: a real sentence boundary is recognized even when what follows is lowercase, quoted, or a bulleted line', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait. in the report, I meant Beta.',
+      [alpha, beta]
+    ),
+    null
+  )
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait. "In the report, I meant Beta."',
+      [alpha, beta]
+    ),
+    null
+  )
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait.\n- In the report, I meant Beta.',
+      [alpha, beta]
+    ),
+    null
+  )
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait! then in the report I meant Beta.',
+      [alpha, beta]
+    ),
+    null
+  )
+})
+
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 8 (real Codex adversarial-
+// review finding, P0): round 7's whole "sentence boundary" model assumed
+// a genuine correction always stays within one clause -- but a real
+// correction can legitimately chain through a SECOND retraction across a
+// real sentence boundary: the owner retracts a full retraction ("keep it
+// unchanged") with ANOTHER retraction ("Actually, no"), then corrects.
+// hasSafeCausativeImperativeCorrectionShape now trusts a real sentence
+// boundary before "I meant" only when a fresh retraction marker sits
+// directly before it (any retraction marker, not necessarily the one
+// right after the shape) -- otherwise (the round 6/7 unrelated-later-
+// prose case) it still correctly refuses.
+test('verifiedCorrectionTarget: a genuine correction chained through a second retraction across a real sentence boundary resolves', () => {
+  const alpha = { project: { id: 'alpha' }, matchedPhrase: 'Alpha', matchedOn: 'displayName' }
+  const beta = { project: { id: 'beta' }, matchedPhrase: 'Beta', matchedOn: 'displayName' }
+  assert.equal(
+    verifiedCorrectionTarget(
+      'Have Alpha become the focus -- no wait, keep it unchanged. Actually, no -- I meant Beta.',
+      [alpha, beta]
+    ),
+    'beta'
   )
 })
