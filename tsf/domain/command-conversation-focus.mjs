@@ -70,6 +70,21 @@ const NEGATION_GUARD_PATTERN =
 // on" both still moved real focus.
 const NAMED_SUBJECT_QUESTION_PATTERN =
   /^\s*(?:should|could|would|can|will|has|have|do|does|did)\s+\S+(?:\s+\S+){0,3}\s+(?:be|become|make\s+sense|say)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
+// review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
+// will YOU" branch (added round 1 for the punctuation-free-question fix)
+// has no polite-request carve-out, unlike isGenuineDirective's own
+// POLITE_REQUEST_MARKER -- "Could you switch to NWR, please" was wrongly
+// refused. Deliberately narrower than reusing POLITE_REQUEST_MARKER
+// wholesale: this file has no TELL_ME_WHETHER-equivalent information-
+// request guard, so excluding the question-opener check on any bare
+// "could/can/would/will you" would also have wrongly UN-guarded "Could
+// you tell me whether we should switch to NWR" (a genuine information
+// request, correctly refused today). Requiring the switch-trigger verb to
+// immediately follow "you" targets exactly the polite-REQUEST-TO-ACT
+// shape the finding was about, without reopening that regression.
+const POLITE_SWITCH_REQUEST_PATTERN =
+  /\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:switch|focus|work|talk|discuss)\b/i
 
 // REAL DOGFOOD FINDING (post-mission, P0, same bug class already fixed in
 // server/command-run-action-bridge.mjs's classifyRunActionVerb, commit
@@ -97,7 +112,8 @@ function isGuardedAgainst(message) {
     NEGATION_GUARD_PATTERN.test(message) ||
     DELIBERATIVE_STATEMENT_OPENER.test(trimmed) ||
     COPULA_QUESTION_OPENER.test(trimmed) ||
-    SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed) ||
+    (!POLITE_SWITCH_REQUEST_PATTERN.test(trimmed) &&
+      SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed)) ||
     NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed) ||
     REPORTED_SPEECH_MARKER.test(trimmed) ||
     RETRACTION_MARKER_PATTERN.test(trimmed) ||

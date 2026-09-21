@@ -307,3 +307,14 @@ test('isGoBackMessage matches "go back" and "go back to X", nothing else', () =>
   assert.equal(isGoBackMessage('go back'), true)
   assert.equal(isGoBackMessage('How is NWR doing?'), false)
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
+// review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
+// will YOU" branch had no polite-request carve-out -- "Could you switch
+// to NWR, please" was wrongly refused. A genuine information request
+// using the same "could you" opener must stay guarded.
+test('isExplicitSwitchMessage: a polite "could/can you switch" request moves focus; a "could you tell me whether" information request does not', () => {
+  assert.equal(isExplicitSwitchMessage('Could you switch to NWR, please'), true)
+  assert.equal(isExplicitSwitchMessage('Can you switch to NWR'), true)
+  assert.equal(isExplicitSwitchMessage('Could you tell me whether we should switch to NWR'), false)
+})
