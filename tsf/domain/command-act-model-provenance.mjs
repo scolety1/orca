@@ -72,7 +72,7 @@ function findReportedSpeechSpans(message) {
 const RETRACTED_HYPOTHETICAL_OPENER =
   /\bi\s+(?:was\s+going\s+to\s+say|was\s+thinking\s+(?:of|about)\s+saying|almost\s+said)\b/gi
 export const CORRECTION_MARKER_SOURCE =
-  '(?:actually|wait|scratch that|i mean|on second thought|but never mind|never mind)'
+  '(?:actually|wait|scratch that|i mean|on second thought|but never mind|never mind|forget it|disregard that|strike that|take that back|no wait|cancel that)'
 // DIRECTIVE SEMANTICS CLOSURE V1 (P0): "scratch that"/"never mind"/"but
 // never mind" are themselves the FULL retraction signal -- unlike
 // "actually"/"wait"/"i mean"/"on second thought" (which are openers that
@@ -81,7 +81,21 @@ export const CORRECTION_MARKER_SOURCE =
 // nothing meaningful ever following them. Bare, self-contained subset of
 // CORRECTION_MARKER_SOURCE, checked in command-act-model.mjs's own
 // applyCorrectionAmendments.
-export const BARE_RETRACTION_MARKER_SOURCE = '(?:scratch that|but never mind|never mind)'
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
+// review finding): this had drifted out of sync with server/chat-
+// responder.mjs's own RETRACTION_MARKER_PATTERN, which already recognizes
+// forget it/disregard that/strike that/take that back/no wait/cancel that
+// as the identical class of bare, self-contained retraction -- "Pause
+// NWR, cancel that" still executed a real PAUSE here. Brought up to the
+// same vocabulary; kept as an independently-defined (not imported) but
+// explicitly cross-referenced copy, matching this file's own established
+// domain/server-layering precedent (see NOT_CONTRACTION_SOURCE in
+// domain/command-act-model.mjs) -- this module needs a raw source-pattern
+// STRING to interpolate into its own boundary-detection regex, not a
+// compiled RegExp, so a direct import of the server-side constant isn't
+// the right shape here.
+export const BARE_RETRACTION_MARKER_SOURCE =
+  '(?:scratch that|but never mind|never mind|forget it|disregard that|strike that|take that back|no wait|cancel that)'
 function findRetractedHypotheticalSpans(message) {
   const spans = []
   let m

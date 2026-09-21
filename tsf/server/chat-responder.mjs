@@ -65,8 +65,13 @@ const BARE_OPENER = /^\s*(?:is|are|was|would|will|should|could|can|what|why|when
 // request marker (still requires one of these verbs present too, so a
 // genuine conditional directive like "deploy it if the tests pass" is
 // unaffected -- no verb from this list appears there).
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
+// review finding): "confirm"/"verify"/"find out" are the same genuine
+// information-request verb family -- "could you confirm if we should
+// pause NWR"/"can you verify whether..."/"will you find out if..." all
+// still fell through to POLITE_REQUEST_MARKER -> true.
 const TELL_ME_WHETHER =
-  /\b(?:tell me|let me know|explain|assess|evaluate|prepare|recommend|advise|check|say|suggest)\b[\s\S]*\b(?:whether|if)\b/i
+  /\b(?:tell me|let me know|explain|assess|evaluate|prepare|recommend|advise|check|say|suggest|confirm|verify|find out)\b[\s\S]*\b(?:whether|if)\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1 (P0, real Codex adversarial-review
 // finding): isGenuineDirective had ZERO reported-speech awareness --
 // unlike domain/command-act-model.mjs's own separate, span-based
@@ -83,8 +88,17 @@ const TELL_ME_WHETHER =
 // this server-layer, clause-string-based check -- see that file's own
 // disclosed exclusion of "mentioned"/"noted", deliberately not repeated
 // here either, for the identical reason).
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
+// review finding): "My manager asked me to pause NWR"/"Tim told me to
+// pause NWR" both still returned true -- neither "my manager"/"tim" (a
+// real subject relaying someone else's instruction) nor "asked ... to"/
+// "told ... to" (an equally unambiguous reporting-verb shape) were
+// covered. "the team" added as a subject too, narrowly paired with these
+// same two verbs (never with a bare declarative verb, to avoid ever
+// matching "the team should pause NWR" -- genuine advice, not reported
+// speech).
 export const REPORTED_SPEECH_MARKER =
-  /\b(?:i|you|claude|the\s+(?:plan|assistant|report))\s+(?:said|says|reported|reports|suggested|suggests|recommends?|recommended|advises?|advised|instructs?|instructed|calls?\s+for|called\s+for)\b/i
+  /\b(?:i|you|claude|my\s+manager|tim|the\s+(?:plan|assistant|report|team))\s+(?:said|says|reported|reports|suggested|suggests|recommends?|recommended|advises?|advised|instructs?|instructed|calls?\s+for|called\s+for|asked(?:\s+\w+)?\s+to|told(?:\s+\w+)?\s+to)\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1 (P0, real Codex adversarial-review
 // finding): a retraction/correction marker ANYWHERE in a whole message,
 // for the classifiers below that (unlike domain/command-act-model.mjs's

@@ -100,6 +100,17 @@ test('DIRECTIVE SEMANTICS CLOSURE V1: a directive retracted by "actually, never 
   assert.equal(intentsFor('proj-a', entries).has('PAUSE'), false)
 })
 
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (real Codex adversarial-review
+// finding): BARE_RETRACTION_MARKER_SOURCE (domain/command-act-model-
+// provenance.mjs) had drifted out of sync with server/chat-responder.mjs's
+// own RETRACTION_MARKER_PATTERN -- "cancel that" was recognized by
+// classifyRunActionVerb but not here.
+test('DIRECTIVE SEMANTICS CLOSURE V1, round 3: "cancel that" retracts a directive the same as "never mind"', () => {
+  const entries = decompose('Pause A, cancel that')
+  assert.equal(intentsFor('proj-a', entries).has('PAUSE'), false)
+  assert.equal(intentsFor('proj-a', entries).has('MULTI_ACTION_DECLINED'), true)
+})
+
 // DIRECTIVE SEMANTICS CLOSURE V1 (P0): REPORTED_SPEECH_OPENER only
 // recognized the literal verb "said" -- "The report says to pause A."
 // (present tense) and "Claude reported that we should pause A." both

@@ -101,6 +101,15 @@ test('isExplicitSwitchMessage: mid-sentence hedges, named-subject questions, bro
   assert.equal(isExplicitSwitchMessage("Let's work on NWR"), true)
 })
 
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (real Codex adversarial-review
+// finding): "can"/"will" were missing from NAMED_SUBJECT_QUESTION_PATTERN's
+// modal list.
+test('isExplicitSwitchMessage: "can"/"will" named-subject questions are never treated as a genuine directive', () => {
+  assert.equal(isExplicitSwitchMessage('Can NWR be the project we focus on'), false)
+  assert.equal(isExplicitSwitchMessage('Will NWR be the project we focus on'), false)
+  assert.equal(isExplicitSwitchMessage('Switch to NWR'), true)
+})
+
 // REAL DOGFOOD FINDING (round 1, P1, Codex-confirmed): an explicit
 // prohibition ("Do not talk about B") previously matched the same as a
 // real directive, silently moving focus onto the very project the owner

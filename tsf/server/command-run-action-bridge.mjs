@@ -261,8 +261,17 @@ const NEGATION_OPENER = /^(?:please\s+)?(?:don'?t|do not|never|shouldn'?t|won'?t
 // clause that opens with an unambiguous WH-word or auxiliary-inversion
 // question form is excluded; "pause NWR, why?" (the question in a LATER,
 // separate clause) still correctly pauses NWR in its own first clause.
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
+// review finding): the subject alternation only covered pronouns --
+// "Can the system pause it for NWR"/"Should the runner resume it for
+// NWR"/"Would the scheduler retry it for NWR" (a real agent/system NOUN
+// standing in for the pronoun subject) still classified as PAUSE/RESUME.
+// Added `(?:the\s+\w+)` as an alternative subject shape. Cannot
+// reintroduce the BUG-08 danger case ("...and will deploy after that"):
+// that fragment has a VERB ("deploy"), never "the <noun>", immediately
+// after the modal.
 const QUESTION_OPENER =
-  /^(?:why|what|how|when|where|who|which)\b|^(?:did|do|does|is|are|was|were|would|could|should|can|will)\s+(?:you|it|that|this|he|she|they|i|we)\b/i
+  /^(?:why|what|how|when|where|who|which)\b|^(?:did|do|does|is|are|was|were|would|could|should|can|will)\s+(?:you|it|that|this|he|she|they|i|we|the\s+\w+)\b/i
 // REAL DOGFOOD FINDING (post-mission, P0): QUESTION_OPENER only catches a
 // true interrogative sentence structure -- a musing/deliberative STATEMENT
 // about possibly acting ("I wonder if we should pause it", "Maybe we

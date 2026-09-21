@@ -48,3 +48,16 @@ test('classifyRunActionVerb: ordinary directives are completely unaffected by th
   assert.equal(classifyRunActionVerb('Resume NWR.'), 'RESUME')
   assert.equal(classifyRunActionVerb('please pause it'), 'PAUSE')
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (real Codex adversarial-review
+// finding): QUESTION_OPENER's subject alternation only covered pronouns
+// -- a real agent/system noun standing in for the pronoun subject
+// ("Can the system pause it for NWR") still classified as PAUSE/RESUME.
+test('classifyRunActionVerb: a named-subject ("the <noun>") question is never a directive', () => {
+  assert.equal(classifyRunActionVerb('Can the system pause it for NWR'), null)
+  assert.equal(classifyRunActionVerb('Should the runner resume it for NWR'), null)
+  assert.equal(classifyRunActionVerb('Would the scheduler retry it for NWR'), null)
+  // The BUG-08 danger case (a verb, not "the <noun>", immediately after
+  // the modal) must never be affected by this broadening.
+  assert.equal(classifyRunActionVerb('run the tests and will pause it after that'), 'PAUSE')
+})

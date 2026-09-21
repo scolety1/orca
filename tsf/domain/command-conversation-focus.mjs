@@ -64,8 +64,12 @@ const NEGATION_GUARD_PATTERN =
 // (be/become/make sense/say). Real directives ("Switch to NWR") never
 // start with one of these modals at all, so this can never reintroduce
 // a false negative on the genuine trigger phrasings.
+// DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
+// review finding): "can"/"will" were missing from the modal list --
+// "Can NWR be the project we focus on"/"Will NWR be the project we focus
+// on" both still moved real focus.
 const NAMED_SUBJECT_QUESTION_PATTERN =
-  /^\s*(?:should|could|would|has|have|do|does|did)\s+\S+(?:\s+\S+){0,3}\s+(?:be|become|make\s+sense|say)\b/i
+  /^\s*(?:should|could|would|can|will|has|have|do|does|did)\s+\S+(?:\s+\S+){0,3}\s+(?:be|become|make\s+sense|say)\b/i
 
 // REAL DOGFOOD FINDING (post-mission, P0, same bug class already fixed in
 // server/command-run-action-bridge.mjs's classifyRunActionVerb, commit
