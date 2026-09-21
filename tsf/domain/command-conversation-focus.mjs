@@ -31,17 +31,34 @@ export const RECENT_PROJECT_STACK_CAP = 8
 // message, so this can never manufacture a target out of nothing -- it
 // only widens which phrasings are TRUSTED to act on a target already
 // found by that separate, stricter, unaffected mechanism.
-// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure (real Codex adversarial-
-// review finding): "Make NWR the project we're focused on." and "Set TSF
-// as the current project." are real, unambiguous causative-imperative
-// switch directives (the mission's own required DIRECT examples) that
-// matched none of the existing trigger phrasings at all. Added as two
-// more bounded phrase shapes to this SAME existing trigger list -- never
-// a bare "make"/"set" keyword (which would false-positive on unrelated
-// text like "make sure to check NWR") -- each requires its own full
-// "make X the project/focus" / "set X as the (current) project" shape.
 const EXPLICIT_SWITCH_PATTERN =
-  /\b(?:switch(?:\s+(?:to|over to))?|let'?s work on|focus on|talk about|discuss|I meant|make\s+\S+(?:\s+\S+){0,3}\s+the\s+(?:project|focus)|set\s+\S+(?:\s+\S+){0,3}\s+as\s+the\s+(?:current\s+)?project)\b/i
+  /\b(?:switch(?:\s+(?:to|over to))?|let'?s work on|focus on|talk about|discuss|I meant)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 2 (real Codex
+// adversarial-review finding): the first attempt at this fix added "make
+// X the project/focus" / "set X as the (current) project" as two more
+// UNANCHORED alternatives inside EXPLICIT_SWITCH_PATTERN itself, unlike
+// every other trigger phrase above (all narrow, and -- more importantly
+// -- never a natural fit for a question/musing/reported-speech opener the
+// way a short "make X the Y" imperative shape is). A real Codex review
+// reproduced ~10 false positives from this: the trigger fired mid-
+// sentence inside a genuine question ("Would Alice make NWR the focus?"),
+// a musing ("One idea is to make NWR the focus."), reported/historical
+// speech ("Alice said to make NWR the focus.", "Yesterday, the tool set
+// NWR as the current project."), and a retraction using vocabulary
+// RETRACTION_MARKER_PATTERN didn't cover yet. None of the existing guard
+// patterns caught these, because they were tuned against the original,
+// narrower trigger set's actual exposure surface, not this one.
+// Anchoring both new phrase shapes to the very START of the message
+// closes the whole class at once: a genuine direct instruction naturally
+// LEADS with the verb ("Make NWR the project...", "Set TSF as the
+// current project."), while every reproduced false positive above
+// required the trigger to appear after a question/musing/reported-speech
+// opener earlier in the same message. Kept as a separate pattern (not
+// folded back into EXPLICIT_SWITCH_PATTERN) specifically so it stays
+// anchored -- mixing an anchored and an unanchored alternative inside one
+// alternation is easy to get wrong on a future edit.
+const CAUSATIVE_TRIGGER_PATTERN =
+  /^\s*(?:make\s+\S+(?:\s+\S+){0,3}\s+the\s+(?:project|focus)|set\s+\S+(?:\s+\S+){0,3}\s+as\s+the\s+(?:current\s+)?project)\b/i
 const GO_BACK_PATTERN = /\bgo\s+back\b/i
 
 // REAL DOGFOOD FINDING (round 1, P1 x2, Codex-confirmed): neither pattern
@@ -78,21 +95,38 @@ const NEGATION_GUARD_PATTERN =
 // "Can NWR be the project we focus on"/"Will NWR be the project we focus
 // on" both still moved real focus.
 //
-// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure (real Codex adversarial-
-// review finding): "have" removed from this list -- every subject this
-// pattern ever sees is a project name (always grammatically 3rd-person
-// singular, since this file has no project catalog to check number
-// against, only the structural shape). "HAS NWR become...?" is a
-// grammatical present-perfect QUESTION (singular subject correctly
-// agrees with "has"); "HAVE NWR become...", with the same singular
-// subject, is UNGRAMMATICAL as a question (subject-verb agreement
-// violation -- would need "has") and can only be read as a causative
-// IMPERATIVE ("Have [object] [do something]", like "Have him call me" --
-// imperative mood doesn't conjugate for the object's number). "has" stays
-// (a real question opener for this domain's always-singular subjects);
-// "have" is removed (never a real question here, only ever a directive).
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 1 (now reverted, see
+// below): "have" was removed from this list on the assumption that every
+// subject this pattern sees is a singular project name, making "have X
+// become...?" ungrammatical as a question. A real Codex adversarial
+// review proved that assumption wrong: the subject-capture slot
+// (`\S+(?:\s+\S+){0,3}`) is a generic 1-4-word span, not restricted to a
+// singular name -- a genuinely plural/generic subject ("the project
+// leads", "the steering committee") makes "have" a perfectly grammatical
+// question opener too ("Have the project leads become ready to switch to
+// NWR?" wrongly moved focus). "have" is restored below; the narrow,
+// POSITIVE exception right after this pattern targets only the one shape
+// that's actually unambiguous.
 const NAMED_SUBJECT_QUESTION_PATTERN =
-  /^\s*(?:should|could|would|can|will|has|do|does|did)\s+\S+(?:\s+\S+){0,3}\s+(?:be|become|make\s+sense|say)\b/i
+  /^\s*(?:should|could|would|can|will|has|have|do|does|did)\s+\S+(?:\s+\S+){0,3}\s+(?:be|become|make\s+sense|say)\b/i
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 2: the real
+// causative-imperative reading of "have" ("Have [object] [do
+// something]", like "Have him call me" -- imperative mood, doesn't
+// conjugate for the object's number) is distinguishable from a genuine
+// "have" QUESTION by what immediately follows become/be: a real question
+// about readiness/willingness continues with an adjective or infinitive
+// ("become ready to...", "become willing to..."), never with a bare
+// "the project"/"the focus" -- only the causative-imperative reading does
+// that ("Have NWR become THE PROJECT..."). Message-start anchored (the
+// causative-imperative reading is always the whole message's own
+// instruction, never an embedded clause) and excludes a trailing "?" (a
+// real, if oddly-phrased, question keeps the discipline this file already
+// applies elsewhere: a literal "?" is never itself proof of a genuine
+// question, but combined with the "the project/focus" completion it is
+// -- see "Have API Docs become the project we focus on next?", a real,
+// plausible question about a plural-sounding project name).
+const CAUSATIVE_IMPERATIVE_PATTERN =
+  /^\s*have\s+\S+(?:\s+\S+){0,3}\s+(?:become|be)\s+the\s+(?:current\s+)?(?:project|focus)\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
 // will YOU" branch (added round 1 for the punctuation-free-question fix)
@@ -137,7 +171,8 @@ function isGuardedAgainst(message) {
     COPULA_QUESTION_OPENER.test(trimmed) ||
     (!POLITE_SWITCH_REQUEST_PATTERN.test(trimmed) &&
       SUBJECT_INVERSION_QUESTION_OPENER.test(trimmed)) ||
-    NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed) ||
+    ((!CAUSATIVE_IMPERATIVE_PATTERN.test(trimmed) || /\?\s*$/.test(trimmed)) &&
+      NAMED_SUBJECT_QUESTION_PATTERN.test(trimmed)) ||
     REPORTED_SPEECH_MARKER.test(trimmed) ||
     RETRACTION_MARKER_PATTERN.test(trimmed) ||
     MID_SENTENCE_HEDGE_MARKER.test(trimmed)
@@ -148,7 +183,10 @@ function isGuardedAgainst(message) {
 // chat-responder.mjs's own intent array: a false positive here silently
 // moves focus, so this stays a small, separate, easily-audited surface.
 export function isExplicitSwitchMessage(message) {
-  return !isGuardedAgainst(message) && EXPLICIT_SWITCH_PATTERN.test(message)
+  return (
+    !isGuardedAgainst(message) &&
+    (EXPLICIT_SWITCH_PATTERN.test(message) || CAUSATIVE_TRIGGER_PATTERN.test(message.trim()))
+  )
 }
 
 export function isGoBackMessage(message) {

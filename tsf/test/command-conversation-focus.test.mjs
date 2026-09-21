@@ -359,3 +359,78 @@ test('isExplicitSwitchMessage: a causative-imperative direct request moves focus
   assert.equal(isExplicitSwitchMessage('Set up the NWR environment first.'), false)
   assert.equal(isExplicitSwitchMessage('Have you checked NWR yet?'), false)
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 2 (real Codex
+// adversarial-review finding): the round-1 attempt at the causative-
+// imperative fix above (a) removed "have" outright from
+// NAMED_SUBJECT_QUESTION_PATTERN, wrongly assuming every subject is a
+// singular project name (a genuinely plural/generic subject like "the
+// project leads" makes "have" a real question opener too), and (b) added
+// "make X the project/focus"/"set X as the (current) project" as
+// UNANCHORED trigger phrases, which then fired mid-sentence inside real
+// questions, musings, reported/historical speech, and retractions using
+// vocabulary not yet in RETRACTION_MARKER_PATTERN. Restoring "have" (with
+// a narrow, message-start, non-"?"-ending positive exception for the
+// unambiguous "have X become/be THE project/focus" shape) and anchoring
+// the two new trigger phrases to the message START closes all of these
+// without reopening the original P1.
+test('isExplicitSwitchMessage / isGoBackMessage: a "have" question with a plural or generic (non-project-name) subject is never treated as a genuine directive', () => {
+  assert.equal(
+    isExplicitSwitchMessage('Have the project leads become ready to switch to NWR?'),
+    false
+  )
+  assert.equal(isGoBackMessage('Have the project leads become ready to go back?'), false)
+  // P1: a plural-sounding project name in the one genuinely ambiguous
+  // shape -- the trailing "?" is the only signal available, and this
+  // file's own established discipline treats a literal "?" as real
+  // evidence once combined with a structural match.
+  assert.equal(isExplicitSwitchMessage('Have API Docs become the project we focus on next?'), false)
+  // Combined with the new "make"/"set" triggers embedded mid-sentence.
+  assert.equal(
+    isExplicitSwitchMessage('Have the project leads become willing to make NWR the focus?'),
+    false
+  )
+  assert.equal(
+    isExplicitSwitchMessage(
+      'Have the steering committee become ready to set NWR as the current project?'
+    ),
+    false
+  )
+})
+
+test('isExplicitSwitchMessage: "make X the focus"/"set X as the project" only fires when it LEADS the message -- a question, musing, reported/historical statement, or retraction using it mid-sentence is never treated as a genuine directive', () => {
+  for (const m of [
+    'Would Alice make NWR the focus?',
+    'Has Alice set NWR as the current project?',
+    'One idea is to make NWR the focus.',
+    'I can set NWR as the current project.',
+    'Alice said to make NWR the focus.',
+    'Yesterday, the tool set NWR as the current project.',
+    'Make NWR the focus -- wait, no.',
+    'Set NWR as the current project -- actually, leave it unchanged.'
+  ]) {
+    assert.equal(isExplicitSwitchMessage(m), false, m)
+  }
+  // The real, message-leading trigger phrasings must still work.
+  assert.equal(isExplicitSwitchMessage("Make NWR the project we're focused on."), true)
+  assert.equal(isExplicitSwitchMessage('Set TSF as the current project.'), true)
+})
+
+// Disclosed, not fixed (deliberate scope boundary): a message-start "make
+// X the project/focus"/"set X as the project" whose REST of the sentence
+// clarifies a DIFFERENT sense of "focus"/"project" entirely (a document's
+// own structure, a data-fixture field) still reads as a directive here.
+// Distinguishing this from the genuine-directive case would require real
+// semantic understanding of what "focus"/"project" refers to, not a
+// bounded pattern -- out of scope for this closure, same as the prior
+// round's disclosed whole-message-scope residual.
+test('isExplicitSwitchMessage: DISCLOSED residual -- a message-leading "make/set" trigger whose rest of sentence is about an unrelated sense of "focus"/"project" still reads as a directive', () => {
+  assert.equal(
+    isExplicitSwitchMessage('Make NWR the focus of the report, not the Command conversation.'),
+    true
+  )
+  assert.equal(
+    isExplicitSwitchMessage('Set NWR as the current project field in the test fixture.'),
+    true
+  )
+})

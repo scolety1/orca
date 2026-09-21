@@ -113,8 +113,15 @@ export const REPORTED_SPEECH_MARKER =
 // Exported for that file (and the Needs-You-answer/focus-switch/paid-
 // grant classifiers, which have the identical architecture) to reuse
 // rather than each maintaining an independent copy.
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 2 (real Codex
+// adversarial-review finding): "wait, no" (reversed word order from the
+// existing "no wait") and "leave it unchanged"/"leave it as is"/"keep it
+// as is" were real retraction phrasings this pattern didn't cover yet --
+// found via command-conversation-focus.mjs's new causative-imperative
+// triggers, which (unlike this file's older trigger phrasings) are common
+// enough to naturally invite a quick spoken correction right after them.
 export const RETRACTION_MARKER_PATTERN =
-  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|cancel\s+that)\b/i
+  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|wait\s*,?\s*no|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 2 (P0, real Codex adversarial-
 // review finding): DELIBERATIVE_STATEMENT_OPENER is message/clause-START
 // anchored, so a hedge phrased mid-sentence ("We may want to switch to
