@@ -132,8 +132,15 @@ const EXPLICIT_SWITCH_PATTERN =
 // NOT moving focus, the safer direction per this codebase's own stated
 // bias.
 const CAUSATIVE_SUBJECT_WORD = "(?:-(?=[\\p{L}\\p{N}_])|[\\p{L}\\p{N}_])[\\p{L}\\p{N}\\p{M}_'’-]*"
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 7 (real Codex
+// adversarial-review finding): `we'?re` only permitted the ASCII
+// apostrophe, not the curly one (U+2019) this file already accepts
+// everywhere else (CAUSATIVE_SUBJECT_WORD's own class) -- "Make NWR the
+// project we're focused on." (typed with a curly apostrophe, as most
+// real keyboards/autocorrect produce) wrongly failed to match a
+// realistic variant of the required DIRECT example.
 const CAUSATIVE_TRAILING_CONTINUATION =
-  "(?:\\s+we'?re\\s+focus(?:ed|ing)\\s+on(?:\\s+next)?" +
+  "(?:\\s+we['’]?re\\s+focus(?:ed|ing)\\s+on(?:\\s+next)?" +
   '|\\s+we\\s+are\\s+focus(?:ed|ing)\\s+on(?:\\s+next)?' +
   '|\\s+we\\s+focus\\s+on(?:\\s+next)?)?[.!]?\\s*$'
 const CAUSATIVE_TRIGGER_PATTERN = new RegExp(

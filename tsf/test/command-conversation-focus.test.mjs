@@ -756,3 +756,60 @@ test('isExplicitSwitchMessage / isGoBackMessage: an en-dash-separated or parenth
   assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no (keep TSF).'), false)
   assert.equal(isGoBackMessage('Go back -- actually, no – stay here.'), false)
 })
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 7 (real Codex
+// adversarial-review finding): round 6's `we'?re` in the trailing-
+// completion pattern only permitted the ASCII apostrophe, not the curly
+// one (U+2019) this file already accepts everywhere else -- "Make NWR
+// the project we're focused on." (typed with a curly apostrophe, as most
+// real keyboards/autocorrect produce) wrongly failed to match a
+// realistic variant of the required DIRECT example.
+test('isExplicitSwitchMessage: the "we\'re focused on"/"we\'re focusing on" trailing completion works with a curly apostrophe too', () => {
+  assert.equal(isExplicitSwitchMessage('Make NWR the project we’re focused on.'), true)
+  assert.equal(
+    isExplicitSwitchMessage('Have API Docs become the project we’re focusing on next.'),
+    true
+  )
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 7 (real Codex
+// adversarial-review finding): round 6's two retraction-punctuation
+// additions each overmatched a real, unrelated English construction --
+// (1) an unconditional opening paren ANYWHERE after "no" mistook an
+// ordinary parenthetical aside for a retraction ("Actually, no (new)
+// blockers remain; switch to NWR." wrongly retracted the LATER real
+// instruction); (2) an unconditional unspaced en dash reopened the exact
+// "no-one"-style hyphenated-compound-word collision the ASCII-hyphen
+// exclusion was designed to prevent, just spelled with an en dash
+// instead. The genuine "no (SHORT ASIDE)" retraction shape is only ever
+// safely distinguishable from an ordinary parenthetical aside by
+// requiring the WHOLE parenthetical to reach the actual end of the
+// message; a spaced en dash (nobody hyphenates a compound word with a
+// space before it) remains a real pause, only the unspaced form doesn't.
+test('isExplicitSwitchMessage / isGoBackMessage: an ordinary parenthetical aside after "no" is never mistaken for a retraction, and an unspaced en-dash-hyphenated word is never mistaken for one either', () => {
+  assert.equal(isExplicitSwitchMessage('Actually, no (new) blockers remain; switch to NWR.'), true)
+  assert.equal(isGoBackMessage('Actually, no (new) blockers remain; go back.'), true)
+  assert.equal(isExplicitSwitchMessage('Wait, no–one objected; switch to NWR.'), true)
+  // The genuine parenthetical-retraction shape (the whole parenthetical
+  // reaches the message end) still works.
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no (reconsider).'), false)
+})
+
+// Disclosed, not fixed (confirmed pre-existing, not caused by any P1-
+// closure round): EXPLICIT_SWITCH_PATTERN's own long-standing "focus on"
+// trigger substring is unanchored and has never had a trailing-content
+// restriction -- a message using ONLY the ORIGINAL, untouched "switch
+// to"/"talk about" triggers has this identical exposure ("Switch to NWR
+// because we focus on next week, not now." also wrongly reads as a
+// directive), so this is not something introduced by, or in scope for,
+// this file's causative-imperative work.
+test('isExplicitSwitchMessage: DISCLOSED residual (pre-existing, not caused by this closure) -- a trailing "not now"/"not X" qualifier after a "focus on" substring is never guarded, for the original trigger set or the new one alike', () => {
+  assert.equal(
+    isExplicitSwitchMessage('Make NWR the project we focus on next week, not now.'),
+    true
+  )
+  assert.equal(
+    isExplicitSwitchMessage('Switch to NWR because we focus on next week, not now.'),
+    true
+  )
+})
