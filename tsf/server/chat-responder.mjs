@@ -170,30 +170,45 @@ export const REPORTED_SPEECH_MARKER =
 // retract. Both added to the spaced and (where unambiguous, i.e. the en
 // dash) unspaced punctuation sets.
 //
-// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 7 (real Codex
-// adversarial-review finding): round 6's additions each overmatched a
-// real, unrelated English construction:
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 7 (now superseded, see
+// round 8 below): round 6's additions each overmatched a real, unrelated
+// English construction:
 // (1) an unconditional opening paren ANYWHERE after "no" mistook an
 //     ordinary parenthetical aside for a retraction -- "Actually, no
 //     (new) blockers remain; switch to NWR." wrongly retracted the LATER
-//     real "switch to NWR" instruction, even though "no (new) blockers"
-//     is a plain negative-quantifier sentence, not a retraction at all.
-//     The genuine "no (SHORT ASIDE)" retraction shape ("Wait, no
-//     (reconsider).") is only ever safely distinguishable from this by
-//     requiring the WHOLE parenthetical to reach the actual end of the
-//     message -- exactly the same "does it reach the end, or does more
-//     unrelated content follow" structural test this file's own
-//     CAUSATIVE_TRAILING_CONTINUATION already uses. A bare "(" is
-//     removed from the general spaced/unspaced sets and replaced with
-//     this one, narrowly-scoped, end-anchored alternative.
+//     real "switch to NWR" instruction. Tried requiring the WHOLE
+//     parenthetical to reach the actual end of the message instead of
+//     accepting "(" unconditionally.
 // (2) an unconditional unspaced en dash reopened the exact "no-one"-style
 //     hyphenated-compound-word collision the ASCII-hyphen exclusion was
-//     designed to prevent, just spelled with an en dash instead ("Wait,
-//     no–one objected..."). The unspaced en dash is removed; a SPACED en
-//     dash (nobody hyphenates a compound word with a space before it)
-//     remains accepted via the existing spaced-punctuation rule.
+//     designed to prevent, just spelled with an en dash instead. The
+//     unspaced en dash was removed; a SPACED en dash remained accepted.
+//
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 8 (real Codex
+// adversarial-review finding): round 7's end-anchored parenthetical rule
+// for (1) was itself unsafe in BOTH directions at once -- too loose
+// ("Switch to NWR -- wait, no (keep it here), thanks." and nested parens
+// "wait, no (reconsider (seriously))." both still wrongly retracted,
+// since trailing content or nesting defeats a simple end-anchor check)
+// AND too tight in the wrong way (it does NOT distinguish a genuine
+// retraction from an ordinary unrelated sentence that also happens to
+// have "(" right after a negative answer -- "Switch to NWR. The answer
+// is actually no (per policy)." wrongly retracted the EARLIER real
+// "Switch to NWR" instruction, since a parenthetical aside anywhere near
+// the message end is structurally indistinguishable from a genuine
+// parenthetical retraction). This is the exact same unconvergent-chase
+// pattern this file already gave up on for the "make sure" idiom
+// collision (see command-conversation-focus.mjs's own CAUSATIVE_SUBJECT_WORD
+// history) -- English uses "(...)" for far too many unrelated purposes
+// near a "no" to ever safely recognize "no (X)" as a retraction shape at
+// all. "(" is removed entirely (never a retraction-triggering
+// character, spaced or unspaced) -- "Wait, no (reconsider)." was never
+// one of the mission's own required examples, only a review-proposed
+// one; failing to recognize it is the safe, disclosed, false-NEGATIVE
+// direction this codebase's own guards are already biased toward
+// everywhere else.
 export const RETRACTION_MARKER_PATTERN =
-  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|(?:wait\s*,?\s*no|actually,?\s*no)(?=\s+[.,!?;:)\-–—]|\s*(?:[.,!?;:)]|--+|—|…|\.\.\.)|\s*\([^)]*\)[.!]?\s*$|\s*$)|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
+  /\b(?:never\s*mind|scratch\s+that|forget\s+it|disregard\s+that|strike\s+that|take\s+that\s+back|no\s+wait|(?:wait\s*,?\s*no|actually,?\s*no)(?=\s+[.,!?;:)\-–—]|\s*(?:[.,!?;:)]|--+|—|…|\.\.\.)|\s*$)|cancel\s+that|leave\s+it\s+(?:unchanged|as\s+is|alone)|keep\s+it\s+(?:unchanged|as\s+is))\b/i
 // DIRECTIVE SEMANTICS CLOSURE V1, round 2 (P0, real Codex adversarial-
 // review finding): DELIBERATIVE_STATEMENT_OPENER is message/clause-START
 // anchored, so a hedge phrased mid-sentence ("We may want to switch to

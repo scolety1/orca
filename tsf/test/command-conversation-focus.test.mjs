@@ -748,12 +748,12 @@ test('isExplicitSwitchMessage: a project name using combining-mark accents, a no
 // DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 6 (real Codex
 // adversarial-review finding): round 5's retraction punctuation set was
 // an incomplete allowlist -- an en dash ("–", U+2013, distinct from the
-// em dash "—" already covered) and an opening parenthesis were both
-// missing, so a spaced en-dash retraction or a parenthetical one still
-// wrongly failed to retract.
-test('isExplicitSwitchMessage / isGoBackMessage: an en-dash-separated or parenthetical retraction is still recognized', () => {
+// em dash "—" already covered) was missing, so a spaced en-dash
+// retraction still wrongly failed to retract. (The opening-parenthesis
+// case this round also added was later reverted -- see round 8's test
+// below.)
+test('isExplicitSwitchMessage / isGoBackMessage: an en-dash-separated retraction is still recognized', () => {
   assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no – keep TSF.'), false)
-  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no (keep TSF).'), false)
   assert.equal(isGoBackMessage('Go back -- actually, no – stay here.'), false)
 })
 
@@ -772,27 +772,54 @@ test('isExplicitSwitchMessage: the "we\'re focused on"/"we\'re focusing on" trai
   )
 })
 
-// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 7 (real Codex
-// adversarial-review finding): round 6's two retraction-punctuation
-// additions each overmatched a real, unrelated English construction --
-// (1) an unconditional opening paren ANYWHERE after "no" mistook an
-// ordinary parenthetical aside for a retraction ("Actually, no (new)
-// blockers remain; switch to NWR." wrongly retracted the LATER real
-// instruction); (2) an unconditional unspaced en dash reopened the exact
-// "no-one"-style hyphenated-compound-word collision the ASCII-hyphen
-// exclusion was designed to prevent, just spelled with an en dash
-// instead. The genuine "no (SHORT ASIDE)" retraction shape is only ever
-// safely distinguishable from an ordinary parenthetical aside by
-// requiring the WHOLE parenthetical to reach the actual end of the
-// message; a spaced en dash (nobody hyphenates a compound word with a
-// space before it) remains a real pause, only the unspaced form doesn't.
-test('isExplicitSwitchMessage / isGoBackMessage: an ordinary parenthetical aside after "no" is never mistaken for a retraction, and an unspaced en-dash-hyphenated word is never mistaken for one either', () => {
-  assert.equal(isExplicitSwitchMessage('Actually, no (new) blockers remain; switch to NWR.'), true)
-  assert.equal(isGoBackMessage('Actually, no (new) blockers remain; go back.'), true)
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 7 (now superseded, see
+// round 8 below): round 6's unconditional unspaced en dash reopened the
+// exact "no-one"-style hyphenated-compound-word collision the ASCII-
+// hyphen exclusion was designed to prevent, just spelled with an en dash
+// instead ("Wait, no–one objected..."). The unspaced en dash was
+// removed; a spaced en dash (nobody hyphenates a compound word with a
+// space before it) remains a real pause.
+//
+// Round 7 also tried an end-anchored fix for round 6's unconditional
+// opening-paren addition. Round 8 (below) found that fix itself unsafe
+// and removed "(" from this pattern entirely -- see that test.
+test('isExplicitSwitchMessage / isGoBackMessage: an unspaced en-dash-hyphenated word right after "no" is never mistaken for a retraction', () => {
   assert.equal(isExplicitSwitchMessage('Wait, no–one objected; switch to NWR.'), true)
-  // The genuine parenthetical-retraction shape (the whole parenthetical
-  // reaches the message end) still works.
-  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no (reconsider).'), false)
+})
+
+// DIRECTIVE SEMANTICS CLOSURE V1, P1 closure round 8 (real Codex
+// adversarial-review finding): round 7's end-anchored "no (ASIDE)"
+// parenthetical rule was unsafe in BOTH directions at once -- too loose
+// (trailing content after the parenthetical, or a nested parenthetical,
+// both still wrongly retracted: "wait, no (keep it here), thanks."
+// executed the retracted command anyway) AND too tight in the wrong way
+// (an ordinary, unrelated sentence with a negative answer and an aside
+// near the message end -- "Switch to NWR. The answer is actually no
+// (per policy)." -- wrongly retracted the EARLIER real instruction,
+// since a parenthetical aside anywhere near the end is structurally
+// indistinguishable from a genuine parenthetical retraction). This is
+// the same unconvergent-chase pattern already abandoned for the "make
+// sure" idiom collision in command-conversation-focus.mjs -- English
+// uses "(...)" for far too many unrelated purposes near "no" to ever
+// safely recognize it as a retraction shape. "(" is removed entirely; a
+// genuine "no (SHORT ASIDE)" retraction (never one of the mission's own
+// required examples) is now a disclosed, accepted false negative -- the
+// safe direction this codebase's guards are already biased toward.
+test('isExplicitSwitchMessage / isGoBackMessage: a parenthetical near "no" never triggers a retraction, in either direction -- an ordinary sentence with a parenthetical aside is never wrongly retracted, and trailing content or nesting after a parenthetical never lets a real retraction wrongly execute', () => {
+  // Previously wrongly retracted an UNRELATED earlier instruction.
+  assert.equal(
+    isExplicitSwitchMessage('Switch to NWR. The answer is actually no (per policy).'),
+    true
+  )
+  assert.equal(isGoBackMessage('Go back. The answer is actually no (per policy).'), true)
+  // Previously wrongly let a real retraction's OWN instruction execute
+  // anyway (trailing content, nesting).
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no (keep it here), thanks.'), true)
+  assert.equal(isGoBackMessage('Go back -- wait, no (stay here), thanks.'), true)
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no (reconsider (seriously)).'), true)
+  // Disclosed residual: a parenthetical retraction with nothing after it
+  // no longer retracts either (the accepted, safe false-negative trade).
+  assert.equal(isExplicitSwitchMessage('Switch to NWR -- wait, no (reconsider).'), true)
 })
 
 // Disclosed, not fixed (confirmed pre-existing, not caused by any P1-
