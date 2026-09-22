@@ -28,8 +28,8 @@ import { respondResearchCommand } from './command-research-bridge.mjs'
 // NEEDS_OWNER category (fleetNeedsYouStatus-sourced: a real open needsYou
 // QUESTION only) never included a run-less READY_FOR_ADOPTION candidate
 // (its own real category there is READY_FOR_ADOPTION) or a legacy-BLOCKED
-// mission state (BLOCKED_EXTERNAL) -- both real, decision-needed
-// conditions HQ's own needsYouCards already correctly treat as NEEDS_YOU
+// mission state -- both real, decision-needed conditions HQ's own
+// needsYouCards already correctly treat as NEEDS_YOU
 // (primaryState, via legacyCandidateReadinessWorkItem/legacyBlockedWorkItem,
 // owner-work-model.mjs). Real, live-observed divergence this closure pass
 // caught: Command's "What needs me?" answered "nothing" while HQ's own
@@ -54,9 +54,9 @@ import { respondResearchCommand } from './command-research-bridge.mjs'
 // comment: "legacy BLOCKED is independent of run existence"). Without this
 // exclusion the SAME project would appear twice in Command's own answer/
 // resultItems for two different reasons, inflating the count. Never
-// excludes based on READY_FOR_ADOPTION/BLOCKED_EXTERNAL category items
-// (those never carry a real needsYou question of their own to duplicate)
-// -- only the caller's own already-built NEEDS_OWNER project id set.
+// excludes based on the attention projection's category items (those never
+// carry a real needsYou question of their own to duplicate) -- only the
+// caller's own already-built NEEDS_OWNER project id set.
 function legacyNeedsYouGapItems(projects, opState, existingProjectIds) {
   const workItems = buildOwnerWorkItems(
     projects,
@@ -222,26 +222,13 @@ export async function respondUnroutedGlobalScope({
       researchMissions: opState.researchMissions,
       plannerMissionRecords: opState.plannerMissions,
       selfImprovementFindings: readAllFindings(),
-      // TSF UI FINDINGS #2-#16 CLOSURE, Gate 3B follow-up (live-observed
-      // during this closure pass' own browser dogfood): HQ's own
-      // buildOtherNeedsYouItems (ui/src/lib/home-needs-you-items.ts)
-      // already treats an active execution hold as its own Needs-You-
-      // adjacent item (source.kind === 'PROJECT_EXECUTION_HOLD') --
-      // reusing the SAME real holdItems output buildFleetAttentionItems
-      // already produces (never a second hold-reading path) so Command's
-      // own answer matches that already-established precedent instead of
-      // silently under-counting a held project HQ's own tile counts.
       projectExecutionHolds: opState.projectExecutionHolds,
       resourcePressureState: null
     })
     const needsOwnerItems = attentionItems.filter((i) => i.category === 'NEEDS_OWNER')
-    const heldItems = attentionItems.filter((i) => i.source.kind === 'PROJECT_EXECUTION_HOLD')
-    const existingProjectIds = new Set(
-      [...needsOwnerItems, ...heldItems].map((i) => i.project?.id).filter(Boolean)
-    )
+    const existingProjectIds = new Set(needsOwnerItems.map((i) => i.project?.id).filter(Boolean))
     const items = [
       ...needsOwnerItems,
-      ...heldItems,
       ...legacyNeedsYouGapItems(projects, opState, existingProjectIds)
     ]
     const text =

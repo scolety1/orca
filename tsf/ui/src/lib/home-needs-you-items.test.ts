@@ -252,11 +252,8 @@ test('buildOtherNeedsYouItems: a self-improvement finding never fabricates plann
   assert.equal(items[0].plannerNeedsYouId, null)
 })
 
-// TSF Reconcile & Upgrade Protocol V1, Lane 4 self-dogfood fix: a real,
-// confirmed gap -- the server already produces a PROJECT_EXECUTION_HOLD
-// attention item (fleet-attention-status.mjs's holdItems) but this
-// function silently excluded it, so a real hold was rendered NOWHERE in
-// the UI. Fixture mirrors that real server shape field-for-field.
+// The attention route keeps this informational fact available, while HQ's
+// canonical owner-work projection renders the held project under Waiting.
 function holdAttentionItem(overrides: Partial<AttentionItem> = {}): AttentionItem {
   return attentionItem({
     id: 'hold:proj-held',
@@ -270,32 +267,17 @@ function holdAttentionItem(overrides: Partial<AttentionItem> = {}): AttentionIte
   })
 }
 
-test('buildOtherNeedsYouItems: a real active project execution hold now appears (was silently excluded before this fix)', () => {
-  const items = buildOtherNeedsYouItems([holdAttentionItem()])
-  assert.equal(items.length, 1)
-  assert.equal(items[0].id, 'hold:proj-held')
-  assert.equal(items[0].kind, 'PROJECT_EXECUTION_HOLD')
-  assert.equal(items[0].projectId, 'proj-held')
-  assert.equal(items[0].reason, 'execution held -- EXTERNAL_WORK_ACTIVE')
+test('buildOtherNeedsYouItems: a BLOCKED_EXTERNAL execution hold is informational, not a Needs You item', () => {
+  assert.deepEqual(buildOtherNeedsYouItems([holdAttentionItem()]), [])
 })
 
-test('buildOtherNeedsYouItems: a hold item never fabricates a findingId/plannerMissionId/plannerNeedsYouId -- read-only, no disposition action exists for it', () => {
-  const items = buildOtherNeedsYouItems([holdAttentionItem()])
-  assert.equal(items[0].findingId, null)
-  assert.equal(items[0].plannerMissionId, null)
-  assert.equal(items[0].plannerNeedsYouId, null)
-})
-
-test('buildOtherNeedsYouItems: a hold and a self-improvement finding for the same project are both distinct, never merged', () => {
+test('buildOtherNeedsYouItems: an actionable finding remains when the same project also has an informational hold', () => {
   const hold = holdAttentionItem()
   const finding = attentionItem({
     id: 'finding:x',
     project: { id: 'proj-held', displayName: 'Held Project' }
   })
   const items = buildOtherNeedsYouItems([hold, finding])
-  assert.equal(items.length, 2)
-  assert.deepEqual(
-    items.map((i) => i.kind).sort(),
-    ['PROJECT_EXECUTION_HOLD', 'SELF_IMPROVEMENT_FINDING'].sort()
-  )
+  assert.equal(items.length, 1)
+  assert.equal(items[0].kind, 'SELF_IMPROVEMENT_FINDING')
 })

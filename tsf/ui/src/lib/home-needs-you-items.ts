@@ -67,7 +67,7 @@ export type OtherNeedsYouItem = {
   label: string
   reason: string
   projectId: string | null
-  kind: 'SELF_IMPROVEMENT_FINDING' | 'PLANNER_MISSION_NEEDS_YOU' | 'PROJECT_EXECUTION_HOLD'
+  kind: 'SELF_IMPROVEMENT_FINDING' | 'PLANNER_MISSION_NEEDS_YOU'
   // Manual Self-Improvement Finding Disposition V1: which real action(s)
   // the card should offer -- READY_FOR_ADOPTION means a real verified
   // candidate exists (Apply verified fix); NEEDS_OWNER/
@@ -88,17 +88,6 @@ export type OtherNeedsYouItem = {
   findingId: string | null
 }
 
-// TSF Reconcile & Upgrade Protocol V1, Lane 4 self-dogfood fix: a real,
-// confirmed gap -- the server (fleet-attention-status.mjs's holdItems)
-// has always correctly produced a source.kind === 'PROJECT_EXECUTION_HOLD'
-// attention item for a real active hold, and GET /api/attention already
-// serves it, but this function silently excluded it -- the ONLY page
-// calling api.attention() (this one, HQPage.tsx) rendered a hold
-// NOWHERE, not even a generic BLOCKED_EXTERNAL card. Included here as a
-// read-only item (no findingId/plannerMissionId -- there is no
-// disposition ACTION for a hold the way there is for a finding; releasing
-// one is already a real Command chat action, not a new button to build).
-//
 // Self-improvement findings surface under THREE real categories (see
 // domain/fleet-attention-status.mjs's selfImprovementItems) -- all three
 // are now real, actionable Needs-You cards (Manual Self-Improvement
@@ -110,7 +99,6 @@ export function buildOtherNeedsYouItems(attentionItems: AttentionItem[]): OtherN
     .filter(
       (i) =>
         i.source.kind === 'PLANNER_MISSION_NEEDS_YOU' ||
-        i.source.kind === 'PROJECT_EXECUTION_HOLD' ||
         (i.source.kind === 'SELF_IMPROVEMENT_FINDING' &&
           (i.category === 'NEEDS_OWNER' ||
             i.category === 'READY_FOR_ADOPTION' ||

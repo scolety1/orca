@@ -118,12 +118,7 @@ test('NEEDS_YOU_QUERY: a project that is BOTH run-based-needsYou AND legacy-BLOC
   assert.equal(matches.length, 1, `expected exactly one mention, got ${matches.length}`)
 })
 
-// Gate 3B follow-up: real, live-observed divergence caught during this
-// closure pass' own browser dogfood -- HQ's own buildOtherNeedsYouItems
-// (ui/src/lib/home-needs-you-items.ts) already treats an active execution
-// hold as its own Needs-You-adjacent item; Command's own "what needs me?"
-// answer previously under-counted it.
-test('NEEDS_YOU_QUERY: a project with an active execution hold is discoverable via "what needs me?", matching HQ\'s own hold-adjacent inclusion', async () => {
+test('NEEDS_YOU_QUERY: a BLOCKED_EXTERNAL execution hold is informational, not something the owner must answer', async () => {
   const heldProject = project('held-project', 'Held Project')
   const hold = createProjectExecutionHold(
     { projectId: 'held-project', reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'tim' },
@@ -135,6 +130,8 @@ test('NEEDS_YOU_QUERY: a project with an active execution hold is discoverable v
     opState: { ...opState, projectExecutionHolds: { 'held-project': hold } },
     clock
   })
-  assert.match(result.text, /Held Project/)
-  assert.deepEqual(result.resolvedProjectIds, ['held-project'])
+  assert.match(result.text, /Nothing needs you right now/)
+  assert.doesNotMatch(result.text, /Held Project/)
+  assert.deepEqual(result.resolvedProjectIds, [])
+  assert.deepEqual(result.resultItems, [])
 })

@@ -41,14 +41,18 @@ test.after(() => rmSync(ROOT, { recursive: true, force: true }))
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 const { loadState, saveState } = await import('../server/data-store.mjs')
-const { readProjectExecutionHold, withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
+const { readProjectExecutionHold, withProjectExecutionHold } =
+  await import('../server/project-execution-hold-store.mjs')
 const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 const { createOvernightRun } = await import('../domain/keep-going.mjs')
 const { readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 
 function seedActiveKeepGoingRun(projectId, clock) {
   const opState = loadState()
-  const run = createOvernightRun({ id: `run:${projectId}`, projectId, originalGoal: 'ship it', acceptanceCriteria: ['X'] }, clock)
+  const run = createOvernightRun(
+    { id: `run:${projectId}`, projectId, originalGoal: 'ship it', acceptanceCriteria: ['X'] },
+    clock
+  )
   saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
 }
 
@@ -75,8 +79,23 @@ function seedOnboardedProjectForHttp(projectId, displayName, repoPath) {
           migrationClassification: { classification: 'SAFE_TO_ONBOARD_NOW', reasons: [] },
           handoffReconciliation: { hasHandoff: false },
           orcaRegistration: { checked: false, registered: false },
-          discovery: { commandGuidance: { hasKnownTestCommand: false, testCommands: [], lintCommands: [], buildCommands: [] } },
-          direction: { purpose: null, recommendedNextMission: null, upgradeCandidates: [], unfinishedSummary: null, completedSummary: null, alignment: 'UNKNOWN', live: false },
+          discovery: {
+            commandGuidance: {
+              hasKnownTestCommand: false,
+              testCommands: [],
+              lintCommands: [],
+              buildCommands: []
+            }
+          },
+          direction: {
+            purpose: null,
+            recommendedNextMission: null,
+            upgradeCandidates: [],
+            unfinishedSummary: null,
+            completedSummary: null,
+            alignment: 'UNKNOWN',
+            live: false
+          },
           health: { status: 'HEALTHY', findings: [], observedAt: '2026-09-10T00:00:00.000Z' }
         }
       }
@@ -86,7 +105,12 @@ function seedOnboardedProjectForHttp(projectId, displayName, repoPath) {
 
 async function withServer(fn) {
   const handler = createRequestHandler()
-  const server = createServer((req, res) => handler(req, res, () => { res.writeHead(404); res.end() }))
+  const server = createServer((req, res) =>
+    handler(req, res, () => {
+      res.writeHead(404)
+      res.end()
+    })
+  )
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = server.address().port
   try {
@@ -97,14 +121,22 @@ async function withServer(fn) {
 }
 
 async function chat(base, body) {
-  const res = await fetch(`${base}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(`${base}/api/chat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })
   return { status: res.status, body: await res.json() }
 }
 
 test('Overnight V2: a real single-target hold request over real HTTP genuinely sets a durable hold, on per-project Planner Chat', async () => {
   await withServer(async (base) => {
     const projectId = 'http-hold-per-project'
-    seedOnboardedProjectForHttp(projectId, 'HTTP Hold Per Project', 'C:/nonexistent-http-hold-repo-1')
+    seedOnboardedProjectForHttp(
+      projectId,
+      'HTTP Hold Per Project',
+      'C:/nonexistent-http-hold-repo-1'
+    )
 
     const before = readProjectExecutionHold(projectId)
     assert.equal(before, null, 'sanity: no pre-existing hold')
@@ -126,7 +158,11 @@ test('Overnight V2: a real single-target hold request over real HTTP genuinely s
 test('Overnight V2: a real single-target hold request over real HTTP genuinely sets a durable hold, on Global Command exact-match', async () => {
   await withServer(async (base) => {
     const projectId = 'http-hold-global-exact'
-    seedOnboardedProjectForHttp(projectId, 'HTTP Hold Global Exact', 'C:/nonexistent-http-hold-repo-2')
+    seedOnboardedProjectForHttp(
+      projectId,
+      'HTTP Hold Global Exact',
+      'C:/nonexistent-http-hold-repo-2'
+    )
 
     const res = await chat(base, {
       message: `${projectId} is being handled by another agent right now, leave it alone -- do not touch it.`
@@ -149,11 +185,22 @@ test('Overnight V2: a real single-target hold request over real HTTP genuinely s
 test('Priority 2: a real single-target release request over real HTTP genuinely lifts a durable hold, on per-project Planner Chat', async () => {
   await withServer(async (base) => {
     const projectId = 'http-release-per-project'
-    seedOnboardedProjectForHttp(projectId, 'HTTP Release Per Project', 'C:/nonexistent-http-release-repo-1')
-    await withProjectExecutionHold(projectId, () =>
-      createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' }, () => new Date())
+    seedOnboardedProjectForHttp(
+      projectId,
+      'HTTP Release Per Project',
+      'C:/nonexistent-http-release-repo-1'
     )
-    assert.equal(readProjectExecutionHold(projectId).status, 'ACTIVE', 'sanity: a real, active hold exists before the release request')
+    await withProjectExecutionHold(projectId, () =>
+      createProjectExecutionHold(
+        { projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' },
+        () => new Date()
+      )
+    )
+    assert.equal(
+      readProjectExecutionHold(projectId).status,
+      'ACTIVE',
+      'sanity: a real, active hold exists before the release request'
+    )
 
     const res = await chat(base, {
       projectId,
@@ -170,9 +217,16 @@ test('Priority 2: a real single-target release request over real HTTP genuinely 
 test('Priority 2: a real single-target release request over real HTTP genuinely lifts a durable hold, on Global Command exact-match', async () => {
   await withServer(async (base) => {
     const projectId = 'http-release-global-exact'
-    seedOnboardedProjectForHttp(projectId, 'HTTP Release Global Exact', 'C:/nonexistent-http-release-repo-2')
+    seedOnboardedProjectForHttp(
+      projectId,
+      'HTTP Release Global Exact',
+      'C:/nonexistent-http-release-repo-2'
+    )
     await withProjectExecutionHold(projectId, () =>
-      createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' }, () => new Date())
+      createProjectExecutionHold(
+        { projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' },
+        () => new Date()
+      )
     )
 
     const res = await chat(base, { message: `release the hold on ${projectId}.` })
@@ -181,6 +235,30 @@ test('Priority 2: a real single-target release request over real HTTP genuinely 
 
     const after = readProjectExecutionHold(projectId)
     assert.equal(after.status, 'RELEASED')
+  })
+})
+
+test('NEEDS_YOU_QUERY omits an informational execution hold without releasing it', async () => {
+  await withServer(async (base) => {
+    const projectId = 'http-hold-needs-you-query'
+    seedOnboardedProjectForHttp(
+      projectId,
+      'HTTP Hold Needs You Query',
+      'C:/nonexistent-http-hold-needs-you-query'
+    )
+    await withProjectExecutionHold(projectId, () =>
+      createProjectExecutionHold(
+        { projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'test-setup' },
+        () => new Date()
+      )
+    )
+
+    const res = await chat(base, { message: 'what needs me?' })
+    assert.equal(res.status, 200)
+    assert.equal(res.body.intent, 'NEEDS_YOU_QUERY')
+    assert.doesNotMatch(res.body.text, /HTTP Hold Needs You Query/)
+    assert.ok(!res.body.resultItems.some((item) => item.id === `hold:${projectId}`))
+    assert.equal(readProjectExecutionHold(projectId).status, 'ACTIVE')
   })
 })
 
@@ -195,18 +273,34 @@ test('Overnight V2: duplicate delivery -- a hold request delivered twice over re
     const firstHold = readProjectExecutionHold(projectId)
 
     const second = await chat(base, { projectId, message })
-    assert.match(second.body.text, /Held/, 'idempotent re-application still honestly reports Held, never an error')
+    assert.match(
+      second.body.text,
+      /Held/,
+      'idempotent re-application still honestly reports Held, never an error'
+    )
 
     const afterHold = readProjectExecutionHold(projectId)
-    assert.equal(afterHold.setAt, firstHold.setAt, 'the original SET record must survive -- never overwritten by the duplicate')
-    assert.equal(afterHold.history.filter((h) => h.action === 'SET').length, 1, 'exactly one real SET record despite 2 delivered requests')
+    assert.equal(
+      afterHold.setAt,
+      firstHold.setAt,
+      'the original SET record must survive -- never overwritten by the duplicate'
+    )
+    assert.equal(
+      afterHold.history.filter((h) => h.action === 'SET').length,
+      1,
+      'exactly one real SET record despite 2 delivered requests'
+    )
   })
 })
 
 test('Overnight V2: a message combining a hold-shaped clause with a genuinely consequential clause is refused in full (TIM_REQUIRED) -- never partially sets the hold', async () => {
   await withServer(async (base) => {
     const projectId = 'http-hold-tim-required'
-    seedOnboardedProjectForHttp(projectId, 'HTTP Hold Tim Required', 'C:/nonexistent-http-hold-repo-4')
+    seedOnboardedProjectForHttp(
+      projectId,
+      'HTTP Hold Tim Required',
+      'C:/nonexistent-http-hold-repo-4'
+    )
 
     const res = await chat(base, {
       projectId,
@@ -215,7 +309,11 @@ test('Overnight V2: a message combining a hold-shaped clause with a genuinely co
     assert.equal(res.status, 200)
 
     const after = readProjectExecutionHold(projectId)
-    assert.equal(after, null, 'a TIM_REQUIRED-worthy message must never silently set a hold as a side effect')
+    assert.equal(
+      after,
+      null,
+      'a TIM_REQUIRED-worthy message must never silently set a hold as a side effect'
+    )
   })
 })
 
@@ -248,7 +346,10 @@ test('Overnight V2: a message combining a real PAUSE directive with a real hold 
 
     assert.equal(readKeepGoingRun(projectId).state, 'PAUSED', 'the run must really be paused')
     const hold = readProjectExecutionHold(projectId)
-    assert.ok(hold, 'a real, durable hold must ALSO have been written -- the exact bug the independent review found')
+    assert.ok(
+      hold,
+      'a real, durable hold must ALSO have been written -- the exact bug the independent review found'
+    )
     assert.equal(hold.status, 'ACTIVE')
   })
 })
@@ -257,8 +358,16 @@ test('Overnight V2: per-project chat scoped to A, message names a DIFFERENT real
   await withServer(async (base) => {
     const projectA = 'http-hold-wrongproj-a'
     const projectB = 'http-hold-wrongproj-b'
-    seedOnboardedProjectForHttp(projectA, 'HTTP Hold Wrongproj A', 'C:/nonexistent-http-hold-repo-5a')
-    seedOnboardedProjectForHttp(projectB, 'HTTP Hold Wrongproj B', 'C:/nonexistent-http-hold-repo-5b')
+    seedOnboardedProjectForHttp(
+      projectA,
+      'HTTP Hold Wrongproj A',
+      'C:/nonexistent-http-hold-repo-5a'
+    )
+    seedOnboardedProjectForHttp(
+      projectB,
+      'HTTP Hold Wrongproj B',
+      'C:/nonexistent-http-hold-repo-5b'
+    )
 
     // classifySingleTargetHoldEntries is called with [project] (only the
     // chat's own fixed scope, project A) -- a message naming a different
@@ -270,7 +379,15 @@ test('Overnight V2: per-project chat scoped to A, message names a DIFFERENT real
     })
     assert.equal(res.status, 200)
 
-    assert.equal(readProjectExecutionHold(projectA), null, 'project A (the chat\'s own scope) must never be held on B\'s behalf')
-    assert.equal(readProjectExecutionHold(projectB), null, 'project B (never this turn\'s real scope) must never be silently held either')
+    assert.equal(
+      readProjectExecutionHold(projectA),
+      null,
+      "project A (the chat's own scope) must never be held on B's behalf"
+    )
+    assert.equal(
+      readProjectExecutionHold(projectB),
+      null,
+      "project B (never this turn's real scope) must never be silently held either"
+    )
   })
 })

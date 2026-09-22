@@ -355,6 +355,53 @@ correctly refuse on a held project regardless of what the chat said).
 this section's text is kept as the original record of how the finding was
 discovered.
 
+## TSF_OVERNIGHT_READINESS_2026_09_22 UI dogfood pass
+
+Autonomous overnight UI dogfood (owner away, explicit overnight
+authorization -- see `tsf/docs/tsf/TSF_OVERNIGHT_READINESS_2026_09_22_CHECKPOINT.md`),
+not an owner-screenshot-triggered review, but logged in this ledger per
+its own standing convention. Live server, port 4610, real fleet data,
+read-only (no real project mutated).
+
+**Tooling gap disclosed**: no `$electron` skill or CDP-attach path exists
+for the live running instance in this environment; Orca's own
+`_electron.launch()` E2E harness builds an isolated fresh instance (no
+real fleet data, up to 5 min). Worked around it with a real Playwright
+`chromium.launch()` pointed directly at the UI's own HTTP origin (the
+backend serves the UI as a normal web app) -- genuine browser automation
+against real live data, just not via the Electron-specific attach path.
+Real, actionable gap: a proper "attach to the already-running live
+instance" pattern doesn't exist yet.
+
+**UX PROBLEM** -- HQ screen: Niners-War-Room's execution hold renders in
+BOTH the "Needs You" card (same amber visual weight as the genuinely
+actionable "TSF UI Capability Check" adoption decision) AND separately in
+the "Waiting" section, both labeled "EXECUTION HOLD". The hold's own
+reason ("Owner reports separate AI/process actively working NWR") is
+purely informational -- no decision is possible or needed -- but its
+placement in "Needs You" could mislead the owner into thinking action is
+required. Independently corroborated by the same session's separate
+`POST /api/chat` dogfood (a `NEEDS_YOU_QUERY` answer also listed NWR's
+hold under "what needs you" via its `BLOCKED_EXTERNAL` category). Two
+independent evidence paths (API text + live screenshot) agreeing makes
+this well-supported enough to fix tonight as a bounded P2, not just log --
+see below.
+
+**GOOD AS-IS** -- HQ's summary cards and the "System: Restart required"
+indicator are accurate and match live ground truth exactly, including
+correctly surfacing tonight's own `LIVE_RUNTIME_STALE` finding as
+"Restart required".
+
+**GOOD AS-IS** -- Projects screen shows real per-project uncommitted-work
+counts with "do not reset or clean" guidance; no SHAs/worktree paths/
+provider plumbing visible in the normal view (plumbing-exposure rule
+respected).
+
+**INCONCLUSIVE, needs a follow-up pass with better tooling** -- clicking
+"Ask Command" produced no detectable state change in a scripted pass;
+likely a missed interactive element or a modal/panel the generic
+text-diff didn't catch, not confirmed as a bug.
+
 ## Personal preference / Good as-is (recorded, not acted on)
 
 *(none yet)*
