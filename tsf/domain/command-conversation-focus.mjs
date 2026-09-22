@@ -394,7 +394,11 @@ function isAbbreviationSegmentBoundary(text, segmentStart, meantIndex) {
     return false
   }
   if (/(?:\p{L}\.){2,}$/u.test(left)) {
-    return segmentStart + text.slice(segmentStart).search(/\S/u) !== meantIndex
+    const rightStart = segmentStart + text.slice(segmentStart).search(/\S/u)
+    if (rightStart === meantIndex) {
+      return false
+    }
+    return /^\p{Ll}/u.test(right)
   }
   const tokenMatch = /(?:^|[^\p{L}\p{N}])(\p{Lu}\p{Ll}{0,2})\.$/u.exec(left)
   if (!tokenMatch) {

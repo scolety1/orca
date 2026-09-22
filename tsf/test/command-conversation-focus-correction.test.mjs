@@ -734,6 +734,15 @@ test('round 14: a lowercase correction anchor immediately after an abbreviation 
   )
 })
 
+test('round 16: an abbreviation may end a sentence before an intervening unrelated clause', () => {
+  for (const message of [
+    'Have Alpha become the focus -- no wait, send the release to the U.S. In the report, I meant Beta.',
+    'Have Alpha become the focus -- no wait, route the memo through the E.U. During the audit, I meant Beta.'
+  ]) {
+    assertRound10Correction(message, null)
+  }
+})
+
 test('round 14: ordinary no and art before digit-start sentences are not numeric labels', () => {
   for (const message of [
     'Have Alpha become the focus -- no wait, I answered no. 2 items in the report mention Beta; I meant Beta there.',
