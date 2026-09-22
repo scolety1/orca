@@ -370,6 +370,129 @@ const CAUSATIVE_IMPERATIVE_SHAPE_PATTERN = new RegExp(
 // capitalized -- version/section-style abbreviations ("v. 2", "no. 5",
 // "ch. 3") are a narrow, well-defined, common convention; capitalization
 // is not a reliable signal for "did a new sentence start" at all.
+//
+// TSF OWNER DOGFOOD / CRITIQUE LOOP V1 round 10: round 8 still reduced
+// sentence structure to one punctuation regex. That both split common
+// abbreviations and missed newlines/quoted endings, while its fallback
+// accepted marker-shaped words at the end of ordinary prose. Segment the
+// correction context into sentences instead. A boundary is safe only when
+// its final segment starts with a fresh retraction and contains nothing but
+// punctuation/disfluencies before the same last "I meant" the resolver uses.
+const CORRECTION_SENTENCE_SEGMENTER = new Intl.Segmenter('en', { granularity: 'sentence' })
+const CORRECTION_DISFLUENCY_PATTERN = /^(?:uh|um|er|well)(?![\p{L}\p{N}_])[,\s]*/iu
+const CORRECTION_BRIDGE_PUNCTUATION_PATTERN = /^[\s.,!;:?\u2026\u2014\u2013-]+/u
+
+function isAbbreviationSegmentBoundary(text, segmentStart) {
+  const left = text.slice(0, segmentStart).trimEnd()
+  const right = text.slice(segmentStart).trimStart()
+  if (!left.endsWith('.')) {
+    return false
+  }
+  if (/(?:\p{L}\.){2,}$/u.test(left)) {
+    return true
+  }
+  const tokenMatch = /(\p{Lu}\p{Ll}{0,2})\.$/u.exec(left)
+  if (!tokenMatch) {
+    return false
+  }
+  const tokenLength = [...tokenMatch[1]].length
+  if (tokenLength <= 2 && /^\p{Lu}\p{Ll}+/u.test(right)) {
+    return true
+  }
+  const precedingName = /\p{Lu}\p{Ll}+\s*$/u.test(left.slice(0, tokenMatch.index))
+  return tokenLength === 3 && precedingName && /^\p{Ll}+/u.test(right)
+}
+
+function isNumericLabelPeriod(text, periodIndex) {
+  return /(?:^|[^\p{L}\p{N}])(?:\p{L}\.)*\p{L}{1,3}$/u.test(text.slice(0, periodIndex))
+}
+
+function nextContentIndex(text, punctuationIndex) {
+  let cursor = punctuationIndex + 1
+  while (cursor < text.length && /["'\u2019\u201d)\]}]/u.test(text[cursor])) {
+    cursor += 1
+  }
+  const whitespaceStart = cursor
+  while (cursor < text.length && /[^\S\r\n]/u.test(text[cursor])) {
+    cursor += 1
+  }
+  return cursor > whitespaceStart ? cursor : -1
+}
+
+function lastCorrectionSentenceStart(text, meantIndex) {
+  let lastStart = -1
+  for (const segment of CORRECTION_SENTENCE_SEGMENTER.segment(text)) {
+    if (
+      segment.index > 0 &&
+      segment.index <= meantIndex &&
+      !isAbbreviationSegmentBoundary(text, segment.index)
+    ) {
+      lastStart = Math.max(lastStart, segment.index)
+    }
+  }
+  for (let index = 0; index < meantIndex; index += 1) {
+    if (text[index] === '\r' || text[index] === '\n') {
+      if (text[index] === '\r' && text[index + 1] === '\n') {
+        index += 1
+      }
+      let contentIndex = index + 1
+      while (contentIndex < text.length && /[^\S\r\n]/u.test(text[contentIndex])) {
+        contentIndex += 1
+      }
+      lastStart = Math.max(lastStart, contentIndex)
+      continue
+    }
+    if (text[index] !== '!' && text[index] !== '?' && text[index] !== '.') {
+      continue
+    }
+    const contentIndex = nextContentIndex(text, index)
+    if (contentIndex === -1 || contentIndex > meantIndex) {
+      continue
+    }
+    if (text[index] === '!' || text[index] === '?') {
+      lastStart = Math.max(lastStart, contentIndex)
+      continue
+    }
+    const hasClosingPunctuation =
+      contentIndex > index + 1 && /["'\u2019\u201d)\]}]/u.test(text[index + 1])
+    if (hasClosingPunctuation) {
+      lastStart = Math.max(lastStart, contentIndex)
+      continue
+    }
+    if (/\p{N}/u.test(text[contentIndex])) {
+      if (isNumericLabelPeriod(text, index)) {
+        continue
+      }
+      lastStart = Math.max(lastStart, contentIndex)
+      continue
+    }
+    if (!/[\p{L}\p{N}]/u.test(text.slice(0, index))) {
+      lastStart = Math.max(lastStart, contentIndex)
+    }
+  }
+  return lastStart
+}
+
+function isFreshRetractionBridge(text) {
+  let rest = text.replace(CORRECTION_BRIDGE_PUNCTUATION_PATTERN, '')
+  const retraction = RETRACTION_MARKER_PATTERN.exec(rest)
+  if (retraction === null || retraction.index !== 0) {
+    return false
+  }
+  rest = rest.slice(retraction[0].length)
+  for (;;) {
+    rest = rest.replace(CORRECTION_BRIDGE_PUNCTUATION_PATTERN, '')
+    if (rest === '') {
+      return true
+    }
+    const disfluency = CORRECTION_DISFLUENCY_PATTERN.exec(rest)
+    if (!disfluency) {
+      return false
+    }
+    rest = rest.slice(disfluency[0].length)
+  }
+}
+
 function hasSafeCausativeImperativeCorrectionShape(trimmed) {
   const match = CAUSATIVE_IMPERATIVE_SHAPE_PATTERN.exec(trimmed)
   if (!match) {
@@ -387,35 +510,22 @@ function hasSafeCausativeImperativeCorrectionShape(trimmed) {
   const afterRetraction = strippedTail.slice(retraction[0].length)
   const meantPattern = new RegExp(MEANT_CORRECTION_PATTERN.source, 'gi')
   let meantIndex = -1
+  let meantLength = 0
   let found
   while ((found = meantPattern.exec(afterRetraction))) {
     meantIndex = found.index
+    meantLength = found[0].length
   }
   if (meantIndex === -1) {
     return false
   }
   const beforeMeant = afterRetraction.slice(0, meantIndex)
-  if (!/[.!?](?:\s+(?!\d)|\s*$)/u.test(beforeMeant)) {
+  const correctionContext = afterRetraction.slice(0, meantIndex + meantLength)
+  const sentenceStart = lastCorrectionSentenceStart(correctionContext, meantIndex)
+  if (sentenceStart === -1) {
     return true
   }
-  const beforeMeantStripped = beforeMeant.replace(/[\s.,!;:?…—–-]+$/u, '')
-  return beforeMeantStripped === '' || endsWithRetractionMarker(beforeMeantStripped)
-}
-// Whether `text` ends with a real RETRACTION_MARKER_PATTERN match (i.e.
-// the match reaches all the way to the string's end) -- used above to
-// confirm a retraction marker sits directly before the resolved "I
-// meant", not merely somewhere earlier in an unrelated clause.
-function endsWithRetractionMarker(text) {
-  const pattern = new RegExp(RETRACTION_MARKER_PATTERN.source, 'gi')
-  let lastEnd = -1
-  let found
-  while ((found = pattern.exec(text))) {
-    lastEnd = found.index + found[0].length
-    if (pattern.lastIndex === found.index) {
-      pattern.lastIndex += 1
-    }
-  }
-  return lastEnd === text.length
+  return isFreshRetractionBridge(beforeMeant.slice(sentenceStart))
 }
 // DIRECTIVE SEMANTICS CLOSURE V1, round 3 (P0, real Codex adversarial-
 // review finding): SUBJECT_INVERSION_QUESTION_OPENER's "could/would/can/
@@ -790,13 +900,12 @@ export function correctedSwitchTarget(message, exactMatches) {
   let solo = null
   let restVariant = rawRest
   let restVariantOffset = anchorEnd + leadingStrip.length
-  const leadingDisfluency = /^(?:uh|um|er|well)(?![\p{L}\p{N}_])[,\s]*/iu
   for (;;) {
     solo = restVariant.match(soloPattern)
     if (solo) {
       break
     }
-    const stripped = leadingDisfluency.exec(restVariant)
+    const stripped = CORRECTION_DISFLUENCY_PATTERN.exec(restVariant)
     if (!stripped) {
       break
     }

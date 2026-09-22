@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  correctedTurnTargetIds,
   correctedSwitchTarget,
   verifiedCorrectionTarget,
   isExplicitSwitchMessage
@@ -612,4 +613,82 @@ test('verifiedCorrectionTarget: a genuine correction chained through a second re
     ),
     'beta'
   )
+})
+
+const round10Alpha = {
+  project: { id: 'alpha' },
+  matchedPhrase: 'Alpha',
+  matchedOn: 'displayName'
+}
+const round10Beta = {
+  project: { id: 'beta' },
+  matchedPhrase: 'Beta',
+  matchedOn: 'displayName'
+}
+const round10Matches = [round10Alpha, round10Beta]
+
+function assertRound10Correction(message, expected) {
+  assert.equal(verifiedCorrectionTarget(message, round10Matches), expected)
+  assert.deepEqual(correctedTurnTargetIds(message, round10Matches), expected ? [expected] : [])
+}
+
+test('round 10: abbreviations inside one correction clause are not sentence boundaries', () => {
+  for (const message of [
+    'Have Alpha become the focus -- no wait, after the 3 p.m. review, I meant Beta.',
+    'Have Alpha become the focus -- no wait, after Mr. Smith reviewed it, I meant Beta.',
+    'Have Alpha become the focus -- no wait, after Dr. Lee reviewed it, I meant Beta.',
+    'Have Alpha become the focus -- no wait, after Acme Inc. staff reviewed it, I meant Beta.'
+  ]) {
+    assertRound10Correction(message, 'beta')
+  }
+})
+
+test('round 10: a digit-start sentence after a period, exclamation, or question mark is unrelated prose', () => {
+  for (const punctuation of ['.', '!', '?']) {
+    assertRound10Correction(
+      `Have Alpha become the focus -- no wait${punctuation} 2 items in the report use the wrong name; I meant Beta there.`,
+      null
+    )
+  }
+})
+
+test('round 10: bounded disfluencies may bridge a fresh retraction to I meant', () => {
+  for (const message of [
+    'Have Alpha become the focus -- no wait, keep it unchanged. Actually, no -- um, I meant Beta.',
+    'Have Alpha become the focus -- no wait, keep it unchanged. Never mind -- well, uh, I meant Beta.'
+  ]) {
+    assertRound10Correction(message, 'beta')
+  }
+})
+
+test('round 10: a punctuation-free newline starts unrelated later prose', () => {
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait\nIn the report, I meant Beta as the codename.',
+    null
+  )
+})
+
+test('round 10: marker-shaped vocabulary in a completed prose sentence is not a fresh retraction', () => {
+  for (const message of [
+    'Have Alpha become the focus -- no wait, keep it unchanged. The answer is actually no. I meant Beta in the report.',
+    'Have Alpha become the focus -- no wait, keep it unchanged. The requirement is to leave it unchanged. I meant Beta in the report.'
+  ]) {
+    assertRound10Correction(message, null)
+  }
+})
+
+test('round 10: sentence punctuation before a closing quote remains a boundary', () => {
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait, the status note ends "unchanged." In the report, I meant Beta.',
+    null
+  )
+})
+
+test('round 10: repeated horizontal whitespace cannot backtrack around numeric abbreviations', () => {
+  for (const message of [
+    'Have Alpha become the focus -- no wait, after checking the v.  2 notes, I meant Beta.',
+    'Have Alpha become the focus -- no wait, after checking no.\t\t2 notes, I meant Beta.'
+  ]) {
+    assertRound10Correction(message, 'beta')
+  }
 })
