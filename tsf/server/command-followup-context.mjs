@@ -121,8 +121,7 @@ function explainGlobalAdvisory(projects) {
     return "There wasn't a real disposable/test-only project in the catalog to point at -- every known project is a real one."
   }
   const reasons = safe.map(
-    (p) =>
-      `**${p.displayName}** because ${p.sourceClass === 'FIXTURE' ? "it's a deterministic fixture, not real state" : 'its own name marks it as a disposable test project'}`
+    (p) => `**${p.displayName}** because it's a deterministic fixture, not real state`
   )
   return `Because ${reasons.join('; ')} -- nothing else in the catalog is safe to experiment on freely.`
 }

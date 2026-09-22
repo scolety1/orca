@@ -97,6 +97,8 @@ export function projectsById() {
       projectOnboardedProject(
         record,
         {
+          sourceClass:
+            opState.portfolio.projects[record.lastAnalysis.projectId]?.sourceClass ?? 'REAL',
           activeFleet: opState.portfolio.activeFleet.includes(record.lastAnalysis.projectId),
           workSet: opState.portfolio.workSet.includes(record.lastAnalysis.projectId)
         },

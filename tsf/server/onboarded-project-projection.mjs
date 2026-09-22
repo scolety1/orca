@@ -122,7 +122,7 @@ export function projectOnboardedProject(
   return {
     id: analysis.projectId,
     displayName: analysis.displayName,
-    sourceClass: 'REAL',
+    sourceClass: membership?.sourceClass === 'FIXTURE' ? 'FIXTURE' : 'REAL',
     provenance: 'TSF_ONBOARDING_V1',
     root: analysis.repoPath,
     lifecycle: record.acceptedAt ? 'ONBOARDED' : 'ANALYZED_NOT_ONBOARDED',

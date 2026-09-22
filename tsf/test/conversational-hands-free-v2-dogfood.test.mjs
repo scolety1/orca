@@ -20,12 +20,15 @@ process.env.TSF_UI_STATE_FILE = STATE_FILE
 process.env.TSF_PLANNER_CLAUDE_COMMAND = path.join(HERE, 'fixtures', 'stub-planner-cli.mjs')
 process.env.TSF_PLANNER_CODEX_COMMAND = path.join(HERE, 'fixtures', 'does-not-exist-binary')
 process.env.STUB_MODE = 'success'
+process.env.STUB_SCOPE_OVERRIDE = 'NEEDS_YOU_QUERY'
 
 const { createRequestHandler } = await import('../server/http-server.mjs')
 const { loadState, saveState } = await import('../server/data-store.mjs')
 const { readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
 const { createOvernightRun, raiseNeedsYou } = await import('../domain/keep-going.mjs')
 const { withKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
+const { registerProject } = await import('../domain/portfolio.mjs')
+const { projectsById } = await import('../server/project-catalog.mjs')
 
 test.after(() => {
   rmSync(ROOT, { recursive: true, force: true })
@@ -49,11 +52,26 @@ function initFixtureRepo(name) {
   return dir
 }
 
-function seedDisposableProject(id, displayName) {
+function seedCatalogProject(id, displayName, sourceClass) {
   const repoPath = initFixtureRepo(id)
   const opState = loadState()
+  const portfolio = opState.portfolio.projects[id]
+    ? opState.portfolio
+    : registerProject(
+        opState.portfolio,
+        {
+          id,
+          displayName,
+          root: repoPath,
+          sourceClass,
+          lifecycle: sourceClass === 'FIXTURE' ? 'FIXTURE' : 'ONBOARDED',
+          provenance: 'TEST_ISOLATED_REPOSITORY'
+        },
+        clock
+      )
   saveState({
     ...opState,
+    portfolio,
     onboardedProjects: {
       ...opState.onboardedProjects,
       [id]: {
@@ -92,6 +110,10 @@ function seedDisposableProject(id, displayName) {
     }
   })
   return { id, displayName, repoPath }
+}
+
+function seedDisposableProject(id, displayName) {
+  return seedCatalogProject(id, displayName, 'FIXTURE')
 }
 
 const clock = () => new Date('2026-09-19T12:00:00.000Z')
@@ -153,6 +175,36 @@ async function chat(base, body) {
   })
   return { status: res.status, body: await res.json() }
 }
+
+test('safety advisory uses exact fixture metadata and protects real and similarly named projects', async () => {
+  const disposable = seedDisposableProject('dogfood-v2-safe-fixture', 'Dogfood-V2-Safe-Fixture')
+  const lookalike = seedCatalogProject(
+    'dogfood-v2-safe-fixture-copy',
+    'Dogfood-V2-Safe-Fixture Copy',
+    'REAL'
+  )
+  const ownerProject = [...projectsById().map.values()].find(
+    (project) => project.sourceClass === 'REAL' && project.id !== lookalike.id
+  )
+  assert.ok(ownerProject, 'the real catalog must contribute an owner project for this proof')
+
+  await withServer(async (base) => {
+    const previousScope = process.env.STUB_SCOPE_OVERRIDE
+    process.env.STUB_SCOPE_OVERRIDE = 'GLOBAL_ADVISORY'
+    try {
+      const result = await chat(base, {
+        projectId: null,
+        message: 'Which project is safe to mess around with?'
+      })
+      assert.equal(result.status, 200)
+      assert.ok(result.body.text.includes(disposable.displayName))
+      assert.ok(!result.body.text.includes(lookalike.displayName))
+      assert.ok(!result.body.text.includes(ownerProject.displayName))
+    } finally {
+      process.env.STUB_SCOPE_OVERRIDE = previousScope
+    }
+  })
+})
 
 // =====================================================================
 // PHASE 9 -- NATURAL CONVERSATIONAL QUESTIONS (real HTTP reproduction of

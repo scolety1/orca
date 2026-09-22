@@ -219,7 +219,7 @@ test("dogfood B: what's going on with NWR? -> why? -> run it -> what's it doing 
 test('dogfood C: find me something safe to test on -> why that one? -> run that -> real durable dispatch attempt', async () => {
   const projects = [
     project('dogfood-c-real', 'Dogfood C Real'),
-    project('dogfood-c-test-project', 'dogfood-c-TEST-project')
+    project('dogfood-c-test-project', 'dogfood-c-TEST-project', 'FIXTURE')
   ]
   const advisory = await turn('find me something safe to test on', projects)
   assert.deepEqual(

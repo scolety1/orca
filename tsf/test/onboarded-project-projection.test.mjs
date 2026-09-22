@@ -54,6 +54,24 @@ function projectWithHealth(status, findings = []) {
   return projectOnboardedProject(record, { activeFleet: false, workSet: false })
 }
 
+test('sourceClass is explicit and fail-closed: FIXTURE survives projection while missing metadata defaults to REAL', () => {
+  const record = {
+    acceptedAt: '2026-08-23T00:00:00.000Z',
+    receipts: [],
+    lastAnalysis: baseAnalysis({
+      health: { status: 'HEALTHY', findings: [], observedAt: '2026-08-23T00:00:00.000Z' }
+    })
+  }
+  const fixture = projectOnboardedProject(record, {
+    sourceClass: 'FIXTURE',
+    activeFleet: false,
+    workSet: false
+  })
+  const real = projectOnboardedProject(record, { activeFleet: false, workSet: false })
+  assert.equal(fixture.sourceClass, 'FIXTURE')
+  assert.equal(real.sourceClass, 'REAL')
+})
+
 test('HEALTHY_WITH_CAVEATS (e.g. no README, a resolved handoff, a linked worktree) reads as HEALTHY on the fleet card, not DEGRADED', () => {
   const project = projectWithHealth('HEALTHY_WITH_CAVEATS', [
     {

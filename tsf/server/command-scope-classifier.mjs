@@ -232,18 +232,12 @@ export async function classifyGlobalScope({ message, deps = {} }) {
 
 // Real-catalog-grounded, deterministic, read-only -- no LLM needed for this
 // part (it's formatting real facts, not interpreting a question). A
-// project counts as safe/disposable to test on when it is a FIXTURE
-// (deterministic, no real state to break) or its own id/displayName marks
-// it as a test artifact -- the same convention this session's own isolated
-// pilots use (a "TEST-" / "test" labeled disposable project). Never
-// guesses safety from a REAL project's mere absence of a health finding --
-// silence is not evidence of safety.
+// project counts as safe/disposable to test on only when its catalog
+// metadata classifies it as a FIXTURE (deterministic, no real state to
+// break). Names are not safety evidence: a REAL project can resemble a
+// fixture or contain "test" while still holding owner state.
 function isAdvisorySafeProject(project) {
-  return (
-    project.sourceClass === 'FIXTURE' ||
-    /\btest\b/i.test(project.id) ||
-    /\btest\b/i.test(project.displayName)
-  )
+  return project.sourceClass === 'FIXTURE'
 }
 
 // Exported separately (not just used internally by buildGlobalAdvisoryText)
@@ -262,12 +256,9 @@ export function buildGlobalAdvisoryText(projects) {
   if (safe.length === 0) {
     return "I don't see a project in the current catalog that's clearly marked as disposable/test-only -- every known project here is a real one. Ask me to onboard a throwaway repo if you want something safe to experiment on."
   }
-  const lines = safe.map((p) => {
-    const why =
-      p.sourceClass === 'FIXTURE'
-        ? 'a deterministic fixture project, not real state'
-        : 'its own name marks it as a disposable test project'
-    return `- **${p.displayName}** (\`${p.id}\`) -- ${why}.`
-  })
+  const lines = safe.map(
+    (p) =>
+      `- **${p.displayName}** (\`${p.id}\`) -- a deterministic fixture project, not real state.`
+  )
   return `Safe to mess around with, from the current catalog:\n${lines.join('\n')}\n\nEverything else in the catalog is a real project -- I won't start anything automatically; say which one you want to act on.`
 }
