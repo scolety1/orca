@@ -336,23 +336,29 @@ function clauseMatchesAction(clause, opener, pronoun) {
 // check (not per-clause, unlike DELIBERATIVE_STATEMENT_OPENER above) is
 // the correct granularity here. Checked before any clause-level logic
 // runs, mirroring how the shared patterns are used in chat-responder.mjs.
-const RUN_ACTION_RETRACTION_OR_REPORTED = (message) =>
-  RETRACTION_MARKER_PATTERN.test(message) || REPORTED_SPEECH_MARKER.test(message)
+// This phrase reinforces PAUSE while independently requesting an execution hold.
+const PAUSE_COMPATIBLE_HOLD_MARKER = /\bleave\s+it\s+alone\b/gi
+
+function hasRunActionRetraction(message, action) {
+  const retractionText =
+    action === 'PAUSE' ? message.replace(PAUSE_COMPATIBLE_HOLD_MARKER, '') : message
+  return RETRACTION_MARKER_PATTERN.test(retractionText)
+}
 
 // Returns 'PAUSE' | 'RESUME' | null. RESUME covers "resume"/"continue"/
 // "rerun"/"retry" -- classifyContinueAction (called by the caller once a real
 // project is identified) is what decides whether "continue"/"resume"
 // actually means resuming a paused run or dispatching fresh work.
 export function classifyRunActionVerb(message) {
-  if (RUN_ACTION_RETRACTION_OR_REPORTED(message)) {
+  if (REPORTED_SPEECH_MARKER.test(message)) {
     return null
   }
   for (const clause of splitIntoClauses(message)) {
     if (clauseMatchesAction(clause, PAUSE_OPENER, PAUSE_PRONOUN)) {
-      return 'PAUSE'
+      return hasRunActionRetraction(message, 'PAUSE') ? null : 'PAUSE'
     }
     if (clauseMatchesAction(clause, RESUME_OPENER, RESUME_PRONOUN)) {
-      return 'RESUME'
+      return hasRunActionRetraction(message, 'RESUME') ? null : 'RESUME'
     }
   }
   return null

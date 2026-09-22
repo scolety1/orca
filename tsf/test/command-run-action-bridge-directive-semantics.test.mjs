@@ -42,6 +42,17 @@ test('classifyRunActionVerb: reported speech anywhere in the message suppresses 
   }
 })
 
+test('classifyRunActionVerb: PAUSE plus a real hold clause is not mistaken for a retraction', () => {
+  assert.equal(
+    classifyRunActionVerb(
+      'Pause http-hold-and-pause. It is being handled by another agent right now, leave it alone -- do not touch it.'
+    ),
+    'PAUSE'
+  )
+  assert.equal(classifyRunActionVerb('Resume NWR. Leave it alone.'), null)
+  assert.equal(classifyRunActionVerb('Pause NWR. Leave it alone. Never mind.'), null)
+})
+
 test('classifyRunActionVerb: ordinary directives are completely unaffected by the new guard', () => {
   assert.equal(classifyRunActionVerb('Pause NWR.'), 'PAUSE')
   assert.equal(classifyRunActionVerb('pause it'), 'PAUSE')
