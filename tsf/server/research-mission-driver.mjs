@@ -87,12 +87,16 @@ export async function createResearchMissionDurable(
   clock
 ) {
   return withResearchMission(missionId, (current) => {
-    if (current) return current
+    if (current) {
+      return current
+    }
     let mission = createResearchMission(
       { id: missionId, projectId, specification, expectedUniverse },
       clock
     )
-    for (const nodeInput of nodes) mission = addResearchNode(mission, nodeInput, clock)
+    for (const nodeInput of nodes) {
+      mission = addResearchNode(mission, nodeInput, clock)
+    }
     return mission
   })
 }
@@ -102,9 +106,13 @@ export async function createResearchMissionDurable(
 // ---------------------------------------------------------------------
 export function readResearchMissionStatus(missionId) {
   const mission = readResearchMission(missionId)
-  if (!mission) return null
+  if (!mission) {
+    return null
+  }
   const nodesByStatus = {}
-  for (const n of mission.nodes) nodesByStatus[n.status] = (nodesByStatus[n.status] ?? 0) + 1
+  for (const n of mission.nodes) {
+    nodesByStatus[n.status] = (nodesByStatus[n.status] ?? 0) + 1
+  }
   return {
     missionId,
     state: mission.state,
@@ -131,9 +139,13 @@ export function readAllResearchMissionSummaries({ projectId } = {}) {
   const missions = readAllResearchMissions()
   const summaries = []
   for (const [missionId, mission] of Object.entries(missions)) {
-    if (projectId && mission.projectId !== projectId) continue
+    if (projectId && mission.projectId !== projectId) {
+      continue
+    }
     const nodesByStatus = {}
-    for (const n of mission.nodes) nodesByStatus[n.status] = (nodesByStatus[n.status] ?? 0) + 1
+    for (const n of mission.nodes) {
+      nodesByStatus[n.status] = (nodesByStatus[n.status] ?? 0) + 1
+    }
     summaries.push({
       missionId,
       projectId: mission.projectId,
@@ -155,7 +167,9 @@ export function readAllResearchMissionSummaries({ projectId } = {}) {
 
 export function readResearchMissionReviewItems(missionId) {
   const mission = readResearchMission(missionId)
-  if (!mission) return null
+  if (!mission) {
+    return null
+  }
   return mission.needsYou.filter((n) => !n.resolvedAt)
 }
 
@@ -164,13 +178,17 @@ export function readResearchMissionReviewItems(missionId) {
 // consumption-facing reader's convention.
 export function readResearchMissionArtifacts(missionId, clock) {
   const { mission } = readResearchMissionIntegrityChecked(missionId, clock)
-  if (!mission) return null
+  if (!mission) {
+    return null
+  }
   return buildResearchProvenancePackage(mission, { clock })
 }
 
 export function readResearchMissionCompleteness(missionId, clock) {
   const { mission } = readResearchMissionIntegrityChecked(missionId, clock)
-  if (!mission) return null
+  if (!mission) {
+    return null
+  }
   return computeCompletenessMetrics(mission, clock)
 }
 
@@ -183,7 +201,9 @@ export function readResearchMissionCompleteness(missionId, clock) {
 // ceiling because the counter forgot everything already spent.
 export function readResearchMissionProviderUsage(missionId) {
   const mission = readResearchMission(missionId)
-  if (!mission) return null
+  if (!mission) {
+    return null
+  }
   const byProvider = {}
   let totalRequests = 0
   let totalProviderReportedCostUsd = 0
@@ -195,7 +215,9 @@ export function readResearchMissionProviderUsage(missionId) {
     // poll request.
     for (const record of node.dispatchRecords ?? []) {
       const provider = record.workerRunRef?.provider
-      if (!provider) continue
+      if (!provider) {
+        continue
+      }
       byProvider[provider] ??= { requests: 0, providerReportedCostUsd: 0 }
       byProvider[provider].requests += 1
       totalRequests += 1
@@ -230,7 +252,9 @@ export function readResearchMissionProviderUsage(missionId) {
 // ---------------------------------------------------------------------
 export async function cancelResearchMissionDurable(missionId, reason, clock) {
   return withResearchMission(missionId, (mission) => {
-    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    if (!mission) {
+      throw new Error(`unknown research mission: ${missionId}`)
+    }
     return blockResearchMission(
       mission,
       reason ?? 'OPERATOR_CANCELLED',
@@ -261,7 +285,9 @@ export async function resolveResearchNeedsYouDurable(
   expectedRevision
 ) {
   return withResearchMission(missionId, (mission) => {
-    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    if (!mission) {
+      throw new Error(`unknown research mission: ${missionId}`)
+    }
     return resolveResearchNeedsYou(mission, needsYouId, resolution, clock, expectedRevision)
   })
 }
@@ -271,12 +297,16 @@ export async function resolveResearchNeedsYouDurable(
 // ---------------------------------------------------------------------
 export async function cancelResearchNodeDurable(missionId, nodeId, clock) {
   return withResearchMission(missionId, (mission) => {
-    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    if (!mission) {
+      throw new Error(`unknown research mission: ${missionId}`)
+    }
     return withResearchNode(
       mission,
       nodeId,
       (node) => {
-        if (node.status === 'CANCELLED') return { next: node, changed: false }
+        if (node.status === 'CANCELLED') {
+          return { next: node, changed: false }
+        }
         assertNodeTransition(node.status, 'CANCELLED')
         return { next: { ...node, status: 'CANCELLED' }, changed: true }
       },
@@ -302,20 +332,14 @@ export async function dispatchResearchNodeDurable(
   { costGovernance = null } = {}
 ) {
   const mission = readResearchMission(missionId)
-  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  if (!mission) {
+    throw new Error(`unknown research mission: ${missionId}`)
+  }
   const node = findResearchNode(mission, nodeId)
-  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  if (!node) {
+    throw new Error(`unknown research node: ${nodeId}`)
+  }
   const request = buildBoundedResearchRequest(mission, node, providerId, clock)
-
-  // RESUME CHECK -- the whole point of the durable attempt ledger: never
-  // guess that a redispatch is safe.
-  const existing = classifyDispatchDeliveryGuarantee(node, request.taskFingerprint)
-  if (existing?.guarantee === 'EXACTLY_ONCE' || existing?.guarantee === 'AT_LEAST_ONCE') {
-    return { ok: true, alreadyDispatched: true, mission, taskFingerprint: request.taskFingerprint }
-  }
-  if (existing?.guarantee === 'AMBIGUOUS_REQUIRES_RECONCILIATION') {
-    return { ok: false, ambiguous: true, classification: existing, mission }
-  }
 
   if (costGovernance) {
     const usage = readResearchMissionProviderUsage(missionId)
@@ -333,18 +357,51 @@ export async function dispatchResearchNodeDurable(
     }
   }
 
-  let next = await withResearchMission(missionId, (m) =>
-    markResearchNodeReady(m, nodeId, clock, m.revision)
-  )
-  next = await withResearchMission(missionId, (m) =>
-    recordDispatchAttempt(
-      m,
-      nodeId,
-      { taskFingerprint: request.taskFingerprint },
-      clock,
-      m.revision
-    )
-  )
+  // Classification and UNKNOWN-attempt recording must share one lock or
+  // independent processes can both observe never attempted.
+  let next
+  try {
+    next = await withResearchMission(missionId, (m) => {
+      const currentNode = findResearchNode(m, nodeId)
+      if (!currentNode) {
+        throw new Error(`unknown research node: ${nodeId}`)
+      }
+      const existing = classifyDispatchDeliveryGuarantee(currentNode, request.taskFingerprint)
+      if (existing?.guarantee === 'EXACTLY_ONCE' || existing?.guarantee === 'AT_LEAST_ONCE') {
+        const error = new Error('research dispatch already confirmed')
+        error.code = 'TSF_RESEARCH_DISPATCH_ALREADY_CONFIRMED'
+        error.result = {
+          ok: true,
+          alreadyDispatched: true,
+          mission: m,
+          taskFingerprint: request.taskFingerprint
+        }
+        throw error
+      }
+      if (existing?.guarantee === 'AMBIGUOUS_REQUIRES_RECONCILIATION') {
+        const error = new Error('research dispatch claim is ambiguous')
+        error.code = 'TSF_RESEARCH_DISPATCH_AMBIGUOUS'
+        error.result = { ok: false, ambiguous: true, classification: existing, mission: m }
+        throw error
+      }
+      const ready = markResearchNodeReady(m, nodeId, clock, m.revision)
+      return recordDispatchAttempt(
+        ready,
+        nodeId,
+        { taskFingerprint: request.taskFingerprint },
+        clock,
+        ready.revision
+      )
+    })
+  } catch (error) {
+    if (
+      error.code === 'TSF_RESEARCH_DISPATCH_ALREADY_CONFIRMED' ||
+      error.code === 'TSF_RESEARCH_DISPATCH_AMBIGUOUS'
+    ) {
+      return error.result
+    }
+    throw error
+  }
 
   // THE real network call. If the process dies here, the attempt above is
   // already durable and UNKNOWN -- the next call to this function sees
@@ -416,15 +473,25 @@ export async function dispatchResearchNodeDurable(
 // ---------------------------------------------------------------------
 export async function pollAndAdmitResearchNodeDurable(missionId, nodeId, worker, clock) {
   const mission = readResearchMission(missionId)
-  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  if (!mission) {
+    throw new Error(`unknown research mission: ${missionId}`)
+  }
   const node = findResearchNode(mission, nodeId)
-  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  if (!node) {
+    throw new Error(`unknown research node: ${nodeId}`)
+  }
   const lastDispatch = node.dispatchRecords.at(-1)
-  if (!lastDispatch) return { ok: false, reason: 'NOT_YET_DISPATCHED' }
+  if (!lastDispatch) {
+    return { ok: false, reason: 'NOT_YET_DISPATCHED' }
+  }
 
   const fetched = await worker.fetchResult(lastDispatch.workerRunRef)
-  if (!fetched.ok) return { ok: false, reason: fetched.reason, detail: fetched.detail }
-  if (fetched.status !== 'READY') return { ok: true, ready: false, status: fetched.status }
+  if (!fetched.ok) {
+    return { ok: false, reason: fetched.reason, detail: fetched.detail }
+  }
+  if (fetched.status !== 'READY') {
+    return { ok: true, ready: false, status: fetched.status }
+  }
 
   let next = await withResearchMission(missionId, (m) =>
     recordResearchNodeResult(m, nodeId, fetched.result, clock, m.revision)
@@ -473,9 +540,13 @@ export async function verifyAndReconcileResearchNodeFieldDurable(
   clock
 ) {
   const mission = readResearchMission(missionId)
-  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  if (!mission) {
+    throw new Error(`unknown research mission: ${missionId}`)
+  }
   let node = findResearchNode(mission, nodeId)
-  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  if (!node) {
+    throw new Error(`unknown research node: ${nodeId}`)
+  }
 
   let next = mission
   for (const claim of node.claims.filter(
@@ -604,9 +675,13 @@ export async function adoptResearchLibraryReuseDurable(
   clock
 ) {
   const mission = readResearchMission(missionId)
-  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  if (!mission) {
+    throw new Error(`unknown research mission: ${missionId}`)
+  }
   const node = findResearchNode(mission, nodeId)
-  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  if (!node) {
+    throw new Error(`unknown research node: ${nodeId}`)
+  }
   const evaluation = evaluateResearchLibraryReuse(library, {
     sourcePolicy: mission.specification.sourcePolicy,
     entityId: node.targetEntity?.entityId,
@@ -670,9 +745,13 @@ export async function reuseSourceSnapshotDurable(
   clock
 ) {
   const mission = readResearchMission(missionId)
-  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  if (!mission) {
+    throw new Error(`unknown research mission: ${missionId}`)
+  }
   const node = findResearchNode(mission, nodeId)
-  if (!node) throw new Error(`unknown research node: ${nodeId}`)
+  if (!node) {
+    throw new Error(`unknown research node: ${nodeId}`)
+  }
   const evaluation = evaluateSourceLibraryReuse(library, {
     sourcePolicy: mission.specification.sourcePolicy,
     canonicalLocator,
@@ -696,14 +775,18 @@ export async function reuseSourceSnapshotDurable(
 // ---------------------------------------------------------------------
 export async function grantResearchPaidApprovalDurable(missionId, approval, clock) {
   return withResearchMission(missionId, (mission) => {
-    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    if (!mission) {
+      throw new Error(`unknown research mission: ${missionId}`)
+    }
     return grantResearchPaidApproval(mission, approval, clock, mission.revision)
   })
 }
 
 export async function requestResearchPaidApprovalDurable(missionId, request, clock) {
   return withResearchMission(missionId, (mission) => {
-    if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+    if (!mission) {
+      throw new Error(`unknown research mission: ${missionId}`)
+    }
     return requestResearchPaidApproval(mission, request, clock, mission.revision)
   })
 }
@@ -713,7 +796,9 @@ export async function requestResearchPaidApprovalDurable(missionId, request, clo
 // every other read function in this file already has a sibling for.
 export function readActiveResearchPaidApproval(missionId, providerId, clock) {
   const mission = readResearchMission(missionId)
-  if (!mission) return null
+  if (!mission) {
+    return null
+  }
   return activeResearchPaidApproval(mission, providerId, clock)
 }
 
@@ -736,7 +821,9 @@ export async function dispatchResearchNodeWithApprovalDurable(
   { pricingPolicy } = {}
 ) {
   const mission = readResearchMission(missionId)
-  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  if (!mission) {
+    throw new Error(`unknown research mission: ${missionId}`)
+  }
   const approval = activeResearchPaidApproval(mission, providerId, clock)
   if (!approval) {
     return { ok: false, reason: 'NO_PAID_APPROVAL', providerId }
@@ -760,7 +847,9 @@ export async function dispatchResearchNodeWithApprovalDurable(
 // ---------------------------------------------------------------------
 export async function attemptFreeResearchProgressDurable(missionId, clock) {
   const mission = readResearchMission(missionId)
-  if (!mission) throw new Error(`unknown research mission: ${missionId}`)
+  if (!mission) {
+    throw new Error(`unknown research mission: ${missionId}`)
+  }
   // An absent library (never used before, anywhere) is functionally the
   // same as a real, empty one for this read-only evaluation -- every field
   // still counts as a genuine, attempted-and-unresolved gap (CACHE_MISS),
