@@ -381,6 +381,8 @@ const CAUSATIVE_IMPERATIVE_SHAPE_PATTERN = new RegExp(
 const CORRECTION_SENTENCE_SEGMENTER = new Intl.Segmenter('en', { granularity: 'sentence' })
 const CORRECTION_DISFLUENCY_PATTERN = /^(?:uh|um|er|well)(?![\p{L}\p{N}_])[,\s]*/iu
 const CORRECTION_BRIDGE_PUNCTUATION_PATTERN = /^[\s.,!;:?\u2026\u2014\u2013-]+/u
+const NUMERIC_LABEL_ABBREVIATION_PATTERN =
+  /(?:^|[^\p{L}\p{N}])(?:v|ver|no|ch|chap|fig|sec|sect|vol|pg|p|pp|para|art|eq|rev|pt)$/iu
 
 function isAbbreviationSegmentBoundary(text, segmentStart) {
   const left = text.slice(0, segmentStart).trimEnd()
@@ -389,9 +391,9 @@ function isAbbreviationSegmentBoundary(text, segmentStart) {
     return false
   }
   if (/(?:\p{L}\.){2,}$/u.test(left)) {
-    return true
+    return /^\p{Ll}/u.test(right)
   }
-  const tokenMatch = /(\p{Lu}\p{Ll}{0,2})\.$/u.exec(left)
+  const tokenMatch = /(?:^|[^\p{L}\p{N}])(\p{Lu}\p{Ll}{0,2})\.$/u.exec(left)
   if (!tokenMatch) {
     return false
   }
@@ -404,7 +406,7 @@ function isAbbreviationSegmentBoundary(text, segmentStart) {
 }
 
 function isNumericLabelPeriod(text, periodIndex) {
-  return /(?:^|[^\p{L}\p{N}])(?:\p{L}\.)*\p{L}{1,3}$/u.test(text.slice(0, periodIndex))
+  return NUMERIC_LABEL_ABBREVIATION_PATTERN.test(text.slice(0, periodIndex))
 }
 
 function nextContentIndex(text, punctuationIndex) {
@@ -466,6 +468,11 @@ function lastCorrectionSentenceStart(text, meantIndex) {
       lastStart = Math.max(lastStart, contentIndex)
       continue
     }
+    const boundarySpacing = text.slice(index + 1, contentIndex)
+    if (/[^\S\r\n]{2,}$/u.test(boundarySpacing)) {
+      lastStart = Math.max(lastStart, contentIndex)
+      continue
+    }
     if (!/[\p{L}\p{N}]/u.test(text.slice(0, index))) {
       lastStart = Math.max(lastStart, contentIndex)
     }
@@ -480,8 +487,10 @@ function isFreshRetractionBridge(text) {
     return false
   }
   rest = rest.slice(retraction[0].length)
+  let atRetractionEnd = true
   for (;;) {
-    rest = rest.replace(CORRECTION_BRIDGE_PUNCTUATION_PATTERN, '')
+    const separator = CORRECTION_BRIDGE_PUNCTUATION_PATTERN.exec(rest)?.[0] ?? ''
+    rest = rest.slice(separator.length)
     if (rest === '') {
       return true
     }
@@ -489,6 +498,10 @@ function isFreshRetractionBridge(text) {
     if (!disfluency) {
       return false
     }
+    if (atRetractionEnd && !/[.,!;:?\u2026\u2014\u2013-]/u.test(separator)) {
+      return false
+    }
+    atRetractionEnd = false
     rest = rest.slice(disfluency[0].length)
   }
 }

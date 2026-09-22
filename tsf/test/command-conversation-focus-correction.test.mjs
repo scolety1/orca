@@ -692,3 +692,33 @@ test('round 10: repeated horizontal whitespace cannot backtrack around numeric a
     assertRound10Correction(message, 'beta')
   }
 })
+
+test('round 12: an abbreviation may still end an unrelated sentence', () => {
+  for (const message of [
+    'Have Alpha become the focus -- no wait, send it to the U.S. I meant Beta in the report.',
+    'Have Alpha become the focus -- no wait, ask the VP. In the report, I meant Beta.'
+  ]) {
+    assertRound10Correction(message, null)
+  }
+})
+
+test('round 12: repeated spacing recovers a lowercase sentence boundary missed by ICU', () => {
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait, contact Acme Inc.  this is unrelated: in the report, I meant Beta.',
+    null
+  )
+})
+
+test('round 12: an ordinary short word before a digit is not a numeric label', () => {
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait, that is it. 2 items in the report mention Beta; I meant Beta there.',
+    null
+  )
+})
+
+test('round 12: a retraction marker needs punctuation before tolerated disfluencies', () => {
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait, keep it unchanged. Strike that well, uh, I meant Beta on the drilling map.',
+    null
+  )
+})
