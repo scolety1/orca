@@ -88,6 +88,7 @@ const DEFAULTS = {
   attentionNotificationEvents: {}, // eventId -> TSF_ATTENTION_NOTIFICATION_EVENT_V1 (see tsf/domain/attention-notification-event.mjs, tsf/server/attention-notification-event-store.mjs)
   projectExecutionHolds: {}, // projectId -> TSF_PROJECT_EXECUTION_HOLD_V1 (see tsf/domain/project-execution-hold.mjs, tsf/server/project-execution-hold-store.mjs)
   projectCanonicalBases: {}, // projectId -> TSF_PROJECT_CANONICAL_BASE_V1 (see tsf/server/project-canonical-base-store.mjs)
+  dogfoodSessions: {}, // sessionId -> TSF_DOGFOOD_SESSION_V1 (see tsf/domain/dogfood-session.mjs)
   commandFocus: null // TSF_COMMAND_FOCUS_V1 | null -- durable Command conversation focus (see tsf/domain/command-conversation-focus.mjs). A durable pointer, not an append-only log -- deliberately NOT nested inside chatThreads.
   // Resource Pressure Governor leases are NOT stored here -- see
   // server/resource-pressure-lease-store.mjs: they must be host-wide

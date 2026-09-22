@@ -34,7 +34,9 @@ function buildSchemaVersionGuard(kind, migrations) {
   const codeKind = kind.toUpperCase().replace(/\s+/g, '_')
   function assertSupported(record) {
     if (!record?.schemaVersion) {
-      const error = new Error(`${kind} is missing schemaVersion -- cannot safely determine its shape`)
+      const error = new Error(
+        `${kind} is missing schemaVersion -- cannot safely determine its shape`
+      )
       error.code = `TSF_${codeKind}_SCHEMA_VERSION_MISSING`
       throw error
     }
@@ -60,7 +62,10 @@ export const CURRENT_RESEARCH_MISSION_SCHEMA_VERSION = 'TSF_RESEARCH_MISSION_V1'
 // current one. The current version's own migrator is the identity
 // function. There is deliberately only one entry today -- this is the
 // registration point for a real V2, not a preemptive V2 implementation.
-const missionGuard = buildSchemaVersionGuard('research mission', new Map([[CURRENT_RESEARCH_MISSION_SCHEMA_VERSION, (mission) => mission]]))
+const missionGuard = buildSchemaVersionGuard(
+  'research mission',
+  new Map([[CURRENT_RESEARCH_MISSION_SCHEMA_VERSION, (mission) => mission]])
+)
 
 export const SUPPORTED_RESEARCH_MISSION_SCHEMA_VERSIONS = missionGuard.supportedVersions
 
@@ -84,7 +89,10 @@ export const migrateResearchMissionSchema = missionGuard.migrate
 // readResearchLibrary/withResearchLibrary exactly like the mission guard is
 // wired into research-mission-store.mjs.
 export const CURRENT_RESEARCH_LIBRARY_SCHEMA_VERSION = 'TSF_RESEARCH_LIBRARY_V1'
-const libraryGuard = buildSchemaVersionGuard('research library', new Map([[CURRENT_RESEARCH_LIBRARY_SCHEMA_VERSION, (library) => library]]))
+const libraryGuard = buildSchemaVersionGuard(
+  'research library',
+  new Map([[CURRENT_RESEARCH_LIBRARY_SCHEMA_VERSION, (library) => library]])
+)
 export const SUPPORTED_RESEARCH_LIBRARY_SCHEMA_VERSIONS = libraryGuard.supportedVersions
 export const assertSupportedResearchLibrarySchemaVersion = libraryGuard.assertSupported
 export const migrateResearchLibrarySchema = libraryGuard.migrate
@@ -93,9 +101,14 @@ export const migrateResearchLibrarySchema = libraryGuard.migrate
 // platform-learning-ledger.mjs). Wired into platform-learning-ledger-store.mjs
 // exactly like the mission/library guards are wired into their own stores.
 export const CURRENT_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSION = 'TSF_PLATFORM_LEARNING_LEDGER_V1'
-const learningLedgerGuard = buildSchemaVersionGuard('platform learning ledger', new Map([[CURRENT_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSION, (ledger) => ledger]]))
-export const SUPPORTED_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSIONS = learningLedgerGuard.supportedVersions
-export const assertSupportedPlatformLearningLedgerSchemaVersion = learningLedgerGuard.assertSupported
+const learningLedgerGuard = buildSchemaVersionGuard(
+  'platform learning ledger',
+  new Map([[CURRENT_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSION, (ledger) => ledger]])
+)
+export const SUPPORTED_PLATFORM_LEARNING_LEDGER_SCHEMA_VERSIONS =
+  learningLedgerGuard.supportedVersions
+export const assertSupportedPlatformLearningLedgerSchemaVersion =
+  learningLedgerGuard.assertSupported
 export const migratePlatformLearningLedgerSchema = learningLedgerGuard.migrate
 
 // Same guard, for the planner-mission checkpoint (PLANNER_CONTEXT_LIFECYCLE_V0
@@ -112,8 +125,10 @@ const plannerMissionCheckpointGuard = buildSchemaVersionGuard(
   'planner mission checkpoint',
   new Map([[CURRENT_PLANNER_MISSION_CHECKPOINT_SCHEMA_VERSION, (checkpoint) => checkpoint]])
 )
-export const SUPPORTED_PLANNER_MISSION_CHECKPOINT_SCHEMA_VERSIONS = plannerMissionCheckpointGuard.supportedVersions
-export const assertSupportedPlannerMissionCheckpointSchemaVersion = plannerMissionCheckpointGuard.assertSupported
+export const SUPPORTED_PLANNER_MISSION_CHECKPOINT_SCHEMA_VERSIONS =
+  plannerMissionCheckpointGuard.supportedVersions
+export const assertSupportedPlannerMissionCheckpointSchemaVersion =
+  plannerMissionCheckpointGuard.assertSupported
 export const migratePlannerMissionCheckpointSchema = plannerMissionCheckpointGuard.migrate
 
 // Same guard, for the Keep Going overnight run record (see keep-going.mjs's
@@ -121,7 +136,10 @@ export const migratePlannerMissionCheckpointSchema = plannerMissionCheckpointGua
 // keep-going-run-store.mjs's readKeepGoingRun/withKeepGoingRun -- Finding F4,
 // same gap as the planner-mission checkpoint above.
 export const CURRENT_KEEP_GOING_RUN_SCHEMA_VERSION = 'TSF_OVERNIGHT_RUN_V1'
-const keepGoingRunGuard = buildSchemaVersionGuard('Keep Going run', new Map([[CURRENT_KEEP_GOING_RUN_SCHEMA_VERSION, (run) => run]]))
+const keepGoingRunGuard = buildSchemaVersionGuard(
+  'Keep Going run',
+  new Map([[CURRENT_KEEP_GOING_RUN_SCHEMA_VERSION, (run) => run]])
+)
 export const SUPPORTED_KEEP_GOING_RUN_SCHEMA_VERSIONS = keepGoingRunGuard.supportedVersions
 export const assertSupportedKeepGoingRunSchemaVersion = keepGoingRunGuard.assertSupported
 export const migrateKeepGoingRunSchema = keepGoingRunGuard.migrate
@@ -136,8 +154,10 @@ const selfImprovementFindingGuard = buildSchemaVersionGuard(
   'self-improvement finding',
   new Map([[CURRENT_SELF_IMPROVEMENT_FINDING_SCHEMA_VERSION, (finding) => finding]])
 )
-export const SUPPORTED_SELF_IMPROVEMENT_FINDING_SCHEMA_VERSIONS = selfImprovementFindingGuard.supportedVersions
-export const assertSupportedSelfImprovementFindingSchemaVersion = selfImprovementFindingGuard.assertSupported
+export const SUPPORTED_SELF_IMPROVEMENT_FINDING_SCHEMA_VERSIONS =
+  selfImprovementFindingGuard.supportedVersions
+export const assertSupportedSelfImprovementFindingSchemaVersion =
+  selfImprovementFindingGuard.assertSupported
 export const migrateSelfImprovementFindingSchema = selfImprovementFindingGuard.migrate
 
 // Same guard, for Operator Attention V1's durable notification event record
@@ -147,13 +167,16 @@ export const migrateSelfImprovementFindingSchema = selfImprovementFindingGuard.m
 // withAttentionNotificationEvent -- same fail-closed discipline as every
 // guard above. Literal string re-declared here (not imported) to match this
 // module's own established convention for every guard above it.
-export const CURRENT_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSION = 'TSF_ATTENTION_NOTIFICATION_EVENT_V1'
+export const CURRENT_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSION =
+  'TSF_ATTENTION_NOTIFICATION_EVENT_V1'
 const attentionNotificationEventGuard = buildSchemaVersionGuard(
   'attention notification event',
   new Map([[CURRENT_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSION, (event) => event]])
 )
-export const SUPPORTED_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSIONS = attentionNotificationEventGuard.supportedVersions
-export const assertSupportedAttentionNotificationEventSchemaVersion = attentionNotificationEventGuard.assertSupported
+export const SUPPORTED_ATTENTION_NOTIFICATION_EVENT_SCHEMA_VERSIONS =
+  attentionNotificationEventGuard.supportedVersions
+export const assertSupportedAttentionNotificationEventSchemaVersion =
+  attentionNotificationEventGuard.assertSupported
 export const migrateAttentionNotificationEventSchema = attentionNotificationEventGuard.migrate
 
 // Same guard, for Multi-Project Command + Real Fleet Orchestration Overnight
@@ -168,8 +191,10 @@ const projectExecutionHoldGuard = buildSchemaVersionGuard(
   'project execution hold',
   new Map([[CURRENT_PROJECT_EXECUTION_HOLD_SCHEMA_VERSION, (hold) => hold]])
 )
-export const SUPPORTED_PROJECT_EXECUTION_HOLD_SCHEMA_VERSIONS = projectExecutionHoldGuard.supportedVersions
-export const assertSupportedProjectExecutionHoldSchemaVersion = projectExecutionHoldGuard.assertSupported
+export const SUPPORTED_PROJECT_EXECUTION_HOLD_SCHEMA_VERSIONS =
+  projectExecutionHoldGuard.supportedVersions
+export const assertSupportedProjectExecutionHoldSchemaVersion =
+  projectExecutionHoldGuard.assertSupported
 export const migrateProjectExecutionHoldSchema = projectExecutionHoldGuard.migrate
 
 // Same guard, for Fleet Dispatch Readiness + Explicit Command Adoption V1
@@ -182,6 +207,17 @@ const projectCanonicalBaseGuard = buildSchemaVersionGuard(
   'project canonical base',
   new Map([[CURRENT_PROJECT_CANONICAL_BASE_SCHEMA_VERSION, (base) => base]])
 )
-export const SUPPORTED_PROJECT_CANONICAL_BASE_SCHEMA_VERSIONS = projectCanonicalBaseGuard.supportedVersions
-export const assertSupportedProjectCanonicalBaseSchemaVersion = projectCanonicalBaseGuard.assertSupported
+export const SUPPORTED_PROJECT_CANONICAL_BASE_SCHEMA_VERSIONS =
+  projectCanonicalBaseGuard.supportedVersions
+export const assertSupportedProjectCanonicalBaseSchemaVersion =
+  projectCanonicalBaseGuard.assertSupported
 export const migrateProjectCanonicalBaseSchema = projectCanonicalBaseGuard.migrate
+
+export const CURRENT_DOGFOOD_SESSION_SCHEMA_VERSION = 'TSF_DOGFOOD_SESSION_V1'
+const dogfoodSessionGuard = buildSchemaVersionGuard(
+  'dogfood session',
+  new Map([[CURRENT_DOGFOOD_SESSION_SCHEMA_VERSION, (session) => session]])
+)
+export const SUPPORTED_DOGFOOD_SESSION_SCHEMA_VERSIONS = dogfoodSessionGuard.supportedVersions
+export const assertSupportedDogfoodSessionSchemaVersion = dogfoodSessionGuard.assertSupported
+export const migrateDogfoodSessionSchema = dogfoodSessionGuard.migrate
