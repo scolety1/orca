@@ -722,3 +722,34 @@ test('round 12: a retraction marker needs punctuation before tolerated disfluenc
     null
   )
 })
+
+test('round 14: a lowercase correction anchor immediately after an abbreviation starts a sentence', () => {
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait, send it to the U.S. i meant Beta in the report.',
+    null
+  )
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait, after the 3 p.m. review, i meant Beta.',
+    'beta'
+  )
+})
+
+test('round 14: ordinary no and art before digit-start sentences are not numeric labels', () => {
+  for (const message of [
+    'Have Alpha become the focus -- no wait, I answered no. 2 items in the report mention Beta; I meant Beta there.',
+    'Have Alpha become the focus -- no wait, I admired the art. 2 items in the report mention Beta; I meant Beta there.'
+  ]) {
+    assertRound10Correction(message, null)
+  }
+})
+
+test('round 14: lowercase fresh retractions still enforce disfluency punctuation', () => {
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait, keep it unchanged. strike that well, uh, I meant Beta on the drilling map.',
+    null
+  )
+  assertRound10Correction(
+    'Have Alpha become the focus -- no wait, keep it unchanged. strike that -- well, uh, I meant Beta on the drilling map.',
+    'beta'
+  )
+})

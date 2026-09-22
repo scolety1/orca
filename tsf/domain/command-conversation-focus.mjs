@@ -382,16 +382,19 @@ const CORRECTION_SENTENCE_SEGMENTER = new Intl.Segmenter('en', { granularity: 's
 const CORRECTION_DISFLUENCY_PATTERN = /^(?:uh|um|er|well)(?![\p{L}\p{N}_])[,\s]*/iu
 const CORRECTION_BRIDGE_PUNCTUATION_PATTERN = /^[\s.,!;:?\u2026\u2014\u2013-]+/u
 const NUMERIC_LABEL_ABBREVIATION_PATTERN =
-  /(?:^|[^\p{L}\p{N}])(?:v|ver|no|ch|chap|fig|sec|sect|vol|pg|p|pp|para|art|eq|rev|pt)$/iu
+  /(?:^|[^\p{L}\p{N}])(?:v|ver|ch|chap|fig|sec|sect|vol|pg|p|pp|para|eq|rev|pt)$/iu
+// Preserve round 10's explicit label context without treating standalone no as an abbreviation.
+const CONTEXTUAL_NUMBER_LABEL_PATTERN =
+  /\b(?:check(?:ed|ing)?|review(?:ed|ing)?)\s+(?:the\s+)?no$/iu
 
-function isAbbreviationSegmentBoundary(text, segmentStart) {
+function isAbbreviationSegmentBoundary(text, segmentStart, meantIndex) {
   const left = text.slice(0, segmentStart).trimEnd()
   const right = text.slice(segmentStart).trimStart()
   if (!left.endsWith('.')) {
     return false
   }
   if (/(?:\p{L}\.){2,}$/u.test(left)) {
-    return /^\p{Ll}/u.test(right)
+    return segmentStart + text.slice(segmentStart).search(/\S/u) !== meantIndex
   }
   const tokenMatch = /(?:^|[^\p{L}\p{N}])(\p{Lu}\p{Ll}{0,2})\.$/u.exec(left)
   if (!tokenMatch) {
@@ -406,7 +409,8 @@ function isAbbreviationSegmentBoundary(text, segmentStart) {
 }
 
 function isNumericLabelPeriod(text, periodIndex) {
-  return NUMERIC_LABEL_ABBREVIATION_PATTERN.test(text.slice(0, periodIndex))
+  const left = text.slice(0, periodIndex)
+  return NUMERIC_LABEL_ABBREVIATION_PATTERN.test(left) || CONTEXTUAL_NUMBER_LABEL_PATTERN.test(left)
 }
 
 function nextContentIndex(text, punctuationIndex) {
@@ -427,7 +431,7 @@ function lastCorrectionSentenceStart(text, meantIndex) {
     if (
       segment.index > 0 &&
       segment.index <= meantIndex &&
-      !isAbbreviationSegmentBoundary(text, segment.index)
+      !isAbbreviationSegmentBoundary(text, segment.index, meantIndex)
     ) {
       lastStart = Math.max(lastStart, segment.index)
     }
@@ -452,6 +456,15 @@ function lastCorrectionSentenceStart(text, meantIndex) {
       continue
     }
     if (text[index] === '!' || text[index] === '?') {
+      lastStart = Math.max(lastStart, contentIndex)
+      continue
+    }
+    if (contentIndex === meantIndex) {
+      lastStart = Math.max(lastStart, contentIndex)
+      continue
+    }
+    const followingRetraction = RETRACTION_MARKER_PATTERN.exec(text.slice(contentIndex, meantIndex))
+    if (followingRetraction?.index === 0) {
       lastStart = Math.max(lastStart, contentIndex)
       continue
     }
