@@ -211,8 +211,9 @@ export function classifyContinueAction(projectId) {
 // NWR (the negation is in an earlier, unrelated clause) and "pause NWR" is
 // recognized regardless of where in the message it falls, not only at the
 // absolute string start. A clause counts as the verb genuinely being
-// used as a directive when it OPENS with the verb (optionally after
-// "please") -- covering both a bare object ("pause NWR") and a pronoun
+// used as a directive when it OPENS with the verb (optionally after the
+// bounded lead-in "please" or "also") -- covering both a bare object
+// ("pause NWR") and a pronoun
 // ("pause it") -- or the verb is immediately followed by a back-reference
 // pronoun anywhere in the clause ("go ahead and pause it"). Never a bare
 // verb with no object/pronoun at all ("is it paused?", "the tick paused
@@ -243,6 +244,7 @@ const OR_BEFORE_QUESTION =
   /\bor(?=\s+(?:did|do|does|is|are|was|were|would|could|should|can|will)\s+(?:you|it|that|this|he|she|they|i|we)\b)/i
 function splitIntoClauses(message) {
   return message
+    .replace(/--|—/g, '.')
     .split(new RegExp(`[.!?;,]|\\band\\b|\\bbut\\b|${OR_BEFORE_QUESTION.source}`, 'i'))
     .map((c) => c.trim())
     .filter(Boolean)
@@ -287,6 +289,7 @@ const QUESTION_OPENER =
 // one canonical musing-opener vocabulary every consequential classifier in
 // this codebase now shares (was an independently-maintained copy here).
 const CLAUSE_OPENS_WITH = (verbs) => new RegExp(`^(?:please\\s+)?(?:${verbs})\\b`, 'i')
+const ALSO_LEAD_IN = /^also\s+/i
 const VERB_PLUS_PRONOUN = (verbs) =>
   new RegExp(`\\b(?:${verbs})\\s+(it|that|this|everything)\\b`, 'i')
 
@@ -307,7 +310,7 @@ function clauseMatchesAction(clause, opener, pronoun) {
   if (NEGATION_OPENER.test(clause)) {
     return false
   }
-  if (opener.test(clause)) {
+  if (opener.test(clause) || opener.test(clause.replace(ALSO_LEAD_IN, ''))) {
     return true
   }
   // A bare object/pronoun match ("pause it") only counts as a directive
@@ -329,9 +332,8 @@ function clauseMatchesAction(clause, opener, pronoun) {
 // (commit 322a633cb8), which this file's own header explains is
 // DELIBERATELY not reused here (command-responder.mjs's single-project
 // path calls this function directly, never the multi-action decomposer).
-// A retraction marker can land in the SAME clause as the verb ("--" is
-// not a clause boundary below) or a separate, later clause (split on
-// ","), and either way must suppress the classification: this file has
+// A retraction marker can land in the same or a separate, later clause,
+// and either way must suppress the classification: this file has
 // exactly one real action to classify per message, so a message-wide
 // check (not per-clause, unlike DELIBERATIVE_STATEMENT_OPENER above) is
 // the correct granularity here. Checked before any clause-level logic

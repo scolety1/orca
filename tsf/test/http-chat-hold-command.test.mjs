@@ -354,6 +354,29 @@ test('Overnight V2: a message combining a real PAUSE directive with a real hold 
   })
 })
 
+test('Overnight V2: hold-first "-- also pause" ordering executes BOTH the hold and PAUSE', async () => {
+  await withServer(async (base) => {
+    const projectId = 'http-hold-first-and-pause'
+    const clock = () => new Date('2026-09-10T12:00:00.000Z')
+    seedOnboardedProjectForHttp(
+      projectId,
+      'HTTP Hold First And Pause',
+      'C:/nonexistent-http-hold-repo-6b'
+    )
+    seedActiveKeepGoingRun(projectId, clock)
+
+    const res = await chat(base, {
+      projectId,
+      message: `It is being handled by another agent, leave it alone -- also pause ${projectId}.`
+    })
+    assert.equal(res.status, 200)
+    assert.match(res.body.text, /Paused/, 'the hold-first pause must execute')
+    assert.match(res.body.text, /Held/, 'the hold must also execute')
+    assert.equal(readKeepGoingRun(projectId).state, 'PAUSED')
+    assert.equal(readProjectExecutionHold(projectId)?.status, 'ACTIVE')
+  })
+})
+
 test('Overnight V2: per-project chat scoped to A, message names a DIFFERENT real project B -- the hold gate never fires for the wrong project', async () => {
   await withServer(async (base) => {
     const projectA = 'http-hold-wrongproj-a'

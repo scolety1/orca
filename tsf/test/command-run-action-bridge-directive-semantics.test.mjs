@@ -10,9 +10,8 @@ import { classifyRunActionVerb } from '../server/command-run-action-bridge.mjs'
 // A retraction marker reached a real PAUSE via this classifier -- unlike
 // domain/command-act-model.mjs's own retraction handling (commit
 // 322a633cb8), which command-responder.mjs's single-project path never
-// reaches (it calls classifyRunActionVerb directly). Both the same-clause
-// shape ("--" is not a clause boundary) and the separate-later-clause
-// shape (split on ",") are covered by a single message-wide check.
+// reaches (it calls classifyRunActionVerb directly). Both dash- and
+// comma-separated shapes are covered by a single message-wide check.
 test('classifyRunActionVerb: a retraction marker anywhere in the message suppresses the classification', () => {
   for (const message of [
     'Pause NWR -- never mind',
@@ -51,6 +50,15 @@ test('classifyRunActionVerb: PAUSE plus a real hold clause is not mistaken for a
   )
   assert.equal(classifyRunActionVerb('Resume NWR. Leave it alone.'), null)
   assert.equal(classifyRunActionVerb('Pause NWR. Leave it alone. Never mind.'), null)
+})
+
+test('classifyRunActionVerb: a hold-first clause followed by "-- also pause" is PAUSE', () => {
+  assert.equal(
+    classifyRunActionVerb(
+      'It is being handled by another agent, leave it alone -- also pause http-hold-and-pause.'
+    ),
+    'PAUSE'
+  )
 })
 
 test('classifyRunActionVerb: ordinary directives are completely unaffected by the new guard', () => {
