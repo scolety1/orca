@@ -237,14 +237,33 @@ export async function recoverInterruptedDogfoodSynthesis(clock = () => new Date(
   const recovered = []
   for (const session of stalled) {
     try {
+      let claimed = false
       // eslint-disable-next-line no-await-in-loop -- bounded by real stalled-session count, mirrors keep-going-stalled-run-recovery.mjs's own sequential-recovery-scan precedent
       const remarked = await withDogfoodSessions((sessions) => {
         const current = sessions[session.id]
-        if (!current || current.state !== 'ENDED') {
+        // Defense-in-depth (real review finding): re-checks the FULL
+        // eligibility condition against the fresh read inside the lock,
+        // not just `state === 'ENDED'` -- this function is only ever
+        // called once, synchronously, at startup today, so this can't
+        // actually race yet, but a future concurrent caller (e.g. an
+        // HTTP-triggered manual "retry now" action) must not be able to
+        // re-arm and double-dispatch a session a different concurrent
+        // scan already claimed. Same discipline verifyAndRouteToOwner
+        // already applies for the synthesis-completion race.
+        const stillEligible =
+          current?.state === 'ENDED' &&
+          (current.synthesisStatus === 'RUNNING' ||
+            (current.synthesisStatus === 'FAILED' &&
+              (current.synthesisAttempts ?? 0) < DOGFOOD_SYNTHESIS_MAX_ATTEMPTS))
+        if (!stillEligible) {
           return sessions
         }
+        claimed = true
         return { ...sessions, [session.id]: markDogfoodSynthesisRunning(current, clock) }
       })
+      if (!claimed) {
+        continue
+      }
       // eslint-disable-next-line no-await-in-loop -- see above
       await runSynthesisSummary(remarked[session.id], clock)
       recovered.push(session.id)
