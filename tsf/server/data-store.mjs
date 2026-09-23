@@ -160,13 +160,49 @@ function withWindowsRenameRetry(fn) {
   }
 }
 
+// TSF Owner Dogfood/Critique Loop V1 safety review finding (real,
+// reproduced): every OTHER caller of saveState follows the same
+// established pattern in this file -- read `opState` once near the top
+// of an HTTP handler, do some (possibly async) work, then
+// `saveState({ ...opState, someField: newValue })`. That's a classic
+// lost-update race against dogfoodSessions specifically: if a dogfood
+// session starts/ends/captures a turn (via dogfood-session-store.mjs's
+// OWN properly-locked withDogfoodSessions) DURING that window, an
+// unrelated handler's stale `opState.dogfoodSessions` silently clobbers
+// it on save -- reproduced with POST /api/usage-mode, but the same
+// pattern exists in many handlers, not just that one. dogfoodSessions is
+// this codebase's own non-execution SAFETY invariant, so it gets a
+// narrow, targeted protection here rather than requiring an audit of
+// every caller: saveState always re-reads the CURRENT on-disk
+// dogfoodSessions and keeps it, discarding whatever stale value the
+// caller's own snapshot carried -- UNLESS this save genuinely IS the
+// dogfood store's own write (dogfood-session-store.mjs passes
+// `isDogfoodSessionWrite: true`, the only caller allowed to change this
+// collection). The same class of risk likely exists for other lock-
+// protected collections (projectExecutionHolds, keepGoingRuns, ...);
+// generalizing this protection to all of them is real, disclosed,
+// follow-up scope, not attempted here.
+//
 // `rename` is injectable (defaults to the real renameSync) so tests can
 // deterministically simulate a transient Windows rename failure without
 // needing to reproduce real OS-level file-handle contention.
-export function saveState(state, { rename = renameSync } = {}) {
+export function saveState(state, { rename = renameSync, isDogfoodSessionWrite = false } = {}) {
   const stateFile = resolveStateFile()
   mkdirSync(path.dirname(stateFile), { recursive: true })
+  const next = isDogfoodSessionWrite ? state : preserveOnDiskDogfoodSessions(state, stateFile)
   const tmp = `${stateFile}.tmp`
-  writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8')
+  writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
   withWindowsRenameRetry(() => rename(tmp, stateFile))
+}
+
+function preserveOnDiskDogfoodSessions(state, stateFile) {
+  if (!existsSync(stateFile)) {
+    return state
+  }
+  try {
+    const onDisk = JSON.parse(readFileSync(stateFile, 'utf8'))
+    return { ...state, dogfoodSessions: onDisk.dogfoodSessions ?? {} }
+  } catch {
+    return state
+  }
 }

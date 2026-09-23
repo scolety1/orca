@@ -11,13 +11,22 @@
 import { useLocation } from 'react-router-dom'
 import { Radio } from 'lucide-react'
 import { useApi } from '@/lib/use-api'
+import { useForegroundPolling } from '@/lib/use-foreground-polling'
 import { api } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import type { DogfoodSession } from '@/lib/dogfood-session-types'
 
 export function DogfoodModeIndicator() {
   const location = useLocation()
-  const { data } = useApi(() => api.dogfoodSessions(), [location.pathname])
+  const { data, reload } = useApi(() => api.dogfoodSessions(), [location.pathname])
+  // Safety review finding (real): this only refetched on mount/route
+  // change, so starting/pausing/ending a session through Command's own
+  // chat on the SAME page never updated the badge until the owner
+  // navigated -- it could show stale "capturing" after END, or fail to
+  // appear at all right after START. Short-interval foreground polling
+  // (same primitive HQ's own live-work staleness fix uses) closes this
+  // generically without wiring a refresh into every chat call site.
+  useForegroundPolling(reload, 4000)
   const sessions = (data?.sessions ?? []) as DogfoodSession[]
   if (sessions.length === 0) {
     return null

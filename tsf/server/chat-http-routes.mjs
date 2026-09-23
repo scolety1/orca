@@ -44,7 +44,7 @@ import {
   classifySingleTargetHoldEntries,
   respondMultiActionCommand
 } from './command-multi-action-bridge.mjs'
-import { gateDogfoodChatTurn } from './dogfood-session-capture.mjs'
+import { gateAmbiguousFleetWideCommand, gateDogfoodChatTurn } from './dogfood-session-capture.mjs'
 import { dispatchFromChat } from './chat-dispatch-from-message.mjs'
 
 // Configures which real, known project id actually IS TSF's own -- self-
@@ -169,7 +169,17 @@ export async function handleChatRoute(
       } else {
         // Non-execution gate: this branch calls respondCommand (a live-
         // execution path) directly, never reaching the later gate below.
+        // Checked in two parts: the ordinary scope-matched gate first (so
+        // an actual GLOBAL session still captures normally), then the
+        // fleet-wide guard (so a PROJECT-scoped session elsewhere still
+        // blocks an ambiguous/quantified action from reaching it -- see
+        // gateAmbiguousFleetWideCommand's own comment for why this fails
+        // closed instead of guessing which session an ambiguous message
+        // belongs to).
         if (await gateDogfoodChatTurn(json, res, message, null, body.route)) {
+          return true
+        }
+        if (await gateAmbiguousFleetWideCommand(json, res)) {
           return true
         }
         const commandResult = await respondCommand({

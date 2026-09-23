@@ -13,20 +13,30 @@ import {
   pauseDogfoodSession,
   resumeDogfoodSession
 } from '../domain/dogfood-session.mjs'
-import { withDogfoodSessions } from './dogfood-session-store.mjs'
+import { readAllDogfoodSessions, withDogfoodSessions } from './dogfood-session-store.mjs'
 import { synthesizeDogfoodSession } from './dogfood-synthesis.mjs'
 
+const OPEN_STATES = ['ACTIVE', 'PAUSED']
+
+// Safety review finding (real, reproduced): the original version fell
+// through to a global session whenever the PROJECT session didn't match
+// the requested `states` filter -- so pausing a project-scoped session
+// (which flips it out of 'ACTIVE') made the NEXT lookup for 'ACTIVE'
+// silently find an unrelated global session instead, capturing project
+// messages into the wrong transcript. Fixed: once a project has its own
+// OPEN session (ACTIVE or PAUSED, regardless of which), that session
+// governs this scope EXCLUSIVELY -- global is never consulted for it,
+// even if the project's own session doesn't currently match `states`
+// (correctly returns null, meaning "no ACTIVE session for this scope,"
+// rather than silently borrowing a differently-scoped one).
 function findSessionForScope(sessions, projectId, states) {
-  // A project-scoped session takes precedence over a global one for a
-  // request that resolved to a specific project -- but a global session
-  // (started with no project in view) captures everything regardless of
-  // which project a later turn happens to resolve to.
-  const scoped =
-    projectId != null
-      ? Object.values(sessions).find((s) => s.projectId === projectId && states.includes(s.state))
-      : null
-  if (scoped) {
-    return scoped
+  if (projectId != null) {
+    const projectSession = Object.values(sessions).find(
+      (s) => s.projectId === projectId && OPEN_STATES.includes(s.state)
+    )
+    if (projectSession) {
+      return states.includes(projectSession.state) ? projectSession : null
+    }
   }
   return (
     Object.values(sessions).find((s) => s.projectId === null && states.includes(s.state)) ?? null
@@ -161,6 +171,35 @@ async function synthesisSummary(session, clock) {
     `${protectedCount} marked GOOD AS-IS/protected, ` +
     `${result.observations.length - actionable.length - protectedCount} other (question/idea/preference/ambiguous/retracted).`
   )
+}
+
+// Safety review finding (real, reproduced): the fleet-wide/ambiguous
+// Command path (chat-http-routes.mjs's respondCommand branch, no single
+// project resolved) can execute a QUANTIFIED/multi-project action
+// ("pause everything") that reaches across every project, including one
+// under active dogfood review -- the ordinary scope-matched gate above
+// only ever checked the GLOBAL session for this call site, never a
+// project-scoped one, since no specific project was resolved here to
+// match against. Rather than guess which of several open sessions an
+// ambiguous message might belong to (real risk of mis-capturing an
+// unrelated conversation into the wrong project's transcript), this
+// fails closed: if ANY dogfood session is open anywhere (global or any
+// project), a fleet-wide/ambiguous command is refused outright rather
+// than risking it reaching a project currently under review.
+export async function gateAmbiguousFleetWideCommand(json, res) {
+  const openSessions = Object.values(readAllDogfoodSessions()).filter((s) =>
+    ['ACTIVE', 'PAUSED'].includes(s.state)
+  )
+  if (openSessions.length === 0) {
+    return false
+  }
+  json(res, 200, {
+    ok: true,
+    dogfood: true,
+    text: 'A dogfood session is currently open -- fleet-wide or multi-project commands are paused until every open session ends, so a broad action never reaches a project under review. Say "end dogfood mode" to finish, or be specific about a single project.',
+    openSessionCount: openSessions.length
+  })
+  return true
 }
 
 // Thin HTTP-facing wrapper: writes the response and returns true when the

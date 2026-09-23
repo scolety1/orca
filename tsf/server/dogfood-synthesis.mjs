@@ -41,7 +41,15 @@ function toSelfImprovementFindingRaw(observation, session) {
     sourceDetector: 'COMMAND_DOGFOOD',
     severity: observation.severity,
     projectId: session.projectId,
-    affectedSurface: observation.route ?? session.projectId ?? 'UNSPECIFIED',
+    // Safety review finding (real, reproduced): affectedSurface used to
+    // be JUST the route (falling back to projectId only when no route
+    // was present) -- findingIdFor's content-addressed hash never
+    // includes projectId separately, so two DIFFERENT projects reporting
+    // an issue on the SAME route string (e.g. both have a "/settings"
+    // page) collided into ONE finding, silently discarding the second
+    // project's own evidence. Project identity is now always part of the
+    // surface, never dropped just because a route happens to be present.
+    affectedSurface: `${session.projectId ?? 'GLOBAL'}:${observation.route ?? 'UNSPECIFIED'}`,
     evidence: {
       dogfoodSessionId: session.id,
       evidenceTurnIndexes: observation.evidenceTurnIndexes
@@ -80,10 +88,25 @@ function toSelfImprovementFindingRaw(observation, session) {
 // re-verifying an already-reviewed finding on every repeat rant would be
 // wrong anyway).
 async function verifyAndRouteToOwner(finding, disposition, clock) {
+  // Cheap pre-check to skip the lock entirely for the common case (a
+  // long-since-reviewed finding recurring) -- NOT sufficient on its own.
   if (finding.status !== 'DETECTED') {
     return finding
   }
   return withFinding(finding.findingId, (current) => {
+    // Safety review finding (real, reproduced): two concurrent dogfood
+    // synthesis calls for the SAME content-addressed finding can both
+    // observe status 'DETECTED' in the check above (each reads its own
+    // recordFindingDetection result before either reaches this lock).
+    // The lock alone isn't enough -- the status must be RE-CHECKED against
+    // the FRESH `current` read inside it, not the stale outer `finding`,
+    // or the second caller in throws attempting NEEDS_OWNER -> VERIFIED.
+    // Whichever caller's lock acquisition loses this race is a safe,
+    // idempotent no-op, matching this function's own "never re-transition
+    // an already-reviewed finding" contract exactly.
+    if (current.status !== 'DETECTED') {
+      return current
+    }
     const verified = transitionFinding(
       current,
       'VERIFIED',

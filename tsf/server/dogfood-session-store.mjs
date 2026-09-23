@@ -53,7 +53,7 @@ export async function withDogfoodSessions(mutateFn) {
     const next = mutateFn(current)
     checkedSessions(next)
     assertOneOpenSessionPerScope(next)
-    saveState({ ...opState, dogfoodSessions: next })
+    saveState({ ...opState, dogfoodSessions: next }, { isDogfoodSessionWrite: true })
     return next
   })
 }
