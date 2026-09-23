@@ -157,7 +157,17 @@ export async function synthesizeDogfoodSession(
   if (live.data?.schemaVersion !== DOGFOOD_SYNTHESIS_SCHEMA_VERSION) {
     return { ok: false, reason: 'NEEDS_INPUT', detail: 'unexpected synthesis schema version' }
   }
-  const observations = validateDogfoodSynthesis(live.data, session.transcript.length)
+  // Owner-trial-prep finding (real, currently-dormant): evidenceTurnIndexes
+  // is numbered against ONLY the OWNER turns (see transcriptPrompt's own
+  // `ownerTurns.map((t, i) => ...)` above), never the raw transcript array
+  // -- bounds-checking against session.transcript.length happened to be
+  // correct only because every turn today is OWNER-role (appendDogfoodTurn
+  // is never called with role: 'TSF' anywhere in the real capture flow).
+  // If a TSF-role turn is ever added, that would silently become wrong --
+  // fixed to bounds-check against the SAME count the planner was actually
+  // shown, so an out-of-range or wrong-role evidence index is always
+  // caught, not just by accident today.
+  const observations = validateDogfoodSynthesis(live.data, ownerTurnCount)
   if (!observations) {
     return {
       ok: false,
