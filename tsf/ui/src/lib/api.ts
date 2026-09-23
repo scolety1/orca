@@ -120,6 +120,7 @@ export const api = {
   project: (id: string) => request<ProjectDetail>(`/projects/${encodeURIComponent(id)}`),
   work: () => request<WorkSummary>('/work').then(normalizeWorkSummary),
   attention: () => request<AttentionResponse>('/attention'),
+  dogfoodSessions: () => request<{ sessions: unknown[] }>('/dogfood-session'),
   // HQ Snapshot Migration (finish item A): ONE coherent read for HQ's own
   // primary surface, replacing its separate portfolio()/work()/attention()
   // calls -- see tsf/server/operator-snapshot.mjs for why this can never

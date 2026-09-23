@@ -45,6 +45,7 @@ import { handleFlightRecorderRoute } from './flight-recorder-http-routes.mjs'
 import { handleFleetOptimizerRoute } from './fleet-optimizer-http-routes.mjs'
 import { handleCapacityRoute } from './capacity-http-routes.mjs'
 import { handlePortfolioMembershipRoute } from './portfolio-membership-http-routes.mjs'
+import { readAllDogfoodSessions } from './dogfood-session-store.mjs'
 import {
   handlePrepareForWorkRoute,
   recoverInterruptedPrepareForWorkOperations
@@ -136,6 +137,17 @@ export function createRequestHandler(options = {}) {
           usageMode: opState.usageMode,
           generatedAt: new Date().toISOString()
         })
+      }
+
+      // GET /api/dogfood-session -- every currently ACTIVE/PAUSED dogfood
+      // session, for the minimal owner-facing status indicator (TSF Owner
+      // Dogfood/Critique Loop V1, Chunk 4). Read-only; starting/pausing/
+      // resuming/ending stays conversational through POST /api/chat.
+      if (parts[1] === 'dogfood-session' && req.method === 'GET') {
+        const sessions = Object.values(readAllDogfoodSessions()).filter((s) =>
+          ['ACTIVE', 'PAUSED'].includes(s.state)
+        )
+        return json(res, 200, { sessions })
       }
 
       // GET /api/portfolio

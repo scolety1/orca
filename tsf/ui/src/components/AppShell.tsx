@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/s
 import { CapacityIndicator } from '@/components/CapacityIndicator'
 import { SystemStatusIndicator } from '@/components/SystemStatusIndicator'
 import { GlobalRunStatusIndicator } from '@/components/GlobalRunStatusIndicator'
+import { DogfoodModeIndicator } from '@/components/DogfoodModeIndicator'
 import { GlobalCommandDock } from '@/components/command/GlobalCommandDock'
 
 // Operator IA consolidation V1: normal navigation converges on these four
@@ -33,7 +34,15 @@ type Meta = Awaited<ReturnType<typeof api.meta>>
 // Shared between the desktop rail and the mobile off-canvas drawer so nav
 // items, active-state logic, and the global attention indicators never
 // drift between the two. `onNavigate` closes the drawer on link click.
-function SidebarContent({ onAdvancedRoute, meta, onNavigate }: { onAdvancedRoute: boolean; meta: Meta | null; onNavigate?: () => void }) {
+function SidebarContent({
+  onAdvancedRoute,
+  meta,
+  onNavigate
+}: {
+  onAdvancedRoute: boolean
+  meta: Meta | null
+  onNavigate?: () => void
+}) {
   return (
     <>
       <div className="mb-6 flex items-center gap-2 px-5">
@@ -63,7 +72,8 @@ function SidebarContent({ onAdvancedRoute, meta, onNavigate }: { onAdvancedRoute
                 // "More" also lights up on an advanced route reached via a
                 // deep link (e.g. /fleet) so the operator is never left
                 // with no nav item highlighted at all.
-                (isActive || (to === '/more' && onAdvancedRoute)) && 'bg-secondary text-secondary-foreground'
+                (isActive || (to === '/more' && onAdvancedRoute)) &&
+                  'bg-secondary text-secondary-foreground'
               )
             }
           >
@@ -73,6 +83,7 @@ function SidebarContent({ onAdvancedRoute, meta, onNavigate }: { onAdvancedRoute
         ))}
       </nav>
       <div className="mt-4 flex shrink-0 flex-col gap-2 px-3">
+        <DogfoodModeIndicator />
         <GlobalRunStatusIndicator />
         <SystemStatusIndicator />
         <CapacityIndicator />
@@ -92,7 +103,9 @@ function SidebarContent({ onAdvancedRoute, meta, onNavigate }: { onAdvancedRoute
 export function AppShell() {
   const { data: meta } = useApi(() => api.meta(), [])
   const { pathname } = useLocation()
-  const onAdvancedRoute = ADVANCED_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+  const onAdvancedRoute = ADVANCED_ROUTE_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  )
   const [navOpen, setNavOpen] = useState(false)
 
   return (
@@ -126,7 +139,11 @@ export function AppShell() {
             </SheetTrigger>
             <SheetContent className="tsf-scrollbar overflow-y-auto">
               <SheetTitle>Navigation</SheetTitle>
-              <SidebarContent onAdvancedRoute={onAdvancedRoute} meta={meta} onNavigate={() => setNavOpen(false)} />
+              <SidebarContent
+                onAdvancedRoute={onAdvancedRoute}
+                meta={meta}
+                onNavigate={() => setNavOpen(false)}
+              />
             </SheetContent>
           </Sheet>
         </header>
