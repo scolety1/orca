@@ -14,6 +14,7 @@ import {
   resumeDogfoodSession
 } from '../domain/dogfood-session.mjs'
 import { withDogfoodSessions } from './dogfood-session-store.mjs'
+import { synthesizeDogfoodSession } from './dogfood-synthesis.mjs'
 
 function findSessionForScope(sessions, projectId, states) {
   // A project-scoped session takes precedence over a global one for a
@@ -51,6 +52,10 @@ export async function processDogfoodChatTurn({ message, projectId, route }) {
   const clock = () => new Date()
   const trigger = detectDogfoodSessionTrigger(message)
   let outcome = null
+  // Set only on a real END transition -- synthesis (a real, potentially
+  // slow LLM call) must run AFTER the file lock below is released, never
+  // inside the synchronous CAS mutator.
+  let endedSession = null
 
   await withDogfoodSessions((sessions) => {
     const active = findSessionForScope(sessions, projectId, ['ACTIVE'])
@@ -108,6 +113,7 @@ export async function processDogfoodChatTurn({ message, projectId, route }) {
         return sessions
       }
       const next = endDogfoodSession(session, clock)
+      endedSession = next
       outcome = response(
         `Dogfood session ended. ${next.transcript.length} thing(s) captured.`,
         next
@@ -126,7 +132,35 @@ export async function processDogfoodChatTurn({ message, projectId, route }) {
     return { ...sessions, [next.id]: next }
   })
 
+  if (endedSession) {
+    outcome.text += ` ${await synthesisSummary(endedSession, clock)}`
+  }
   return outcome
+}
+
+// Real, potentially slow LLM call -- run only after the session is
+// durably ENDED and the store's file lock is released. Never throws:
+// every failure path (no provider configured, resource pressure, a
+// structurally invalid response) degrades to an honest status message so
+// the raw transcript is never silently lost even when synthesis can't run.
+async function synthesisSummary(session, clock) {
+  const result = await synthesizeDogfoodSession(session, { clock })
+  if (!result.ok) {
+    if (result.reason === 'NOTHING_CAPTURED') {
+      return 'Nothing was captured, so there is nothing to synthesize.'
+    }
+    return `Synthesis could not run right now (${result.reason}) -- the raw transcript is safely saved and can be synthesized later.`
+  }
+  const actionable = result.observations.filter((o) => o.disposition !== 'DO_NOT_ACT')
+  const protectedCount = result.observations.filter(
+    (o) => o.category === 'GOOD_AS_IS_PROTECT'
+  ).length
+  return (
+    `Synthesized ${result.observations.length} observation(s): ` +
+    `${actionable.length} actionable (${result.findingIds.length} tracked as real findings), ` +
+    `${protectedCount} marked GOOD AS-IS/protected, ` +
+    `${result.observations.length - actionable.length - protectedCount} other (question/idea/preference/ambiguous/retracted).`
+  )
 }
 
 // Thin HTTP-facing wrapper: writes the response and returns true when the

@@ -97,7 +97,7 @@ if (resume && resume !== sessionId) {
 // fallback test can drive this same stub honestly as either agent, matching
 // each agent's own real invocation shape rather than only ever exercising
 // claude-code's.
-const prompt = argValue('-p') || (args[0] === 'exec' ? args[2] ?? '' : '')
+const prompt = argValue('-p') || (args[0] === 'exec' ? (args[2] ?? '') : '')
 // codex's real buildArgs has no --json-schema flag -- live-planner.mjs
 // forwards the schema by appending it as prose after this exact marker
 // instead (Phase 11 fix). Mirrors that transport so a Claude-unavailable/
@@ -106,7 +106,9 @@ const prompt = argValue('-p') || (args[0] === 'exec' ? args[2] ?? '' : '')
 const CODEX_SCHEMA_MARKER = 'matching exactly this JSON Schema:\n'
 const jsonSchema =
   argValue('--json-schema') ??
-  (prompt.includes(CODEX_SCHEMA_MARKER) ? prompt.slice(prompt.indexOf(CODEX_SCHEMA_MARKER) + CODEX_SCHEMA_MARKER.length) : null)
+  (prompt.includes(CODEX_SCHEMA_MARKER)
+    ? prompt.slice(prompt.indexOf(CODEX_SCHEMA_MARKER) + CODEX_SCHEMA_MARKER.length)
+    : null)
 
 // When --json-schema is passed (structured one-shot analysis calls), emit
 // a result shaped for WHICHEVER schema was actually requested -- inspected
@@ -256,17 +258,42 @@ function structuredResponseFor(schemaJson, prompt) {
         { entityId: 'stub-entity-1', label: 'stub entity 1' },
         { entityId: 'stub-entity-2', label: 'stub entity 2' }
       ],
-      expectedUniverseSource: 'stub: inferred from the request\'s own explicit scope',
+      expectedUniverseSource: "stub: inferred from the request's own explicit scope",
       requestedFields: [
         { fieldName: 'stubValue', valueType: 'number', required: true },
         { fieldName: 'stubSource', valueType: 'string', required: true }
       ],
       temporalPeriodScope: 'stub-period',
-      preferredSourceUrls: ['https://example.com/stub-source-1', 'not-a-real-url', 'https://example.com/stub-source-2'],
+      preferredSourceUrls: [
+        'https://example.com/stub-source-1',
+        'not-a-real-url',
+        'https://example.com/stub-source-2'
+      ],
       sourceStrategy: 'stub: official/deterministic/public acquisition before AI research',
       verificationRequirement: 'stub: independent source cross-check where available',
       completenessRequirement: 'stub: every expected entity has a value and a source'
     }
+  }
+  if (schemaVersion === 'TSF_DOGFOOD_SYNTHESIS_V1') {
+    // STUB_DOGFOOD_SYNTHESIS_JSON carries the exact observations array a
+    // test wants back (a real LLM's own creative classification of a rant
+    // isn't something a unit test can predict deterministically -- that's
+    // covered separately by real UI/Command dogfood against a live
+    // provider). Falls back to a single trivial BUG observation so an
+    // unconfigured call still exercises the real wiring end to end.
+    const observations = process.env.STUB_DOGFOOD_SYNTHESIS_JSON
+      ? JSON.parse(process.env.STUB_DOGFOOD_SYNTHESIS_JSON)
+      : [
+          {
+            category: 'BUG',
+            settledDescription: `stub-observation-for::${prompt}`.slice(0, 500),
+            disposition: 'NEEDS_OWNER_DECISION',
+            evidenceTurnIndexes: [0],
+            severity: 'P2',
+            route: null
+          }
+        ]
+    return { schemaVersion: 'TSF_DOGFOOD_SYNTHESIS_V1', observations }
   }
   if (schema?.properties?.bindings) {
     // Field-source-reconciliation stub: STUB_RECONCILE_MODE picks the
@@ -277,10 +304,22 @@ function structuredResponseFor(schemaJson, prompt) {
     // wiring end to end without hardcoding that pair into the stub).
     const { realColumnHeaders, requestedFieldsNeedingAMatch } = JSON.parse(prompt)
     const mode = process.env.STUB_RECONCILE_MODE || 'match'
-    const words = (s) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]+/g, '').split(/\s+/).filter(Boolean))
+    const words = (s) =>
+      new Set(
+        s
+          .toLowerCase()
+          .replace(/[^a-z0-9 ]+/g, '')
+          .split(/\s+/)
+          .filter(Boolean)
+      )
     const bindings = requestedFieldsNeedingAMatch.map((fieldName) => {
       if (mode === 'hallucinate') {
-        return { fieldName, matchedHeader: 'Invented Header Not On The Table', confidence: 0.9, reasoning: 'stub hallucination' }
+        return {
+          fieldName,
+          matchedHeader: 'Invented Header Not On The Table',
+          confidence: 0.9,
+          reasoning: 'stub hallucination'
+        }
       }
       if (mode === 'null') {
         return { fieldName, matchedHeader: null, confidence: 0, reasoning: 'stub: ambiguous' }
@@ -296,8 +335,18 @@ function structuredResponseFor(schemaJson, prompt) {
         }
       }
       return best
-        ? { fieldName, matchedHeader: best, confidence: 0.85, reasoning: `stub: "${fieldName}" and "${best}" name the same concept` }
-        : { fieldName, matchedHeader: null, confidence: 0, reasoning: 'stub: no plausible header found' }
+        ? {
+            fieldName,
+            matchedHeader: best,
+            confidence: 0.85,
+            reasoning: `stub: "${fieldName}" and "${best}" name the same concept`
+          }
+        : {
+            fieldName,
+            matchedHeader: null,
+            confidence: 0,
+            reasoning: 'stub: no plausible header found'
+          }
     })
     return { bindings }
   }
