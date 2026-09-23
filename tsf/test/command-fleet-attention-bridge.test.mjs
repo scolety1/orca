@@ -146,6 +146,23 @@ test('classifyFleetAttentionRequest recognizes the real trigger phrasings', () =
     classifyFleetAttentionRequest('what changed while I was away?'),
     'FLEET_ATTENTION_CHANGED_WHILE_AWAY'
   )
+  // Overnight autonomous-improvement mission, Loop 2: the new browsable
+  // activity feed -- deliberately excludes "away"/"gone" phrasing so it
+  // never collides with the one-shot CHANGED_WHILE_AWAY drain above.
+  assert.equal(
+    classifyFleetAttentionRequest("what's happening recently?"),
+    'FLEET_ATTENTION_RECENT_ACTIVITY'
+  )
+  assert.equal(classifyFleetAttentionRequest('recent activity'), 'FLEET_ATTENTION_RECENT_ACTIVITY')
+  assert.equal(
+    classifyFleetAttentionRequest('what changed recently?'),
+    'FLEET_ATTENTION_RECENT_ACTIVITY'
+  )
+  assert.equal(
+    classifyFleetAttentionRequest('did anything change while I was away?'),
+    'FLEET_ATTENTION_CHANGED_WHILE_AWAY',
+    '"while...away" phrasing must still resolve to the one-shot drain, never the new activity feed'
+  )
 })
 
 test('classifyFleetAttentionRequest does not hijack ordinary chat', () => {
@@ -179,6 +196,19 @@ test('shouldRouteToFleetAttentionBridge mirrors classifyFleetAttentionRequest', 
 
 test('respondFleetAttentionCommand returns null for a non-matching message (falls through to normal chat)', async () => {
   assert.equal(await respondFleetAttentionCommand({ message: 'what is running right now?' }), null)
+})
+
+// Positioned before any test that durably registers a real
+// AttentionNotificationEvent (this file shares one on-disk store across
+// all its tests, same convention as every other real-state test file) --
+// "empty" is only genuinely provable here, at the very start.
+test('FLEET_ATTENTION_RECENT_ACTIVITY: honest empty state when nothing has happened', async () => {
+  const result = await respondFleetAttentionCommand({
+    message: 'what changed recently?',
+    clock: CLOCK,
+    deps: emptyDeps()
+  })
+  assert.match(result.text, /Nothing has happened recently/)
 })
 
 test('FLEET_ATTENTION_COMPLETED: honest empty state, then a real completed research mission appears', async () => {
@@ -369,4 +399,34 @@ test('FLEET_ATTENTION_CHANGED_WHILE_AWAY: honest empty state when nothing is due
     deps: emptyDeps()
   })
   assert.match(result.text, /Nothing changed while you were away/)
+})
+
+test('FLEET_ATTENTION_RECENT_ACTIVITY: reports a real event, and unlike CHANGED_WHILE_AWAY, asking again still shows it -- non-destructive, never marks delivered', async () => {
+  let finding = createFinding(rawFinding({ affectedSurface: 'recent-activity-surface' }), CLOCK)
+  finding = transitionFinding(finding, 'VERIFIED', { reason: 'x' }, CLOCK)
+  finding = transitionFinding(
+    finding,
+    'NEEDS_OWNER',
+    { reason: 'AUTOFIX_ELIGIBILITY_CLASSIFIED' },
+    CLOCK
+  )
+  const deps = emptyDeps({ selfImprovementFindings: { [finding.findingId]: finding } })
+
+  const first = await respondFleetAttentionCommand({
+    message: "what's happening recently?",
+    clock: CLOCK,
+    deps
+  })
+  assert.match(first.text, /recent-activity-surface/)
+
+  const second = await respondFleetAttentionCommand({
+    message: 'recent activity',
+    clock: CLOCK,
+    deps
+  })
+  assert.match(
+    second.text,
+    /recent-activity-surface/,
+    'a second ask must still show the same real event -- this is a repeatable history read, never a one-shot drain'
+  )
 })

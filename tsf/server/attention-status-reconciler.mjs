@@ -5,7 +5,10 @@
 // same live item is a true no-op (content-addressed eventId dedup), which
 // is what makes this safe across a restart or two concurrent reconciles.
 import { buildFleetAttentionItems } from '../domain/fleet-attention-status.mjs'
-import { createAttentionNotificationEvent, markAttentionNotificationEventDelivered } from '../domain/attention-notification-event.mjs'
+import {
+  createAttentionNotificationEvent,
+  markAttentionNotificationEventDelivered
+} from '../domain/attention-notification-event.mjs'
 import {
   listAttentionNotificationEvents,
   registerAttentionNotificationEventIfAbsent,
@@ -53,9 +56,15 @@ function transitionSignatureFor(item, findingsById) {
     // scope), but escalating to a genuinely worse tier does.
     return item.source.id
   }
-  if (item.category === 'COMPLETED_RECENTLY') { return 'COMPLETED' }
-  if (item.category === 'FAILED_REQUIRES_ATTENTION') { return 'STALLED' }
-  if (item.category === 'READY_FOR_ADOPTION') { return 'READY_FOR_ADOPTION' }
+  if (item.category === 'COMPLETED_RECENTLY') {
+    return 'COMPLETED'
+  }
+  if (item.category === 'FAILED_REQUIRES_ATTENTION') {
+    return 'STALLED'
+  }
+  if (item.category === 'READY_FOR_ADOPTION') {
+    return 'READY_FOR_ADOPTION'
+  }
   // Remaining case: NEEDS_OWNER sourced from fleetNeedsYouStatus (PROJECT/
   // RESEARCH/PLANNER needsYou), never from a self-improvement finding here.
   return 'NEEDS_YOU_OPEN'
@@ -111,7 +120,10 @@ export function gatherRealFleetAttentionInputs() {
 export function gatherRealDeps(clock) {
   return {
     ...gatherRealFleetAttentionInputs(),
-    resourcePressureState: buildResourcePressureState({ hostMemory: collectHostMemoryEvidence() }, clock)
+    resourcePressureState: buildResourcePressureState(
+      { hostMemory: collectHostMemoryEvidence() },
+      clock
+    )
   }
 }
 
@@ -120,11 +132,16 @@ export async function reconcileFleetAttentionItems(clock, deps = {}) {
   const real = needsRealFleetRead ? gatherRealDeps(clock) : null
   const projects = deps.projects ?? real.projects
   const keepGoingRuns = deps.keepGoingRuns ?? real.keepGoingRuns
-  const researchMissions = deps.researchMissions ?? real?.researchMissions ?? readAllResearchMissions()
-  const plannerMissionRecords = deps.plannerMissionRecords ?? real?.plannerMissionRecords ?? readAllPlannerMissionRecords()
-  const selfImprovementFindings = deps.selfImprovementFindings ?? real?.selfImprovementFindings ?? readAllFindings()
-  const projectExecutionHolds = deps.projectExecutionHolds ?? real?.projectExecutionHolds ?? readAllProjectExecutionHolds()
-  const projectCanonicalBases = deps.projectCanonicalBases ?? real?.projectCanonicalBases ?? readAllProjectCanonicalBases()
+  const researchMissions =
+    deps.researchMissions ?? real?.researchMissions ?? readAllResearchMissions()
+  const plannerMissionRecords =
+    deps.plannerMissionRecords ?? real?.plannerMissionRecords ?? readAllPlannerMissionRecords()
+  const selfImprovementFindings =
+    deps.selfImprovementFindings ?? real?.selfImprovementFindings ?? readAllFindings()
+  const projectExecutionHolds =
+    deps.projectExecutionHolds ?? real?.projectExecutionHolds ?? readAllProjectExecutionHolds()
+  const projectCanonicalBases =
+    deps.projectCanonicalBases ?? real?.projectCanonicalBases ?? readAllProjectCanonicalBases()
   const resourcePressureState =
     deps.resourcePressureState ??
     real?.resourcePressureState ??
@@ -145,7 +162,9 @@ export async function reconcileFleetAttentionItems(clock, deps = {}) {
 
   const registered = []
   for (const item of items) {
-    if (!NOTIFY_WORTHY_CATEGORIES.has(item.category)) { continue }
+    if (!NOTIFY_WORTHY_CATEGORIES.has(item.category)) {
+      continue
+    }
     const transitionSignature = transitionSignatureFor(item, findingsById)
     const fields = {
       category: item.category,
@@ -161,7 +180,9 @@ export async function reconcileFleetAttentionItems(clock, deps = {}) {
     const { event, created } = await registerAttentionNotificationEventIfAbsent(() =>
       createAttentionNotificationEvent(fields, clock)
     )
-    if (created) { registered.push(event) }
+    if (created) {
+      registered.push(event)
+    }
   }
   return registered
 }
@@ -173,12 +194,39 @@ const CATEGORY_VERB = Object.freeze({
   COMPLETED_RECENTLY: 'just completed'
 })
 
-function describeAttentionEvent(event) {
+// Exported for recentAttentionActivity below (same real formatting, never
+// a second copy) -- describeAttentionEvent stays the one place an
+// AttentionNotificationEvent becomes owner-readable prose.
+export function describeAttentionEvent(event) {
   if (event.category === 'WAITING_FOR_RESOURCES') {
     return `Host resource pressure reached **${event.sourceId}** -- ${event.reason}`
   }
   const verb = CATEGORY_VERB[event.category] ?? 'changed state'
   return `**${event.label}** ${verb}${event.reason ? ` -- ${event.reason}` : ''}.`
+}
+
+// Overnight autonomous-improvement mission, Loop 2: a real, externally-
+// validated gap (a browsable chronological activity feed -- 2026 AI-agent
+// UX research names this pattern explicitly, and TSF's own archaeology
+// found the durable substrate already exists via this exact store, just
+// never exposed as a browsable read). Deliberately NON-DESTRUCTIVE --
+// unlike drainDueAttentionNotifications, this never marks anything
+// DELIVERED and can be called as many times as the owner asks; the same
+// event can appear here AND still be a real due notice on the owner's
+// next unprompted turn (this is a history view, not a delivery queue).
+// Reconciles first (same as drain) so "what just happened" is grounded in
+// freshly-detected transitions, not a stale scan from whenever the last
+// reconcile happened to run.
+export async function recentAttentionActivity(clock, deps = {}, limit = 10) {
+  await reconcileFleetAttentionItems(clock, deps)
+  return listAttentionNotificationEvents()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit)
+    .map((event) => ({
+      eventId: event.eventId,
+      createdAt: event.createdAt,
+      text: describeAttentionEvent(event)
+    }))
 }
 
 // Reconciles, then delivers every UNSEEN event exactly once, marking each

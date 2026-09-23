@@ -12,7 +12,8 @@
 import { buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
 import {
   gatherRealFleetAttentionInputs,
-  drainDueAttentionNotifications
+  drainDueAttentionNotifications,
+  recentAttentionActivity
 } from './attention-status-reconciler.mjs'
 import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
@@ -34,6 +35,19 @@ const INTENT_PATTERNS = [
     test: (msg) =>
       /\bdid\s+anything\s+change\s+while\s+i\s+(was\s+)?(gone|away)\b/i.test(msg) ||
       /\bwhat\s+changed\s+while\s+i\s+(was\s+)?(gone|away)\b/i.test(msg)
+  },
+  // Overnight autonomous-improvement mission, Loop 2: a real, externally-
+  // validated gap -- a browsable "what's been happening" activity feed --
+  // distinct from FLEET_ATTENTION_CHANGED_WHILE_AWAY (a one-shot delivery
+  // drain scoped to "since I was last here," never re-shown once
+  // delivered). This is a repeatable, non-destructive history read -- "away"
+  // is deliberately excluded from this pattern so the two never collide.
+  {
+    id: 'FLEET_ATTENTION_RECENT_ACTIVITY',
+    test: (msg) =>
+      /\b(what'?s? (?:been )?(?:happening|going on) recently|recent activity|activity (?:feed|history)|what changed recently)\b/i.test(
+        msg
+      )
   }
 ]
 
@@ -176,20 +190,37 @@ export async function respondFleetAttentionCommand({
     })
   }
 
-  // FLEET_ATTENTION_CHANGED_WHILE_AWAY: an explicit, on-demand pull of the
-  // SAME durable notification drain the chat-attach mechanism otherwise
-  // waits for on the next unrelated turn -- deps passed straight through so
-  // this stays real (real reconcile + real store) unless a test injects a
-  // fixed fleet snapshot, exactly like every other real caller of
-  // drainDueAttentionNotifications. No project ids are recoverable from a
-  // drained notice's own {eventId, text} shape without fabricating a
-  // lookup, so resolvedProjectIds is honestly empty here.
-  const notices = await drainDueAttentionNotifications(clock, deps)
+  if (intent === 'FLEET_ATTENTION_CHANGED_WHILE_AWAY') {
+    // An explicit, on-demand pull of the SAME durable notification drain
+    // the chat-attach mechanism otherwise waits for on the next unrelated
+    // turn -- deps passed straight through so this stays real (real
+    // reconcile + real store) unless a test injects a fixed fleet
+    // snapshot, exactly like every other real caller of
+    // drainDueAttentionNotifications. No project ids are recoverable from
+    // a drained notice's own {eventId, text} shape without fabricating a
+    // lookup, so resolvedProjectIds is honestly empty here.
+    const notices = await drainDueAttentionNotifications(clock, deps)
+    return RESPOND({
+      intent,
+      text:
+        notices.length === 0
+          ? 'Nothing changed while you were away.'
+          : notices.map((n) => `- ${n.text}`).join('\n')
+    })
+  }
+
+  // FLEET_ATTENTION_RECENT_ACTIVITY: a repeatable, non-destructive read of
+  // the last N real attention events, regardless of delivered status --
+  // never consumes/marks anything, so asking twice in a row gives the
+  // same honest answer both times (unlike CHANGED_WHILE_AWAY's one-shot
+  // drain). No project ids are recoverable from the same {eventId, text}
+  // shape, so resolvedProjectIds is honestly empty here too.
+  const activity = await recentAttentionActivity(clock, deps)
   return RESPOND({
     intent,
     text:
-      notices.length === 0
-        ? 'Nothing changed while you were away.'
-        : notices.map((n) => `- ${n.text}`).join('\n')
+      activity.length === 0
+        ? 'Nothing has happened recently.'
+        : activity.map((n) => `- ${n.text}`).join('\n')
   })
 }
