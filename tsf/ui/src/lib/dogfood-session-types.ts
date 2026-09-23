@@ -10,9 +10,13 @@ export type DogfoodSession = {
   id: string
   projectId: string | null
   route: string | null
-  state: 'ACTIVE' | 'PAUSED'
+  // ENDED only appears here when its synthesis is still RUNNING (crash
+  // recovery in progress) or FAILED (retry budget not yet exhausted) --
+  // see server/http-server.mjs's GET /api/dogfood-session for the filter.
+  state: 'ACTIVE' | 'PAUSED' | 'ENDED'
   startedAt: string
   transcript: DogfoodTurn[]
+  synthesisStatus: 'RUNNING' | 'DONE' | 'FAILED' | null
 }
 
 export type DogfoodSessionsResponse = {

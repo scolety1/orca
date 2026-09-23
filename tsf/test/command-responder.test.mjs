@@ -196,7 +196,13 @@ test('UX polish: a large idle fleet (> 3) collapses to a human-first summary ins
     opState,
     clock
   })
-  assert.match(result.text, /Nothing is running right now\. 7 project\(s\) are idle/)
+  // Owner-trial-prep finding: the collapsed summary now honestly breaks
+  // down WHY each idle project is idle (never a bare count) -- see
+  // command-global-scope-bridge.mjs's own summarizeIdleCounts.
+  assert.match(
+    result.text,
+    /Nothing is running right now\. 7 project\(s\) idle \(7 no Keep Going run\)/
+  )
   assert.doesNotMatch(
     result.text,
     /Project 0/,

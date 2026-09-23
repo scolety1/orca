@@ -9,7 +9,11 @@ import {
   appendDogfoodTurn,
   createDogfoodSession,
   detectDogfoodSessionTrigger,
+  DOGFOOD_SYNTHESIS_MAX_ATTEMPTS,
   endDogfoodSession,
+  markDogfoodSynthesisDone,
+  markDogfoodSynthesisFailed,
+  markDogfoodSynthesisRunning,
   pauseDogfoodSession,
   resumeDogfoodSession
 } from '../domain/dogfood-session.mjs'
@@ -122,7 +126,18 @@ export async function processDogfoodChatTurn({ message, projectId, route }) {
         outcome = null
         return sessions
       }
-      const next = endDogfoodSession(session, clock)
+      let next = endDogfoodSession(session, clock)
+      // Owner-trial-prep finding (real, crash-recovery): mark synthesis as
+      // owed in the SAME atomic write as the ENDED transition, so a crash
+      // any time after this point is durably recoverable at the next
+      // server startup (recoverInterruptedDogfoodSynthesis below) -- never
+      // a separate, later write that could itself be lost. Only when there
+      // is something to synthesize (matches synthesizeDogfoodSession's own
+      // NOTHING_CAPTURED short-circuit) -- an empty transcript has nothing
+      // to recover, so it is never marked RUNNING.
+      if (next.transcript.some((t) => t.role === 'OWNER')) {
+        next = markDogfoodSynthesisRunning(next, clock)
+      }
       endedSession = next
       outcome = response(
         `Dogfood session ended. ${next.transcript.length} thing(s) captured.`,
@@ -155,11 +170,12 @@ export async function processDogfoodChatTurn({ message, projectId, route }) {
 // the raw transcript is never silently lost even when synthesis can't run.
 async function synthesisSummary(session, clock) {
   const result = await synthesizeDogfoodSession(session, { clock })
+  await recordSynthesisOutcome(session.id, result, clock)
   if (!result.ok) {
     if (result.reason === 'NOTHING_CAPTURED') {
       return 'Nothing was captured, so there is nothing to synthesize.'
     }
-    return `Synthesis could not run right now (${result.reason}) -- the raw transcript is safely saved and can be synthesized later.`
+    return `Synthesis could not run right now (${result.reason}) -- the raw transcript is safely saved and will be automatically retried.`
   }
   const actionable = result.observations.filter((o) => o.disposition !== 'DO_NOT_ACT')
   const protectedCount = result.observations.filter(
@@ -171,6 +187,72 @@ async function synthesisSummary(session, clock) {
     `${protectedCount} marked GOOD AS-IS/protected, ` +
     `${result.observations.length - actionable.length - protectedCount} other (question/idea/preference/ambiguous/retracted).`
   )
+}
+
+// Durably records the real outcome of a synthesis attempt -- a SEPARATE
+// write from the one that marked RUNNING (that one had to happen before
+// the LLM call even started; this one can only happen after it resolves).
+// A crash between the two leaves the session honestly stuck at RUNNING,
+// which recoverInterruptedDogfoodSynthesis below correctly treats as
+// "needs a retry," not silently forgotten. NOTHING_CAPTURED is not an
+// outcome to record -- that session was never marked RUNNING in the
+// first place (see the END handler above), so there is nothing to update.
+async function recordSynthesisOutcome(sessionId, result, clock) {
+  if (!result.ok && result.reason === 'NOTHING_CAPTURED') {
+    return
+  }
+  await withDogfoodSessions((sessions) => {
+    const current = sessions[sessionId]
+    if (!current || current.synthesisStatus !== 'RUNNING') {
+      return sessions
+    }
+    const next = result.ok
+      ? markDogfoodSynthesisDone(current, result.findingIds, clock)
+      : markDogfoodSynthesisFailed(current, result.reason, clock)
+    return { ...sessions, [sessionId]: next }
+  })
+}
+
+// Fire-and-forget, called once at server startup -- same convention as
+// recoverInterruptedPrepareForWorkOperations/recoverStaleStalledKeepGoingRuns
+// (http-server.mjs's own startStandaloneServer). A session still RUNNING
+// at startup was, by definition, interrupted by the previous process
+// dying -- this process is the first chance to notice. A FAILED session
+// is retried too, up to a bounded attempt budget (mirrors the
+// retry-budget-aware posture of the Keep Going stalled-run recovery
+// scan), so a transient planner outage does not require manual
+// intervention, but a session does not retry forever either. Never
+// throws: one session's recovery failure must not block the rest or
+// startup itself.
+export async function recoverInterruptedDogfoodSynthesis(clock = () => new Date(), deps = {}) {
+  const readSessions = deps.readAllDogfoodSessions ?? readAllDogfoodSessions
+  const runSynthesisSummary = deps.synthesisSummary ?? synthesisSummary
+  const stalled = Object.values(readSessions()).filter(
+    (s) =>
+      s.state === 'ENDED' &&
+      (s.synthesisStatus === 'RUNNING' ||
+        (s.synthesisStatus === 'FAILED' &&
+          (s.synthesisAttempts ?? 0) < DOGFOOD_SYNTHESIS_MAX_ATTEMPTS))
+  )
+  const recovered = []
+  for (const session of stalled) {
+    try {
+      // eslint-disable-next-line no-await-in-loop -- bounded by real stalled-session count, mirrors keep-going-stalled-run-recovery.mjs's own sequential-recovery-scan precedent
+      const remarked = await withDogfoodSessions((sessions) => {
+        const current = sessions[session.id]
+        if (!current || current.state !== 'ENDED') {
+          return sessions
+        }
+        return { ...sessions, [session.id]: markDogfoodSynthesisRunning(current, clock) }
+      })
+      // eslint-disable-next-line no-await-in-loop -- see above
+      await runSynthesisSummary(remarked[session.id], clock)
+      recovered.push(session.id)
+    } catch (error) {
+      console.error(`dogfood synthesis startup recovery failed for ${session.id}:`, error)
+    }
+  }
+  return recovered
 }
 
 // Safety review finding (real, reproduced): the fleet-wide/ambiguous

@@ -24,7 +24,7 @@ function project(id, overrides = {}) {
   return { id, displayName: id, mission: { state: 'ONBOARDED' }, ...overrides }
 }
 
-test('fleetWorkStatus reports hasRun:false and feed:null for a project with no Keep Going run', () => {
+test('fleetWorkStatus reports hasRun:false and feed:null for a project with no Keep Going run -- a plain ONBOARDED mission state reads as DONE, not null', () => {
   const statuses = fleetWorkStatus([project('a')], {}, clock)
   assert.deepEqual(statuses, [
     {
@@ -32,13 +32,46 @@ test('fleetWorkStatus reports hasRun:false and feed:null for a project with no K
       displayName: 'a',
       hasRun: false,
       feed: null,
-      primaryState: null,
+      primaryState: 'DONE',
       primaryReasonLabel: null,
       runId: null,
       executing: false,
       lastCheckpointAt: null
     }
   ])
+})
+
+// Owner-trial-prep finding (real, from a live multi-project agreement
+// audit): a run-less project's real onboarding-time missionState
+// (BLOCKED/SENSITIVE_READ_ONLY/READ_ONLY/DIRTY_PRESERVE) used to be
+// completely discarded here (a bare primaryState:null) -- Command's own
+// global fleet-status answer then had no real information to report for
+// these projects and gave false reassurance ("nothing to report"). Now
+// reuses the exact same classification onboarded-project-projection.mjs's
+// real /api/projects projection already gets right.
+test('fleetWorkStatus reports a real primaryState for a run-less project with a real missionState (BLOCKED/SENSITIVE_READ_ONLY), never a bare null', () => {
+  const [blocked] = fleetWorkStatus([project('b', { mission: { state: 'BLOCKED' } })], {}, clock)
+  assert.equal(blocked.primaryState, 'NEEDS_YOU')
+  assert.equal(blocked.primaryReasonLabel, null)
+
+  const [sensitive] = fleetWorkStatus(
+    [project('c', { mission: { state: 'SENSITIVE_READ_ONLY' } })],
+    {},
+    clock
+  )
+  assert.equal(sensitive.primaryState, 'WAITING')
+  assert.equal(sensitive.primaryReasonLabel, 'Paused')
+})
+
+test('fleetWorkStatus: an execution hold on a run-less project still wins over its missionState', () => {
+  const [held] = fleetWorkStatus(
+    [project('d', { mission: { state: 'SENSITIVE_READ_ONLY' } })],
+    {},
+    clock,
+    { d: { status: 'ACTIVE', reason: 'owner requested', note: null } }
+  )
+  assert.equal(held.primaryState, 'WAITING')
+  assert.equal(held.primaryReasonLabel, 'Execution hold')
 })
 
 // Persistent-visibility feature (bug-ledger.json): lastCheckpointAt is the

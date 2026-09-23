@@ -113,7 +113,7 @@ const SCOPE_SYSTEM_PROMPT = [
   'Your only job is to pick exactly one scope label for the message. You are not answering the message, not taking any action, and nothing you say here can dispatch work or spend money -- this is a routing decision only.',
   '',
   'Labels:',
-  '- GLOBAL_STATUS: a factual "what is happening / what is everyone doing right now" question about the whole fleet, no specific project implied. Examples: "what is everyone doing right now?", "what\'s running?", "what\'s the fleet up to?", "catch me up". If the message is only asking what is currently running/active/being worked on, it is GLOBAL_STATUS even if it could loosely be described as an "overview" -- do not route it to GLOBAL_ADVISORY.',
+  '- GLOBAL_STATUS: a factual "what is happening / what is everyone doing right now" question about the whole fleet, no specific project implied. Examples: "what is everyone doing right now?", "what\'s running?", "what\'s the fleet up to?", "catch me up", "what\'s waiting?", "is everything still working?", "did anything stop?", "can I leave everything alone?". If the message is only asking what is currently running/active/waiting/idle, it is GLOBAL_STATUS even if it could loosely be described as an "overview" -- do not route it to GLOBAL_ADVISORY, and do not route a plain "what\'s waiting?" to NEEDS_YOU_QUERY -- WAITING and NEEDS_YOU are different real states.',
   '- GLOBAL_ADVISORY: asking for a RECOMMENDATION or SAFETY judgment -- e.g. which project is safe/disposable/OK to experiment on, or general guidance -- never a plain "what is happening/running now" question.',
   '- RESEARCH_REQUEST: asking to research or build a dataset about some real-world topic that is NOT a TSF/Orca project (e.g. historical sports data, market data, any external subject matter).',
   '- NEEDS_YOU_QUERY: asking what outstanding decisions/owner attention are pending across the whole fleet (e.g. "what needs me?", "what am I blocking?").',
@@ -146,11 +146,28 @@ function deterministicScopeFallback(message) {
   // different words.
   const everyoneFleetActivity =
     /\b(everyone|the fleet|all projects)\s+(?:is\s+|are\s+)?(doing|working on|up to)\b/i
+  // Owner-trial-prep finding (real, from a live multi-project agreement
+  // audit): "what's waiting?"/"is everything still working?"/"did
+  // anything stop?"/"can I leave everything alone?" have no dedicated
+  // scope of their own and were falling through to a guessed
+  // NEEDS_YOU_QUERY (wrong -- WAITING and NEEDS_YOU are different real
+  // states, see owner-primary-state.mjs) or UNCLEAR. All are genuinely
+  // "what's really going on across the fleet" questions -- GLOBAL_STATUS
+  // (now that fleetWorkStatus/formatFleetStatusText report a real,
+  // honest primaryState for every project, including run-less ones) is
+  // the correct, already-existing answer for every one of them. Excludes
+  // "waiting on/for resources" -- that has its own, more specific
+  // FLEET_ATTENTION_WAITING_ON_RESOURCES handler upstream in
+  // command-fleet-attention-bridge.mjs, which is checked before this
+  // classifier ever runs.
+  const fleetTruthQuestion =
+    /\bwhat'?s?\s+waiting\b(?!\s+(?:on|for)\s+resources?)|\bis\s+everything\s+(?:still\s+)?working\b|\bdid\s+anything\s+stop\b|\bcan\s+i\s+leave\s+everything\s+alone\b/i
   if (
     /\b(what(?:'?s| is) (running|going on)|status|catch me up|update me|where are we)\b/i.test(
       message
     ) ||
-    everyoneFleetActivity.test(message)
+    everyoneFleetActivity.test(message) ||
+    fleetTruthQuestion.test(message)
   ) {
     return 'GLOBAL_STATUS'
   }

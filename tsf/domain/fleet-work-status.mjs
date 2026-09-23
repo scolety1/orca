@@ -8,6 +8,7 @@ import { compareStateToGoal } from './keep-going.mjs'
 import { projectLiveWorkFeedState, isRunExecuting } from './live-work-feed.mjs'
 import { computeResearchMissionPhase } from './research-mission.mjs'
 import { keepGoingRunWorkItem } from './owner-work-model.mjs'
+import { ownerPrimaryStateForRunlessProject } from './owner-primary-state.mjs'
 
 // "Command, Work/Home/global indicator and Research status must agree"
 // (hands-on pilot finding): a ResearchMission is not a project's Keep Going
@@ -146,13 +147,27 @@ export function fleetWorkStatus(
     const run = keepGoingRuns[project.id] ?? null
     const hold = projectExecutionHolds[project.id]
     if (!run) {
+      // Owner-trial-prep finding (real): this used to be a bare
+      // primaryState:null/primaryReasonLabel:null, meaning every
+      // consumer either had no real answer for a run-less project or had
+      // to re-derive one itself -- Command's own fleet-status text did
+      // neither, and a real audit found it silently telling the owner
+      // "nothing to report" about paused/SENSITIVE_READ_ONLY and
+      // NEEDS_YOU run-less projects. Reuses the EXACT SAME classification
+      // onboarded-project-projection.mjs's real /api/projects projection
+      // already gets right (see ownerPrimaryStateForRunlessProject's own
+      // header) -- one place, every surface now agrees. A caller that
+      // still only checks `hasRun` (work-feed-summary.mjs's own legacy
+      // run-less branch) is completely unaffected -- it never reads
+      // primaryState/primaryReasonLabel for a run-less project.
+      const mapped = ownerPrimaryStateForRunlessProject(project.mission?.state ?? null, hold)
       return {
         projectId: project.id,
         displayName: project.displayName,
         hasRun: false,
         feed: null,
-        primaryState: null,
-        primaryReasonLabel: null,
+        primaryState: mapped.primary,
+        primaryReasonLabel: mapped.reasonLabel,
         runId: null,
         executing: false,
         lastCheckpointAt: null

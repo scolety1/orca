@@ -54,6 +54,25 @@ test('deterministic fallback: recognizes GLOBAL_STATUS/GLOBAL_ADVISORY/RESEARCH_
       ['research the history of something obscure', 'RESEARCH_REQUEST'],
       ['what needs me?', 'NEEDS_YOU_QUERY'],
       ['what am I blocking?', 'NEEDS_YOU_QUERY'],
+      // Owner-trial-prep finding (real, from a live multi-project
+      // agreement audit): these previously fell through to a guessed
+      // NEEDS_YOU_QUERY or UNCLEAR -- all are real "what's the fleet's
+      // true state" questions GLOBAL_STATUS already answers honestly
+      // now that fleetWorkStatus reports a real primaryState for every
+      // project. "waiting on/for resources" stays excluded -- it has its
+      // own dedicated handler upstream (command-fleet-attention-bridge.mjs).
+      ["what's waiting?", 'GLOBAL_STATUS'],
+      ['is everything still working?', 'GLOBAL_STATUS'],
+      ['did anything stop?', 'GLOBAL_STATUS'],
+      ['can I leave everything alone?', 'GLOBAL_STATUS'],
+      // "waiting on/for resources" is deliberately excluded from this
+      // classifier's own GLOBAL_STATUS match (see fleetTruthQuestion's own
+      // negative lookahead) -- it never reaches this layer in the real
+      // pipeline (command-fleet-attention-bridge.mjs intercepts it first,
+      // see test/command-fleet-attention-bridge.test.mjs), but if that
+      // upstream check were ever bypassed, this must not ALSO silently
+      // swallow it into the wrong, generic answer.
+      ["what's waiting on resources?", 'UNCLEAR'],
       ['asdkjfh laksjdhf', 'UNCLEAR']
     ]
     for (const [message, expected] of cases) {

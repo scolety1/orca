@@ -100,6 +100,31 @@ function legacyNeedsYouGapItems(projects, opState, existingProjectIds) {
 // collapses to a count instead of listing every one individually.
 const IDLE_NAME_THRESHOLD = 3
 
+// Owner-trial-prep finding (real, from a live multi-project agreement
+// audit): a run-less project's primaryState/primaryReasonLabel is real
+// information now (fleet-work-status.mjs's own fix), but "no Keep Going
+// run" for every one of them, and a collapsed "nothing to report" summary
+// once there are more than IDLE_NAME_THRESHOLD, both silently discarded it
+// -- an owner asking "did anything stop?"/"is everything still working?"
+// got false reassurance about real paused/SENSITIVE_READ_ONLY/NEEDS_YOU
+// projects. A genuinely idle (DONE, no special missionState) project still
+// reads as "no Keep Going run" -- that phrase is accurate for it.
+function idleStatusLabel(s) {
+  if (s.primaryReasonLabel) {
+    return s.primaryReasonLabel.toLowerCase()
+  }
+  return s.primaryState === 'NEEDS_YOU' ? 'needs you' : 'no Keep Going run'
+}
+
+function summarizeIdleCounts(idleProjects) {
+  const counts = new Map()
+  for (const s of idleProjects) {
+    const label = idleStatusLabel(s)
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  }
+  return [...counts.entries()].map(([label, n]) => `${n} ${label}`).join(', ')
+}
+
 export function formatFleetStatusText(statuses, researchStatuses = []) {
   if (statuses.length === 0 && researchStatuses.length === 0) {
     return 'No known projects yet -- add one from the Projects page.'
@@ -116,7 +141,7 @@ export function formatFleetStatusText(statuses, researchStatuses = []) {
     (r) =>
       `- **Research ${r.missionId}** — ${r.phase}${r.phase === 'WAITING_NEEDS_INPUT' ? ' (needs a decision)' : ''}.`
   )
-  const idleLines = idleProjects.map((s) => `- **${s.displayName}** — no Keep Going run.`)
+  const idleLines = idleProjects.map((s) => `- **${s.displayName}** — ${idleStatusLabel(s)}.`)
 
   if (activeProjectLines.length === 0 && researchLines.length === 0) {
     if (idleProjects.length === 0) {
@@ -125,7 +150,7 @@ export function formatFleetStatusText(statuses, researchStatuses = []) {
     if (idleProjects.length <= IDLE_NAME_THRESHOLD) {
       return `Nothing is running right now:\n${idleLines.join('\n')}`
     }
-    return `Nothing is running right now. ${idleProjects.length} project(s) are idle. Ask me about any one by name for detail.`
+    return `Nothing is running right now. ${idleProjects.length} project(s) idle (${summarizeIdleCounts(idleProjects)}). Ask me about any one by name for detail.`
   }
 
   const sections = []
@@ -136,7 +161,7 @@ export function formatFleetStatusText(statuses, researchStatuses = []) {
     sections.push(
       idleProjects.length <= IDLE_NAME_THRESHOLD
         ? idleLines.join('\n')
-        : `${idleProjects.length} other project(s) idle, nothing to report -- ask me about any one by name for detail.`
+        : `${idleProjects.length} other project(s) idle (${summarizeIdleCounts(idleProjects)}) -- ask me about any one by name for detail.`
     )
   }
   return `Here's what's really running right now:\n${sections.join('\n')}`

@@ -92,7 +92,7 @@ async function getSessions(base) {
   return { status: res.status, body: await res.json() }
 }
 
-test('GET /api/dogfood-session: empty when nothing is active, reflects a real started session, empty again after it ends', async () => {
+test('GET /api/dogfood-session: empty when nothing is active, reflects a real started session, reflects a stuck synthesis after it ends (no working planner in this test env)', async () => {
   await withServer(async (base) => {
     const before = await getSessions(base)
     assert.equal(before.status, 200)
@@ -108,13 +108,16 @@ test('GET /api/dogfood-session: empty when nothing is active, reflects a real st
     const afterNote = await getSessions(base)
     assert.equal(afterNote.body.sessions[0].transcript.length, 1)
 
-    await chat(base, { message: 'end dogfood mode' })
+    const endRes = await chat(base, { message: 'end dogfood mode' })
     const after = await getSessions(base)
-    assert.deepEqual(
-      after.body.sessions,
-      [],
-      'an ENDED session must not appear in the active/paused status list'
-    )
+    // This file has no working planner configured, so synthesis fails and
+    // the session's own crash-recovery status (RUNNING/FAILED) correctly
+    // keeps it visible here -- a DONE session is the one case GET hides
+    // (see test/dogfood-synthesis-crash-recovery.test.mjs for that case).
+    const own = after.body.sessions.find((s) => s.id === endRes.body.sessionId)
+    assert.ok(own, 'an ENDED session with a stuck synthesis must still appear')
+    assert.equal(own.state, 'ENDED')
+    assert.equal(own.synthesisStatus, 'FAILED')
   })
 })
 
@@ -125,8 +128,8 @@ test('GET /api/dogfood-session: a PAUSED session still appears (paused, not gone
     await chat(base, { projectId, message: 'start dogfood mode' })
     await chat(base, { projectId, message: 'pause dogfood' })
     const result = await getSessions(base)
-    assert.equal(result.body.sessions.length, 1)
-    assert.equal(result.body.sessions[0].state, 'PAUSED')
-    assert.equal(result.body.sessions[0].projectId, projectId)
+    const own = result.body.sessions.find((s) => s.projectId === projectId)
+    assert.ok(own, "this test's own paused session must appear")
+    assert.equal(own.state, 'PAUSED')
   })
 })

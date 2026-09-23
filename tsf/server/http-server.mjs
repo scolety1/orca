@@ -46,6 +46,7 @@ import { handleFleetOptimizerRoute } from './fleet-optimizer-http-routes.mjs'
 import { handleCapacityRoute } from './capacity-http-routes.mjs'
 import { handlePortfolioMembershipRoute } from './portfolio-membership-http-routes.mjs'
 import { readAllDogfoodSessions } from './dogfood-session-store.mjs'
+import { recoverInterruptedDogfoodSynthesis } from './dogfood-session-capture.mjs'
 import {
   handlePrepareForWorkRoute,
   recoverInterruptedPrepareForWorkOperations
@@ -143,9 +144,18 @@ export function createRequestHandler(options = {}) {
       // session, for the minimal owner-facing status indicator (TSF Owner
       // Dogfood/Critique Loop V1, Chunk 4). Read-only; starting/pausing/
       // resuming/ending stays conversational through POST /api/chat.
+      // Also surfaces an ENDED session whose synthesis is still RUNNING
+      // (interrupted, awaiting the startup recovery scan) or FAILED
+      // (exhausted its retry budget) -- owner-trial-prep finding: without
+      // this, a stuck synthesis was invisible until the owner happened to
+      // start a new session for the same scope and got refused. A DONE
+      // session never appears here -- its outcome was already delivered
+      // inline in the END chat response.
       if (parts[1] === 'dogfood-session' && req.method === 'GET') {
-        const sessions = Object.values(readAllDogfoodSessions()).filter((s) =>
-          ['ACTIVE', 'PAUSED'].includes(s.state)
+        const sessions = Object.values(readAllDogfoodSessions()).filter(
+          (s) =>
+            ['ACTIVE', 'PAUSED'].includes(s.state) ||
+            (s.state === 'ENDED' && ['RUNNING', 'FAILED'].includes(s.synthesisStatus))
         )
         return json(res, 200, { sessions })
       }
@@ -556,6 +566,15 @@ export function startStandaloneServer(port = 4610, options = {}) {
   // happened to tick it in the meantime.
   recoverStaleStalledKeepGoingRuns().catch((error) => {
     console.error('stalled Keep Going run recovery scan failed:', error)
+  })
+  // Owner-trial-prep finding (real): same reacquire-on-startup posture as
+  // the three scans above -- a dogfood session's synthesis left RUNNING
+  // (interrupted by a crash) or FAILED (transient planner/resource
+  // outage) is retried, up to its own bounded attempt budget, so a
+  // real owner rant never gets stuck unsynthesized just because the
+  // process that ended the session didn't survive to finish the job.
+  recoverInterruptedDogfoodSynthesis().catch((error) => {
+    console.error('dogfood synthesis recovery scan failed:', error)
   })
   // Safe Update Manager (spec Phase 5): records this real process's own
   // PID/commit/startedAt so a later checker can tell a genuinely-alive

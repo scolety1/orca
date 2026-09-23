@@ -10,20 +10,38 @@
 // NEEDS_YOU_QUERY handler and command-self-improvement-bridge.mjs
 // respectively (both surgically extended to the same aggregator already).
 import { buildFleetAttentionItems, trimAttentionItem } from '../domain/fleet-attention-status.mjs'
-import { gatherRealFleetAttentionInputs, drainDueAttentionNotifications } from './attention-status-reconciler.mjs'
+import {
+  gatherRealFleetAttentionInputs,
+  drainDueAttentionNotifications
+} from './attention-status-reconciler.mjs'
 import { buildResourcePressureState } from '../domain/resource-pressure-governor.mjs'
 import { collectHostMemoryEvidence } from './resource-pressure-collector.mjs'
 
 const INTENT_PATTERNS = [
-  { id: 'FLEET_ATTENTION_COMPLETED', test: (msg) => /\bwhat\s+(just\s+)?finished\b/i.test(msg) || /\bwhat\s+completed\b/i.test(msg) },
-  { id: 'FLEET_ATTENTION_WAITING_ON_RESOURCES', test: (msg) => /\bwhat'?s?\s+waiting\s+on\s+resources?\b/i.test(msg) || /\banything\s+waiting\s+on\s+resources?\b/i.test(msg) },
+  {
+    id: 'FLEET_ATTENTION_COMPLETED',
+    test: (msg) => /\bwhat\s+(just\s+)?finished\b/i.test(msg) || /\bwhat\s+completed\b/i.test(msg)
+  },
+  {
+    id: 'FLEET_ATTENTION_WAITING_ON_RESOURCES',
+    test: (msg) =>
+      /\bwhat'?s?\s+waiting\s+(?:on|for)\s+resources?\b/i.test(msg) ||
+      /\banything\s+waiting\s+(?:on|for)\s+resources?\b/i.test(msg)
+  },
   { id: 'FLEET_ATTENTION_FAILED_TODAY', test: (msg) => /\bwhat\s+failed\s+today\b/i.test(msg) },
-  { id: 'FLEET_ATTENTION_CHANGED_WHILE_AWAY', test: (msg) => /\bdid\s+anything\s+change\s+while\s+i\s+(was\s+)?(gone|away)\b/i.test(msg) || /\bwhat\s+changed\s+while\s+i\s+(was\s+)?(gone|away)\b/i.test(msg) }
+  {
+    id: 'FLEET_ATTENTION_CHANGED_WHILE_AWAY',
+    test: (msg) =>
+      /\bdid\s+anything\s+change\s+while\s+i\s+(was\s+)?(gone|away)\b/i.test(msg) ||
+      /\bwhat\s+changed\s+while\s+i\s+(was\s+)?(gone|away)\b/i.test(msg)
+  }
 ]
 
 export function classifyFleetAttentionRequest(message) {
   for (const { id, test } of INTENT_PATTERNS) {
-    if (test(message)) { return id }
+    if (test(message)) {
+      return id
+    }
   }
   return null
 }
@@ -65,9 +83,13 @@ function listOrNone(items, noneText) {
 }
 
 function isSameUtcDay(isoString, referenceDate) {
-  if (!isoString) { return false }
+  if (!isoString) {
+    return false
+  }
   const d = new Date(isoString)
-  if (Number.isNaN(d.getTime())) { return false }
+  if (Number.isNaN(d.getTime())) {
+    return false
+  }
   return (
     d.getUTCFullYear() === referenceDate.getUTCFullYear() &&
     d.getUTCMonth() === referenceDate.getUTCMonth() &&
@@ -98,13 +120,22 @@ const RESPOND = ({ intent, text, resolvedProjectIds, resultItems }) => ({
   resultItems: resultItems ?? []
 })
 
-export async function respondFleetAttentionCommand({ message, clock = () => new Date(), deps = {} }) {
+export async function respondFleetAttentionCommand({
+  message,
+  clock = () => new Date(),
+  deps = {}
+}) {
   const intent = classifyFleetAttentionRequest(message)
-  if (!intent) { return null }
+  if (!intent) {
+    return null
+  }
 
   if (intent === 'FLEET_ATTENTION_COMPLETED') {
-    const items = buildFleetAttentionItems({ ...realFleetInputs(deps), resourcePressureState: null, clock })
-      .filter((i) => i.category === 'COMPLETED_RECENTLY')
+    const items = buildFleetAttentionItems({
+      ...realFleetInputs(deps),
+      resourcePressureState: null,
+      clock
+    }).filter((i) => i.category === 'COMPLETED_RECENTLY')
     return RESPOND({
       intent,
       text: `Recently completed:\n${listOrNone(items, 'Nothing has completed recently.')}`,
@@ -115,9 +146,13 @@ export async function respondFleetAttentionCommand({ message, clock = () => new 
 
   if (intent === 'FLEET_ATTENTION_WAITING_ON_RESOURCES') {
     const resourcePressureState =
-      deps.resourcePressureState ?? buildResourcePressureState({ hostMemory: collectHostMemoryEvidence() }, clock)
-    const items = buildFleetAttentionItems({ ...realFleetInputs(deps), resourcePressureState, clock })
-      .filter((i) => i.category === 'WAITING_FOR_RESOURCES')
+      deps.resourcePressureState ??
+      buildResourcePressureState({ hostMemory: collectHostMemoryEvidence() }, clock)
+    const items = buildFleetAttentionItems({
+      ...realFleetInputs(deps),
+      resourcePressureState,
+      clock
+    }).filter((i) => i.category === 'WAITING_FOR_RESOURCES')
     return RESPOND({
       intent,
       text: `Waiting on resources:\n${listOrNone(items, 'Nothing is currently waiting on host resources.')}`,
@@ -128,8 +163,11 @@ export async function respondFleetAttentionCommand({ message, clock = () => new 
 
   if (intent === 'FLEET_ATTENTION_FAILED_TODAY') {
     const now = clock()
-    const items = buildFleetAttentionItems({ ...realFleetInputs(deps), resourcePressureState: null, clock })
-      .filter((i) => i.category === 'FAILED_REQUIRES_ATTENTION' && isSameUtcDay(i.changedAt, now))
+    const items = buildFleetAttentionItems({
+      ...realFleetInputs(deps),
+      resourcePressureState: null,
+      clock
+    }).filter((i) => i.category === 'FAILED_REQUIRES_ATTENTION' && isSameUtcDay(i.changedAt, now))
     return RESPOND({
       intent,
       text: `Failed today:\n${listOrNone(items, 'Nothing has failed today.')}`,
@@ -149,8 +187,9 @@ export async function respondFleetAttentionCommand({ message, clock = () => new 
   const notices = await drainDueAttentionNotifications(clock, deps)
   return RESPOND({
     intent,
-    text: notices.length === 0
-      ? 'Nothing changed while you were away.'
-      : notices.map((n) => `- ${n.text}`).join('\n')
+    text:
+      notices.length === 0
+        ? 'Nothing changed while you were away.'
+        : notices.map((n) => `- ${n.text}`).join('\n')
   })
 }

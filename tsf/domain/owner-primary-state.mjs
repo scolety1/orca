@@ -65,3 +65,31 @@ export function ownerPrimaryState(ownerState, { hold = null, reason = null } = {
   }
   return { primary: mapped.primary, reasonLabel: mapped.reasonLabel, reason }
 }
+
+// Owner-trial-prep finding (real, from a live multi-project agreement
+// audit): a project with NO Keep Going run has no OWNER_WORK_STATES value
+// at all, so ownerPrimaryState above cannot classify it -- yet it still has
+// a real onboarding-time `mission.state` (server/onboarded-project-
+// projection.mjs's missionStateFor: BLOCKED/DIRTY_PRESERVE/SENSITIVE_READ_
+// ONLY/READ_ONLY/ONBOARDED) that already carries real, honest information.
+// Extracted from onboarded-project-projection.mjs's own local
+// projectPrimaryState (zero behavior change there -- see that file) so
+// fleet-work-status.mjs's fleetWorkStatus can reuse the EXACT SAME
+// classification instead of returning a bare null that every downstream
+// consumer (including Command's own fleet-status text) has to reinvent or,
+// as the audit found, silently drop. `missionState` values this function
+// doesn't recognize (a legacy fixture's ACTIVE/PLANNING/REVIEW/ADOPTED
+// vocabulary, or plain ONBOARDED) intentionally fall through to the same
+// neutral DONE default this already had -- unchanged.
+export function ownerPrimaryStateForRunlessProject(missionState, hold = null) {
+  if (isProjectExecutionHoldActive(hold)) {
+    return { primary: 'WAITING', reasonLabel: 'Execution hold' }
+  }
+  if (missionState === 'BLOCKED' || missionState === 'DIRTY_PRESERVE') {
+    return { primary: 'NEEDS_YOU', reasonLabel: null }
+  }
+  if (missionState === 'SENSITIVE_READ_ONLY' || missionState === 'READ_ONLY') {
+    return { primary: 'WAITING', reasonLabel: 'Paused' }
+  }
+  return { primary: 'DONE', reasonLabel: null }
+}

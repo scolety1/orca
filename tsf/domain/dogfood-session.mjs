@@ -3,6 +3,15 @@ import { isoNow } from './canonical.mjs'
 export const DOGFOOD_SESSION_SCHEMA_VERSION = 'TSF_DOGFOOD_SESSION_V1'
 export const DOGFOOD_SESSION_STATES = Object.freeze(['ACTIVE', 'PAUSED', 'ENDED'])
 export const DOGFOOD_TURN_ROLES = Object.freeze(['OWNER', 'TSF'])
+// Owner-trial-prep finding (real): synthesis is a real, potentially slow
+// LLM call that used to run with NO durable status of its own -- a crash
+// between END and synthesis completing left the raw transcript safe but
+// nothing recorded that synthesis was ever owed, so no startup recovery
+// scan could find and retry it. Mirrors the SAME status vocabulary and
+// retry-budget-aware pattern keep-going-stalled-run-recovery.mjs already
+// establishes for this exact shape of problem -- not a new mechanism.
+export const DOGFOOD_SYNTHESIS_STATUSES = Object.freeze(['RUNNING', 'DONE', 'FAILED'])
+export const DOGFOOD_SYNTHESIS_MAX_ATTEMPTS = 3
 
 const TRIGGER_PATTERNS = Object.freeze([
   ['START', /^(?:start|begin) dogfood (?:mode|session)$/i],
@@ -36,7 +45,11 @@ export function createDogfoodSession({ id, projectId = null, route = null }, clo
     state: 'ACTIVE',
     startedAt: isoNow(clock),
     endedAt: null,
-    transcript: []
+    transcript: [],
+    synthesisStatus: null,
+    synthesisAttempts: 0,
+    synthesisFindingIds: null,
+    synthesisFailureReason: null
   }
 }
 
@@ -74,6 +87,41 @@ export function endDogfoodSession(session, clock) {
     throw error
   }
   return { ...session, state: 'ENDED', endedAt: isoNow(clock) }
+}
+
+// Marked in the SAME atomic CAS mutation as the ACTIVE/PAUSED -> ENDED
+// transition (never a separate, later write) -- so "synthesis is owed"
+// is durable from the instant the session ends, before the slow async
+// LLM call even starts. A crash before this point never marks RUNNING,
+// which is correct: nothing was captured to lose (endDogfoodSession
+// itself already happened, so the transcript is safe either way).
+export function markDogfoodSynthesisRunning(session, clock) {
+  return {
+    ...session,
+    synthesisStatus: 'RUNNING',
+    synthesisAttempts: (session.synthesisAttempts ?? 0) + 1,
+    synthesisStartedAt: isoNow(clock),
+    synthesisFailureReason: null
+  }
+}
+
+export function markDogfoodSynthesisDone(session, findingIds, clock) {
+  return {
+    ...session,
+    synthesisStatus: 'DONE',
+    synthesisFindingIds: findingIds,
+    synthesisCompletedAt: isoNow(clock),
+    synthesisFailureReason: null
+  }
+}
+
+export function markDogfoodSynthesisFailed(session, reason, clock) {
+  return {
+    ...session,
+    synthesisStatus: 'FAILED',
+    synthesisFailureReason: reason,
+    synthesisFailedAt: isoNow(clock)
+  }
 }
 
 export function detectDogfoodSessionTrigger(message) {

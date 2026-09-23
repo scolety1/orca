@@ -6,8 +6,8 @@
 import { verifyReceipt } from '../domain/receipts.mjs'
 import { resultCapsulesFromRun } from '../domain/keep-going-result-capsules.mjs'
 import { keepGoingRunWorkItem } from '../domain/owner-work-model.mjs'
-import { isProjectExecutionHoldActive } from '../domain/project-execution-hold.mjs'
 import { compareStateToGoal } from '../domain/keep-going.mjs'
+import { ownerPrimaryStateForRunlessProject } from '../domain/owner-primary-state.mjs'
 
 // OnboardingHealth (HEALTHY/HEALTHY_WITH_CAVEATS/NEEDS_ATTENTION/BLOCKED/
 // UNKNOWN) maps onto the existing shared HealthStatus vocabulary
@@ -80,16 +80,12 @@ function projectPrimaryState(run, hold, missionState, clock) {
     const item = keepGoingRunWorkItem(run, { gap, hold })
     return { primaryState: item.primaryState, primaryReasonLabel: item.primaryReasonLabel }
   }
-  if (isProjectExecutionHoldActive(hold)) {
-    return { primaryState: 'WAITING', primaryReasonLabel: 'Execution hold' }
-  }
-  if (missionState === 'BLOCKED' || missionState === 'DIRTY_PRESERVE') {
-    return { primaryState: 'NEEDS_YOU', primaryReasonLabel: null }
-  }
-  if (missionState === 'SENSITIVE_READ_ONLY' || missionState === 'READ_ONLY') {
-    return { primaryState: 'WAITING', primaryReasonLabel: 'Paused' }
-  }
-  return { primaryState: 'DONE', primaryReasonLabel: null }
+  // Extracted to owner-primary-state.mjs's ownerPrimaryStateForRunlessProject
+  // so fleet-work-status.mjs's fleetWorkStatus can reuse the exact same
+  // classification -- zero behavior change here (see that function's own
+  // header for why).
+  const mapped = ownerPrimaryStateForRunlessProject(missionState, hold)
+  return { primaryState: mapped.primary, primaryReasonLabel: mapped.reasonLabel }
 }
 
 // `run` (the project's real Keep Going run, or null) is optional so every

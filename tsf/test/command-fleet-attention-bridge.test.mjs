@@ -8,7 +8,13 @@ import path from 'node:path'
 import { rmSync } from 'node:fs'
 
 const HERE = import.meta.dirname
-const STATE_FILE = path.join(HERE, '..', 'server', '.local-state', `operator-state.test-command-fleet-attention-bridge-${process.pid}.json`)
+const STATE_FILE = path.join(
+  HERE,
+  '..',
+  'server',
+  '.local-state',
+  `operator-state.test-command-fleet-attention-bridge-${process.pid}.json`
+)
 process.env.TSF_UI_STATE_FILE = STATE_FILE
 
 function cleanupStateFile() {
@@ -26,7 +32,8 @@ const {
 } = await import('../server/command-fleet-attention-bridge.mjs')
 const { createFinding, transitionFinding } = await import('../domain/self-improvement-finding.mjs')
 const { createOvernightRun, markStalled, completeRun } = await import('../domain/keep-going.mjs')
-const { addResearchNode, createResearchMission, transitionResearchMission } = await import('../domain/research-mission.mjs')
+const { addResearchNode, createResearchMission, transitionResearchMission } =
+  await import('../domain/research-mission.mjs')
 const { buildResourcePressureState } = await import('../domain/resource-pressure-governor.mjs')
 
 const CLOCK = () => new Date('2026-09-07T12:00:00.000Z')
@@ -45,11 +52,25 @@ function rawFinding(overrides = {}) {
 }
 
 function project(id, overrides = {}) {
-  return { id, displayName: id, mission: { state: 'ONBOARDED', id: null, blockedReason: null }, candidate: null, receipts: { chain: [] }, ...overrides }
+  return {
+    id,
+    displayName: id,
+    mission: { state: 'ONBOARDED', id: null, blockedReason: null },
+    candidate: null,
+    receipts: { chain: [] },
+    ...overrides
+  }
 }
 
 function emptyDeps(overrides = {}) {
-  return { projects: [], keepGoingRuns: {}, researchMissions: {}, plannerMissionRecords: {}, selfImprovementFindings: {}, ...overrides }
+  return {
+    projects: [],
+    keepGoingRuns: {},
+    researchMissions: {},
+    plannerMissionRecords: {},
+    selfImprovementFindings: {},
+    ...overrides
+  }
 }
 
 function baseMissionSpec() {
@@ -80,7 +101,12 @@ function baseMission(id, overrides = {}) {
       id,
       projectId: 'p1',
       specification: baseMissionSpec(),
-      expectedUniverse: { schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1', entityType: 'FIXTURE', expectedCount: 1, expectedEntities: [] },
+      expectedUniverse: {
+        schemaVersion: 'TSF_EXPECTED_UNIVERSE_V1',
+        entityType: 'FIXTURE',
+        expectedCount: 1,
+        expectedEntities: []
+      },
       ...overrides
     },
     CLOCK
@@ -91,11 +117,35 @@ test('classifyFleetAttentionRequest recognizes the real trigger phrasings', () =
   assert.equal(classifyFleetAttentionRequest('what finished?'), 'FLEET_ATTENTION_COMPLETED')
   assert.equal(classifyFleetAttentionRequest('what just finished?'), 'FLEET_ATTENTION_COMPLETED')
   assert.equal(classifyFleetAttentionRequest('what completed?'), 'FLEET_ATTENTION_COMPLETED')
-  assert.equal(classifyFleetAttentionRequest("what's waiting on resources?"), 'FLEET_ATTENTION_WAITING_ON_RESOURCES')
-  assert.equal(classifyFleetAttentionRequest('anything waiting on resources?'), 'FLEET_ATTENTION_WAITING_ON_RESOURCES')
+  assert.equal(
+    classifyFleetAttentionRequest("what's waiting on resources?"),
+    'FLEET_ATTENTION_WAITING_ON_RESOURCES'
+  )
+  assert.equal(
+    classifyFleetAttentionRequest('anything waiting on resources?'),
+    'FLEET_ATTENTION_WAITING_ON_RESOURCES'
+  )
+  // Owner-trial-prep finding (real): "waiting FOR resources" is the more
+  // natural English phrasing (and the exact wording the mission brief's
+  // own owner-question list used) -- the regex previously only accepted
+  // "waiting ON resources", silently falling through to GLOBAL_STATUS.
+  assert.equal(
+    classifyFleetAttentionRequest("what's waiting for resources?"),
+    'FLEET_ATTENTION_WAITING_ON_RESOURCES'
+  )
+  assert.equal(
+    classifyFleetAttentionRequest('anything waiting for resources?'),
+    'FLEET_ATTENTION_WAITING_ON_RESOURCES'
+  )
   assert.equal(classifyFleetAttentionRequest('what failed today?'), 'FLEET_ATTENTION_FAILED_TODAY')
-  assert.equal(classifyFleetAttentionRequest('did anything change while I was gone?'), 'FLEET_ATTENTION_CHANGED_WHILE_AWAY')
-  assert.equal(classifyFleetAttentionRequest('what changed while I was away?'), 'FLEET_ATTENTION_CHANGED_WHILE_AWAY')
+  assert.equal(
+    classifyFleetAttentionRequest('did anything change while I was gone?'),
+    'FLEET_ATTENTION_CHANGED_WHILE_AWAY'
+  )
+  assert.equal(
+    classifyFleetAttentionRequest('what changed while I was away?'),
+    'FLEET_ATTENTION_CHANGED_WHILE_AWAY'
+  )
 })
 
 test('classifyFleetAttentionRequest does not hijack ordinary chat', () => {
@@ -132,7 +182,11 @@ test('respondFleetAttentionCommand returns null for a non-matching message (fall
 })
 
 test('FLEET_ATTENTION_COMPLETED: honest empty state, then a real completed research mission appears', async () => {
-  const empty = await respondFleetAttentionCommand({ message: 'what finished?', clock: CLOCK, deps: emptyDeps() })
+  const empty = await respondFleetAttentionCommand({
+    message: 'what finished?',
+    clock: CLOCK,
+    deps: emptyDeps()
+  })
   assert.equal(empty.intent, 'FLEET_ATTENTION_COMPLETED')
   assert.match(empty.text, /Nothing has completed recently/)
   assert.deepEqual(empty.resolvedProjectIds, [])
@@ -140,12 +194,24 @@ test('FLEET_ATTENTION_COMPLETED: honest empty state, then a real completed resea
   // A research mission reaching COMPLETE -- mirrors fleet-attention-status.
   // test.mjs's own fixture for this category.
   let mission = baseMission('mission:complete')
-  mission = addResearchNode(mission, { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} }, CLOCK)
-  mission = transitionResearchMission(mission, 'COMPLETE', { reason: 'done', expectedRevision: mission.revision }, CLOCK)
+  mission = addResearchNode(
+    mission,
+    { id: 'node:a', nodeRole: 'PRIMARY_RESEARCH', requestedFields: [], requestedOutputSchema: {} },
+    CLOCK
+  )
+  mission = transitionResearchMission(
+    mission,
+    'COMPLETE',
+    { reason: 'done', expectedRevision: mission.revision },
+    CLOCK
+  )
   const result = await respondFleetAttentionCommand({
     message: 'what just finished?',
     clock: CLOCK,
-    deps: emptyDeps({ projects: [project('p1', { displayName: 'Project One' })], researchMissions: { [mission.id]: mission } })
+    deps: emptyDeps({
+      projects: [project('p1', { displayName: 'Project One' })],
+      researchMissions: { [mission.id]: mission }
+    })
   })
   assert.match(result.text, /research mission reached COMPLETE/)
   assert.deepEqual(result.resolvedProjectIds, ['p1'])
@@ -157,7 +223,10 @@ test('FLEET_ATTENTION_COMPLETED: honest empty state, then a real completed resea
 // a project this very bridge already helped really adopt (still shown as
 // READY_FOR_ADOPTION elsewhere, never as COMPLETED_RECENTLY here).
 test('FLEET_ATTENTION_COMPLETED: a real Keep Going run adoption (projectCanonicalBases ADVANCED entry) now appears here too, not READY_FOR_ADOPTION', async () => {
-  const run = createOvernightRun({ id: 'r1', projectId: 'p1', originalGoal: 'Fix it.', acceptanceCriteria: ['X'] }, CLOCK)
+  const run = createOvernightRun(
+    { id: 'r1', projectId: 'p1', originalGoal: 'Fix it.', acceptanceCriteria: ['X'] },
+    CLOCK
+  )
   const completed = completeRun(run, CLOCK)
   const result = await respondFleetAttentionCommand({
     message: 'what completed?',
@@ -166,7 +235,17 @@ test('FLEET_ATTENTION_COMPLETED: a real Keep Going run adoption (projectCanonica
       projects: [project('p1', { displayName: 'Project One' })],
       keepGoingRuns: { p1: completed },
       projectCanonicalBases: {
-        p1: { history: [{ action: 'ADVANCED', ref: 'refs/heads/main', resultingSha: 'deadbeef', missionId: run.id, at: '2026-09-07T10:00:00.000Z' }] }
+        p1: {
+          history: [
+            {
+              action: 'ADVANCED',
+              ref: 'refs/heads/main',
+              resultingSha: 'deadbeef',
+              missionId: run.id,
+              at: '2026-09-07T10:00:00.000Z'
+            }
+          ]
+        }
       }
     })
   })
@@ -175,7 +254,10 @@ test('FLEET_ATTENTION_COMPLETED: a real Keep Going run adoption (projectCanonica
 })
 
 test('FLEET_ATTENTION_WAITING_ON_RESOURCES: honest empty state at HEALTHY, real item at CRITICAL', async () => {
-  const healthy = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 8e9, availableBytes: 8e9 } }, CLOCK)
+  const healthy = buildResourcePressureState(
+    { hostMemory: { totalBytes: 16e9, freeBytes: 8e9, availableBytes: 8e9 } },
+    CLOCK
+  )
   const empty = await respondFleetAttentionCommand({
     message: "what's waiting on resources?",
     clock: CLOCK,
@@ -183,7 +265,10 @@ test('FLEET_ATTENTION_WAITING_ON_RESOURCES: honest empty state at HEALTHY, real 
   })
   assert.match(empty.text, /Nothing is currently waiting on host resources/)
 
-  const critical = buildResourcePressureState({ hostMemory: { totalBytes: 16e9, freeBytes: 2e9, availableBytes: 2e9 } }, CLOCK)
+  const critical = buildResourcePressureState(
+    { hostMemory: { totalBytes: 16e9, freeBytes: 2e9, availableBytes: 2e9 } },
+    CLOCK
+  )
   const result = await respondFleetAttentionCommand({
     message: 'anything waiting on resources?',
     clock: CLOCK,
@@ -198,12 +283,31 @@ test('FLEET_ATTENTION_FAILED_TODAY: excludes an item whose changedAt is yesterda
   // changedAt) rather than assumed "today"; added here so this test
   // exercises the real date-boundary comparison, not the null-exclusion path.
   const runToday = {
-    ...markStalled(createOvernightRun({ id: 'r-today', projectId: 'p-today', originalGoal: 'x', acceptanceCriteria: ['X'] }, CLOCK), [], CLOCK),
+    ...markStalled(
+      createOvernightRun(
+        { id: 'r-today', projectId: 'p-today', originalGoal: 'x', acceptanceCriteria: ['X'] },
+        CLOCK
+      ),
+      [],
+      CLOCK
+    ),
     checkpoints: [{ at: CLOCK().toISOString() }]
   }
   const yesterdayClock = () => new Date('2026-09-06T12:00:00.000Z')
   const runYesterday = {
-    ...markStalled(createOvernightRun({ id: 'r-yesterday', projectId: 'p-yesterday', originalGoal: 'x', acceptanceCriteria: ['X'] }, yesterdayClock), [], yesterdayClock),
+    ...markStalled(
+      createOvernightRun(
+        {
+          id: 'r-yesterday',
+          projectId: 'p-yesterday',
+          originalGoal: 'x',
+          acceptanceCriteria: ['X']
+        },
+        yesterdayClock
+      ),
+      [],
+      yesterdayClock
+    ),
     checkpoints: [{ at: yesterdayClock().toISOString() }]
   }
 
@@ -211,7 +315,10 @@ test('FLEET_ATTENTION_FAILED_TODAY: excludes an item whose changedAt is yesterda
     message: 'what failed today?',
     clock: CLOCK,
     deps: emptyDeps({
-      projects: [project('p-today', { displayName: 'Today Project' }), project('p-yesterday', { displayName: 'Yesterday Project' })],
+      projects: [
+        project('p-today', { displayName: 'Today Project' }),
+        project('p-yesterday', { displayName: 'Yesterday Project' })
+      ],
       keepGoingRuns: { 'p-today': runToday, 'p-yesterday': runYesterday }
     })
   })
@@ -221,24 +328,45 @@ test('FLEET_ATTENTION_FAILED_TODAY: excludes an item whose changedAt is yesterda
 })
 
 test('FLEET_ATTENTION_FAILED_TODAY: honest empty state when nothing failed', async () => {
-  const result = await respondFleetAttentionCommand({ message: 'what failed today?', clock: CLOCK, deps: emptyDeps() })
+  const result = await respondFleetAttentionCommand({
+    message: 'what failed today?',
+    clock: CLOCK,
+    deps: emptyDeps()
+  })
   assert.match(result.text, /Nothing has failed today/)
 })
 
 test('FLEET_ATTENTION_CHANGED_WHILE_AWAY: drains and reports real due notices, empty on a second call (already-delivered)', async () => {
   let finding = createFinding(rawFinding({ affectedSurface: 'changed-while-away-surface' }), CLOCK)
   finding = transitionFinding(finding, 'VERIFIED', { reason: 'x' }, CLOCK)
-  finding = transitionFinding(finding, 'NEEDS_OWNER', { reason: 'AUTOFIX_ELIGIBILITY_CLASSIFIED' }, CLOCK)
+  finding = transitionFinding(
+    finding,
+    'NEEDS_OWNER',
+    { reason: 'AUTOFIX_ELIGIBILITY_CLASSIFIED' },
+    CLOCK
+  )
   const deps = emptyDeps({ selfImprovementFindings: { [finding.findingId]: finding } })
 
-  const first = await respondFleetAttentionCommand({ message: 'did anything change while I was gone?', clock: CLOCK, deps })
+  const first = await respondFleetAttentionCommand({
+    message: 'did anything change while I was gone?',
+    clock: CLOCK,
+    deps
+  })
   assert.match(first.text, /changed-while-away-surface/)
 
-  const second = await respondFleetAttentionCommand({ message: 'what changed while I was away?', clock: CLOCK, deps })
+  const second = await respondFleetAttentionCommand({
+    message: 'what changed while I was away?',
+    clock: CLOCK,
+    deps
+  })
   assert.match(second.text, /Nothing changed while you were away/)
 })
 
 test('FLEET_ATTENTION_CHANGED_WHILE_AWAY: honest empty state when nothing is due', async () => {
-  const result = await respondFleetAttentionCommand({ message: 'did anything change while I was away?', clock: CLOCK, deps: emptyDeps() })
+  const result = await respondFleetAttentionCommand({
+    message: 'did anything change while I was away?',
+    clock: CLOCK,
+    deps: emptyDeps()
+  })
   assert.match(result.text, /Nothing changed while you were away/)
 })
