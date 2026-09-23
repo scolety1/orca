@@ -153,3 +153,21 @@ export function validateDogfoodSynthesis(data, transcriptLength) {
 export function isActionableObservation(observation) {
   return !NEVER_ACTIONABLE_CATEGORIES.includes(observation.category)
 }
+
+// Stage 8 (coherent batching): groups actionable observations by shared
+// affected surface (route, falling back to "unspecified") so a fix batch
+// can be requested per surface instead of one mission per sentence --
+// matches the owner's own "group by screen/workflow/root cause" and "do
+// not create one mission per sentence" instructions. Pure grouping only;
+// dispatching the batch is a separate step.
+export function groupObservationsIntoBatches(actionableObservations) {
+  const batches = new Map()
+  for (const observation of actionableObservations) {
+    const key = observation.route ?? 'UNSPECIFIED_SURFACE'
+    if (!batches.has(key)) {
+      batches.set(key, [])
+    }
+    batches.get(key).push(observation)
+  }
+  return [...batches.entries()].map(([surface, observations]) => ({ surface, observations }))
+}

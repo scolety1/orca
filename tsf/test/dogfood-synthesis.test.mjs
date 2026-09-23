@@ -174,15 +174,84 @@ test("Realistic rant E2E: the mission's own messy example synthesizes into corre
       assert.equal(pauseObservation.disposition, 'DO_NOT_ACT')
 
       // Only the genuinely actionable observations (UX_PROBLEM,
-      // VISUAL_POLISH_ISSUE, BUG) become real, tracked findings.
+      // VISUAL_POLISH_ISSUE, BUG) become real, tracked findings, routed
+      // through VERIFIED to the real, existing NEEDS_OWNER status -- a
+      // dogfood-sourced finding is a genuine direct report, but never
+      // trusted enough to skip owner review, even the one SAFE_TO_IMPLEMENT
+      // bug observation.
       assert.equal(result.findingIds.length, 3)
       for (const findingId of result.findingIds) {
         const finding = readFinding(findingId)
         assert.ok(finding, `finding ${findingId} must be durably persisted`)
         assert.equal(finding.sourceDetector, 'COMMAND_DOGFOOD')
         assert.equal(finding.projectId, 'rant-test-project')
-        assert.equal(finding.status, 'DETECTED')
+        assert.equal(finding.status, 'NEEDS_OWNER')
+        assert.deepEqual(
+          finding.transitions.map((t) => t.to),
+          ['DETECTED', 'VERIFIED', 'NEEDS_OWNER']
+        )
+        assert.equal(finding.transitions[1].reason, 'OWNER_DOGFOOD_DIRECT_REPORT')
       }
+
+      // Batching: the UX_PROBLEM (route /hq) groups separately from the
+      // two route-less observations (VISUAL_POLISH_ISSUE, BUG), which
+      // share the UNSPECIFIED_SURFACE bucket together.
+      assert.equal(result.batches.length, 2)
+      const hqBatch = result.batches.find((b) => b.surface === '/hq')
+      assert.equal(hqBatch.observations.length, 1)
+      const unspecifiedBatch = result.batches.find((b) => b.surface === 'UNSPECIFIED_SURFACE')
+      assert.equal(unspecifiedBatch.observations.length, 2)
+    }
+  )
+})
+
+test('Recurring detection of an already-reviewed dogfood finding is never re-transitioned', async () => {
+  await withPlannerEnv(
+    PLANNER_STUB,
+    { STUB_DOGFOOD_SYNTHESIS_JSON: JSON.stringify([RANT_OBSERVATIONS[4]]) }, // the BUG observation
+    async () => {
+      const clock = () => new Date('2026-09-22T18:00:00.000Z')
+      const first = await synthesizeDogfoodSession(
+        endDogfoodSession(
+          appendDogfoodTurn(
+            createDogfoodSession({ id: 'dogfood:recur-1', projectId: 'recur-project' }, clock),
+            { role: 'OWNER', content: RANT_TURNS[9] },
+            clock
+          ),
+          clock
+        ),
+        { clock }
+      )
+      assert.equal(first.findingIds.length, 1)
+      const findingId = first.findingIds[0]
+      const afterFirst = readFinding(findingId)
+      assert.equal(afterFirst.status, 'NEEDS_OWNER')
+      assert.equal(afterFirst.occurrences, 1)
+
+      // A SECOND session, same underlying observation (same detector +
+      // surface + settled description) -- the SAME content-addressed
+      // finding recurs, occurrence count bumps, but status must NOT be
+      // re-transitioned (NEEDS_OWNER has no self-loop; attempting one
+      // would throw).
+      const second = await synthesizeDogfoodSession(
+        endDogfoodSession(
+          appendDogfoodTurn(
+            createDogfoodSession({ id: 'dogfood:recur-2', projectId: 'recur-project' }, clock),
+            { role: 'OWNER', content: RANT_TURNS[9] },
+            clock
+          ),
+          clock
+        ),
+        { clock }
+      )
+      assert.equal(
+        second.findingIds[0],
+        findingId,
+        'must resolve to the SAME finding, never a duplicate'
+      )
+      const afterSecond = readFinding(findingId)
+      assert.equal(afterSecond.status, 'NEEDS_OWNER')
+      assert.equal(afterSecond.occurrences, 2, 'recurrence must still bump the occurrence counter')
     }
   )
 })

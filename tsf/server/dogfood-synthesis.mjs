@@ -14,10 +14,12 @@ import {
   DOGFOOD_SYNTHESIS_SCHEMA,
   DOGFOOD_SYNTHESIS_SCHEMA_VERSION,
   DOGFOOD_SYNTHESIS_SYSTEM_PROMPT,
+  groupObservationsIntoBatches,
   isActionableObservation,
   validateDogfoodSynthesis
 } from '../domain/dogfood-synthesis.mjs'
-import { recordFindingDetection } from './self-improvement-finding-store.mjs'
+import { transitionFinding } from '../domain/self-improvement-finding.mjs'
+import { recordFindingDetection, withFinding } from './self-improvement-finding-store.mjs'
 
 function transcriptPrompt(session) {
   const ownerTurns = session.transcript.filter((t) => t.role === 'OWNER')
@@ -60,6 +62,41 @@ function toSelfImprovementFindingRaw(observation, session) {
         ? { kind: 'BOUNDED_BUG_FIX', summary: observation.settledDescription, filesHint: [] }
         : null
   }
+}
+
+// Stage 9 (implementation handoff, real entry point): a dogfood-sourced
+// finding is a genuine, directly-reported human observation -- not a
+// mechanical reproduction -- so it moves DETECTED -> VERIFIED with an
+// explicit, distinct reason (never confused with
+// self-improvement-mechanical-verification.mjs's own
+// MECHANICAL_REPRODUCTION_CONFIRMED_FAILING), then straight to the REAL,
+// already-existing NEEDS_OWNER status for owner review -- the correct
+// existing entry point (self-improvement-finding-disposition.mjs's
+// start-fix path already operates on NEEDS_OWNER/ELIGIBLE_FOR_AUTOFIX
+// findings), not a new pipeline stage. Only runs for a genuinely NEW
+// detection (status still DETECTED) -- a recurring detection of an
+// already-VERIFIED/NEEDS_OWNER finding is left exactly where it already
+// is, never re-transitioned (the status machine has no self-loop, and
+// re-verifying an already-reviewed finding on every repeat rant would be
+// wrong anyway).
+async function verifyAndRouteToOwner(finding, disposition, clock) {
+  if (finding.status !== 'DETECTED') {
+    return finding
+  }
+  return withFinding(finding.findingId, (current) => {
+    const verified = transitionFinding(
+      current,
+      'VERIFIED',
+      { reason: 'OWNER_DOGFOOD_DIRECT_REPORT' },
+      clock
+    )
+    return transitionFinding(
+      verified,
+      'NEEDS_OWNER',
+      { reason: `DOGFOOD_DISPOSITION_${disposition}` },
+      clock
+    )
+  })
 }
 
 // Resource Pressure Governor gate (same category chat-dispatch-bridge.mjs
@@ -107,14 +144,22 @@ export async function synthesizeDogfoodSession(
   }
 
   const recordDetection = deps.recordFindingDetection ?? recordFindingDetection
+  const actionableObservations = []
   const findingIds = []
   for (const observation of observations) {
     if (!isActionableObservation(observation) || observation.disposition === 'DO_NOT_ACT') {
       continue
     }
-    const finding = await recordDetection(toSelfImprovementFindingRaw(observation, session), clock)
-    findingIds.push(finding.findingId)
+    const created = await recordDetection(toSelfImprovementFindingRaw(observation, session), clock)
+    const routed = await verifyAndRouteToOwner(created, observation.disposition, clock)
+    findingIds.push(routed.findingId)
+    actionableObservations.push(observation)
   }
 
-  return { ok: true, observations, findingIds }
+  return {
+    ok: true,
+    observations,
+    findingIds,
+    batches: groupObservationsIntoBatches(actionableObservations)
+  }
 }
