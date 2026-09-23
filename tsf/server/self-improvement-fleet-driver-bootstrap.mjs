@@ -17,9 +17,17 @@
 import { readAllFindings } from './self-improvement-finding-store.mjs'
 import { startSelfImprovementFleetDriver } from './self-improvement-fleet-driver.mjs'
 
-export function bootstrapSelfImprovementFleetDriverIfEnabled(server, { canonicalRepoPath = process.cwd() } = {}) {
+// Returns the real driver handle (or null if not enabled) -- purely
+// additive, same convention as keep-going-fleet-driver-bootstrap.mjs's own
+// return value (see that file's header for why a caller wanting a REAL
+// "no more work after this" guarantee should await this handle's stop()
+// directly rather than relying on server.emit('close') alone).
+export function bootstrapSelfImprovementFleetDriverIfEnabled(
+  server,
+  { canonicalRepoPath = process.cwd() } = {}
+) {
   if (process.env.TSF_SELF_IMPROVEMENT_LOOP_ENABLED !== '1') {
-    return
+    return null
   }
   const driver = startSelfImprovementFleetDriver({
     canonicalRepoPath,
@@ -29,7 +37,10 @@ export function bootstrapSelfImprovementFleetDriverIfEnabled(server, { canonical
     },
     // Test-only override, same convention as
     // TSF_KEEP_GOING_FLEET_DRIVER_INTERVAL_MS.
-    ...(process.env.TSF_SELF_IMPROVEMENT_LOOP_INTERVAL_MS ? { intervalMs: Number(process.env.TSF_SELF_IMPROVEMENT_LOOP_INTERVAL_MS) } : {})
+    ...(process.env.TSF_SELF_IMPROVEMENT_LOOP_INTERVAL_MS
+      ? { intervalMs: Number(process.env.TSF_SELF_IMPROVEMENT_LOOP_INTERVAL_MS) }
+      : {})
   })
   server.on('close', driver.stop)
+  return driver
 }

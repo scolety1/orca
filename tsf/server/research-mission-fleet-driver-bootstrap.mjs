@@ -30,9 +30,15 @@ import { createWebTableResearchWorker } from '../adapters/web-table-research-wor
 // classifyDispatchDeliveryGuarantee check (research-dispatch-bookkeeping.mjs)
 // is the real, already-tested cross-process safeguard -- this bootstrap
 // adds no new one because none is needed.
+// Returns the real driver handle (or null if not enabled) -- purely
+// additive, every existing real caller already ignores the return value.
+// A caller that needs a REAL "no more work can land after this" guarantee
+// should `await` this handle's own `stop()` directly -- see
+// keep-going-fleet-driver-bootstrap.mjs's own header for why
+// server.on('close', driver.stop) alone is fire-and-forget.
 export function bootstrapResearchMissionFleetDriverIfEnabled(server) {
   if (process.env.TSF_RESEARCH_MISSION_FLEET_DRIVER !== '1') {
-    return
+    return null
   }
   const driver = startResearchMissionFleetDriver({
     listEligibleMissionIds: () => {
@@ -52,7 +58,9 @@ export function bootstrapResearchMissionFleetDriverIfEnabled(server) {
     onCycle: (results) => {
       for (const result of results) {
         if (result?.action === 'DISPATCHED' && result.dispatchResult?.ok === false) {
-          console.log(`Research node dispatch (${result.missionId}/${result.nodeId}) found no real match: ${result.dispatchResult.reason} -- ${result.dispatchResult.detail}`)
+          console.log(
+            `Research node dispatch (${result.missionId}/${result.nodeId}) found no real match: ${result.dispatchResult.reason} -- ${result.dispatchResult.detail}`
+          )
         }
       }
     },
@@ -71,4 +79,5 @@ export function bootstrapResearchMissionFleetDriverIfEnabled(server) {
       : {})
   })
   server.on('close', driver.stop)
+  return driver
 }

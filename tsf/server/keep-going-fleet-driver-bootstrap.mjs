@@ -12,9 +12,18 @@ import { startKeepGoingFleetDriver } from './keep-going-fleet-driver.mjs'
 // off with no separate recovery step. Stops itself when `server` closes --
 // callers just call this once, no separate wiring needed. No-op if not
 // enabled.
+//
+// Returns the real driver handle (or null if not enabled) -- purely
+// additive, every existing real caller already ignores the return value.
+// A caller that needs a REAL "no more work can land after this" guarantee
+// (this session's own overnight-mission finding: `server.emit('close')`
+// never awaits an EventEmitter listener's returned promise, so the
+// `server.on('close', driver.stop)` wiring below is fire-and-forget by
+// construction) should `await` this handle's own `stop()` directly
+// instead of relying on emit('close') alone.
 export function bootstrapKeepGoingFleetDriverIfEnabled(server) {
   if (process.env.TSF_KEEP_GOING_FLEET_DRIVER !== '1') {
-    return
+    return null
   }
   const driver = startKeepGoingFleetDriver({
     listEligibleProjectIds: () => {
@@ -34,4 +43,5 @@ export function bootstrapKeepGoingFleetDriverIfEnabled(server) {
       : {})
   })
   server.on('close', driver.stop)
+  return driver
 }

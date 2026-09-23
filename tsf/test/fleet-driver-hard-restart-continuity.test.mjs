@@ -123,7 +123,7 @@ async function recoverKeepGoing(markerPath) {
     await import('../server/keep-going-fleet-driver-bootstrap.mjs')
   const { readKeepGoingRun } = await import('../server/keep-going-run-store.mjs')
   const server = new EventEmitter()
-  bootstrapKeepGoingFleetDriverIfEnabled(server)
+  const driver = bootstrapKeepGoingFleetDriverIfEnabled(server)
   const recovered = await waitFor(() => {
     const run = readKeepGoingRun(KEEP_PROJECT_ID)
     return run?.waves.length === 1 &&
@@ -131,7 +131,16 @@ async function recoverKeepGoing(markerPath) {
       ? run
       : null
   })
+  // Overnight autonomous-improvement mission, real finding: server.emit
+  // ('close') never awaits an EventEmitter listener's returned promise, so
+  // it does NOT guarantee the driver has genuinely stopped -- an
+  // already-in-flight cycle (started by an interval tick that fired right
+  // around when waitFor's condition became true) could still be running
+  // and could settle a SECOND wave after this line, before the process
+  // actually exits. Awaiting the real driver handle's own stop() directly
+  // closes that race for real (see keep-going-fleet-driver.mjs's own fix).
   server.emit('close')
+  await driver?.stop()
   writeFileSync(markerPath, JSON.stringify({ pid: process.pid, recovered }))
 }
 
@@ -185,12 +194,14 @@ async function recoverResearch(markerPath) {
     await import('../server/research-mission-fleet-driver-bootstrap.mjs')
   const { readResearchMission } = await import('../server/research-mission-store.mjs')
   const server = new EventEmitter()
-  bootstrapResearchMissionFleetDriverIfEnabled(server)
+  const driver = bootstrapResearchMissionFleetDriverIfEnabled(server)
   const recovered = await waitFor(() => {
     const mission = readResearchMission(RESEARCH_MISSION_ID)
     return mission?.state === 'COMPLETE' ? mission : null
   })
+  // Same real fix as recoverKeepGoing's own -- see that function's comment.
   server.emit('close')
+  await driver?.stop()
   writeFileSync(markerPath, JSON.stringify({ pid: process.pid, recovered }))
 }
 

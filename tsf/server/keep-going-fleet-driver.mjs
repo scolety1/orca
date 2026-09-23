@@ -289,21 +289,38 @@ export function startKeepGoingFleetDriver({
   ...deps
 } = {}) {
   let stopped = false
-  let inProgress = false
+  // Overnight autonomous-improvement mission, Loop 3 (real finding, found
+  // while investigating a real, reproducible test race): `inProgress` alone
+  // only prevented a NEW cycle from starting while one was running -- it
+  // never let a caller learn when an ALREADY-in-flight cycle actually
+  // finishes. A caller that calls stop() while fire() is mid-flight (the
+  // exact shape `server.on('close', driver.stop)` creates) got a stop()
+  // that returned immediately, with real work still committing to durable
+  // state afterward -- test/fleet-driver-hard-restart-continuity.test.mjs
+  // reproduces this directly (~20% of isolated runs): stop() returns, but
+  // the in-flight cycle still settles a second wave before the process
+  // actually exits, so `waves.length` reads 2, not 1. Tracking the
+  // in-flight cycle's own promise (not just a boolean) lets stop() await
+  // it, giving any caller that does `await driver.stop()` a REAL guarantee
+  // that no more work can land after it resolves -- the same guarantee
+  // "duplicate dispatch" safety requires everywhere else in this codebase.
+  let inFlightCycle = null
   async function fire() {
-    if (stopped || inProgress) {
+    if (stopped || inFlightCycle) {
       return
     }
-    inProgress = true
-    try {
-      const projectIds = await listEligibleProjectIds()
-      const results = await driveOneCycle(projectIds, clock, deps, maxConcurrentTicks)
-      onCycle(results)
-    } catch (error) {
-      onError(error)
-    } finally {
-      inProgress = false
-    }
+    inFlightCycle = (async () => {
+      try {
+        const projectIds = await listEligibleProjectIds()
+        const results = await driveOneCycle(projectIds, clock, deps, maxConcurrentTicks)
+        onCycle(results)
+      } catch (error) {
+        onError(error)
+      } finally {
+        inFlightCycle = null
+      }
+    })()
+    await inFlightCycle
   }
   const timer = setInterval(fire, intervalMs)
   // unref so this driver's own interval never keeps a real process alive
@@ -311,9 +328,12 @@ export function startKeepGoingFleetDriver({
   // what should determine process lifetime, not this background loop.
   timer.unref?.()
   return {
-    stop() {
+    async stop() {
       stopped = true
       clearInterval(timer)
+      if (inFlightCycle) {
+        await inFlightCycle
+      }
     },
     // Exposed for tests and for a manual "tick the fleet now" trigger --
     // runs one real cycle immediately, outside the interval schedule.

@@ -38,8 +38,15 @@ import {
   verifyAndReconcileResearchNodeFieldDurable
 } from './research-mission-driver.mjs'
 import { readResearchMission, withResearchMission } from './research-mission-store.mjs'
-import { emptyPlatformLearningLedger, recordLessonsFromCompletedMission, retrieveLessonGuidance } from '../domain/platform-learning-ledger.mjs'
-import { readPlatformLearningLedger, withPlatformLearningLedger } from './platform-learning-ledger-store.mjs'
+import {
+  emptyPlatformLearningLedger,
+  recordLessonsFromCompletedMission,
+  retrieveLessonGuidance
+} from '../domain/platform-learning-ledger.mjs'
+import {
+  readPlatformLearningLedger,
+  withPlatformLearningLedger
+} from './platform-learning-ledger-store.mjs'
 
 export const DEFAULT_TICK_INTERVAL_MS = 30_000
 // Same fleet-shape throttle keep-going-fleet-driver.mjs applies, for the
@@ -78,7 +85,9 @@ function gatherDispatchAdvisories(providerId, isRetry, deps) {
   const readLedger = deps.readPlatformLearningLedger ?? readPlatformLearningLedger
   const ledger = readLedger()
   const advisories = [
-    ...retrieveLessonGuidance(ledger, 'PROVIDER_RELIABILITY_SIGNAL').filter((lesson) => lesson.statement.includes(providerId)),
+    ...retrieveLessonGuidance(ledger, 'PROVIDER_RELIABILITY_SIGNAL').filter((lesson) =>
+      lesson.statement.includes(providerId)
+    ),
     ...(isRetry ? retrieveLessonGuidance(ledger, 'RECURRING_DISPATCH_FAILURE') : [])
   ]
   return advisories.length > 0 ? advisories : undefined
@@ -103,7 +112,11 @@ async function checkpointResourcePressureWait(missionId, clock, admission) {
       }
       return checkpointResearchMission(
         current,
-        { phase: 'DISPATCH_WAITING_FOR_RESOURCES', note: admission.reason ?? admission.tier ?? null, evidence: [] },
+        {
+          phase: 'DISPATCH_WAITING_FOR_RESOURCES',
+          note: admission.reason ?? admission.tier ?? null,
+          evidence: []
+        },
         clock,
         current.revision
       )
@@ -126,7 +139,14 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
   if (isRetry) {
     try {
       await withResearchMission(missionId, (m) =>
-        recordResearchNodeAttempt(m, nodeId, 'RETRY', clock, m.revision, deps.retryBudget ?? DEFAULT_RESEARCH_RETRY_BUDGET)
+        recordResearchNodeAttempt(
+          m,
+          nodeId,
+          'RETRY',
+          clock,
+          m.revision,
+          deps.retryBudget ?? DEFAULT_RESEARCH_RETRY_BUDGET
+        )
       )
     } catch (error) {
       if (error.code !== 'TSF_RESEARCH_RETRY_BUDGET_EXCEEDED') {
@@ -137,7 +157,13 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
       // tick advanced retryCount in the window between decide and here --
       // still handled honestly, never left as an uncaught rejection.
       await withResearchMission(missionId, (m) =>
-        escalateResearchNodeToNeedsYou(m, nodeId, { question: error.message, category: 'SOURCE_UNAVAILABLE' }, clock, m.revision)
+        escalateResearchNodeToNeedsYou(
+          m,
+          nodeId,
+          { question: error.message, category: 'SOURCE_UNAVAILABLE' },
+          clock,
+          m.revision
+        )
       )
       return { missionId, nodeId, action: 'ESCALATED', reason: error.message }
     }
@@ -188,7 +214,10 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
   // runs deps.worker. Never set retryProviderId to a label naming a
   // DIFFERENT provider than deps.worker actually is (currently unreachable:
   // no bootstrap configures retryProviderId today).
-  const providerId = node.retryCount > 0 && deps.retryProviderId ? deps.retryProviderId : deps.providerId ?? 'DEFAULT'
+  const providerId =
+    node.retryCount > 0 && deps.retryProviderId
+      ? deps.retryProviderId
+      : (deps.providerId ?? 'DEFAULT')
   // Advisory-only lookback (see gatherDispatchAdvisories) -- computed before
   // dispatch but never read by it; the dispatch call below runs identically
   // whether or not any advisory exists.
@@ -198,11 +227,24 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
   // all when no scoped approval is currently active -- this driver never
   // grants one, only consumes an already-existing, already-scoped grant.
   const dispatchResult = deps.requiresPaidApproval
-    ? await dispatchResearchNodeWithApprovalDurable(missionId, nodeId, providerId, deps.worker, clock, {
-        pricingPolicy: deps.pricingPolicy
-      })
+    ? await dispatchResearchNodeWithApprovalDurable(
+        missionId,
+        nodeId,
+        providerId,
+        deps.worker,
+        clock,
+        {
+          pricingPolicy: deps.pricingPolicy
+        }
+      )
     : await dispatchResearchNodeDurable(missionId, nodeId, providerId, deps.worker, clock)
-  return { missionId, nodeId, action: 'DISPATCHED', dispatchResult, ...(advisories ? { advisories } : {}) }
+  return {
+    missionId,
+    nodeId,
+    action: 'DISPATCHED',
+    dispatchResult,
+    ...(advisories ? { advisories } : {})
+  }
 }
 
 // Whether this mission is a candidate the driver can act on at all this
@@ -211,7 +253,11 @@ async function executeDispatchAction(missionId, nodeId, isRetry, clock, deps) {
 // listEligibleMissionIds callers (mirrors isDriverEligible in
 // keep-going-fleet-driver.mjs).
 export function isDriverEligible(mission) {
-  return Boolean(mission) && mission.state === 'ACTIVE' && mission.needsYou.every((entry) => entry.resolvedAt)
+  return (
+    Boolean(mission) &&
+    mission.state === 'ACTIVE' &&
+    mission.needsYou.every((entry) => entry.resolvedAt)
+  )
 }
 
 export async function advanceOneMission(missionId, clock, deps = {}) {
@@ -229,7 +275,12 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
     if (!deps.worker) {
       return { missionId, nodeId: decision.nodeId, action: 'SKIPPED_NO_PROVIDER_CONFIGURED' }
     }
-    const result = await pollAndAdmitResearchNodeDurable(missionId, decision.nodeId, deps.worker, clock)
+    const result = await pollAndAdmitResearchNodeDurable(
+      missionId,
+      decision.nodeId,
+      deps.worker,
+      clock
+    )
     return { missionId, nodeId: decision.nodeId, action: 'POLLED', result }
   }
   if (decision.type === 'DISPATCH') {
@@ -250,7 +301,13 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
   }
   if (decision.type === 'ESCALATE') {
     await withResearchMission(missionId, (m) =>
-      escalateResearchNodeToNeedsYou(m, decision.nodeId, { question: decision.question, category: decision.category }, clock, m.revision)
+      escalateResearchNodeToNeedsYou(
+        m,
+        decision.nodeId,
+        { question: decision.question, category: decision.category },
+        clock,
+        m.revision
+      )
     )
     return { missionId, nodeId: decision.nodeId, action: 'ESCALATED', reason: decision.question }
   }
@@ -263,7 +320,8 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
   // Gates on requiredFieldCoverage, not fieldCoverage: an unresolved
   // OPTIONAL_ENRICHMENT field must never block COMPLETE (real free-path
   // research execution finding -- see research-completeness.mjs).
-  const fieldsResolved = completeness.requiredFieldCoverage === null || completeness.requiredFieldCoverage === 1
+  const fieldsResolved =
+    completeness.requiredFieldCoverage === null || completeness.requiredFieldCoverage === 1
   // Phase 9 research-autonomy soak test (real generic gap): every node
   // that WAS created can be fully resolved and terminal while the
   // mission's OWN expectedUniverse still names entities that never
@@ -276,9 +334,12 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
   // count -- a false completeness claim. null/1 (no named universe, or a
   // fully-covered one) is unaffected, matching fieldsResolved's own
   // null-safe pattern.
-  const universeCovered = completeness.expectedEntityCoverage === null || completeness.expectedEntityCoverage === 1
+  const universeCovered =
+    completeness.expectedEntityCoverage === null || completeness.expectedEntityCoverage === 1
   if (fieldsResolved && universeCovered && completeness.unresolvedConflictCount === 0) {
-    const completedMission = await withResearchMission(missionId, (m) => completeResearchMission(m, clock, m.revision))
+    const completedMission = await withResearchMission(missionId, (m) =>
+      completeResearchMission(m, clock, m.revision)
+    )
     // REQ-002: the real wiring point -- every mission that actually reaches
     // COMPLETE here durably feeds the cross-mission Platform Learning
     // Ledger. A ledger-extraction failure must never un-complete an
@@ -287,7 +348,11 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
     // already-validated mission state.
     let lessonsRecorded = 0
     await withPlatformLearningLedger((current) => {
-      const result = recordLessonsFromCompletedMission(current ?? emptyPlatformLearningLedger(), completedMission, clock)
+      const result = recordLessonsFromCompletedMission(
+        current ?? emptyPlatformLearningLedger(),
+        completedMission,
+        clock
+      )
       lessonsRecorded = result.lessonsRecorded
       return result.ledger
     })
@@ -302,7 +367,9 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
     const expectedIds = new Set(mission.expectedUniverse.expectedEntities.map((e) => e.entityId))
     const presentIds = new Set(mission.nodes.map((n) => n.targetEntity?.entityId).filter(Boolean))
     const missingEntityIds = [...expectedIds].filter((id) => !presentIds.has(id))
-    const alreadyEscalated = mission.needsYou.some((entry) => entry.category === 'UNIVERSE_AMBIGUITY' && !entry.resolvedAt)
+    const alreadyEscalated = mission.needsYou.some(
+      (entry) => entry.category === 'UNIVERSE_AMBIGUITY' && !entry.resolvedAt
+    )
     if (!alreadyEscalated) {
       await withResearchMission(missionId, (m) =>
         raiseResearchNeedsYou(
@@ -316,12 +383,18 @@ export async function advanceOneMission(missionId, clock, deps = {}) {
         )
       )
     }
-    return { missionId, action: 'ESCALATED', reason: 'expected universe incompletely covered', completeness }
+    return {
+      missionId,
+      action: 'ESCALATED',
+      reason: 'expected universe incompletely covered',
+      completeness
+    }
   }
   return {
     missionId,
     action: 'SKIPPED',
-    reason: 'every node is terminal but completeness is not yet fully satisfied (likely a BLOCKED node awaiting a human decision)',
+    reason:
+      'every node is terminal but completeness is not yet fully satisfied (likely a BLOCKED node awaiting a human decision)',
     completeness
   }
 }
@@ -376,21 +449,27 @@ export function startResearchMissionFleetDriver({
   ...deps
 } = {}) {
   let stopped = false
-  let inProgress = false
+  // Same real, reproduced fix as keep-going-fleet-driver.mjs's own
+  // startKeepGoingFleetDriver -- see that file's own comment for the exact
+  // race (a caller's stop() previously returned before an already-in-flight
+  // cycle actually finished committing durable state).
+  let inFlightCycle = null
   async function fire() {
-    if (stopped || inProgress) {
+    if (stopped || inFlightCycle) {
       return
     }
-    inProgress = true
-    try {
-      const missionIds = await listEligibleMissionIds()
-      const results = await driveOneCycle(missionIds, clock, deps, maxConcurrentTicks)
-      onCycle(results)
-    } catch (error) {
-      onError(error)
-    } finally {
-      inProgress = false
-    }
+    inFlightCycle = (async () => {
+      try {
+        const missionIds = await listEligibleMissionIds()
+        const results = await driveOneCycle(missionIds, clock, deps, maxConcurrentTicks)
+        onCycle(results)
+      } catch (error) {
+        onError(error)
+      } finally {
+        inFlightCycle = null
+      }
+    })()
+    await inFlightCycle
   }
   const timer = setInterval(fire, intervalMs)
   // unref so this driver's own interval never keeps a real process alive
@@ -398,9 +477,12 @@ export function startResearchMissionFleetDriver({
   // determines process lifetime, not this background loop.
   timer.unref?.()
   return {
-    stop() {
+    async stop() {
       stopped = true
       clearInterval(timer)
+      if (inFlightCycle) {
+        await inFlightCycle
+      }
     },
     // Exposed for tests and for a manual "tick research now" trigger --
     // runs one real cycle immediately, outside the interval schedule.
