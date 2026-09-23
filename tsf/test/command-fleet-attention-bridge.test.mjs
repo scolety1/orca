@@ -154,6 +154,13 @@ test('classifyFleetAttentionRequest recognizes the real trigger phrasings', () =
     'FLEET_ATTENTION_RECENT_ACTIVITY'
   )
   assert.equal(classifyFleetAttentionRequest('recent activity'), 'FLEET_ATTENTION_RECENT_ACTIVITY')
+  // Adversarial-review finding (real): past-tense "what happened
+  // recently?" is at least as natural as "what's happening recently?" and
+  // was falling through unmatched.
+  assert.equal(
+    classifyFleetAttentionRequest('what happened recently?'),
+    'FLEET_ATTENTION_RECENT_ACTIVITY'
+  )
   assert.equal(
     classifyFleetAttentionRequest('what changed recently?'),
     'FLEET_ATTENTION_RECENT_ACTIVITY'

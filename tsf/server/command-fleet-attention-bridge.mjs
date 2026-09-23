@@ -45,7 +45,7 @@ const INTENT_PATTERNS = [
   {
     id: 'FLEET_ATTENTION_RECENT_ACTIVITY',
     test: (msg) =>
-      /\b(what'?s? (?:been )?(?:happening|going on) recently|recent activity|activity (?:feed|history)|what changed recently)\b/i.test(
+      /\b(what'?s? (?:been )?(?:happening|going on) recently|what happened recently|recent activity|activity (?:feed|history)|what changed recently)\b/i.test(
         msg
       )
   }
