@@ -172,7 +172,10 @@ test('REQUIRED PROOF (scope change / regeneration): regenerating an estimate rep
     )
     run = completeRun(run, () => new Date('2026-01-02T00:00:00.000Z'))
     state = loadState()
-    saveState({ ...state, keepGoingRuns: { ...state.keepGoingRuns, [FIXTURE_PROJECT_ID]: run } })
+    saveState(
+      { ...state, keepGoingRuns: { ...state.keepGoingRuns, [FIXTURE_PROJECT_ID]: run } },
+      { writerCollection: 'keepGoingRuns' }
+    )
     const recorded = await post(base, `/api/projects/${FIXTURE_PROJECT_ID}/estimate/actuals`, {
       runId: 'run-scope-change'
     })

@@ -36,7 +36,10 @@ export async function withPlatformLearningLedger(mutateFn) {
   return withFileLock(lockPath(), undefined, () => {
     const opState = loadState()
     const next = mutateFn(ledgerFrom(opState))
-    saveState({ ...opState, platformLearningLedger: next })
+    saveState(
+      { ...opState, platformLearningLedger: next },
+      { writerCollection: 'platformLearningLedger' }
+    )
     return next
   })
 }

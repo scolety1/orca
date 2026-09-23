@@ -13,13 +13,17 @@ function lockPath() {
 }
 
 function versionCheckedEvent(event) {
-  if (event) { assertSupportedAttentionNotificationEventSchemaVersion(event) }
+  if (event) {
+    assertSupportedAttentionNotificationEventSchemaVersion(event)
+  }
   return event
 }
 
 export function listAttentionNotificationEvents() {
   const events = loadState().attentionNotificationEvents ?? {}
-  for (const event of Object.values(events)) { versionCheckedEvent(event) }
+  for (const event of Object.values(events)) {
+    versionCheckedEvent(event)
+  }
   return Object.values(events)
 }
 
@@ -30,10 +34,13 @@ export async function withAttentionNotificationEvent(eventId, mutateFn) {
     const opState = loadState()
     const current = versionCheckedEvent(opState.attentionNotificationEvents?.[eventId] ?? null)
     const next = mutateFn(current)
-    saveState({
-      ...opState,
-      attentionNotificationEvents: { ...opState.attentionNotificationEvents, [eventId]: next }
-    })
+    saveState(
+      {
+        ...opState,
+        attentionNotificationEvents: { ...opState.attentionNotificationEvents, [eventId]: next }
+      },
+      { writerCollection: 'attentionNotificationEvents' }
+    )
     return next
   })
 }
@@ -54,10 +61,13 @@ export async function registerAttentionNotificationEventIfAbsent(buildEvent) {
     if (existing) {
       return { event: existing, created: false }
     }
-    saveState({
-      ...opState,
-      attentionNotificationEvents: { ...events, [event.eventId]: event }
-    })
+    saveState(
+      {
+        ...opState,
+        attentionNotificationEvents: { ...events, [event.eventId]: event }
+      },
+      { writerCollection: 'attentionNotificationEvents' }
+    )
     return { event, created: true }
   })
 }

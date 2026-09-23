@@ -27,7 +27,9 @@ import { keepGoingRunFor } from './keep-going-controller.mjs'
 // researchMissionFor. Fails closed on a version this running code was never
 // verified against, rather than silently operating on an unfamiliar shape.
 function versionCheckedRun(run) {
-  if (run) { assertSupportedKeepGoingRunSchemaVersion(run) }
+  if (run) {
+    assertSupportedKeepGoingRunSchemaVersion(run)
+  }
   return run
 }
 
@@ -65,7 +67,7 @@ export async function withKeepGoingRun(projectId, mutateFn) {
       ...opState,
       keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: next }
     }
-    saveState(nextOpState)
+    saveState(nextOpState, { writerCollection: 'keepGoingRuns' })
     return next
   })
 }

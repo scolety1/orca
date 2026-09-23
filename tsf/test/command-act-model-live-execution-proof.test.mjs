@@ -112,7 +112,10 @@ function seedKeepGoingRun(projectId, worktree, state, clock) {
     run = pauseRun(run, 'TEST_SETUP', clock)
   }
   const opState = loadState()
-  saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
+  saveState(
+    { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } },
+    { writerCollection: 'keepGoingRuns' }
+  )
   return run
 }
 

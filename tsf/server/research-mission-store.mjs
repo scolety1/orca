@@ -21,7 +21,9 @@ export function researchMissionFor(opState, missionId) {
   // mission reaches any caller -- see research-schema-versioning.mjs.
   // Fails closed on a version this running code was never verified
   // against, rather than silently operating on an unfamiliar shape.
-  if (mission) assertSupportedResearchMissionSchemaVersion(mission)
+  if (mission) {
+    assertSupportedResearchMissionSchemaVersion(mission)
+  }
   return mission
 }
 
@@ -34,7 +36,9 @@ export function readResearchMission(missionId) {
 export function readAllResearchMissions() {
   const opState = loadState()
   const missions = opState.researchMissions ?? {}
-  for (const mission of Object.values(missions)) assertSupportedResearchMissionSchemaVersion(mission)
+  for (const mission of Object.values(missions)) {
+    assertSupportedResearchMissionSchemaVersion(mission)
+  }
   return missions
 }
 
@@ -51,7 +55,9 @@ export function readAllResearchMissions() {
 // diverge state seen by a mutateFn from state seen by a plain read.
 export function readResearchMissionIntegrityChecked(missionId, clock) {
   const mission = readResearchMission(missionId)
-  if (!mission) return { mission: null, integrityReport: null }
+  if (!mission) {
+    return { mission: null, integrityReport: null }
+  }
   return integrityCheckedMission(mission, clock)
 }
 
@@ -67,7 +73,7 @@ export async function withResearchMission(missionId, mutateFn) {
       ...opState,
       researchMissions: { ...opState.researchMissions, [missionId]: next }
     }
-    saveState(nextOpState)
+    saveState(nextOpState, { writerCollection: 'researchMissions' })
     return next
   })
 }

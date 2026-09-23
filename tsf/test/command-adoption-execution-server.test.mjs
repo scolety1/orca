@@ -22,13 +22,8 @@ const { readProjectCanonicalBase } = await import('../server/project-canonical-b
 const { withProjectExecutionHold } = await import('../server/project-execution-hold-store.mjs')
 const { createProjectExecutionHold } = await import('../domain/project-execution-hold.mjs')
 const { ffOnlyMerge: realFfOnlyMerge } = await import('../adapters/git-identity.mjs')
-const {
-  createOvernightRun,
-  planWave,
-  dispatchWave,
-  settleInFlightWave,
-  completeRun
-} = await import('../domain/keep-going.mjs')
+const { createOvernightRun, planWave, dispatchWave, settleInFlightWave, completeRun } =
+  await import('../domain/keep-going.mjs')
 
 function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -63,7 +58,13 @@ function seedOnboardedProject(projectId, repoPath) {
     ...opState,
     onboardedProjects: {
       ...opState.onboardedProjects,
-      [projectId]: { repoPath, lastAnalysis: null, receipts: [], acceptedAt: '2026-09-07T00:00:00.000Z', refreshedAt: '2026-09-07T00:00:00.000Z' }
+      [projectId]: {
+        repoPath,
+        lastAnalysis: null,
+        receipts: [],
+        acceptedAt: '2026-09-07T00:00:00.000Z',
+        refreshedAt: '2026-09-07T00:00:00.000Z'
+      }
     }
   })
 }
@@ -74,15 +75,26 @@ function seedOnboardedProject(projectId, repoPath) {
 // CLI/orchestration bridge -- this test proves the ADOPTION engine, not the
 // dispatch pipeline, which is already covered by chat-dispatch-bridge.test.mjs).
 function seedCompleteKeepGoingRun(projectId, worktree, clock) {
-  let run = createOvernightRun({
-    id: `run:${projectId}`,
-    projectId,
-    originalGoal: 'ship the fixture change',
-    acceptanceCriteria: ['the fixture change lands']
-  }, clock)
+  let run = createOvernightRun(
+    {
+      id: `run:${projectId}`,
+      projectId,
+      originalGoal: 'ship the fixture change',
+      acceptanceCriteria: ['the fixture change lands']
+    },
+    clock
+  )
   const workItem = { id: `work:${projectId}`, scope: ['existing-file.mjs'], worktree }
   const wavePlan = planWave(run, [workItem], clock)
-  const dispatchRecords = [{ workItemId: workItem.id, scope: workItem.scope, taskId: `task:${projectId}`, dispatchId: `dispatch:${projectId}`, worktree }]
+  const dispatchRecords = [
+    {
+      workItemId: workItem.id,
+      scope: workItem.scope,
+      taskId: `task:${projectId}`,
+      dispatchId: `dispatch:${projectId}`,
+      worktree
+    }
+  ]
   run = dispatchWave(run, wavePlan, dispatchRecords, clock, run.revision)
   const waveResult = {
     schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
@@ -92,7 +104,10 @@ function seedCompleteKeepGoingRun(projectId, worktree, clock) {
   run = settleInFlightWave(run, waveResult, clock, run.revision)
   run = completeRun(run, clock)
   const opState = loadState()
-  saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
+  saveState(
+    { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } },
+    { writerCollection: 'keepGoingRuns' }
+  )
   return run
 }
 
@@ -101,13 +116,21 @@ const clock = () => new Date('2026-09-07T12:00:00.000Z')
 test('Proof 1: explicit owner-style command path -- resolve candidate -> revalidate -> adopt -> receipt -> canonical branch genuinely advances', async () => {
   const projectId = 'fixture-proof-1'
   const canonicalRepoPath = initFixtureRepo('proof1-canonical')
-  const worktree = createCandidateWorktree(canonicalRepoPath, 'proof1-candidate', 'command/fixture-proof-1', 'a real, verified fix')
+  const worktree = createCandidateWorktree(
+    canonicalRepoPath,
+    'proof1-candidate',
+    'command/fixture-proof-1',
+    'a real, verified fix'
+  )
   seedOnboardedProject(projectId, canonicalRepoPath)
   seedCompleteKeepGoingRun(projectId, worktree, clock)
 
   const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
 
-  const result = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  const result = await executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock
+  })
 
   assert.equal(result.ok, true, JSON.stringify(result))
   assert.equal(result.alreadyIncluded, false)
@@ -121,7 +144,11 @@ test('Proof 1: explicit owner-style command path -- resolve candidate -> revalid
   assert.notEqual(newHead, priorHead)
   assert.equal(git(canonicalRepoPath, ['log', '-1', '--format=%s']).trim(), 'a real, verified fix')
   const log = git(canonicalRepoPath, ['log', '--oneline']).trim().split('\n')
-  assert.equal(log.length, 2, 'canonical repo now has both the original commit and the adopted candidate commit')
+  assert.equal(
+    log.length,
+    2,
+    'canonical repo now has both the original commit and the adopted candidate commit'
+  )
 
   // Durable receipt really landed on the onboarded project record.
   const onboarded = loadState().onboardedProjects[projectId]
@@ -146,12 +173,19 @@ test('Proof 1b: idempotency -- a candidate already an ancestor of canonical HEAD
   seedCompleteKeepGoingRun(projectId, worktree, clock)
 
   const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
-  const result = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  const result = await executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock
+  })
 
   assert.equal(result.ok, true, JSON.stringify(result))
   assert.equal(result.alreadyIncluded, true)
   assert.equal(result.resultingCanonicalSha, priorHead)
-  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'no merge attempted -- HEAD unchanged')
+  assert.equal(
+    git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+    priorHead,
+    'no merge attempted -- HEAD unchanged'
+  )
   assert.equal(result.receipt.decision.alreadyIncluded, true)
 })
 
@@ -167,14 +201,22 @@ test('Proof 1b: idempotency -- a candidate already an ancestor of canonical HEAD
 test('Proof 1c: duplicate delivery -- calling the real engine twice in a row against the SAME live run/candidate merges exactly once, second call is honestly ALREADY_INCLUDED, exactly one extra receipt, no second merge commit', async () => {
   const projectId = 'fixture-proof-1c'
   const canonicalRepoPath = initFixtureRepo('proof1c-canonical')
-  const worktree = createCandidateWorktree(canonicalRepoPath, 'proof1c-candidate', 'command/fixture-proof-1c', 'a real, verified fix, delivered twice')
+  const worktree = createCandidateWorktree(
+    canonicalRepoPath,
+    'proof1c-candidate',
+    'command/fixture-proof-1c',
+    'a real, verified fix, delivered twice'
+  )
   seedOnboardedProject(projectId, canonicalRepoPath)
   seedCompleteKeepGoingRun(projectId, worktree, clock)
 
   const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
 
   // First delivery: a real merge genuinely happens.
-  const first = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  const first = await executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock
+  })
   assert.equal(first.ok, true, JSON.stringify(first))
   assert.equal(first.alreadyIncluded, false)
   const afterFirstHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
@@ -182,14 +224,25 @@ test('Proof 1c: duplicate delivery -- calling the real engine twice in a row aga
 
   // Duplicate delivery: the exact same run/candidate, invoked again --
   // nothing about the request or state was changed by the caller.
-  const second = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  const second = await executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock
+  })
   assert.equal(second.ok, true, JSON.stringify(second))
-  assert.equal(second.alreadyIncluded, true, 'the duplicate call must be honestly reported as already-included, never re-merged or falsely re-adopted')
+  assert.equal(
+    second.alreadyIncluded,
+    true,
+    'the duplicate call must be honestly reported as already-included, never re-merged or falsely re-adopted'
+  )
   assert.equal(second.resultingCanonicalSha, afterFirstHead)
 
   // No second merge: canonical HEAD did not move again, and the real git
   // log has no second merge/commit beyond the original two.
-  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), afterFirstHead, 'no duplicate merge -- HEAD unchanged by the second call')
+  assert.equal(
+    git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+    afterFirstHead,
+    'no duplicate merge -- HEAD unchanged by the second call'
+  )
   const log = git(canonicalRepoPath, ['log', '--oneline']).trim().split('\n')
   assert.equal(log.length, 2, 'no duplicate merge commit was created by the duplicate delivery')
 
@@ -197,7 +250,11 @@ test('Proof 1c: duplicate delivery -- calling the real engine twice in a row aga
   // own honest ALREADY_INCLUDED receipt, never a second ADOPTED receipt and
   // never silently skipped/unrecorded.
   const receipts = loadState().onboardedProjects[projectId].receipts
-  assert.equal(receipts.length, 2, 'one receipt per call -- the first ADOPTED, the second ALREADY_INCLUDED')
+  assert.equal(
+    receipts.length,
+    2,
+    'one receipt per call -- the first ADOPTED, the second ALREADY_INCLUDED'
+  )
   assert.equal(receipts[0].result.outcome, 'ADOPTED')
   assert.equal(receipts[1].result.outcome, 'ALREADY_INCLUDED')
   assert.notEqual(receipts[1].receiptHash, receipts[0].receiptHash)
@@ -205,33 +262,64 @@ test('Proof 1c: duplicate delivery -- calling the real engine twice in a row aga
   // The durable canonical-base pointer advanced exactly once, not twice.
   const canonicalBase = readProjectCanonicalBase(projectId)
   const advances = canonicalBase.history.filter((h) => h.action === 'ADVANCED')
-  assert.equal(advances.length, 1, 'the canonical-base pointer must advance exactly once, not once per duplicate delivery')
+  assert.equal(
+    advances.length,
+    1,
+    'the canonical-base pointer must advance exactly once, not once per duplicate delivery'
+  )
 })
 
 test('Proof 3: an unverified candidate (run not COMPLETE) is REFUSED with the real reason', async () => {
   const projectId = 'fixture-proof-3'
   const canonicalRepoPath = initFixtureRepo('proof3-canonical')
-  createCandidateWorktree(canonicalRepoPath, 'proof3-candidate', 'command/fixture-proof-3', 'not yet verified')
+  createCandidateWorktree(
+    canonicalRepoPath,
+    'proof3-candidate',
+    'command/fixture-proof-3',
+    'not yet verified'
+  )
   seedOnboardedProject(projectId, canonicalRepoPath)
   // Build the run but do NOT complete it -- still ACTIVE.
-  const run = createOvernightRun({ id: `run:${projectId}`, projectId, originalGoal: 'ship it', acceptanceCriteria: ['done'] }, clock)
+  const run = createOvernightRun(
+    { id: `run:${projectId}`, projectId, originalGoal: 'ship it', acceptanceCriteria: ['done'] },
+    clock
+  )
   const opState = loadState()
-  saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
+  saveState(
+    { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } },
+    { writerCollection: 'keepGoingRuns' }
+  )
 
   const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
-  const result = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  const result = await executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock
+  })
 
   assert.equal(result.ok, false)
   assert.equal(result.reason, 'NOT_READY_FOR_ADOPTION')
-  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'no merge attempted')
-  assert.equal(loadState().onboardedProjects[projectId].receipts.length, 0, 'no receipt written on a refused check')
+  assert.equal(
+    git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+    priorHead,
+    'no merge attempted'
+  )
+  assert.equal(
+    loadState().onboardedProjects[projectId].receipts.length,
+    0,
+    'no receipt written on a refused check'
+  )
 })
 
 test('Proof 4: a cross-project candidate (run belongs to a different project) is REFUSED', async () => {
   const projectId = 'fixture-proof-4'
   const otherProjectId = 'fixture-proof-4-other'
   const canonicalRepoPath = initFixtureRepo('proof4-canonical')
-  const worktree = createCandidateWorktree(canonicalRepoPath, 'proof4-candidate', 'command/fixture-proof-4', 'belongs to a different project')
+  const worktree = createCandidateWorktree(
+    canonicalRepoPath,
+    'proof4-candidate',
+    'command/fixture-proof-4',
+    'belongs to a different project'
+  )
   seedOnboardedProject(projectId, canonicalRepoPath)
   // The run is real and COMPLETE, but its projectId is a DIFFERENT project
   // than the one being resolved against -- the run is stored under
@@ -239,62 +327,129 @@ test('Proof 4: a cross-project candidate (run belongs to a different project) is
   // that key) but the run's own internal projectId field names another
   // project entirely, exactly the cross-project mismatch this check exists
   // to catch.
-  let run = createOvernightRun({ id: `run:${projectId}`, projectId: otherProjectId, originalGoal: 'ship it', acceptanceCriteria: ['done'] }, clock)
+  let run = createOvernightRun(
+    {
+      id: `run:${projectId}`,
+      projectId: otherProjectId,
+      originalGoal: 'ship it',
+      acceptanceCriteria: ['done']
+    },
+    clock
+  )
   const workItem = { id: `work:${projectId}`, scope: ['existing-file.mjs'], worktree }
   const wavePlan = planWave(run, [workItem], clock)
-  const dispatchRecords = [{ workItemId: workItem.id, scope: workItem.scope, taskId: `task:${projectId}`, dispatchId: `dispatch:${projectId}`, worktree }]
+  const dispatchRecords = [
+    {
+      workItemId: workItem.id,
+      scope: workItem.scope,
+      taskId: `task:${projectId}`,
+      dispatchId: `dispatch:${projectId}`,
+      worktree
+    }
+  ]
   run = dispatchWave(run, wavePlan, dispatchRecords, clock, run.revision)
-  const waveResult = { schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1', outcomes: dispatchRecords.map((r) => ({ ...r, outcome: 'COMPLETED', rawStatus: 'completed' })), settledAt: new Date().toISOString() }
+  const waveResult = {
+    schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
+    outcomes: dispatchRecords.map((r) => ({ ...r, outcome: 'COMPLETED', rawStatus: 'completed' })),
+    settledAt: new Date().toISOString()
+  }
   run = settleInFlightWave(run, waveResult, clock, run.revision)
   run = completeRun(run, clock)
   const opState = loadState()
-  saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
+  saveState(
+    { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } },
+    { writerCollection: 'keepGoingRuns' }
+  )
 
   const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
-  const result = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  const result = await executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock
+  })
 
   assert.equal(result.ok, false)
   assert.equal(result.reason, 'CROSS_PROJECT_CANDIDATE')
-  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'no merge attempted')
+  assert.equal(
+    git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+    priorHead,
+    'no merge attempted'
+  )
 })
 
 test('Proof 5: a held project (a real, active project-execution-hold) is REFUSED', async () => {
   const projectId = 'fixture-proof-5'
   const canonicalRepoPath = initFixtureRepo('proof5-canonical')
-  const worktree = createCandidateWorktree(canonicalRepoPath, 'proof5-candidate', 'command/fixture-proof-5', 'held project should refuse')
+  const worktree = createCandidateWorktree(
+    canonicalRepoPath,
+    'proof5-candidate',
+    'command/fixture-proof-5',
+    'held project should refuse'
+  )
   seedOnboardedProject(projectId, canonicalRepoPath)
   seedCompleteKeepGoingRun(projectId, worktree, clock)
   await withProjectExecutionHold(projectId, () =>
-    createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'OPERATOR_CHAT', note: 'another agent is on this repo' }, clock)
+    createProjectExecutionHold(
+      {
+        projectId,
+        reason: 'EXTERNAL_WORK_ACTIVE',
+        setBy: 'OPERATOR_CHAT',
+        note: 'another agent is on this repo'
+      },
+      clock
+    )
   )
 
   const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
-  const result = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  const result = await executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock
+  })
 
   assert.equal(result.ok, false)
   assert.equal(result.reason, 'PROJECT_EXECUTION_HOLD_ACTIVE')
   assert.match(result.detail, /another agent is on this repo/)
-  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'no merge attempted')
+  assert.equal(
+    git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+    priorHead,
+    'no merge attempted'
+  )
 })
 
 test('a genuinely diverged candidate is refused, never forced/rebased', async () => {
   const projectId = 'fixture-diverged'
   const canonicalRepoPath = initFixtureRepo('diverged-canonical')
-  const worktree = createCandidateWorktree(canonicalRepoPath, 'diverged-candidate', 'command/fixture-diverged', 'candidate-only commit')
+  const worktree = createCandidateWorktree(
+    canonicalRepoPath,
+    'diverged-candidate',
+    'command/fixture-diverged',
+    'candidate-only commit'
+  )
   // Advance canonical main independently after branching, so candidate and
   // canonical HEAD have genuinely diverged.
   writeFileSync(path.join(canonicalRepoPath, 'canonical-only.mjs'), 'export const y = 1\n')
   git(canonicalRepoPath, ['add', '.'])
-  git(canonicalRepoPath, ['commit', '-q', '-m', 'canonical-only commit, after the candidate branched'])
+  git(canonicalRepoPath, [
+    'commit',
+    '-q',
+    '-m',
+    'canonical-only commit, after the candidate branched'
+  ])
   seedOnboardedProject(projectId, canonicalRepoPath)
   seedCompleteKeepGoingRun(projectId, worktree, clock)
 
   const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
-  const result = await executeCommandAdoption({ project: { id: projectId, root: canonicalRepoPath }, clock })
+  const result = await executeCommandAdoption({
+    project: { id: projectId, root: canonicalRepoPath },
+    clock
+  })
 
   assert.equal(result.ok, false)
   assert.equal(result.reason, 'CANDIDATE_DIVERGED_FROM_CANONICAL_BASE')
-  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'never forced/rebased')
+  assert.equal(
+    git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+    priorHead,
+    'never forced/rebased'
+  )
 })
 
 // TSF Overnight Control-Plane Burn-In V2, Lane E -- a real, deterministic
@@ -312,14 +467,23 @@ test('a genuinely diverged candidate is refused, never forced/rebased', async ()
 test('TOCTOU: an execution hold set AFTER the initial check but BEFORE the real merge still stops the merge, never silently proceeds on stale state', async () => {
   const projectId = 'fixture-toctou-hold-race'
   const canonicalRepoPath = initFixtureRepo('toctou-hold-canonical')
-  const worktree = createCandidateWorktree(canonicalRepoPath, 'toctou-hold-candidate', 'command/fixture-toctou-hold', 'toctou hold race candidate')
+  const worktree = createCandidateWorktree(
+    canonicalRepoPath,
+    'toctou-hold-candidate',
+    'command/fixture-toctou-hold',
+    'toctou hold race candidate'
+  )
   seedOnboardedProject(projectId, canonicalRepoPath)
   seedCompleteKeepGoingRun(projectId, worktree, clock)
 
   let reachedMerge
-  const reachedMergeSignal = new Promise((resolve) => { reachedMerge = resolve })
+  const reachedMergeSignal = new Promise((resolve) => {
+    reachedMerge = resolve
+  })
   let releaseMerge
-  const mergeGate = new Promise((resolve) => { releaseMerge = resolve })
+  const mergeGate = new Promise((resolve) => {
+    releaseMerge = resolve
+  })
 
   const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
 
@@ -341,13 +505,29 @@ test('TOCTOU: an execution hold set AFTER the initial check but BEFORE the real 
   // engine's own), simulating an operator racing to stop this exact merge.
   await reachedMergeSignal
   await withProjectExecutionHold(projectId, () =>
-    createProjectExecutionHold({ projectId, reason: 'EXTERNAL_WORK_ACTIVE', setBy: 'OPERATOR_CHAT', note: 'stop this adoption' }, clock)
+    createProjectExecutionHold(
+      {
+        projectId,
+        reason: 'EXTERNAL_WORK_ACTIVE',
+        setBy: 'OPERATOR_CHAT',
+        note: 'stop this adoption'
+      },
+      clock
+    )
   )
   releaseMerge()
 
   const result = await adoptionPromise
 
-  assert.equal(result.ok, false, 'a hold that became active before the merge actually landed must stop it, not just be ignored')
+  assert.equal(
+    result.ok,
+    false,
+    'a hold that became active before the merge actually landed must stop it, not just be ignored'
+  )
   assert.equal(result.reason, 'PROJECT_EXECUTION_HOLD_ACTIVE')
-  assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'no merge may land once a hold has raced ahead of it')
+  assert.equal(
+    git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+    priorHead,
+    'no merge may land once a hold has raced ahead of it'
+  )
 })

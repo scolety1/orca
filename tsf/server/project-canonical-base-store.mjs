@@ -17,7 +17,9 @@ function lockPath() {
 }
 
 function versionChecked(record) {
-  if (record) { assertSupportedProjectCanonicalBaseSchemaVersion(record) }
+  if (record) {
+    assertSupportedProjectCanonicalBaseSchemaVersion(record)
+  }
   return record
 }
 
@@ -27,14 +29,24 @@ export function readProjectCanonicalBase(projectId) {
 
 export function readAllProjectCanonicalBases() {
   const bases = loadState().projectCanonicalBases ?? {}
-  for (const base of Object.values(bases)) { versionChecked(base) }
+  for (const base of Object.values(bases)) {
+    versionChecked(base)
+  }
   return bases
 }
 
 export function createProjectCanonicalBaseRecord({ projectId, ref, setBy, reason }, clock) {
-  if (!projectId) { throw new Error('projectId is required to set a project canonical base') }
-  if (!ref?.trim()) { throw new Error('ref is required to set a project canonical base') }
-  if (!setBy) { throw new Error('setBy is required -- a canonical base must always record who set it, for a real audit trail') }
+  if (!projectId) {
+    throw new Error('projectId is required to set a project canonical base')
+  }
+  if (!ref?.trim()) {
+    throw new Error('ref is required to set a project canonical base')
+  }
+  if (!setBy) {
+    throw new Error(
+      'setBy is required -- a canonical base must always record who set it, for a real audit trail'
+    )
+  }
   const at = isoNow(clock)
   return {
     schemaVersion: PROJECT_CANONICAL_BASE_SCHEMA_VERSION,
@@ -55,10 +67,13 @@ export async function withProjectCanonicalBase(projectId, mutateFn) {
     const opState = loadState()
     const current = versionChecked(opState.projectCanonicalBases?.[projectId] ?? null)
     const next = mutateFn(current)
-    saveState({
-      ...opState,
-      projectCanonicalBases: { ...opState.projectCanonicalBases, [projectId]: next }
-    })
+    saveState(
+      {
+        ...opState,
+        projectCanonicalBases: { ...opState.projectCanonicalBases, [projectId]: next }
+      },
+      { writerCollection: 'projectCanonicalBases' }
+    )
     return next
   })
 }
@@ -87,10 +102,23 @@ export async function setProjectCanonicalBaseRef({ projectId, ref, setBy, reason
 // base branch's HEAD, the pointer's `ref` (branch name) is unchanged but the
 // event is recorded in history for a real audit trail -- never a silent,
 // unrecorded pointer "update".
-export async function recordProjectCanonicalBaseAdvanced({ projectId, ref, resultingSha, missionId }, clock) {
+export async function recordProjectCanonicalBaseAdvanced(
+  { projectId, ref, resultingSha, missionId },
+  clock
+) {
   return withProjectCanonicalBase(projectId, (current) => {
     const at = isoNow(clock)
-    const base = current ?? createProjectCanonicalBaseRecord({ projectId, ref, setBy: 'SYSTEM_ADOPTION_EXECUTION', reason: 'first real adoption merge on this project' }, clock)
+    const base =
+      current ??
+      createProjectCanonicalBaseRecord(
+        {
+          projectId,
+          ref,
+          setBy: 'SYSTEM_ADOPTION_EXECUTION',
+          reason: 'first real adoption merge on this project'
+        },
+        clock
+      )
     return {
       ...base,
       ref,

@@ -43,7 +43,7 @@ export async function withPrepareForWorkOperation(operationId, mutateFn) {
       ...opState,
       prepareForWorkOperations: { ...opState.prepareForWorkOperations, [operationId]: next }
     }
-    saveState(nextOpState)
+    saveState(nextOpState, { writerCollection: 'prepareForWorkOperations' })
     return next
   })
 }

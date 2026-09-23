@@ -34,7 +34,7 @@ export async function withCompletionWatch(id, mutateFn) {
       ...opState,
       completionWatches: { ...opState.completionWatches, [id]: next }
     }
-    saveState(nextOpState)
+    saveState(nextOpState, { writerCollection: 'completionWatches' })
     return next
   })
 }
@@ -57,7 +57,7 @@ export async function registerCompletionWatchIfAbsent(kind, targetId, buildWatch
       ...opState,
       completionWatches: { ...opState.completionWatches, [watch.id]: watch }
     }
-    saveState(nextOpState)
+    saveState(nextOpState, { writerCollection: 'completionWatches' })
     return { watch, created: true }
   })
 }

@@ -161,48 +161,88 @@ function withWindowsRenameRetry(fn) {
 }
 
 // TSF Owner Dogfood/Critique Loop V1 safety review finding (real,
-// reproduced): every OTHER caller of saveState follows the same
-// established pattern in this file -- read `opState` once near the top
-// of an HTTP handler, do some (possibly async) work, then
-// `saveState({ ...opState, someField: newValue })`. That's a classic
-// lost-update race against dogfoodSessions specifically: if a dogfood
-// session starts/ends/captures a turn (via dogfood-session-store.mjs's
-// OWN properly-locked withDogfoodSessions) DURING that window, an
-// unrelated handler's stale `opState.dogfoodSessions` silently clobbers
-// it on save -- reproduced with POST /api/usage-mode, but the same
-// pattern exists in many handlers, not just that one. dogfoodSessions is
-// this codebase's own non-execution SAFETY invariant, so it gets a
-// narrow, targeted protection here rather than requiring an audit of
-// every caller: saveState always re-reads the CURRENT on-disk
-// dogfoodSessions and keeps it, discarding whatever stale value the
-// caller's own snapshot carried -- UNLESS this save genuinely IS the
-// dogfood store's own write (dogfood-session-store.mjs passes
-// `isDogfoodSessionWrite: true`, the only caller allowed to change this
-// collection). The same class of risk likely exists for other lock-
-// protected collections (projectExecutionHolds, keepGoingRuns, ...);
-// generalizing this protection to all of them is real, disclosed,
-// follow-up scope, not attempted here.
+// reproduced), GENERALIZED (overnight autonomous-improvement mission,
+// systemic-audit follow-up disclosed at the time of the original fix):
+// every OTHER caller of saveState follows the same established pattern
+// in this file -- read `opState` once near the top of an HTTP handler,
+// do some (possibly async) work, then `saveState({ ...opState,
+// someField: newValue })`. That's a classic lost-update race against
+// ANY lock-protected collection: if that collection's own properly-
+// locked `withXxx` store mutates it DURING that window, the unrelated
+// handler's stale snapshot silently clobbers the real change on save.
+// Originally fixed narrowly for dogfoodSessions alone (reproduced via
+// POST /api/usage-mode); a full audit of every `with*`-lock-protected
+// store module in this codebase (grep for `withFileLock` across
+// server/*-store.mjs) found the IDENTICAL shape in every one of them --
+// this is a systemic persistence pattern, not a one-off, so the
+// protection is now generalized to every such collection rather than
+// requiring a fresh incident to justify fixing each one individually.
+// (cleanup-quarantine-store.mjs, resource-auditor-git-object-store.mjs,
+// and resource-pressure-lease-store.mjs are NOT in this list -- they
+// each persist to their own separate file, never through this shared
+// opState blob, so they are single-writer-by-construction w.r.t. THIS
+// specific race and need no protection here.)
 //
+// saveState always re-reads the CURRENT on-disk value of every entry
+// below and keeps it, discarding whatever stale value the caller's own
+// snapshot carried -- UNLESS this save genuinely IS that collection's
+// own designated writer (its `with*` store passes
+// `writerCollection: '<key>'`, the only caller allowed to change that
+// one key; every other protected key is still preserved fresh-from-disk
+// even for that caller, since one write is never entitled to also
+// silently revert a DIFFERENT collection it doesn't own).
+const LOCK_PROTECTED_COLLECTIONS = Object.freeze([
+  'attentionNotificationEvents',
+  'cleanupRequests',
+  'completionWatches',
+  'dogfoodSessions',
+  'healthRepairOperations',
+  'keepGoingRuns',
+  'plannerMissions',
+  'platformLearningLedger',
+  'prepareForWorkOperations',
+  'projectCanonicalBases',
+  'projectExecutionHolds',
+  'researchLibrary',
+  'researchMissions',
+  'selfImprovementFindings',
+  'selfImprovementReceipts'
+])
+
 // `rename` is injectable (defaults to the real renameSync) so tests can
 // deterministically simulate a transient Windows rename failure without
 // needing to reproduce real OS-level file-handle contention.
-export function saveState(state, { rename = renameSync, isDogfoodSessionWrite = false } = {}) {
+export function saveState(state, { rename = renameSync, writerCollection = null } = {}) {
   const stateFile = resolveStateFile()
   mkdirSync(path.dirname(stateFile), { recursive: true })
-  const next = isDogfoodSessionWrite ? state : preserveOnDiskDogfoodSessions(state, stateFile)
+  const next = preserveLockProtectedCollections(state, stateFile, writerCollection)
   const tmp = `${stateFile}.tmp`
   writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
   withWindowsRenameRetry(() => rename(tmp, stateFile))
 }
 
-function preserveOnDiskDogfoodSessions(state, stateFile) {
+function preserveLockProtectedCollections(state, stateFile, writerCollection) {
   if (!existsSync(stateFile)) {
     return state
   }
+  let onDisk
   try {
-    const onDisk = JSON.parse(readFileSync(stateFile, 'utf8'))
-    return { ...state, dogfoodSessions: onDisk.dogfoodSessions ?? {} }
+    onDisk = JSON.parse(readFileSync(stateFile, 'utf8'))
   } catch {
     return state
   }
+  const preserved = { ...state }
+  for (const key of LOCK_PROTECTED_COLLECTIONS) {
+    if (key === writerCollection) {
+      continue
+    }
+    // A collection's own DEFAULTS shape is the correct fallback when it's
+    // absent on disk -- NOT a blind `?? {}`. researchLibrary/
+    // platformLearningLedger are singletons that default to `null` until
+    // first use; a bare `{}` fallback for either fails their own real
+    // schema-version guard (`{}` has no schemaVersion, read as corrupt)
+    // exactly the way it should never legitimately be corrupt this early.
+    preserved[key] = key in onDisk ? onDisk[key] : structuredClone(DEFAULTS[key])
+  }
+  return preserved
 }

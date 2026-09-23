@@ -48,7 +48,10 @@ function seedSettledRun({ id = 'run-1', createdAt, completedAt }) {
   )
   run = completeRun(run, clockAt(completedAt))
   const state = loadState()
-  saveState({ ...state, keepGoingRuns: { ...state.keepGoingRuns, [FIXTURE_PROJECT_ID]: run } })
+  saveState(
+    { ...state, keepGoingRuns: { ...state.keepGoingRuns, [FIXTURE_PROJECT_ID]: run } },
+    { writerCollection: 'keepGoingRuns' }
+  )
   return run
 }
 

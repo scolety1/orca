@@ -78,7 +78,10 @@ test('REQUIRED PROOF: a real, seeded run produces a real timeline and bottleneck
       run.revision
     )
     const state = loadState()
-    saveState({ ...state, keepGoingRuns: { ...state.keepGoingRuns, [FIXTURE_PROJECT_ID]: run } })
+    saveState(
+      { ...state, keepGoingRuns: { ...state.keepGoingRuns, [FIXTURE_PROJECT_ID]: run } },
+      { writerCollection: 'keepGoingRuns' }
+    )
 
     const res = await get(base, `/api/projects/${FIXTURE_PROJECT_ID}/flight-recorder`)
     assert.equal(res.status, 200)

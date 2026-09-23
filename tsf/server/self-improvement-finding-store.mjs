@@ -23,7 +23,9 @@ function lockPath() {
 // store.mjs). Fails closed on a version this running code was never
 // verified against.
 function versionCheckedFinding(finding) {
-  if (finding) { assertSupportedSelfImprovementFindingSchemaVersion(finding) }
+  if (finding) {
+    assertSupportedSelfImprovementFindingSchemaVersion(finding)
+  }
   return finding
 }
 
@@ -33,7 +35,9 @@ export function readFinding(findingId) {
 
 export function readAllFindings() {
   const findings = loadState().selfImprovementFindings ?? {}
-  for (const finding of Object.values(findings)) { versionCheckedFinding(finding) }
+  for (const finding of Object.values(findings)) {
+    versionCheckedFinding(finding)
+  }
   return findings
 }
 
@@ -45,10 +49,13 @@ export async function withFinding(findingId, mutateFn) {
     const opState = loadState()
     const current = versionCheckedFinding(opState.selfImprovementFindings?.[findingId] ?? null)
     const next = mutateFn(current)
-    saveState({
-      ...opState,
-      selfImprovementFindings: { ...opState.selfImprovementFindings, [findingId]: next }
-    })
+    saveState(
+      {
+        ...opState,
+        selfImprovementFindings: { ...opState.selfImprovementFindings, [findingId]: next }
+      },
+      { writerCollection: 'selfImprovementFindings' }
+    )
     return next
   })
 }

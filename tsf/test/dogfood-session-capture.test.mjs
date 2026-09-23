@@ -30,7 +30,10 @@ function seedActiveKeepGoingRun(projectId, clock) {
     { id: `run:${projectId}`, projectId, originalGoal: 'ship it', acceptanceCriteria: ['X'] },
     clock
   )
-  saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
+  saveState(
+    { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } },
+    { writerCollection: 'keepGoingRuns' }
+  )
 }
 
 function seedOnboardedProjectForHttp(projectId, displayName, repoPath) {

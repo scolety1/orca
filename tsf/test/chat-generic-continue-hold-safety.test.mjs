@@ -104,7 +104,10 @@ function seedPausedKeepGoingRun(projectId) {
     clock
   )
   run = { ...run, state: 'PAUSED' }
-  saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
+  saveState(
+    { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } },
+    { writerCollection: 'keepGoingRuns' }
+  )
 }
 
 async function withServer(fn) {

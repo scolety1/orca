@@ -24,7 +24,13 @@ export async function recordSelfImprovementReceipt(missionId, input, clock) {
     const opState = loadState()
     const current = opState.selfImprovementReceipts?.[missionId] ?? []
     const next = appendSelfImprovementReceipt(current, input, clock)
-    saveState({ ...opState, selfImprovementReceipts: { ...opState.selfImprovementReceipts, [missionId]: next } })
+    saveState(
+      {
+        ...opState,
+        selfImprovementReceipts: { ...opState.selfImprovementReceipts, [missionId]: next }
+      },
+      { writerCollection: 'selfImprovementReceipts' }
+    )
     return next
   })
 }

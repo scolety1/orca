@@ -17,7 +17,9 @@ function libraryFrom(opState) {
   const library = opState.researchLibrary ?? null
   // Same fail-closed read-boundary guard research-mission-store.mjs applies
   // to missions -- see research-schema-versioning.mjs.
-  if (library) assertSupportedResearchLibrarySchemaVersion(library)
+  if (library) {
+    assertSupportedResearchLibrarySchemaVersion(library)
+  }
   return library
 }
 
@@ -34,7 +36,7 @@ export async function withResearchLibrary(mutateFn) {
   return withFileLock(lockPath(), undefined, () => {
     const opState = loadState()
     const next = mutateFn(libraryFrom(opState))
-    saveState({ ...opState, researchLibrary: next })
+    saveState({ ...opState, researchLibrary: next }, { writerCollection: 'researchLibrary' })
     return next
   })
 }

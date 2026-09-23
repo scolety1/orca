@@ -41,7 +41,7 @@ export async function withHealthRepairOperation(operationId, mutateFn) {
       ...opState,
       healthRepairOperations: { ...opState.healthRepairOperations, [operationId]: next }
     }
-    saveState(nextOpState)
+    saveState(nextOpState, { writerCollection: 'healthRepairOperations' })
     return next
   })
 }

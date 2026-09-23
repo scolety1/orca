@@ -30,7 +30,10 @@ export async function withCleanupRequestRecord(requestId, mutateFn) {
     const opState = loadState()
     const current = opState.cleanupRequests?.[requestId] ?? null
     const next = mutateFn(current)
-    saveState({ ...opState, cleanupRequests: { ...opState.cleanupRequests, [requestId]: next } })
+    saveState(
+      { ...opState, cleanupRequests: { ...opState.cleanupRequests, [requestId]: next } },
+      { writerCollection: 'cleanupRequests' }
+    )
     return next
   })
 }
@@ -40,7 +43,10 @@ function emptyRecord() {
 }
 
 export async function putRecommendation(requestId, recommendation) {
-  return withCleanupRequestRecord(requestId, (current) => ({ ...(current ?? emptyRecord()), recommendation }))
+  return withCleanupRequestRecord(requestId, (current) => ({
+    ...(current ?? emptyRecord()),
+    recommendation
+  }))
 }
 
 export async function putPlan(requestId, plan) {
@@ -48,7 +54,10 @@ export async function putPlan(requestId, plan) {
 }
 
 export async function putAuthorization(requestId, authorization) {
-  return withCleanupRequestRecord(requestId, (current) => ({ ...(current ?? emptyRecord()), authorization }))
+  return withCleanupRequestRecord(requestId, (current) => ({
+    ...(current ?? emptyRecord()),
+    authorization
+  }))
 }
 
 // Appends (never replaces) -- a request's execution history is a full

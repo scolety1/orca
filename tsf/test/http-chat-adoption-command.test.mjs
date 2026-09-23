@@ -39,13 +39,8 @@ test.after(() => rmSync(ROOT, { recursive: true, force: true }))
 const { createRequestHandler } = await import('../server/http-server.mjs')
 const { loadState, saveState } = await import('../server/data-store.mjs')
 const { readProjectCanonicalBase } = await import('../server/project-canonical-base-store.mjs')
-const {
-  createOvernightRun,
-  planWave,
-  dispatchWave,
-  settleInFlightWave,
-  completeRun
-} = await import('../domain/keep-going.mjs')
+const { createOvernightRun, planWave, dispatchWave, settleInFlightWave, completeRun } =
+  await import('../domain/keep-going.mjs')
 
 function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -101,8 +96,23 @@ function seedOnboardedProjectForHttp(projectId, displayName, repoPath) {
           migrationClassification: { classification: 'SAFE_TO_ONBOARD_NOW', reasons: [] },
           handoffReconciliation: { hasHandoff: false },
           orcaRegistration: { checked: false, registered: false },
-          discovery: { commandGuidance: { hasKnownTestCommand: false, testCommands: [], lintCommands: [], buildCommands: [] } },
-          direction: { purpose: null, recommendedNextMission: null, upgradeCandidates: [], unfinishedSummary: null, completedSummary: null, alignment: 'UNKNOWN', live: false },
+          discovery: {
+            commandGuidance: {
+              hasKnownTestCommand: false,
+              testCommands: [],
+              lintCommands: [],
+              buildCommands: []
+            }
+          },
+          direction: {
+            purpose: null,
+            recommendedNextMission: null,
+            upgradeCandidates: [],
+            unfinishedSummary: null,
+            completedSummary: null,
+            alignment: 'UNKNOWN',
+            live: false
+          },
           health: { status: 'HEALTHY', findings: [], observedAt: '2026-09-10T00:00:00.000Z' }
         }
       }
@@ -111,15 +121,26 @@ function seedOnboardedProjectForHttp(projectId, displayName, repoPath) {
 }
 
 function seedCompleteKeepGoingRun(projectId, worktree, clock) {
-  let run = createOvernightRun({
-    id: `run:${projectId}`,
-    projectId,
-    originalGoal: 'ship the fixture change',
-    acceptanceCriteria: ['the fixture change lands']
-  }, clock)
+  let run = createOvernightRun(
+    {
+      id: `run:${projectId}`,
+      projectId,
+      originalGoal: 'ship the fixture change',
+      acceptanceCriteria: ['the fixture change lands']
+    },
+    clock
+  )
   const workItem = { id: `work:${projectId}`, scope: ['existing-file.mjs'], worktree }
   const wavePlan = planWave(run, [workItem], clock)
-  const dispatchRecords = [{ workItemId: workItem.id, scope: workItem.scope, taskId: `task:${projectId}`, dispatchId: `dispatch:${projectId}`, worktree }]
+  const dispatchRecords = [
+    {
+      workItemId: workItem.id,
+      scope: workItem.scope,
+      taskId: `task:${projectId}`,
+      dispatchId: `dispatch:${projectId}`,
+      worktree
+    }
+  ]
   run = dispatchWave(run, wavePlan, dispatchRecords, clock, run.revision)
   const waveResult = {
     schemaVersion: 'TSF_KEEP_GOING_WAVE_RESULT_V1',
@@ -129,7 +150,10 @@ function seedCompleteKeepGoingRun(projectId, worktree, clock) {
   run = settleInFlightWave(run, waveResult, clock, run.revision)
   run = completeRun(run, clock)
   const opState = loadState()
-  saveState({ ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } })
+  saveState(
+    { ...opState, keepGoingRuns: { ...opState.keepGoingRuns, [projectId]: run } },
+    { writerCollection: 'keepGoingRuns' }
+  )
   return run
 }
 
@@ -137,7 +161,12 @@ const clock = () => new Date('2026-09-10T12:00:00.000Z')
 
 async function withServer(fn) {
   const handler = createRequestHandler()
-  const server = createServer((req, res) => handler(req, res, () => { res.writeHead(404); res.end() }))
+  const server = createServer((req, res) =>
+    handler(req, res, () => {
+      res.writeHead(404)
+      res.end()
+    })
+  )
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = server.address().port
   try {
@@ -148,7 +177,11 @@ async function withServer(fn) {
 }
 
 async function chat(base, body) {
-  const res = await fetch(`${base}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(`${base}/api/chat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })
   return { status: res.status, body: await res.json() }
 }
 
@@ -156,18 +189,30 @@ test('Overnight V2 Lane L: "adopt X" over real HTTP genuinely executes a real gi
   await withServer(async (base) => {
     const projectId = 'lane-l-adopt-global'
     const canonicalRepoPath = initFixtureRepo('lane-l-adopt-global-canonical')
-    const worktree = createCandidateWorktree(canonicalRepoPath, 'lane-l-adopt-global-candidate', 'command/lane-l-adopt-global', 'a real, verified fix')
+    const worktree = createCandidateWorktree(
+      canonicalRepoPath,
+      'lane-l-adopt-global-candidate',
+      'command/lane-l-adopt-global',
+      'a real, verified fix'
+    )
     seedOnboardedProjectForHttp(projectId, 'Lane L Adopt Global', canonicalRepoPath)
     seedCompleteKeepGoingRun(projectId, worktree, clock)
     const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
 
     const result = await chat(base, { projectId: null, message: `adopt ${projectId}` })
 
-    assert.equal(result.body.intent, 'ADOPTION_COMMAND', 'must reach the real execution bridge, not the report-only responder')
+    assert.equal(
+      result.body.intent,
+      'ADOPTION_COMMAND',
+      'must reach the real execution bridge, not the report-only responder'
+    )
     assert.match(result.body.text, /adopted: canonical advanced/i)
     const newHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
     assert.notEqual(newHead, priorHead, 'the real canonical branch must genuinely advance')
-    assert.equal(git(canonicalRepoPath, ['log', '-1', '--format=%s']).trim(), 'a real, verified fix')
+    assert.equal(
+      git(canonicalRepoPath, ['log', '-1', '--format=%s']).trim(),
+      'a real, verified fix'
+    )
 
     const canonicalBase = readProjectCanonicalBase(projectId)
     assert.equal(canonicalBase.history.at(-1).action, 'ADVANCED')
@@ -179,7 +224,12 @@ test('Overnight V2 Lane L: "adopt it" over real HTTP genuinely executes a real g
   await withServer(async (base) => {
     const projectId = 'lane-l-adopt-per-project'
     const canonicalRepoPath = initFixtureRepo('lane-l-adopt-pp-canonical')
-    const worktree = createCandidateWorktree(canonicalRepoPath, 'lane-l-adopt-pp-candidate', 'command/lane-l-adopt-pp', 'per-project real fix')
+    const worktree = createCandidateWorktree(
+      canonicalRepoPath,
+      'lane-l-adopt-pp-candidate',
+      'command/lane-l-adopt-pp',
+      'per-project real fix'
+    )
     seedOnboardedProjectForHttp(projectId, 'Lane L Adopt Per Project', canonicalRepoPath)
     seedCompleteKeepGoingRun(projectId, worktree, clock)
     const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
@@ -197,7 +247,12 @@ test('Overnight V2 Lane L: duplicate delivery -- "adopt X" delivered twice over 
   await withServer(async (base) => {
     const projectId = 'lane-l-adopt-duplicate'
     const canonicalRepoPath = initFixtureRepo('lane-l-adopt-dup-canonical')
-    const worktree = createCandidateWorktree(canonicalRepoPath, 'lane-l-adopt-dup-candidate', 'command/lane-l-adopt-dup', 'duplicate-delivery real fix')
+    const worktree = createCandidateWorktree(
+      canonicalRepoPath,
+      'lane-l-adopt-dup-candidate',
+      'command/lane-l-adopt-dup',
+      'duplicate-delivery real fix'
+    )
     seedOnboardedProjectForHttp(projectId, 'Lane L Adopt Duplicate', canonicalRepoPath)
     seedCompleteKeepGoingRun(projectId, worktree, clock)
 
@@ -206,8 +261,16 @@ test('Overnight V2 Lane L: duplicate delivery -- "adopt X" delivered twice over 
     const afterFirstHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
 
     const second = await chat(base, { projectId: null, message: `adopt ${projectId}` })
-    assert.match(second.body.text, /already adopted/i, 'the duplicate call must be honestly reported as already-included, never a false re-adoption')
-    assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), afterFirstHead, 'no second merge -- HEAD unchanged by the duplicate delivery')
+    assert.match(
+      second.body.text,
+      /already adopted/i,
+      'the duplicate call must be honestly reported as already-included, never a false re-adoption'
+    )
+    assert.equal(
+      git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+      afterFirstHead,
+      'no second merge -- HEAD unchanged by the duplicate delivery'
+    )
     const log = git(canonicalRepoPath, ['log', '--oneline']).trim().split('\n')
     assert.equal(log.length, 2, 'no duplicate merge commit was created')
   })
@@ -238,7 +301,12 @@ test('Overnight V2 Lane E: N genuinely concurrent "adopt it" HTTP calls for the 
   await withServer(async (base) => {
     const projectId = 'lane-e-concurrent-adopt'
     const canonicalRepoPath = initFixtureRepo('lane-e-concurrent-adopt-canonical')
-    const worktree = createCandidateWorktree(canonicalRepoPath, 'lane-e-concurrent-adopt-candidate', 'command/lane-e-concurrent-adopt', 'a real fix, requested N times concurrently')
+    const worktree = createCandidateWorktree(
+      canonicalRepoPath,
+      'lane-e-concurrent-adopt-candidate',
+      'command/lane-e-concurrent-adopt',
+      'a real fix, requested N times concurrently'
+    )
     seedOnboardedProjectForHttp(projectId, 'Lane E Concurrent Adopt', canonicalRepoPath)
     seedCompleteKeepGoingRun(projectId, worktree, clock)
 
@@ -249,15 +317,37 @@ test('Overnight V2 Lane E: N genuinely concurrent "adopt it" HTTP calls for the 
 
     const adopted = results.filter((r) => /adopted: canonical advanced/i.test(r.body.text ?? ''))
     const alreadyAdopted = results.filter((r) => /already adopted/i.test(r.body.text ?? ''))
-    assert.equal(adopted.length, 1, `exactly one of ${N} genuinely concurrent adopt calls must actually perform the real merge`)
-    assert.equal(alreadyAdopted.length, N - 1, 'every other concurrent call must be honestly ALREADY_INCLUDED, never a second false "adopted" claim')
+    assert.equal(
+      adopted.length,
+      1,
+      `exactly one of ${N} genuinely concurrent adopt calls must actually perform the real merge`
+    )
+    assert.equal(
+      alreadyAdopted.length,
+      N - 1,
+      'every other concurrent call must be honestly ALREADY_INCLUDED, never a second false "adopted" claim'
+    )
 
     const log = git(canonicalRepoPath, ['log', '--oneline']).trim().split('\n')
-    assert.equal(log.length, 2, `exactly one real merge commit despite ${N} genuinely concurrent duplicate calls`)
+    assert.equal(
+      log.length,
+      2,
+      `exactly one real merge commit despite ${N} genuinely concurrent duplicate calls`
+    )
 
     const finalState = loadState()
-    assert.equal(finalState.onboardedProjects[projectId].receipts.length, N, `exactly one receipt per real HTTP call (1 ADOPTED + ${N - 1} ALREADY_INCLUDED) -- never a false extra ADOPTED receipt`)
-    assert.equal(finalState.onboardedProjects[projectId].receipts.filter((r) => r.result?.outcome === 'ADOPTED').length, 1, 'exactly one real ADOPTED receipt, never a duplicate')
+    assert.equal(
+      finalState.onboardedProjects[projectId].receipts.length,
+      N,
+      `exactly one receipt per real HTTP call (1 ADOPTED + ${N - 1} ALREADY_INCLUDED) -- never a false extra ADOPTED receipt`
+    )
+    assert.equal(
+      finalState.onboardedProjects[projectId].receipts.filter(
+        (r) => r.result?.outcome === 'ADOPTED'
+      ).length,
+      1,
+      'exactly one real ADOPTED receipt, never a duplicate'
+    )
   })
 })
 
@@ -265,16 +355,36 @@ test('Overnight V2 Lane L: a message combining "adopt X" with a genuinely conseq
   await withServer(async (base) => {
     const projectId = 'lane-l-adopt-tim-required'
     const canonicalRepoPath = initFixtureRepo('lane-l-adopt-tim-canonical')
-    const worktree = createCandidateWorktree(canonicalRepoPath, 'lane-l-adopt-tim-candidate', 'command/lane-l-adopt-tim', 'must not be merged')
+    const worktree = createCandidateWorktree(
+      canonicalRepoPath,
+      'lane-l-adopt-tim-candidate',
+      'command/lane-l-adopt-tim',
+      'must not be merged'
+    )
     seedOnboardedProjectForHttp(projectId, 'Lane L Adopt Tim Required', canonicalRepoPath)
     seedCompleteKeepGoingRun(projectId, worktree, clock)
     const priorHead = git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim()
 
-    const result = await chat(base, { projectId: null, message: `adopt ${projectId} and then deploy it to production` })
+    const result = await chat(base, {
+      projectId: null,
+      message: `adopt ${projectId} and then deploy it to production`
+    })
 
-    assert.equal(result.body.decisionClass, 'TIM_REQUIRED', 'the consequential clause must win a full refusal')
-    assert.doesNotMatch(result.body.text, /adopted: canonical advanced/i, 'must never claim/perform an adoption when the whole message should have been refused')
-    assert.equal(git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(), priorHead, 'the real repo must NOT be merged as a side effect of a message that should have been refused in full')
+    assert.equal(
+      result.body.decisionClass,
+      'TIM_REQUIRED',
+      'the consequential clause must win a full refusal'
+    )
+    assert.doesNotMatch(
+      result.body.text,
+      /adopted: canonical advanced/i,
+      'must never claim/perform an adoption when the whole message should have been refused'
+    )
+    assert.equal(
+      git(canonicalRepoPath, ['rev-parse', 'HEAD']).trim(),
+      priorHead,
+      'the real repo must NOT be merged as a side effect of a message that should have been refused in full'
+    )
   })
 })
 
@@ -295,30 +405,63 @@ test('Overnight V2 Lane L: a message combining "adopt X" with a genuinely conseq
 test('Overnight V2 Lane L: per-project Planner Chat scoped to A, message explicitly names a DIFFERENT real project B -- refuses honestly, never merges A (wrong project) or B (never asked)', async () => {
   await withServer(async (base) => {
     const repoA = initFixtureRepo('lane-l-wrongproj-a-canonical')
-    const wtA = createCandidateWorktree(repoA, 'lane-l-wrongproj-a-candidate', 'command/lane-l-wrongproj-a', 'must not be merged as a side effect')
+    const wtA = createCandidateWorktree(
+      repoA,
+      'lane-l-wrongproj-a-candidate',
+      'command/lane-l-wrongproj-a',
+      'must not be merged as a side effect'
+    )
     seedOnboardedProjectForHttp('lane-l-wrongproj-a', 'Lane L Wrongproj A', repoA)
     seedCompleteKeepGoingRun('lane-l-wrongproj-a', wtA, clock)
 
     const repoB = initFixtureRepo('lane-l-wrongproj-b-canonical')
-    const wtB = createCandidateWorktree(repoB, 'lane-l-wrongproj-b-candidate', 'command/lane-l-wrongproj-b', 'must never be silently merged either -- never asked')
+    const wtB = createCandidateWorktree(
+      repoB,
+      'lane-l-wrongproj-b-candidate',
+      'command/lane-l-wrongproj-b',
+      'must never be silently merged either -- never asked'
+    )
     seedOnboardedProjectForHttp('lane-l-wrongproj-b', 'Lane L Wrongproj B', repoB)
     seedCompleteKeepGoingRun('lane-l-wrongproj-b', wtB, clock)
 
     const priorHeadA = git(repoA, ['rev-parse', 'HEAD']).trim()
     const priorHeadB = git(repoB, ['rev-parse', 'HEAD']).trim()
 
-    const result = await chat(base, { projectId: 'lane-l-wrongproj-a', message: 'adopt lane-l-wrongproj-b' })
+    const result = await chat(base, {
+      projectId: 'lane-l-wrongproj-a',
+      message: 'adopt lane-l-wrongproj-b'
+    })
 
-    assert.equal(result.body.decisionClass, 'NEEDS_OWNER', 'a scope/message conflict must be an honest refusal, never a guess either way')
-    assert.doesNotMatch(result.body.text, /adopted: canonical advanced/i, 'must never claim either project was adopted')
-    assert.equal(git(repoA, ['rev-parse', 'HEAD']).trim(), priorHeadA, 'the SCOPED project (A) must not be merged just because the request landed in its thread')
-    assert.equal(git(repoB, ['rev-parse', 'HEAD']).trim(), priorHeadB, 'the NAMED project (B) must not be merged either -- the user was never asked to confirm')
+    assert.equal(
+      result.body.decisionClass,
+      'NEEDS_OWNER',
+      'a scope/message conflict must be an honest refusal, never a guess either way'
+    )
+    assert.doesNotMatch(
+      result.body.text,
+      /adopted: canonical advanced/i,
+      'must never claim either project was adopted'
+    )
+    assert.equal(
+      git(repoA, ['rev-parse', 'HEAD']).trim(),
+      priorHeadA,
+      'the SCOPED project (A) must not be merged just because the request landed in its thread'
+    )
+    assert.equal(
+      git(repoB, ['rev-parse', 'HEAD']).trim(),
+      priorHeadB,
+      'the NAMED project (B) must not be merged either -- the user was never asked to confirm'
+    )
 
     // Sanity: "adopt it" (no explicit conflicting name) in the SAME scope
     // still works normally -- this fix must not break the common case.
     const sane = await chat(base, { projectId: 'lane-l-wrongproj-a', message: 'adopt it' })
     assert.match(sane.body.text, /adopted: canonical advanced/i)
-    assert.notEqual(git(repoA, ['rev-parse', 'HEAD']).trim(), priorHeadA, '"adopt it" in the correctly-scoped thread must still really adopt A')
+    assert.notEqual(
+      git(repoA, ['rev-parse', 'HEAD']).trim(),
+      priorHeadA,
+      '"adopt it" in the correctly-scoped thread must still really adopt A'
+    )
   })
 })
 
@@ -341,24 +484,53 @@ test('Overnight V2 Lane L: per-project Planner Chat scoped to A, message explici
 test('Overnight V2 Lane L: a FUZZY (not exact) mention of a different real project in per-project chat also refuses honestly, never merges either project', async () => {
   await withServer(async (base) => {
     const repoA = initFixtureRepo('lane-l-fuzzy-wrongproj-a-canonical')
-    const wtA = createCandidateWorktree(repoA, 'lane-l-fuzzy-wrongproj-a-candidate', 'command/lane-l-fuzzy-wrongproj-a', 'must not be merged as a side effect')
+    const wtA = createCandidateWorktree(
+      repoA,
+      'lane-l-fuzzy-wrongproj-a-candidate',
+      'command/lane-l-fuzzy-wrongproj-a',
+      'must not be merged as a side effect'
+    )
     seedOnboardedProjectForHttp('lane-l-fuzzy-wrongproj-a', 'Lane L Fuzzy Wrongproj A', repoA)
     seedCompleteKeepGoingRun('lane-l-fuzzy-wrongproj-a', wtA, clock)
 
     const repoB = initFixtureRepo('lane-l-fuzzy-wrongproj-b-canonical')
-    const wtB = createCandidateWorktree(repoB, 'lane-l-fuzzy-wrongproj-b-candidate', 'command/lane-l-fuzzy-wrongproj-b', 'the real intended target -- never confirmed, must not be merged either')
+    const wtB = createCandidateWorktree(
+      repoB,
+      'lane-l-fuzzy-wrongproj-b-candidate',
+      'command/lane-l-fuzzy-wrongproj-b',
+      'the real intended target -- never confirmed, must not be merged either'
+    )
     seedOnboardedProjectForHttp('lane-l-redwood-trail-overhaul', 'Redwood Trail Overhaul', repoB)
     seedCompleteKeepGoingRun('lane-l-redwood-trail-overhaul', wtB, clock)
 
     const priorHeadA = git(repoA, ['rev-parse', 'HEAD']).trim()
     const priorHeadB = git(repoB, ['rev-parse', 'HEAD']).trim()
 
-    const result = await chat(base, { projectId: 'lane-l-fuzzy-wrongproj-a', message: 'adopt the trail overhaul' })
+    const result = await chat(base, {
+      projectId: 'lane-l-fuzzy-wrongproj-a',
+      message: 'adopt the trail overhaul'
+    })
 
-    assert.equal(result.body.decisionClass, 'NEEDS_OWNER', 'a fuzzy scope/message conflict must also be an honest refusal, never a guess either way')
-    assert.doesNotMatch(result.body.text, /adopted: canonical advanced/i, 'must never claim either project was adopted')
-    assert.equal(git(repoA, ['rev-parse', 'HEAD']).trim(), priorHeadA, 'the SCOPED project (A) must not be merged just because the request landed in its thread')
-    assert.equal(git(repoB, ['rev-parse', 'HEAD']).trim(), priorHeadB, 'the FUZZY-named project (B) must not be merged either -- the user was never asked to confirm')
+    assert.equal(
+      result.body.decisionClass,
+      'NEEDS_OWNER',
+      'a fuzzy scope/message conflict must also be an honest refusal, never a guess either way'
+    )
+    assert.doesNotMatch(
+      result.body.text,
+      /adopted: canonical advanced/i,
+      'must never claim either project was adopted'
+    )
+    assert.equal(
+      git(repoA, ['rev-parse', 'HEAD']).trim(),
+      priorHeadA,
+      'the SCOPED project (A) must not be merged just because the request landed in its thread'
+    )
+    assert.equal(
+      git(repoB, ['rev-parse', 'HEAD']).trim(),
+      priorHeadB,
+      'the FUZZY-named project (B) must not be merged either -- the user was never asked to confirm'
+    )
   })
 })
 
@@ -395,13 +567,22 @@ test('Overnight V2 Lane L: a FUZZY (not exact) mention of a different real proje
 test('Overnight V2 Lane C: a real per-project conversation -- status, then adopt it, then status again -- the SAME-session notification correctly does not repeat (dedup, not staleness-awareness -- see comment above)', async () => {
   await withServer(async (base) => {
     const repo = initFixtureRepo('capstone-canonical')
-    const wt = createCandidateWorktree(repo, 'capstone-candidate', 'command/capstone', 'a real fix for the capstone flow')
+    const wt = createCandidateWorktree(
+      repo,
+      'capstone-candidate',
+      'command/capstone',
+      'a real fix for the capstone flow'
+    )
     seedOnboardedProjectForHttp('capstone-proj', 'Capstone Proj', repo)
     seedCompleteKeepGoingRun('capstone-proj', wt, clock)
     const priorHead = git(repo, ['rev-parse', 'HEAD']).trim()
 
     const before = await chat(base, { projectId: 'capstone-proj', message: 'what is the status?' })
-    assert.match(before.body.text, /Capstone Proj\*\* is ready for adoption/, 'before the real merge, the status honestly says the candidate is ready for adoption')
+    assert.match(
+      before.body.text,
+      /Capstone Proj\*\* is ready for adoption/,
+      'before the real merge, the status honestly says the candidate is ready for adoption'
+    )
 
     const adopted = await chat(base, { projectId: 'capstone-proj', message: 'adopt it' })
     assert.equal(adopted.body.intent, 'ADOPTION_COMMAND')
@@ -410,6 +591,10 @@ test('Overnight V2 Lane C: a real per-project conversation -- status, then adopt
     assert.notEqual(newHead, priorHead, 'the real repo must genuinely be merged mid-conversation')
 
     const after = await chat(base, { projectId: 'capstone-proj', message: 'what is the status?' })
-    assert.doesNotMatch(after.body.text, /Capstone Proj\*\* is ready for adoption/, 'the SAME-session notification for the SAME unchanged event must not repeat (real dedup); this does NOT prove the underlying classification is adoption-aware -- see this test\'s own header comment')
+    assert.doesNotMatch(
+      after.body.text,
+      /Capstone Proj\*\* is ready for adoption/,
+      "the SAME-session notification for the SAME unchanged event must not repeat (real dedup); this does NOT prove the underlying classification is adoption-aware -- see this test's own header comment"
+    )
   })
 })

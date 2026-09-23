@@ -30,7 +30,9 @@ function lockPath() {
 // record carries no schemaVersion of its own (see
 // research-schema-versioning.mjs's own note), so only checkpoint is checked.
 function versionCheckedRecord(record) {
-  if (record?.checkpoint) { assertSupportedPlannerMissionCheckpointSchemaVersion(record.checkpoint) }
+  if (record?.checkpoint) {
+    assertSupportedPlannerMissionCheckpointSchemaVersion(record.checkpoint)
+  }
   return record
 }
 
@@ -40,7 +42,9 @@ export function readPlannerMissionRecord(missionId) {
 
 export function readAllPlannerMissionRecords() {
   const records = loadState().plannerMissions ?? {}
-  for (const record of Object.values(records)) { versionCheckedRecord(record) }
+  for (const record of Object.values(records)) {
+    versionCheckedRecord(record)
+  }
   return records
 }
 
@@ -51,7 +55,10 @@ export async function withPlannerMissionRecord(missionId, mutateFn) {
     const opState = loadState()
     const current = versionCheckedRecord(opState.plannerMissions?.[missionId] ?? null)
     const next = mutateFn(current)
-    saveState({ ...opState, plannerMissions: { ...opState.plannerMissions, [missionId]: next } })
+    saveState(
+      { ...opState, plannerMissions: { ...opState.plannerMissions, [missionId]: next } },
+      { writerCollection: 'plannerMissions' }
+    )
     return next
   })
 }
@@ -60,7 +67,12 @@ export async function withPlannerMissionRecord(missionId, mutateFn) {
 // atomically under the same lock the checkpoint mutations use, so a lease
 // decision and a checkpoint read are never torn against each other.
 
-export async function acquirePlannerLease(missionId, plannerSessionId, clock, { ttlMs, boundary } = {}) {
+export async function acquirePlannerLease(
+  missionId,
+  plannerSessionId,
+  clock,
+  { ttlMs, boundary } = {}
+) {
   let outcome
   await withPlannerMissionRecord(missionId, (current) => {
     const record = current ?? { lease: null, checkpoint: null }
@@ -84,7 +96,9 @@ export async function renewPlannerLease(missionId, plannerSessionId, clock, { tt
       return record
     }
   })
-  if (renewError) { throw renewError }
+  if (renewError) {
+    throw renewError
+  }
   return outcome
 }
 
@@ -113,14 +127,24 @@ export async function relinquishPlannerLease(missionId, plannerSessionId, clock)
 // inside the same lock the write itself uses, closing that window -- optional
 // so every pre-existing direct caller (cleanup/test fixtures seeding a
 // checkpoint with no lease semantics in play) is unaffected.
-export async function mutateCheckpoint(missionId, checkpointMutator, clock, { requireLeaseHolder } = {}) {
+export async function mutateCheckpoint(
+  missionId,
+  checkpointMutator,
+  clock,
+  { requireLeaseHolder } = {}
+) {
   let nextCheckpoint
   await withPlannerMissionRecord(missionId, (current) => {
     const record = current ?? { lease: null, checkpoint: null }
     if (requireLeaseHolder) {
       const now = clock()
-      if (!isPlannerMissionLeaseLive(record.lease, now) || record.lease.holderPlannerSessionId !== requireLeaseHolder) {
-        const error = new Error(`planner session ${requireLeaseHolder} does not currently hold the mission lease for ${missionId}`)
+      if (
+        !isPlannerMissionLeaseLive(record.lease, now) ||
+        record.lease.holderPlannerSessionId !== requireLeaseHolder
+      ) {
+        const error = new Error(
+          `planner session ${requireLeaseHolder} does not currently hold the mission lease for ${missionId}`
+        )
         error.code = 'TSF_PLANNER_LEASE_NOT_HELD'
         throw error
       }

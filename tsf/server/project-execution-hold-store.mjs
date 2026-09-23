@@ -13,7 +13,9 @@ function lockPath() {
 }
 
 function versionCheckedHold(hold) {
-  if (hold) { assertSupportedProjectExecutionHoldSchemaVersion(hold) }
+  if (hold) {
+    assertSupportedProjectExecutionHoldSchemaVersion(hold)
+  }
   return hold
 }
 
@@ -23,7 +25,9 @@ export function readProjectExecutionHold(projectId) {
 
 export function readAllProjectExecutionHolds() {
   const holds = loadState().projectExecutionHolds ?? {}
-  for (const hold of Object.values(holds)) { versionCheckedHold(hold) }
+  for (const hold of Object.values(holds)) {
+    versionCheckedHold(hold)
+  }
   return holds
 }
 
@@ -34,10 +38,13 @@ export async function withProjectExecutionHold(projectId, mutateFn) {
     const opState = loadState()
     const current = versionCheckedHold(opState.projectExecutionHolds?.[projectId] ?? null)
     const next = mutateFn(current)
-    saveState({
-      ...opState,
-      projectExecutionHolds: { ...opState.projectExecutionHolds, [projectId]: next }
-    })
+    saveState(
+      {
+        ...opState,
+        projectExecutionHolds: { ...opState.projectExecutionHolds, [projectId]: next }
+      },
+      { writerCollection: 'projectExecutionHolds' }
+    )
     return next
   })
 }
