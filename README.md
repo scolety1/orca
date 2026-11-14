@@ -1,3 +1,9 @@
+> **Looking for Spencer Colety's Thousand Sunny Fleet work?**
+>
+> Start with the [TSF engineering tour](https://github.com/scolety1/orca/blob/tsf/main/tsf/SHOWCASE.md) or [the `tsf/` source on `tsf/main`](https://github.com/scolety1/orca/tree/tsf/main/tsf). That AI-assisted orchestration overlay is the project-specific work in this fork. The underlying Orca application is upstream work, credited below. The full provider-backed TSF runtime remains in development; the tour identifies the bounded examples that have been verified.
+
+---
+
 <h1 align="center">
   <a href="https://onOrca.dev"><img src="resources/build/icon.png" alt="Orca" width="64" valign="middle" /></a> Orca
 </h1>
