@@ -1,5 +1,7 @@
 # Thousand Sunny Fleet (TSF)
 
+[Engineering tour, attribution and bounded examples](SHOWCASE.md)
+
 TSF is a separable, TSF-owned overlay on top of the Orca foundation
 this repository is forked from. Orca stays in charge of agents,
 terminals, sessions, worktrees, provider launch, and browser/runtime
