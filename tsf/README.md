@@ -11,6 +11,14 @@ protection, evidence, and high-level project Health — everything about
 *running a fleet of real software projects*, not the terminal/agent
 substrate underneath it.
 
+## Product direction: an agentic corporation
+
+Spencer Colety describes TSF as an **agentic corporation**: a captain coordinates team leads and specialist workers, divides large projects into bounded tasks, runs independent work in parallel, reviews results and escalates serious blockers. The purpose is sustained progress across large software projects with less repeated manual prompting.
+
+Spencer reports using Dot as the conversational interface connected to TSF's backend, bringing project discussion and the fleet workflow together. **T.Dot is a working name for that integration.** This owner-reported workflow does not mean every integration or newer local change is present in this public branch.
+
+Reliable overnight and multi-day execution is an ongoing engineering goal. Completing a game-scale project in a few days is an ambition, not a measured throughput guarantee. Test-driven development, handoffs, recovery and acceptance checks remain central to the work. Orca, Dot and model providers retain credit for their underlying systems.
+
 ## Current status
 
 TSF is real, not a simulation: it onboards real projects, dispatches
