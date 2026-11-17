@@ -2,6 +2,14 @@
 
 Thousand Sunny Fleet (TSF / T dot) coordinates work across software projects on top of [Orca](https://github.com/stablyai/orca). The distinguishing work is the overlay's explicit mission, evidence, adoption and release state—not the upstream IDE, terminal, session or worktree implementation.
 
+## Product direction: an agentic corporation
+
+Spencer Colety describes TSF as an **agentic corporation**: a captain coordinates team leads and specialist workers, divides large projects into bounded tasks, runs independent work in parallel, reviews results and escalates serious blockers. The purpose is sustained progress across large software projects with less repeated manual prompting.
+
+Spencer reports using Dot as the conversational interface connected to TSF's backend, bringing project discussion and the fleet workflow together. **T.Dot is a working name for that integration.** This owner-reported workflow does not mean every integration or newer local change is present in this public branch.
+
+Reliable overnight and multi-day execution is an ongoing engineering goal. Completing a game-scale project in a few days is an ambition, not a measured throughput guarantee. Test-driven development, handoffs, recovery and acceptance checks remain central to the work. Orca, Dot and model providers retain credit for their underlying systems.
+
 ## Contribution and attribution
 
 Spencer Colety directs and develops the TSF project with AI assistance. The `tsf/` overlay contains project-specific domain logic, orchestration and operator surfaces. The underlying Orca application and its contributors retain credit for the substrate; this fork must not be described as a wholly original IDE. Git author labels alone do not establish which lines were manually written.
